@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "files.associations": {
+      "*.css": "tailwindcss"
+    },
+    "emmet.includeLanguages": {
+      "javascript": "javascriptreact",
+      "typescript": "typescriptreact"
+    }
+  }
+}

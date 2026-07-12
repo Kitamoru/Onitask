@@ -4,7 +4,7 @@
     "version": "0.1.0",
     "tech_stack": {
       "frontend": "Next.js 15, React 18, TypeScript",
-      "ui": "Tailwind CSS, shadcn/ui",
+      "ui": "Tailwind CSS",
       "database": "Supabase (PostgreSQL)",
       "ai_hot": "Groq (llama-3.3-70b-versatile, whisper-large-v3-turbo)",
       "ai_cold": "NeuralDeep Hub (GPT-OSS-120B, bge-m3)",
