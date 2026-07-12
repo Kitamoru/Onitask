@@ -1,0 +1,106 @@
+# ============================================================================
+# .clinerules — Cline Configuration for onitask
+# ============================================================================
+# Version: 1.0.0
+# Date: 2026-07-12
+
+project:
+  name: onitask
+  description: "AI-Native Control Plane for hybrid teams (humans + AI agents)"
+  docs_path: /
+  schema_path: supabase/migrations
+
+# ============================================================================
+# PLAN MODE — Strict Rules
+# ============================================================================
+plan_mode:
+  allowed_tools:
+    - read_file
+    - list_files
+    - search_files
+    - grep
+  forbidden_tools:
+    - write_to_file
+    - replace_in_file
+    - execute_command
+  required_reading:
+    - onitask_Architecture_Master_.md
+    - onitask_INDEX_.md
+  cross_document_check: true
+
+# ============================================================================
+# Architecture Constraints
+# ============================================================================
+invariants:
+  - INV-01: tasks.assigned_to → REFERENCES workers(id)
+  - INV-02: tasks.reviewer_id → REFERENCES workers(id)
+  - INV-03: task_column_history.moved_by → REFERENCES workers(id)
+  - INV-04: agent_events триггер auto_create_agent_worker()
+  - INV-05: Все AI-outputs содержат workspace_id
+  - INV-06: Все секреты сравниваются через timingSafeEqual
+  - INV-07: Квота AI инкрементируется через atomic RPC
+  - INV-08: workspace_settings — единственный источник настроек
+  - INV-09: version на tasks инкрементируется атомарно
+  - INV-10: workspace_telegram_chats.linked_by → REFERENCES profiles(id)
+  - INV-11: workspaces.task_prefix иммутабелен после создания
+  - INV-12: assignment_history.snapshot_attention_risk фиксируется триггером
+  - INV-13: task_relations.workspace_id передаётся явно
+  - INV-14: workspace_context и workspace_context_cache строго разделены
+  - INV-15: data_sharing_level = 'full' только Admin/Owner с DPA
+  - INV-16: /api/init — find-or-create только
+
+axioms:
+  - A-01: Vercel = только Hot Path (< 2s)
+  - A-02: Timing Safe & DB Isolation
+  - A-03: Atomic Quota
+  - A-04: Векторное индексирование (pgvector)
+  - A-05: Гибридный двухконтурный учёт оценок
+  - A-06: Один вызов модели (No Fallback Chain)
+  - A-07: Tenant Isolation
+  - A-08: Flow Access Control
+  - A-09: Cognitive Budget Formula
+  - A-10: Layered Metrics Cache
+  - A-11: Assignment Risk Score
+  - A-12: Relational Context Layer
+
+# ============================================================================
+# File Mutation Guardrails
+# ============================================================================
+forbidden_files:
+  - supabase/migrations/001_init.sql
+  - supabase/migrations/002_rls.sql
+  - onitask_Architecture_Master_.md  # Изменяется только через план с INV-check
+  - onitask_INDEX_.md
+
+critical_order_for_schema_changes:
+  1. Update Master Spec §6 (DDL)
+  2. Create/modify SQL migration
+  3. Update feature document (AI/Flow/MCP/SQL Anomalies/Bot/Security)
+  4. Update MCP Contract if APIs change
+  5. Update Dev Setup if API contracts change
+  6. Implement Route Handler / Edge Function
+  7. Implement UI components
+
+# ============================================================================
+# Testing & Validation
+# ============================================================================
+validation_commands:
+  schema: "supabase db push --dry-run"
+  type_check: "npm run type-check"
+  lint: "npm run lint"
+  edge_function: "supabase functions serve <function-name>"
+  mcp_contract: "curl -X POST /api/mcp/<tool>"
+  sql_view: "SELECT * FROM view_name LIMIT 1;"
+
+# ============================================================================
+# Memory Bank Configuration
+# ============================================================================
+memory_bank:
+  path: docs/memory-bank
+  files:
+    - projectbrief.md
+    - productContext.md
+    - activeContext.md
+    - systemPatterns.md
+    - techContext.md
+  auto_update: true
