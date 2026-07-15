@@ -1,36 +1,120 @@
 # ============================================================================
 # .clinerules — Cline Configuration for onitask
 # ============================================================================
-# Version: 1.0.0
+# Version: 1.2.0
 # Date: 2026-07-12
+# Purpose: System configuration + Plan Mode guidelines for onitask development
 
+# ============================================================================
+# PROJECT CONTEXT
+# ============================================================================
 project:
   name: onitask
   description: "AI-Native Control Plane for hybrid teams (humans + AI agents)"
-  docs_path: /
+  docs_path: docs/                         # ← исправлено: все документы в /docs
   schema_path: supabase/migrations
+  version: "0.13.3"
+  status: "Active Development"
 
 # ============================================================================
-# PLAN MODE — Strict Rules
+# PLAN MODE GUIDELINES (onitask — Optimized for Cline + Kimi k2.6)
 # ============================================================================
 plan_mode:
-  allowed_tools:
-    - read_file
-    - list_files
-    - search_files
-    - grep
-  forbidden_tools:
-    - write_to_file
-    - replace_in_file
-    - execute_command
-  required_reading:
-    - onitask_Architecture_Master_.md
-    - onitask_INDEX_.md
-  cross_document_check: true
+  enabled: true
+  description: "Plan Mode guidelines for Cline + Kimi k2.6 in onitask project"
+  
+  # 1. Deep Context Gathering
+  deep_context_gathering:
+    allowed_tools:
+      - read_file
+      - list_files
+      - search_files
+      - grep
+    forbidden_tools:
+      - write_to_file
+      - replace_in_file
+      - execute_command
+    required_documents:
+      - docs/onitask_Architecture_Master_.md
+      - docs/onitask_INDEX_.md
+      - docs/onitask_ai_.md
+      - docs/onitask_flow_.md
+      - docs/onitask_mcp_contract_.md
+      - docs/onitask_sql_anomalies_.md
+      - docs/onitask_security_.md
+      - docs/onitask_bot.md
+      - docs/onitask_dev_setup.md
+      - docs/onitask_product_vision.md
+    cross_document_check: true
+    verify_paths_before_planning: true
+
+  # 2. Strict Plan Structure (шаблон)
+  strict_plan_structure:
+    template: |
+      ### 🏗️ Architectural Analysis
+      - **Affected Dependencies**: ...
+      - **Cross-Document Impact**: ...
+      - **Identified Risks**: ...
+      - **INV/Axiom Check**: ...
+
+      ### 🗂️ File Mutation Map
+      - ➕ **New Files**: ...
+      - 📝 **Modified Files**: ...
+      - 🚫 **Forbidden Files**: ...
+      - ⚠️ **Schema Migration Required?**: ...
+
+      ### ⏱️ Atomic Implementation Steps
+      - (используй критический порядок ниже)
+
+      ### ✅ Definition of Done & Validation
+      - (используй команды из validation_commands)
+
+    atomic_implementation_steps:
+      critical_order_for_schema_changes:
+        - "1. Update Master Spec §6 (DDL)"
+        - "2. Create/modify SQL migration (supabase/migrations/)"
+        - "3. Update feature document (AI/Flow/MCP/SQL Anomalies/Bot/Security)"
+        - "4. Update MCP Contract if APIs change"
+        - "5. Update Dev Setup if API contracts change"
+        - "6. Implement Route Handler / Edge Function"
+        - "7. Implement UI components"
+      expected_outcome: "Each step must have a clear 'Expected Outcome'."
+    
+    definition_of_done:
+      validation_commands:
+        - "supabase db push --dry-run (schema validation)"
+        - "supabase functions serve <function-name> (Edge Function test)"
+        - "npm run type-check (TypeScript validation)"
+        - "curl -X POST /api/mcp/<tool> (MCP contract test)"
+      sql_validation: "Run `SELECT * FROM view_name LIMIT 1;` for new views."
+
+  # 3. Specific Safeguards
+    context_window: "262K tokens — load ALL relevant onitask documents in Plan Mode"
+    anti_overengineering: "Focus only on the requested task. Do not rewrite, refactor, or optimize unrelated code unless explicitly asked."
+    verification_first: "Always include automated verification steps in the plan to leverage reasoning capabilities."
+    token_monitoring: "Track usage — if approaching free tier limits, recommend switching to paid tier ($0.684/M input, $3.42/M output)."
+
+  # 4. Integration with Existing Tasks
+  integration_with_existing_tasks:
+    map_task_to_plan: "When a user selects or provides a task from the `tasks` list, map that task directly into this Plan Mode structure."
+    mode_transition: "Do not move to ACT MODE until the user explicitly says 'Approved', 'Go', or switches the toggle manually."
+    complex_tasks: "For complex tasks, start with `/deep-planning` to create `implementation_plan.md`."
+
+  # 5. onitask-Specific Best Practices
+  onitask_specific_best_practices:
+    - "**Schema First**: All DDL changes start in Master Spec §6, then migrations."
+    - "**INV/Axiom Validation**: Every change must check affected invariants (INV-01…INV-16)."
+    - "**Cross-Doc Consistency**: Update all feature documents that reference changed fields."
+    - "**Security First**: For AI changes, verify data_sharing_level and allowed_tools."
+    - "**Backward Compatibility**: MCP API changes must maintain backward compatibility (versioning or optional fields)."
+    - "**SQL Performance**: New views must have EXPLAIN ANALYZE < 50ms on test data."
 
 # ============================================================================
-# Architecture Constraints
+# ARCHITECTURE CONSTRAINTS
 # ============================================================================
+# Полный список INV и Axiom см. в docs/onitask_Architecture_Master_.md
+# Для быстрого доступа приведены ключевые:
+
 invariants:
   - INV-01: tasks.assigned_to → REFERENCES workers(id)
   - INV-02: tasks.reviewer_id → REFERENCES workers(id)
@@ -64,25 +148,16 @@ axioms:
   - A-12: Relational Context Layer
 
 # ============================================================================
-# File Mutation Guardrails
+# FILE MUTATION GUARDRAILS
 # ============================================================================
 forbidden_files:
   - supabase/migrations/001_init.sql
   - supabase/migrations/002_rls.sql
-  - onitask_Architecture_Master_.md  # Изменяется только через план с INV-check
-  - onitask_INDEX_.md
-
-critical_order_for_schema_changes:
-  1. Update Master Spec §6 (DDL)
-  2. Create/modify SQL migration
-  3. Update feature document (AI/Flow/MCP/SQL Anomalies/Bot/Security)
-  4. Update MCP Contract if APIs change
-  5. Update Dev Setup if API contracts change
-  6. Implement Route Handler / Edge Function
-  7. Implement UI components
+  - docs/onitask_Architecture_Master_.md  # Изменяется только через план с INV-check
+  - docs/onitask_INDEX_.md
 
 # ============================================================================
-# Testing & Validation
+# TESTING & VALIDATION
 # ============================================================================
 validation_commands:
   schema: "supabase db push --dry-run"
@@ -93,7 +168,7 @@ validation_commands:
   sql_view: "SELECT * FROM view_name LIMIT 1;"
 
 # ============================================================================
-# Memory Bank Configuration
+# MEMORY BANK CONFIGURATION
 # ============================================================================
 memory_bank:
   path: docs/memory-bank
@@ -103,4 +178,26 @@ memory_bank:
     - activeContext.md
     - systemPatterns.md
     - techContext.md
+    - progress.md
   auto_update: true
+
+# ============================================================================
+# BEHAVIORAL SAFEGUARDS
+# ============================================================================
+behavioral_safeguards:
+  context_drift_prevention: "Use Focus Chain (automatic todo list) to maintain focus."
+  long_conversations: "Use `/smol` or Auto Compact to summarize and reset."
+  clean_starts: "At natural transition points (e.g., after research), use `/newtask` to start a clean session."
+  planning_files: "Write plans in Markdown (.md) files so they can be referenced later."
+
+# ============================================================================
+# Front-End & Figma Code Generation Rules
+Ты — senior frontend developer. 
+Всегда:
+- Используй Auto Layout принципы → Flex/Grid
+- Предпочитай существующие компоненты
+- Следуй design tokens (colors, spacing, typography)
+- Пиши чистый, типизированный код
+- Добавляй aria-атрибуты
+
+Запрещено: hardcoded colors/spacing, div soup, inline styles если есть Tailwind.

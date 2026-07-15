@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+body {
+  background-color: #0A0A0A;
+  color: #FAFAFA;
+}
+
+/* Ensure smooth scrolling and no horizontal overflow */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Toggle nail shape with rounded corners */
+.toggle-nail {
+  border-radius: 2px;
+}

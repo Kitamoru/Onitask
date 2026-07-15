@@ -60,3 +60,50 @@ export interface WorkspaceResponse {
   task_prefix: string;
   created_at: string;
 }
+
+// Init API types (INV-16: find-or-create only)
+export interface InitWorkerResponse {
+  id: string;
+  display_name: string;
+  workspace_id: string;
+  role: string | null;
+}
+
+export interface WorkspacePreview {
+  id: string;
+  name: string;
+  slug: string;
+  task_prefix: string;
+  role: string | null;
+}
+
+export interface InitResponse {
+  worker: InitWorkerResponse;
+  workspaces: WorkspacePreview[];
+  is_new_user: boolean;
+}
+
+export interface InitRequest {
+  init_data: string;
+  start_param?: string; // WS-06: referral code from Telegram Mini App deep link
+}
+
+// ============================================================================
+// Invite API types (WS-06)
+// ============================================================================
+
+export interface InviteGenerateResponse {
+  url: string; // t.me/{botUsername}/Onitask?startapp={code}
+  code: string;
+  created_at: string;
+}
+
+export interface InviteCurrentResponse {
+  code: string;
+  created_at: string;
+  created_by: string;
+}
+
+export interface InviteErrorResponse {
+  error: 'no_active_invite' | 'workspace_not_found' | 'not_authorized';
+}

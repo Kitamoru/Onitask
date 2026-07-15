@@ -5,7 +5,6 @@ import { BoardHeader } from './Header';
 import { TextInput } from './TextInput';
 import { Toggle } from './Toggle';
 import { Counter } from './Counter';
-import { BadgeList, type Colleague } from './BadgeList';
 import { TextArea } from './TextArea';
 import { FilePicker } from './FilePicker';
 import { LinkInputGroup } from './LinkInputGroup';
@@ -33,7 +32,6 @@ export interface BoardFormData {
     enabled: boolean;
     description: string;
   };
-  colleagues: Colleague[];
   context: string;
   documents: File[];
   externalLinks: Array<{ name: string; url: string }>;
@@ -97,11 +95,6 @@ export function BoardForm({
     initialData.cognitiveWeight?.description || ''
   );
 
-  // Colleagues
-  const [colleagues, setColleagues] = useState<Colleague[]>(
-    initialData.colleagues || []
-  );
-
   // Context
   const [context, setContext] = useState(initialData.context || '');
 
@@ -144,10 +137,6 @@ export function BoardForm({
     } else {
       setSlugError(undefined);
     }
-  };
-
-  const handleAddColleague = () => {
-    console.log('Add colleague clicked');
   };
 
   const handleAddLink = () => {
@@ -214,7 +203,6 @@ export function BoardForm({
       slug,
       storyPoints: { enabled: spEnabled, values: spValues },
       cognitiveWeight: { enabled: cwEnabled, description: cwDescription },
-      colleagues,
       context,
       documents,
       externalLinks: links,
@@ -434,17 +422,6 @@ export function BoardForm({
               </p>
             )}
           </div>
-        </div>
-      </Section>
-
-      {/* ===== Section: Коворкинг ===== */}
-      <Section>
-        <BoardHeader title="Коворкинг" />
-        <div className="mt-4">
-          <BadgeList
-            colleagues={colleagues}
-            onAddColleagues={handleAddColleague}
-          />
         </div>
       </Section>
 

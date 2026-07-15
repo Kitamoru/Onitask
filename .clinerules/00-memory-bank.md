@@ -1,21 +1,49 @@
+
+
 # Memory Bank Overview
 
 This file describes the **Memory Bank** used by Cline agents. It is a lightweight cache of
 project‑specific context that is read at the start of **every** task (Plan Mode).
 
-The original specification listed a set of files that do not exist in the repository.
-Instead, the relevant information is stored in the `docs/` directory.  Below is a mapping
-from the expected memory‑bank files to the actual documentation files that contain the
-corresponding content.
+The Memory Bank is located in the `docs/memory-bank/` directory and contains the following
+files, which are maintained and updated as the project evolves.
 
-| Expected Memory‑Bank file | Actual source file (in `docs/`) |
-|---------------------------|---------------------------------|
-| `projectbrief.md`         | `docs/onitask_product_vision.md` – high‑level goals and scope |
-| `productContext.md`       | `docs/onitask_product_vision.md` – why the product exists, key JTBD |
-| `systemPatterns.md`       | `docs/onitask_Architecture_Master_.md` – core architectural patterns and critical implementation paths |
-| `techContext.md`          | `docs/onitask_dev_setup.md` – tech stack, dependencies, environment constraints |
- | `activeContext.md`        | `docs/TASKS.md` – current focus, recent changes, retry count |
-| `progress.md`             | `docs/TASKS.md` – list of tasks with status |
-| `decisions.md`            | `docs/onitask_mcp_contract_.md` – ADR drafts and decisions made during the session |
+| Memory‑Bank file | Purpose | Source / Content |
+|------------------|---------|------------------|
+| `projectbrief.md` | High‑level project overview (what, why, core problem) | Derived from `onitask_product_vision.md` – one‑page summary |
+| `productContext.md` | Product vision, JTBD, key scenarios, brand identity | Comprehensive extract from `onitask_product_vision.md` |
+| `systemPatterns.md` | Core architectural patterns (axioms, invariants, data flow) | Structured summary of `onitask_Architecture_Master_.md` and `onitask_ai_.md` |
+| `techContext.md` | Technology stack, project structure, environment setup | Extracted from `onitask_dev_setup.md` |
+| `activeContext.md` | Current task, recent decisions, open questions, blockers | Updated during development – tracks the active session context |
 
-Agents should **read the listed documentation files** in `docs/` before proceeding with any task.
+---
+
+## How to use the Memory Bank
+
+1. **At the start of each Plan Mode session**, Cline reads all files in `docs/memory-bank/`
+   to restore context.
+
+2. **When working on a task**, update `activeContext.md` with the current focus and any
+   new decisions.
+
+3. **When a task is completed**, update `progress.md` to mark it done and record any
+   notable outcomes.
+
+4. **For detailed technical references**, always consult the primary documentation in
+   `docs/`:
+   - `onitask_Architecture_Master_.md` – definitive source for schema, invariants, axioms
+   - `onitask_ai_.md`, `onitask_flow_.md`, `onitask_mcp_contract_.md`, etc. – feature‑specific
+     contracts and implementation details
+   - `onitask_INDEX_.md` – navigation guide to all documentation
+
+---
+
+## File location
+
+All Memory Bank files are stored in:
+docs/memory-bank/
+├── projectbrief.md
+├── productContext.md
+├── systemPatterns.md
+├── techContext.md
+├── activeContext.md
