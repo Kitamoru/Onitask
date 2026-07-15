@@ -56,6 +56,7 @@ export interface BoardFormProps {
 
 const DEFAULT_SP_VALUES: [number, number, number, number, number] = [1, 3, 5, 7, 13];
 const MAX_DOCUMENTS = 10;
+const MAX_EXTERNAL_LINKS = 6;
 
 /** Gradient border style matching Figma input-field-s component (7:8090) */
 const SP_INPUT_GRADIENT_STYLE: React.CSSProperties = {
@@ -108,13 +109,11 @@ export function BoardForm({
   const [documentsEnabled, setDocumentsEnabled] = useState(false);
   const [documents, setDocuments] = useState<File[]>(initialData.documents || []);
 
-  // External links — toggle выключен по умолчанию
+  // External links — toggle выключен по умолчанию, до 6 ссылок
   const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<Array<{ name: string; url: string }>>(
     initialData.externalLinks || []
   );
-  const [linkName, setLinkName] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
 
   // Signals — toggle выключен по умолчанию
   const [signalsEnabled, setSignalsEnabled] = useState(
@@ -152,11 +151,16 @@ export function BoardForm({
   };
 
   const handleAddLink = () => {
-    if (linkName.trim() && linkUrl.trim()) {
-      setLinks([...links, { name: linkName.trim(), url: linkUrl.trim() }]);
-      setLinkName('');
-      setLinkUrl('');
-    }
+    if (links.length >= MAX_EXTERNAL_LINKS) return;
+    setLinks([...links, { name: '', url: '' }]);
+  };
+
+  const handleUpdateLink = (index: number, field: 'name' | 'url', value: string) => {
+    setLinks(links.map((link, i) => (i === index ? { ...link, [field]: value } : link)));
+  };
+
+  const handleRemoveLink = (index: number) => {
+    setLinks(links.filter((_, i) => i !== index));
   };
 
   const handleSignalIncrement = (index: number) => {
@@ -585,17 +589,70 @@ export function BoardForm({
               />
             </div>
 
-            {/* Link input group — показывается только когда toggle включён, рендерится один раз */}
+            {/* Multiple link rows — up to 6 */}
             {linksEnabled && (
-              <div key="link-input-group">
-                <LinkInputGroup
-                  resourceName={linkName}
-                  onResourceNameChange={setLinkName}
-                  url={linkUrl}
-                  onUrlChange={setLinkUrl}
-                  onAddLink={handleAddLink}
-                />
-              </div>
+              <>
+                {links.map((link, idx) => (
+                  <div key={idx} className="mb-2 flex items-start gap-2 group/link-row">
+                    <div className="flex-1">
+                      <LinkInputGroup
+                        resourceName={link.name}
+                        onResourceNameChange={(val) => handleUpdateLink(idx, 'name', val)}
+                        url={link.url}
+                        onUrlChange={(val) => handleUpdateLink(idx, 'url', val)}
+                        onAddLink={() => {}}
+                        addDisabled={true}
+                      />
+                    </div>
+                    {links.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLink(idx)}
+                        className="
+                          shrink-0 w-8 h-8 mt-8 flex items-center justify-center
+                          rounded-md bg-surface/50 border border-white/10
+                          text-bg-light font-semibold
+                          hover:bg-surface/70 active:bg-surface/40
+                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                          transition-colors duration-150
+                        "
+                        aria-label={`Удалить ссылку ${idx + 1}`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* New link row (if we have capacity) */}
+                {links.length < MAX_EXTERNAL_LINKS && (
+                  <div className="mt-2">
+                    <LinkInputGroup
+                      resourceName=""
+                      onResourceNameChange={(val) => handleUpdateLink(links.length, 'name', val)}
+                      url=""
+                      onUrlChange={(val) => handleUpdateLink(links.length, 'url', val)}
+                      onAddLink={handleAddLink}
+                      addDisabled={false}
+                    />
+                  </div>
+                )}
+
+                {/* Counter badge */}
+                <div className="mt-2 flex items-center justify-end">
+                  <span
+                    className="text-text-muted text-xs"
+                    style={{
+                      fontFamily: "'Inter', system-ui, sans-serif",
+                      fontSize: '11px',
+                      lineHeight: '15px',
+                      fontWeight: '400',
+                    }}
+                  >
+                    {links.length}/{MAX_EXTERNAL_LINKS}
+                  </span>
+                </div>
+              </>
             )}
           </div>
         </div>
