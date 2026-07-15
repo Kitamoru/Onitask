@@ -55,6 +55,7 @@ export interface BoardFormProps {
 }
 
 const DEFAULT_SP_VALUES: [number, number, number, number, number] = [1, 3, 5, 7, 13];
+const MAX_DOCUMENTS = 10;
 
 /** Gradient border style matching Figma input-field-s component (7:8090) */
 const SP_INPUT_GRADIENT_STYLE: React.CSSProperties = {
@@ -68,8 +69,8 @@ const SP_INPUT_GRADIENT_STYLE: React.CSSProperties = {
 };
 
 const DEFAULT_SIGNALS = [
-  { value: 1, label: '1 день' },
   { value: 3, label: '3 дня' },
+  { value: 1, label: '1 день' },
 ];
 
 export function BoardForm({
@@ -81,15 +82,16 @@ export function BoardForm({
   // Board name section
   const [name, setName] = useState(initialData.name || '');
   const [slug, setSlug] = useState(initialData.slug || '');
+  const [nameError, setNameError] = useState<string | undefined>(undefined);
+  const [slugError, setSlugError] = useState<string | undefined>(undefined);
 
-  // Functional settings
+  // Functional settings — все toggle выключены по умолчанию
   const [spEnabled, setSpEnabled] = useState(initialData.storyPoints?.enabled ?? false);
   const [spValues, setSpValues] = useState<[number, number, number, number, number]>(
     initialData.storyPoints?.values || DEFAULT_SP_VALUES
   );
 
-  // CW toggle defaults to true per Figma spec (node 337:28043 is-active=true)
-  const [cwEnabled, setCwEnabled] = useState(initialData.cognitiveWeight?.enabled ?? true);
+  const [cwEnabled, setCwEnabled] = useState(initialData.cognitiveWeight?.enabled ?? false);
   const [cwDescription, setCwDescription] = useState(
     initialData.cognitiveWeight?.description || ''
   );
@@ -102,17 +104,19 @@ export function BoardForm({
   // Context
   const [context, setContext] = useState(initialData.context || '');
 
-  // Documents
+  // Documents — toggle выключен по умолчанию, поддержка до 10 файлов
+  const [documentsEnabled, setDocumentsEnabled] = useState(false);
   const [documents, setDocuments] = useState<File[]>(initialData.documents || []);
 
-  // External links
+  // External links — toggle выключен по умолчанию
+  const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<Array<{ name: string; url: string }>>(
     initialData.externalLinks || []
   );
   const [linkName, setLinkName] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
 
-  // Signals
+  // Signals — toggle выключен по умолчанию
   const [signalsEnabled, setSignalsEnabled] = useState(
     initialData.signals?.enabled ?? false
   );
@@ -120,8 +124,30 @@ export function BoardForm({
     initialData.signals?.values || DEFAULT_SIGNALS
   );
 
+  // Validation handlers
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val.length <= 25) {
+      setName(val);
+      if (val.length > 25) {
+        setNameError('Максимум 25 символов');
+      } else {
+        setNameError(undefined);
+      }
+    }
+  };
+
+  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 5);
+    setSlug(val);
+    if (val.length > 0 && (val.length < 4 || val.length > 5)) {
+      setSlugError('Должно быть 4 или 5 символов');
+    } else {
+      setSlugError(undefined);
+    }
+  };
+
   const handleAddColleague = () => {
-    // Placeholder: open colleague picker modal
     console.log('Add colleague clicked');
   };
 
@@ -133,14 +159,51 @@ export function BoardForm({
     }
   };
 
-  const handleSignalChange = (index: number, value: number) => {
+  const handleSignalIncrement = (index: number) => {
     setSignalValues((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, value } : s))
+      prev.map((s, i) => (i === index ? { ...s, value: s.value + 1 } : s))
     );
+  };
+
+  const handleSignalDecrement = (index: number) => {
+    setSignalValues((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, value: Math.max(1, s.value - 1) } : s))
+    );
+  };
+
+  // Document handlers
+  const handleDocumentChange = (index: number, file: File | null) => {
+    setDocuments((prev) => {
+      const updated = [...prev];
+      updated[index] = file!;
+      return updated;
+    });
+  };
+
+  const handleAddDocument = () => {
+    if (documents.length < MAX_DOCUMENTS) {
+      setDocuments([...documents, null as unknown as File]);
+    }
+  };
+
+  const handleRemoveDocument = (index: number) => {
+    setDocuments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate before submit
+    let hasErrors = false;
+    if (name.length === 0 || name.length > 25) {
+      setNameError(name.length > 25 ? 'Максимум 25 символов' : 'Введите название');
+      hasErrors = true;
+    }
+    if (slug.length > 0 && (slug.length < 4 || slug.length > 5)) {
+      setSlugError('Должно быть 4 или 5 символов');
+      hasErrors = true;
+    }
+    if (hasErrors) return;
 
     const formData: BoardFormData = {
       name,
@@ -179,22 +242,36 @@ export function BoardForm({
       <Section>
         <BoardHeader title="Основное" />
         <div className="mt-4 space-y-3">
-          <TextInput
-            id="board-name"
-            placeholder="Название доски"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            size="md"
-            aria-label="Название доски"
-          />
-          <TextInput
-            id="board-slug"
-            placeholder="@desk"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            size="md"
-            aria-label="Идентификатор доски"
-          />
+          <div>
+            <TextInput
+              id="board-name"
+              placeholder="Название доски"
+              value={name}
+              onChange={handleNameChange}
+              size="md"
+              aria-label="Название доски"
+            />
+            {nameError && (
+              <p className="mt-1 text-xs" style={{ color: '#EF4444' }} role="alert">
+                {nameError}
+              </p>
+            )}
+          </div>
+          <div>
+            <TextInput
+              id="board-slug"
+              placeholder="@desk"
+              value={slug}
+              onChange={handleSlugChange}
+              size="md"
+              aria-label="Идентификатор доски"
+            />
+            {slugError && (
+              <p className="mt-1 text-xs" style={{ color: '#EF4444' }} role="alert">
+                {slugError}
+              </p>
+            )}
+          </div>
         </div>
       </Section>
 
@@ -217,8 +294,8 @@ export function BoardForm({
             aria-hidden="true"
           />
           <div className="p-3 relative">
-            {/* Header row */}
-            <div className="flex items-center gap-2 mb-3">
+            {/* Header row — toggle справа */}
+            <div className="flex items-center justify-between mb-3">
               <span
                 className="text-bg-light"
                 style={{
@@ -316,8 +393,8 @@ export function BoardForm({
             aria-hidden="true"
           />
           <div className="p-3 relative">
-            {/* Header row */}
-            <div className="flex items-center gap-2 mb-2">
+            {/* Header row — toggle справа */}
+            <div className="flex items-center justify-between mb-2">
               <span
                 className="text-bg-light"
                 style={{
@@ -376,6 +453,7 @@ export function BoardForm({
             value={context}
             onChange={(e) => setContext(e.target.value)}
             rows={3}
+            maxLength={1200}
             aria-label="Контекст доски"
           />
         </div>
@@ -398,7 +476,7 @@ export function BoardForm({
             aria-hidden="true"
           />
           <div className="p-3 relative">
-            {/* Docs header */}
+            {/* Docs header — toggle справа */}
             <div className="flex items-center justify-between mb-3">
               <span
                 className="text-bg-light"
@@ -413,63 +491,66 @@ export function BoardForm({
                 Документы
               </span>
               <Toggle
-                checked={documents.length > 0}
-                onChange={() => {}}
+                checked={documentsEnabled}
+                onChange={setDocumentsEnabled}
                 aria-label="Включить документы"
               />
             </div>
 
-            {/* File picker */}
-            <div className="mb-2">
-              <FilePicker
-                file={documents[0] || null}
-                onChange={(file) => {
-                  if (file) {
-                    setDocuments([file]);
-                  }
-                }}
-              />
-            </div>
-
-            {/* Add .md file button */}
-            <button
-              type="button"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.md';
-                input.onchange = (e) => {
-                  const f = (e.target as HTMLInputElement).files?.[0];
-                  if (f) setDocuments([...documents, f]);
-                };
-                input.click();
-              }}
-              className="
-                flex items-center justify-center w-full h-10
-                rounded-md
-                bg-surface/50
-                border border-white/10
-                text-bg-light
-                font-semibold
-                transition-colors duration-150
-                hover:bg-surface/70
-                active:bg-surface/40
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-              "
-              style={{
-                fontFamily: "'Inter Display', system-ui, sans-serif",
-                fontSize: '14px',
-                lineHeight: '18px',
-                fontWeight: '600',
-              }}
-              aria-label="Добавить .md файл"
-            >
-              Добавить .md файл
-            </button>
+            {/* File pickers — показывается только когда toggle включён */}
+            {documentsEnabled && (
+              <>
+                {documents.map((doc, index) => (
+                  <div key={index} className="mb-2 flex items-center gap-2">
+                    <FilePicker
+                      file={doc}
+                      onChange={(file) => handleDocumentChange(index, file)}
+                    />
+                    {documents.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDocument(index)}
+                        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md bg-surface/50 border border-white/10 text-bg-light font-semibold hover:bg-surface/70 active:bg-surface/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                        aria-label="Удалить документ"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {documents.length < MAX_DOCUMENTS && (
+                  <button
+                    type="button"
+                    onClick={handleAddDocument}
+                    className="
+                      flex items-center justify-center w-full h-10
+                      rounded-md
+                      bg-surface/50
+                      border border-white/10
+                      text-bg-light
+                      font-semibold
+                      transition-colors duration-150
+                      hover:bg-surface/70
+                      active:bg-surface/40
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                    "
+                    style={{
+                      fontFamily: "'Inter Display', system-ui, sans-serif",
+                      fontSize: '14px',
+                      lineHeight: '18px',
+                      fontWeight: '600',
+                    }}
+                    aria-label="Добавить документ"
+                  >
+                    Добавить документ
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
 
-        {/* External Links */}
+        {/* External Links — toggle справа */}
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
@@ -484,13 +565,38 @@ export function BoardForm({
             aria-hidden="true"
           />
           <div className="p-3 relative">
-            <LinkInputGroup
-              resourceName={linkName}
-              onResourceNameChange={setLinkName}
-              url={linkUrl}
-              onUrlChange={setLinkUrl}
-              onAddLink={handleAddLink}
-            />
+            <div className="flex items-center justify-between mb-3">
+              <span
+                className="text-bg-light"
+                style={{
+                  fontFamily: "'Inter Display', system-ui, sans-serif",
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  fontWeight: '500',
+                  letterSpacing: '-0.0313em',
+                }}
+              >
+                Внешние ссылки
+              </span>
+              <Toggle
+                checked={linksEnabled}
+                onChange={setLinksEnabled}
+                aria-label="Включить внешние ссылки"
+              />
+            </div>
+
+            {/* Link input group — показывается только когда toggle включён, рендерится один раз */}
+            {linksEnabled && (
+              <div key="link-input-group">
+                <LinkInputGroup
+                  resourceName={linkName}
+                  onResourceNameChange={setLinkName}
+                  url={linkUrl}
+                  onUrlChange={setLinkUrl}
+                  onAddLink={handleAddLink}
+                />
+              </div>
+            )}
           </div>
         </div>
       </Section>
@@ -514,8 +620,8 @@ export function BoardForm({
             aria-hidden="true"
           />
           <div className="p-3 relative">
-            {/* Header row */}
-            <div className="flex items-center gap-2 mb-2">
+            {/* Header row — toggle справа */}
+            <div className="flex items-center justify-between mb-2">
               <span
                 className="text-bg-light"
                 style={{
@@ -535,32 +641,78 @@ export function BoardForm({
               />
             </div>
 
-            {/* Description */}
-            <p
-              className="text-text-muted mb-3"
-              style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
-                fontSize: '12px',
-                lineHeight: '16px',
-                letterSpacing: '-0.0417em',
-                fontWeight: '400',
-              }}
-            >
-              Обозначьте срок, при котором коллегам будет приходить дополнительное уведомление о скором дедлайне задачи
-            </p>
+            {/* Description and counters — shown only when toggle is on */}
+            {signalsEnabled && (
+              <>
+                <p
+                  className="text-text-muted mb-3"
+                  style={{
+                    fontFamily: "'Inter', system-ui, sans-serif",
+                    fontSize: '12px',
+                    lineHeight: '16px',
+                    letterSpacing: '-0.0417em',
+                    fontWeight: '400',
+                  }}
+                >
+                  Обозначьте срок, при котором коллегам будет приходить дополнительное уведомление о скором дедлайне задачи
+                </p>
 
-            {/* Signal counters */}
-            <div className="space-y-3">
-              {signalValues.map((signal, index) => (
-                <Counter
-                  key={index}
-                  value={signal.value}
-                  label={signal.label}
-                  onChange={(val) => handleSignalChange(index, val)}
-                  disabled={!signalsEnabled}
-                />
-              ))}
-            </div>
+                {/* Signal counters с кнопками +/- */}
+                <div className="space-y-3">
+                  {signalValues.map((signal, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSignalDecrement(index)}
+                        disabled={!signalsEnabled}
+                        className="
+                          w-8 h-8 flex items-center justify-center
+                          rounded-md bg-surface/50 border border-white/10
+                          text-bg-light font-semibold
+                          disabled:opacity-50 disabled:cursor-not-allowed
+                          hover:bg-surface/70 active:bg-surface/40
+                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                        "
+                        aria-label={`Уменьшить количество дней для ${signal.label}`}
+                      >
+                        −
+                      </button>
+                      <div
+                      className={`flex-1 h-8 px-3 rounded-input-sm flex items-center justify-center
+                        bg-transparent text-bg-light border
+                        ${index === 0 ? 'border-yellow-500' : 'border-red-500'}
+                        disabled:opacity-50`}
+                        style={{
+                          fontFamily: "'Inter', system-ui, sans-serif",
+                          fontSize: '14px',
+                          lineHeight: '20px',
+                          letterSpacing: '-0.0357em',
+                          fontWeight: '500',
+                        }}
+                      >
+                        {signal.value}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSignalIncrement(index)}
+                        disabled={!signalsEnabled}
+                        className="
+                          w-8 h-8 flex items-center justify-center
+                          rounded-md bg-surface/50 border border-white/10
+                          text-bg-light font-semibold
+                          disabled:opacity-50 disabled:cursor-not-allowed
+                          hover:bg-surface/70 active:bg-surface/40
+                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                        "
+                        aria-label={`Увеличить количество дней для ${signal.label}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </Section>
