@@ -52,12 +52,9 @@ export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
         Сводка по всем моим доскам
       </p>
 
-      {/* Risk cards grid */}
+      {/* Risk cards grid — always 3 equal columns */}
       <div
-        className="grid w-full grid-responsive"
-        style={{
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-        }}
+        className="grid w-full gap-2 sm:gap-4 grid-cols-3"
       >
         {pulseCards.map(({ label, key }) => (
           <RiskCard key={key} label={label} value={data[key]} onClick={onSprintClick} />
@@ -79,7 +76,7 @@ function RiskCard({ label, value, onClick }: RiskCardProps) {
 
   return (
     <div
-      className="flex flex-col rounded-card transition-colors hover:bg-surface/50 cursor-pointer card-stretch"
+      className="flex flex-col rounded-card transition-colors hover:bg-surface/50 cursor-pointer"
       style={{
         padding: 'var(--spacing-3)',
         gap: 'var(--spacing-2)',

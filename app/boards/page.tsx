@@ -399,14 +399,7 @@ export default function BoardsPage() {
         </button>
       </div>
 
-      {/* Bottom filler */}
-      <div
-        style={{
-          height: '80px',
-          backgroundColor: '#0A0A0A',
-        }}
-        aria-hidden="true"
-      />
+      {/* Bottom spacer for fixed menu — replaced by global body padding */}
     </div>
   );
 }

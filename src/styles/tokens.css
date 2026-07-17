@@ -44,6 +44,22 @@
   /* Signal colors */
   --color-signal-yellow: #F59E0B;
   --color-signal-red: #EF4444;
+  --color-signal-green: #4ADE80;
+  --color-signal-cyan: #22D3EE;
+
+  /* Priority badge colors */
+  --color-priority-green-bg: rgba(74, 222, 128, 0.2);
+  --color-priority-green-text: #4ADE80;
+  --color-priority-green-border: #4ADE80;
+  --color-priority-amber-bg: rgba(245, 158, 11, 0.2);
+  --color-priority-amber-text: #F59E0B;
+  --color-priority-amber-border: #F59E0B;
+  --color-priority-red-bg: rgba(239, 68, 68, 0.2);
+  --color-priority-red-text: #EF4444;
+  --color-priority-red-border: #EF4444;
+  --color-priority-cyan-bg: rgba(34, 211, 238, 0.2);
+  --color-priority-cyan-text: #22D3EE;
+  --color-priority-cyan-border: #22D3EE;
 
   /* ==========================================
      SPACING (based on 4px grid, expressed in rem)
@@ -64,6 +80,11 @@
   --spacing-8: 2rem;         /* 32px */
   --spacing-16: 4rem;        /* 64px */
 
+  /* FlowBoard specific spacing */
+  --spacing-flowboard-padding: var(--spacing-4);    /* 16px main padding */
+  --spacing-flowboard-section-gap: var(--spacing-6); /* 24px between sections */
+  --spacing-flowboard-card-padding: var(--spacing-3); /* 12px card internal padding */
+
   /* Semantic spacing */
   --spacing-section-gap: var(--spacing-6);        /* 24px between sections */
   --spacing-section-padding: var(--spacing-3);     /* 12px internal section padding */
@@ -76,8 +97,9 @@
   --radius-none: 0;
   --radius-xs: 0.0625rem;    /* 1px */
   --radius-sm: 0.25rem;      /* 4px */
-  --radius-card: 0.5rem;     /* 8px */
   --radius-md: 0.375rem;     /* 6px */
+  --radius-card: 0.5rem;     /* 8px */
+  --radius-flowboard-section: 0.25rem;  /* 4px - FlowBoard section border radius */
 
   /* ==========================================
      TYPOGRAPHY
@@ -135,9 +157,49 @@
   --size-counter-btn: 2.25rem;  /* 36px for w/h */
 
   /* ==========================================
-     TRANSITIONS
-     ========================================== */
-  
+      BOTTOM MENU (Navigation Bar)
+      ========================================== */
+
+  /* Container height — Figma designed 88px, functional 54px + labels */
+  --size-bottom-menu-height: clamp(3.375rem, 6vh, 5.5rem); /* 54px–88px */
+
+  /* Icon sizes */
+  --size-bottom-menu-icon: clamp(1.25rem, 3vw, 1.5rem); /* 20px–24px */
+  --size-bottom-menu-icon-main: clamp(2.5rem, 6vw, 3rem); /* 40px–48px */
+
+  /* Label typography */
+  --text-bottom-menu-label: clamp(0.5rem, 1.2vw, 0.625rem); /* 8px–10px */
+  --text-bottom-menu-label-line: 1.25;
+
+  /* Menu item spacing */
+  --spacing-bottom-menu-gap: var(--spacing-1); /* 4px between items */
+  --spacing-bottom-menu-padding: var(--spacing-1.5); /* 6px internal padding */
+
+  /* Active/inactive states */
+  --color-bottom-menu-text-inactive: var(--color-text-muted); /* #8B8B8B */
+  --color-bottom-menu-text-active: var(--color-text-white);
+  --color-bottom-menu-bg: var(--color-bg-primary-dark);
+
+  /* Gradient border top (Figma gradient) */
+  --gradient-bottom-menu-start: rgba(230, 199, 33, 0.15);
+  --gradient-bottom-menu-mid-1: rgba(46, 169, 140, 0.75);
+  --gradient-bottom-menu-mid-2: rgba(46, 169, 140, 0);
+  --gradient-bottom-menu-mid-3: rgba(46, 169, 140, 0.45);
+  --gradient-bottom-menu-end: rgba(230, 199, 33, 0.15);
+
+  /* Main button glow effects */
+  --shadow-main-btn-inner-dark: inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2);
+  --shadow-main-btn-inner-teal: inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2);
+  --shadow-main-btn-inner-white-1: inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05);
+  --shadow-main-btn-inner-white-2: inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1);
+
+  /* Backdrop blur for menu container */
+  --blur-bottom-menu: blur(30px);
+
+  /* ==========================================
+      TRANSITIONS
+      ========================================== */
+
   --transition-fast: 150ms ease-in-out;
   --transition-normal: 200ms ease-in-out;
 }
@@ -153,3 +215,28 @@
    На md+: form max-width увеличивается до 480px
    На lg+: grid-колонки могут расширяться
 */
+
+/* ==========================================
+   FLOWBOARD RESPONSIVE STYLES
+   ========================================== */
+@media (min-width: 640px) {
+  /* Mobile landscape: slightly larger body text */
+  :root {
+    --text-body-sm: clamp(0.75rem, 1vw, 0.8125rem);
+    --text-body-md: clamp(0.875rem, 1.1vw, 0.9375rem);
+  }
+}
+
+@media (min-width: 768px) {
+  /* Tablet: wider content area, 2-col signals */
+  :root {
+    --spacing-flowboard-padding: 1.5rem;  /* 24px */
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Desktop: full-width layout */
+  :root {
+    --spacing-flowboard-padding: 2rem;    /* 32px */
+  }
+}
