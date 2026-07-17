@@ -10,6 +10,8 @@ import React from 'react';
  *   - Background: #0A0A0A with gradient border
  *   - Text: Inter Display, Semi Bold, 14px, lineHeight: 18px, color: #202020
  *   - ref-bg-shape-inner overlay
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface SubmitButtonProps {
   /** Button text */
@@ -68,8 +70,7 @@ export function SubmitButton({
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage:
-            'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+          backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
           mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
           WebkitMaskComposite: 'xor',
           maskComposite: 'exclude',
@@ -86,17 +87,17 @@ export function SubmitButton({
           relative flex items-center justify-center w-full h-10
           rounded-md
           bg-accent-amber
-          text-[#202020] /* Figma button label color */
+          text-primary-dark
           font-semibold
-          transition-colors duration-200
+          transition-colors duration-normal
           disabled:opacity-50 disabled:cursor-not-allowed
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber focus-visible:ring-offset-2 focus-visible:ring-offset-primary-dark
         "
         style={{
-          fontFamily: "'Inter Display', system-ui, sans-serif",
-          fontSize: '14px',
-          lineHeight: '18px',
-          fontWeight: '600',
+          fontFamily: 'var(--font-family-display)',
+          fontSize: 'var(--text-body-md)',
+          lineHeight: 'var(--text-body-md-line)',
+          fontWeight: 'var(--font-weight-semibold)',
         }}
       >
         {loading ? (

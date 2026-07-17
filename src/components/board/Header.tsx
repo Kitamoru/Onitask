@@ -10,6 +10,8 @@ import React from 'react';
  *   - Amber accent line (2x18px, #F59E0B)
  *   - Title text: Inter Display, Medium, 14px, lineHeight: 18px, color: #FAFAFA
  *   - Text: "Основное", "Функциональное", etc.
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface HeaderProps {
   /** Section title text */
@@ -25,17 +27,20 @@ export function BoardHeader({ title, action }: HeaderProps) {
         {/* Amber accent line */}
         <div
           className="bg-accent-amber shrink-0"
-          style={{ width: '2px', height: '18px' }}
+          style={{ 
+            width: 'var(--size-accent-line-width)', 
+            height: 'var(--size-accent-line-height)' 
+          }}
           aria-hidden="true"
         />
         {/* Section title */}
         <h2
-          className="text-bg-light truncate"
+          className="text-primary truncate"
           style={{
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '500',
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-medium)',
           }}
           aria-label={title}
         >

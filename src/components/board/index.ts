@@ -1,5 +1,7 @@
 export { BoardForm } from './BoardForm';
 export type { BoardFormData, BoardFormProps } from './BoardForm';
+export { WorkspaceWizard } from './WorkspaceWizard';
+export type { WorkspaceWizardProps } from './WorkspaceWizard';
 
 export { BoardHeader } from './Header';
 export type { HeaderProps } from './Header';
@@ -24,3 +26,19 @@ export type { LinkInputGroupProps } from './LinkInputGroup';
 
 export { SubmitButton } from './SubmitButton';
 export type { SubmitButtonProps } from './SubmitButton';
+
+export { RiskPulse } from './RiskPulse';
+export type { RiskPulseProps, RiskPulseData } from './RiskPulse';
+
+export { BoardCard } from './BoardCard';
+export type { BoardCardProps, BoardCardData, BoardStats, SprintInfo } from './BoardCard';
+
+export { BoardDetail } from './BoardDetail';
+export type {
+  BoardDetailProps,
+  SprintInfo as BoardSprintInfo,
+  TaskCardData,
+  WorkerCardData,
+  ExternalLinkData,
+  DocumentData,
+} from './BoardDetail';

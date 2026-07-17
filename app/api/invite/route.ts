@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       .lt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
     // Step 3: Insert new invite link
-    const { data: newData, error: insertError } = await supabase
+    const { data: newDataRaw, error: insertError } = await supabase
       .from('invite_links')
       .insert({
         workspace_id,
@@ -112,28 +112,39 @@ export async function POST(req: NextRequest) {
         is_active: true,
       } as Database['public']['Tables']['invite_links']['Insert'])
       .select('code, created_at')
-      .single() as PostgrestResponse<{ code: string; created_at: string }>;
+      .single();
+
+    // .single() returns { data: { code: string; created_at: string } | null, error }
+    const newData = newDataRaw as { code: string; created_at: string } | null;
 
     if (insertError) {
       // Check if it's a unique constraint violation (race condition)
       const err = insertError as PostgrestError;
       if (err.code === '23505') {
         // Another request won the race — return the existing one
-        const { data: existing } = await supabase
+        const { data: existing, error: existingError } = await supabase
           .from('invite_links')
           .select('code, created_at')
           .eq('workspace_id', workspace_id)
           .eq('is_active', true)
-          .maybeSingle() as PostgrestResponse<Database['public']['Tables']['invite_links']['Row'] | null>;
+          .maybeSingle();
 
-        if (existing?.data) {
-          const url = `https://t.me/${TELEGRAM_BOT_USERNAME}/Onitask?startapp=${existing.data.code}`;
+        if (existingError) {
+          console.error('invite: race condition fetch error', existingError);
+          return NextResponse.json(
+            { success: false, error: 'database_error' },
+            { status: 500 },
+          );
+        }
+
+        if (existing) {
+          const url = `https://t.me/${TELEGRAM_BOT_USERNAME}/Onitask?startapp=${existing.code}`;
           return NextResponse.json({
             success: true,
             data: {
               url,
-              code: existing.data.code,
-              created_at: existing.data.created_at,
+              code: existing.code,
+              created_at: existing.created_at,
             },
           });
         }
@@ -146,8 +157,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const finalCode = newData?.code || code;
-    const finalCreatedAt = newData?.created_at || new Date().toISOString();
+    const finalCode = newData?.code ?? code;
+    const finalCreatedAt = newData?.created_at ?? new Date().toISOString();
     const url = `https://t.me/${TELEGRAM_BOT_USERNAME}/Onitask?startapp=${finalCode}`;
 
     return NextResponse.json({
@@ -206,13 +217,16 @@ export async function GET(req: NextRequest) {
 
     // Get current active invite (not expired)
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: invite, error: inviteError } = await supabase
+    const { data: inviteRaw, error: inviteError } = await supabase
       .from('invite_links')
       .select('code, created_at, created_by')
       .eq('workspace_id', workspace_id)
       .eq('is_active', true)
       .gte('created_at', cutoff)
-      .maybeSingle() as PostgrestResponse<Database['public']['Tables']['invite_links']['Row'] | null>;
+      .maybeSingle();
+
+    // maybeSingle() returns { data: Row | null, error }
+    const invite = inviteRaw as Database['public']['Tables']['invite_links']['Row'] | null;
 
     if (inviteError) {
       console.error('invite: fetch error', inviteError);

@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
  *   - Container with "Список коллег" text + badge showing count
  *   - Secondary button: "Добавить коллегу" (40px height)
  *   - Outer gradient background shape
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface Colleague {
   id: string;
@@ -40,8 +42,7 @@ export function BadgeList({
       <div
         className="absolute inset-0 pointer-events-none rounded-card"
         style={{
-          backgroundImage:
-            'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+          backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
           mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
           WebkitMaskComposite: 'xor',
           maskComposite: 'exclude',
@@ -53,13 +54,13 @@ export function BadgeList({
         {/* Colleagues header row */}
         <div className="flex items-center gap-1 mb-3 w-full max-w-[334px]">
           <span
-            className="text-bg-light truncate"
+            className="text-primary truncate"
             style={{
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '16px',
-              lineHeight: '20px',
-              fontWeight: '500',
-              letterSpacing: '-0.0313em',
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-heading-md)',
+              lineHeight: 'var(--text-heading-md-line)',
+              fontWeight: 'var(--font-weight-medium)',
+              letterSpacing: 'var(--letter-spacing-tight)',
             }}
           >
             Список коллег
@@ -76,20 +77,20 @@ export function BadgeList({
             flex items-center justify-center w-full h-10
             rounded-md
             bg-surface/50
-            border border-white/10
-            text-bg-light
+            border border-border-white-subtle
+            text-primary
             font-semibold
-            transition-colors duration-150
+            transition-colors duration-fast
             hover:bg-surface/70
             active:bg-surface/40
             disabled:opacity-40 disabled:cursor-not-allowed
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
           "
           style={{
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '600',
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-semibold)',
           }}
           aria-label="Добавить коллегу"
         >

@@ -12,6 +12,8 @@ import React from 'react';
  *   - Background: transparent with gradient border via ref-bg-shape-inner
  *   - Placeholder text: Inter, Medium, 16px (m) or 14px (s), color: #8B8B8B, opacity: 0.5
  *   - Supports leading/trailing icons
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface TextInputProps {
   /** Input placeholder text */
@@ -64,12 +66,12 @@ export function TextInput({
   'aria-label': ariaLabel,
 }: TextInputProps) {
   const isMd = size === 'md';
-  const fontSize = isMd ? '16px' : '14px';
-  const lineHeight = isMd ? '20px' : '18px';
-  const letterSpacing = isMd ? '-0.0313em' : '-0.0357em';
-  const fontWeight = isMd ? '500' : '400';
-  const padding = isMd ? '14px 12px' : '10px 12px';
-  const borderRadius = isMd ? '6px' : '4px';
+  const fontSize = isMd ? 'var(--text-body-lg)' : 'var(--text-body-md)';
+  const lineHeight = isMd ? 'var(--text-body-lg-line)' : 'var(--text-body-md-line)';
+  const letterSpacing = isMd ? 'var(--letter-spacing-tight)' : 'var(--letter-spacing-tighter)';
+  const fontWeight = isMd ? 'var(--font-weight-medium)' : 'var(--font-weight-regular)';
+  const padding = isMd ? 'var(--spacing-3.5) var(--spacing-3)' : 'var(--spacing-2.5) var(--spacing-3)';
+  const borderRadius = isMd ? 'var(--radius-md)' : 'var(--radius-sm)';
 
   return (
     <div className={`w-full ${className}`}>
@@ -78,11 +80,11 @@ export function TextInput({
           htmlFor={id}
           className="block mb-1.5"
           style={{
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '500',
-            color: '#FAFAFA',
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
           }}
         >
           {label}
@@ -93,8 +95,7 @@ export function TextInput({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage:
-              'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+            backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
             borderRadius,
             mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             maskComposite: 'exclude',
@@ -121,14 +122,14 @@ export function TextInput({
             disabled={disabled}
             aria-label={ariaLabel || placeholder}
             aria-invalid={!!error}
-           className="flex-1 min-w-0 bg-transparent text-bg-light outline-none disabled:opacity-50 placeholder:text-text-muted placeholder:opacity-50"
+           className="flex-1 min-w-0 bg-transparent text-primary outline-none disabled:opacity-50 placeholder:text-muted placeholder:opacity-50"
            style={{
-             fontFamily: "'Inter', system-ui, sans-serif",
+             fontFamily: 'var(--font-family-base)',
              fontSize,
              lineHeight,
              letterSpacing,
              fontWeight,
-             color: '#FAFAFA',
+             color: 'var(--color-text-primary)',
            }}
           />
           {/* Trailing icon */}
@@ -140,7 +141,7 @@ export function TextInput({
       {error && (
         <p
           className="mt-1 text-xs"
-          style={{ color: '#F59E0B' }}
+          style={{ color: 'var(--color-accent-amber)' }}
           role="alert"
         >
           {error}

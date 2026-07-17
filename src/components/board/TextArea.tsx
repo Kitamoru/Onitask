@@ -11,6 +11,8 @@ import React from 'react';
  *   - borderRadius: 6px
  *   - Placeholder text: Inter, Medium, 16px, color: #8B8B8B, opacity: 0.5
  *   - Supports leading/trailing icons
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface TextAreaProps {
   /** Text area placeholder text */
@@ -50,6 +52,9 @@ export function TextArea({
   className = '',
   'aria-label': ariaLabel,
 }: TextAreaProps) {
+  const charCount = (value?.length ?? 0);
+  const isOverLimit = maxLength !== undefined && charCount > maxLength;
+
   return (
     <div className={`w-full ${className}`}>
       {label && (
@@ -57,11 +62,11 @@ export function TextArea({
           htmlFor={id}
           className="block mb-1.5"
           style={{
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '500',
-            color: '#FAFAFA',
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
           }}
         >
           {label}
@@ -72,9 +77,8 @@ export function TextArea({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage:
-              'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-            borderRadius: '6px',
+            backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
+            borderRadius: 'var(--radius-md)',
             mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             WebkitMaskComposite: 'xor',
             maskComposite: 'exclude',
@@ -92,17 +96,18 @@ export function TextArea({
           aria-label={ariaLabel || placeholder}
           aria-invalid={!!error}
           className="
-            w-full p-3 bg-transparent text-bg-light outline-none resize-none
+            w-full p-3 bg-transparent text-primary outline-none resize-none
             disabled:opacity-50
-            focus-visible:ring-2 focus-visible:ring-accent-amber rounded-[6px]
+            focus-visible:ring-2 focus-visible:ring-accent-amber rounded-md
+            placeholder:text-muted placeholder:opacity-50
           "
           style={{
-            fontFamily: "'Inter', system-ui, sans-serif",
-            fontSize: '16px',
-            lineHeight: '20px',
-            letterSpacing: '-0.0313em',
-            fontWeight: '500',
-            color: '#FAFAFA',
+            fontFamily: 'var(--font-family-base)',
+            fontSize: 'var(--text-body-lg)',
+            lineHeight: 'var(--text-body-lg-line)',
+            letterSpacing: 'var(--letter-spacing-tight)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
           }}
         />
       </div>
@@ -111,20 +116,20 @@ export function TextArea({
         <p
           className="mt-1 text-xs text-right"
           style={{
-            color: value.length > maxLength ? '#EF4444' : '#8B8B8B',
-            fontFamily: "'Inter', system-ui, sans-serif",
-            fontSize: '12px',
-            lineHeight: '16px',
+            color: isOverLimit ? 'var(--color-error)' : 'var(--color-text-muted)',
+            fontFamily: 'var(--font-family-base)',
+            fontSize: 'var(--text-body-sm)',
+            lineHeight: 'var(--text-body-sm-line)',
           }}
           role="status"
         >
-          {maxLength - value.length} символов осталось
+          {maxLength - charCount} символов осталось
         </p>
       )}
       {error && (
         <p
           className="mt-1 text-xs"
-          style={{ color: '#F59E0B' }}
+          style={{ color: 'var(--color-accent-amber)' }}
           role="alert"
         >
           {error}

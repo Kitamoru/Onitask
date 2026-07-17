@@ -11,6 +11,8 @@ import React from 'react';
  *   - Nail: 24px width, rounded 2px, bg: #FAFAFA
  *   - Active state: nail slides to right
  *   - Inactive state: nail stays on left
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface ToggleProps {
   /** Whether the toggle is checked/on */
@@ -72,29 +74,27 @@ export function Toggle({
         aria-label={ariaLabel}
         tabIndex={disabled ? -1 : 0}
         className={`
-          relative flex items-center w-[48px] h-[24px]
-          rounded-[4px]
+          relative flex items-center w-[var(--size-toggle-track)] h-[var(--size-toggle-track-height)]
+          rounded-card
           bg-transparent
           overflow-hidden
           cursor-pointer
-          transition-all duration-200
+          transition-all duration-normal
           disabled:opacity-50 disabled:cursor-not-allowed
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber focus-visible:ring-offset-1 focus-visible:ring-offset-primary-dark
         `}
         style={{
-          backgroundImage:
-            'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+          backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
           backgroundOrigin: 'border-box',
           backgroundClip: 'content-box, border-box',
         }}
       >
         {/* Gradient border overlay */}
         <div
-          className="absolute inset-0 rounded-[4px]"
+          className="absolute inset-0 rounded-card"
           style={{
             border: '1px solid transparent',
-            backgroundImage:
-              'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+            backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             WebkitMaskComposite: 'xor',
             maskComposite: 'exclude',
@@ -103,9 +103,9 @@ export function Toggle({
         />
         {/* Nail shape */}
         <div
-          className="h-full bg-bg-light rounded-[2px] transition-transform duration-200 ease-in-out"
+          className="h-full bg-bg-light rounded-sm transition-transform duration-200 ease-in-out"
           style={{
-            width: '24px',
+            width: 'var(--size-toggle-nail)',
             transform: checked ? 'translateX(24px)' : 'translateX(0)',
           }}
           aria-hidden="true"

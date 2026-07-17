@@ -20,6 +20,8 @@ import { SubmitButton } from './SubmitButton';
  *   - Max width: 358px (mobile-first)
  *   - Primary submit button at bottom
  *   - Bottom filler (64px) for safe area
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface BoardFormData {
   name: string;
@@ -56,11 +58,10 @@ const DEFAULT_SP_VALUES: [number, number, number, number, number] = [1, 3, 5, 7,
 const MAX_DOCUMENTS = 10;
 const MAX_EXTERNAL_LINKS = 6;
 
-/** Gradient border style matching Figma input-field-s component (7:8090) */
-const SP_INPUT_GRADIENT_STYLE: React.CSSProperties = {
-  backgroundImage:
-    'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-  borderRadius: '4px',
+/** Shared gradient border style — extracted from token variables */
+const GRADIENT_BORDER_STYLE: React.CSSProperties = {
+  backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
+  borderRadius: 'var(--radius-sm)',
   mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
   maskComposite: 'exclude',
   WebkitMaskComposite: 'xor',
@@ -215,15 +216,15 @@ export function BoardForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col w-full max-w-[358px] mx-auto overflow-y-auto bg-primary-dark"
-      style={{ padding: '16px', gap: '24px' }}
+      className="flex flex-col w-full max-w-[358px] mx-auto overflow-y-auto bg-primary-dark form-container"
+      style={{ padding: 'var(--spacing-4)', gap: 'var(--spacing-section-gap)' }}
       noValidate
     >
       {/* Global error */}
       {globalError && (
         <div
           className="px-4 py-2 rounded-md text-sm"
-          style={{ backgroundColor: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}
+          style={{ backgroundColor: 'var(--color-accent-amber-subtle)', color: 'var(--color-accent-amber)' }}
           role="alert"
         >
           {globalError}
@@ -244,7 +245,7 @@ export function BoardForm({
               aria-label="Название доски"
             />
             {nameError && (
-              <p className="mt-1 text-xs" style={{ color: '#EF4444' }} role="alert">
+              <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }} role="alert">
                 {nameError}
               </p>
             )}
@@ -259,7 +260,7 @@ export function BoardForm({
               aria-label="Идентификатор доски"
             />
             {slugError && (
-              <p className="mt-1 text-xs" style={{ color: '#EF4444' }} role="alert">
+              <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }} role="alert">
                 {slugError}
               </p>
             )}
@@ -275,27 +276,20 @@ export function BoardForm({
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-              mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              padding: '1px',
-            }}
+            style={GRADIENT_BORDER_STYLE}
             aria-hidden="true"
           />
           <div className="p-3 relative">
             {/* Header row — toggle справа */}
             <div className="flex items-center justify-between mb-3">
               <span
-                className="text-bg-light"
+                className="text-primary"
                 style={{
-                  fontFamily: "'Inter Display', system-ui, sans-serif",
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  fontWeight: '500',
-                  letterSpacing: '-0.0313em',
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-heading-md)',
+                  lineHeight: 'var(--text-heading-md-line)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  letterSpacing: 'var(--letter-spacing-tight)',
                 }}
               >
                 Стоимость сторипоинта
@@ -313,12 +307,12 @@ export function BoardForm({
                 {['1 SP', '3 SP', '5 SP', '7 SP', '13 SP'].map((label, index) => (
                   <div key={label} className="flex items-center gap-2">
                     <span
-                      className="text-bg-light shrink-0"
+                      className="text-primary shrink-0"
                       style={{
-                        fontFamily: "'Inter Display', system-ui, sans-serif",
-                        fontSize: '14px',
-                        lineHeight: '18px',
-                        fontWeight: '500',
+                        fontFamily: 'var(--font-family-display)',
+                        fontSize: 'var(--text-body-md)',
+                        lineHeight: 'var(--text-body-md-line)',
+                        fontWeight: 'var(--font-weight-medium)',
                         width: '40px',
                       }}
                     >
@@ -328,10 +322,10 @@ export function BoardForm({
                       {/* Gradient background shape (Figma input-field-s border) */}
                       <div
                         className="absolute inset-0 pointer-events-none"
-                        style={SP_INPUT_GRADIENT_STYLE}
+                        style={GRADIENT_BORDER_STYLE}
                         aria-hidden="true"
                       />
-                      <div className="flex items-center w-full" style={{ padding: '10px 12px' }}>
+                      <div className="flex items-center w-full" style={{ padding: 'var(--spacing-2.5) var(--spacing-3)' }}>
                         <input
                           type="number"
                           min="0"
@@ -345,7 +339,7 @@ export function BoardForm({
                           }}
                           disabled={!spEnabled}
                           className="
-                            flex-1 min-w-0 bg-transparent text-bg-light outline-none
+                            flex-1 min-w-0 bg-transparent text-primary outline-none
                             disabled:opacity-50
                             focus-visible:ring-2 focus-visible:ring-accent-amber
                             [-moz-appearance:textfield]
@@ -353,11 +347,11 @@ export function BoardForm({
                             [&::-webkit-inner-spin-button]:appearance-none
                           "
                           style={{
-                            fontFamily: "'Inter', system-ui, sans-serif",
-                            fontSize: '14px',
-                            lineHeight: '20px',
-                            letterSpacing: '-0.0357em',
-                            fontWeight: '500',
+                            fontFamily: 'var(--font-family-base)',
+                            fontSize: 'var(--text-body-md)',
+                            lineHeight: 'var(--text-body-lg-line)',
+                            letterSpacing: 'var(--letter-spacing-tighter)',
+                            fontWeight: 'var(--font-weight-medium)',
                           }}
                           aria-label={`Story point значение для ${label}`}
                         />
@@ -374,27 +368,20 @@ export function BoardForm({
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-              mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              padding: '1px',
-            }}
+            style={GRADIENT_BORDER_STYLE}
             aria-hidden="true"
           />
           <div className="p-3 relative">
             {/* Header row — toggle справа */}
             <div className="flex items-center justify-between mb-2">
               <span
-                className="text-bg-light"
+                className="text-primary"
                 style={{
-                  fontFamily: "'Inter Display', system-ui, sans-serif",
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  fontWeight: '500',
-                  letterSpacing: '-0.0313em',
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-heading-md)',
+                  lineHeight: 'var(--text-heading-md-line)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  letterSpacing: 'var(--letter-spacing-tight)',
                 }}
               >
                 Когнитивный вес
@@ -409,13 +396,13 @@ export function BoardForm({
             {/* Description text */}
             {cwEnabled && (
               <p
-                className="text-text-muted mb-3"
+                className="text-muted mb-3"
                 style={{
-                  fontFamily: "'Inter', system-ui, sans-serif",
-                  fontSize: '12px',
-                  lineHeight: '16px',
-                  letterSpacing: '-0.0417em',
-                  fontWeight: '400',
+                  fontFamily: 'var(--font-family-base)',
+                  fontSize: 'var(--text-body-sm)',
+                  lineHeight: 'var(--text-body-sm-line)',
+                  letterSpacing: 'var(--letter-spacing-tightest)',
+                  fontWeight: 'var(--font-weight-regular)',
                 }}
               >
                 Текст описание функционала когнитивного веса задачи, который расписан в 2-3 строчки, чтобы пользователь понимал, что оно из себя представляет
@@ -446,27 +433,20 @@ export function BoardForm({
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-              mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              padding: '1px',
-            }}
+            style={GRADIENT_BORDER_STYLE}
             aria-hidden="true"
           />
           <div className="p-3 relative">
             {/* Docs header — toggle справа */}
             <div className="flex items-center justify-between mb-3">
               <span
-                className="text-bg-light"
+                className="text-primary"
                 style={{
-                  fontFamily: "'Inter Display', system-ui, sans-serif",
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  fontWeight: '500',
-                  letterSpacing: '-0.0313em',
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-heading-md)',
+                  lineHeight: 'var(--text-heading-md-line)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  letterSpacing: 'var(--letter-spacing-tight)',
                 }}
               >
                 Документы
@@ -491,7 +471,7 @@ export function BoardForm({
                       <button
                         type="button"
                         onClick={() => handleRemoveDocument(index)}
-                        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md bg-surface/50 border border-white/10 text-bg-light font-semibold hover:bg-surface/70 active:bg-surface/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md bg-surface/50 border border-border-white-subtle text-primary font-semibold hover:bg-surface/70 active:bg-surface/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
                         aria-label="Удалить документ"
                       >
                         ×
@@ -507,19 +487,19 @@ export function BoardForm({
                       flex items-center justify-center w-full h-10
                       rounded-md
                       bg-surface/50
-                      border border-white/10
-                      text-bg-light
+                      border border-border-white-subtle
+                      text-primary
                       font-semibold
-                      transition-colors duration-150
+                      transition-colors duration-fast
                       hover:bg-surface/70
                       active:bg-surface/40
                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
                     "
                     style={{
-                      fontFamily: "'Inter Display', system-ui, sans-serif",
-                      fontSize: '14px',
-                      lineHeight: '18px',
-                      fontWeight: '600',
+                      fontFamily: 'var(--font-family-display)',
+                      fontSize: 'var(--text-body-md)',
+                      lineHeight: 'var(--text-body-md-line)',
+                      fontWeight: 'var(--font-weight-semibold)',
                     }}
                     aria-label="Добавить документ"
                   >
@@ -535,26 +515,19 @@ export function BoardForm({
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-              mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              padding: '1px',
-            }}
+            style={GRADIENT_BORDER_STYLE}
             aria-hidden="true"
           />
           <div className="p-3 relative">
             <div className="flex items-center justify-between mb-3">
               <span
-                className="text-bg-light"
+                className="text-primary"
                 style={{
-                  fontFamily: "'Inter Display', system-ui, sans-serif",
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  fontWeight: '500',
-                  letterSpacing: '-0.0313em',
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-heading-md)',
+                  lineHeight: 'var(--text-heading-md-line)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  letterSpacing: 'var(--letter-spacing-tight)',
                 }}
               >
                 Внешние ссылки
@@ -587,11 +560,11 @@ export function BoardForm({
                         onClick={() => handleRemoveLink(idx)}
                         className="
                           shrink-0 w-8 h-8 mt-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-white/10
-                          text-bg-light font-semibold
+                          rounded-md bg-surface/50 border border-border-white-subtle
+                          text-primary font-semibold
                           hover:bg-surface/70 active:bg-surface/40
                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                          transition-colors duration-150
+                          transition-colors duration-fast
                         "
                         aria-label={`Удалить ссылку ${idx + 1}`}
                       >
@@ -618,12 +591,12 @@ export function BoardForm({
                 {/* Counter badge */}
                 <div className="mt-2 flex items-center justify-end">
                   <span
-                    className="text-text-muted text-xs"
+                    className="text-muted text-xs"
                     style={{
-                      fontFamily: "'Inter', system-ui, sans-serif",
-                      fontSize: '11px',
-                      lineHeight: '15px',
-                      fontWeight: '400',
+                      fontFamily: 'var(--font-family-base)',
+                      fontSize: 'var(--text-body-xs)',
+                      lineHeight: 'var(--text-body-xs-line)',
+                      fontWeight: 'var(--font-weight-regular)',
                     }}
                   >
                     {links.length}/{MAX_EXTERNAL_LINKS}
@@ -643,27 +616,20 @@ export function BoardForm({
         <div className="mt-4 relative rounded-card overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-              mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              padding: '1px',
-            }}
+            style={GRADIENT_BORDER_STYLE}
             aria-hidden="true"
           />
           <div className="p-3 relative">
             {/* Header row — toggle справа */}
             <div className="flex items-center justify-between mb-2">
               <span
-                className="text-bg-light"
+                className="text-primary"
                 style={{
-                  fontFamily: "'Inter Display', system-ui, sans-serif",
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  fontWeight: '500',
-                  letterSpacing: '-0.0313em',
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-heading-md)',
+                  lineHeight: 'var(--text-heading-md-line)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  letterSpacing: 'var(--letter-spacing-tight)',
                 }}
               >
                 Сигналы светофора
@@ -679,13 +645,13 @@ export function BoardForm({
             {signalsEnabled && (
               <>
                 <p
-                  className="text-text-muted mb-3"
+                  className="text-muted mb-3"
                   style={{
-                    fontFamily: "'Inter', system-ui, sans-serif",
-                    fontSize: '12px',
-                    lineHeight: '16px',
-                    letterSpacing: '-0.0417em',
-                    fontWeight: '400',
+                    fontFamily: 'var(--font-family-base)',
+                    fontSize: 'var(--text-body-sm)',
+                    lineHeight: 'var(--text-body-sm-line)',
+                    letterSpacing: 'var(--letter-spacing-tightest)',
+                    fontWeight: 'var(--font-weight-regular)',
                   }}
                 >
                   Обозначьте срок, при котором коллегам будет приходить дополнительное уведомление о скором дедлайне задачи
@@ -701,8 +667,8 @@ export function BoardForm({
                         disabled={!signalsEnabled}
                         className="
                           w-8 h-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-white/10
-                          text-bg-light font-semibold
+                          rounded-md bg-surface/50 border border-border-white-subtle
+                          text-primary font-semibold
                           disabled:opacity-50 disabled:cursor-not-allowed
                           hover:bg-surface/70 active:bg-surface/40
                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -713,15 +679,15 @@ export function BoardForm({
                       </button>
                       <div
                       className={`flex-1 h-8 px-3 rounded-input-sm flex items-center justify-center
-                        bg-transparent text-bg-light border
-                        ${index === 0 ? 'border-yellow-500' : 'border-red-500'}
+                        bg-transparent text-primary border
+                        ${index === 0 ? 'border-signal-yellow' : 'border-signal-red'}
                         disabled:opacity-50`}
                         style={{
-                          fontFamily: "'Inter', system-ui, sans-serif",
-                          fontSize: '14px',
-                          lineHeight: '20px',
-                          letterSpacing: '-0.0357em',
-                          fontWeight: '500',
+                          fontFamily: 'var(--font-family-base)',
+                          fontSize: 'var(--text-body-md)',
+                          lineHeight: 'var(--text-body-lg-line)',
+                          letterSpacing: 'var(--letter-spacing-tighter)',
+                          fontWeight: 'var(--font-weight-medium)',
                         }}
                       >
                         {signal.value}
@@ -732,8 +698,8 @@ export function BoardForm({
                         disabled={!signalsEnabled}
                         className="
                           w-8 h-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-white/10
-                          text-bg-light font-semibold
+                          rounded-md bg-surface/50 border border-border-white-subtle
+                          text-primary font-semibold
                           disabled:opacity-50 disabled:cursor-not-allowed
                           hover:bg-surface/70 active:bg-surface/40
                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -759,7 +725,7 @@ export function BoardForm({
       {/* Bottom filler for safe area */}
       <div
         className="w-full"
-        style={{ height: '64px', backgroundColor: '#0A0A0A' }}
+        style={{ height: 'var(--spacing-16)', backgroundColor: 'var(--color-bg-primary-dark)' }}
         aria-hidden="true"
       />
     </form>

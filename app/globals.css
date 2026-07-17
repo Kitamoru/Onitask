@@ -3,10 +3,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom base styles */
+/* ==========================================
+   Design Tokens — imported from centralized token file
+   All hex values are defined in src/styles/tokens.css
+   ========================================== */
+@import '../src/styles/tokens.css';
+
+/* Custom base styles — use tokens instead of hardcoded values */
 body {
-  background-color: #0A0A0A;
-  color: #FAFAFA;
+  background-color: var(--color-bg-primary-dark);
+  color: var(--color-text-primary);
 }
 
 /* Ensure smooth scrolling and no horizontal overflow */
@@ -17,5 +23,52 @@ html, body {
 
 /* Toggle nail shape with rounded corners */
 .toggle-nail {
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ==========================================
+   RESPONSIVE LAYOUT HELPERS
+   ========================================== */
+
+/* Form container — mobile-first, expands on larger screens */
+.form-container {
+  max-width: var(--spacing-form-max-width);
+}
+
+@media (min-width: 768px) {
+  .form-container {
+    max-width: 30rem; /* 480px on tablet+ */
+  }
+}
+
+@media (min-width: 1024px) {
+  .form-container {
+    max-width: 36rem; /* 576px on desktop */
+  }
+}
+
+/* Grid that adapts columns based on viewport */
+.grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-1);
+}
+
+@media (min-width: 768px) {
+  .grid-responsive {
+    gap: var(--spacing-2);
+  }
+}
+
+/* Card that stretches instead of fixed width */
+.card-stretch {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .card-stretch {
+    flex: 1;
+    min-width: 14rem;
+  }
 }

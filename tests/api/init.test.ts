@@ -2,7 +2,7 @@
 // AUTH-03: 401-обработка + интеграционный тест (mock-based)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { POST } from '@/app/api/init/route';
+import { POST } from '../../app/api/init/route';
 import type { NextRequest } from 'next/server';
 
 // Mock modules

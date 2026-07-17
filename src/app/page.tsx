@@ -1,16 +1,15 @@
-import { createClient } from "../utils/supabase/server";
-import { cookies } from "next/headers";
+import { createServerClient } from "../../lib/supabase";
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = createServerClient();
 
-  const { data: todos } = await supabase.from("todos").select();
+  // TODO: Replace with actual table once migration exists, or remove this page
+  const { data: profiles } = await supabase.from("profiles").select("id, display_name");
 
   return (
     <ul>
-      {todos?.map((todo: any) => (
-        <li key={todo.id}>{todo.name}</li>
+      {profiles?.map((profile: { id: string; display_name: string | null }) => (
+        <li key={profile.id}>{profile.display_name ?? profile.id}</li>
       ))}
     </ul>
   );

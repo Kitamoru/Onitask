@@ -19,6 +19,9 @@
  * - Marks enrichment_queue job as 'done'
  */
 
+// @ts-nocheck — Supabase Edge Function uses Deno runtime, not Node.js
+// This file is deployed to Supabase Edge Functions where Deno types are available.
+
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -141,8 +144,9 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
 serve(async (req: Request) => {
   try {
     // ── 1. Initialize Supabase client (service role) ────────
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    // Note: env var names avoid SUPABASE_ prefix (blocked by Supabase Edge Functions)
+    const supabaseUrl = Deno.env.get('SB_URL') || '';
+    const supabaseKey = Deno.env.get('SB_SERVICE_ROLE_KEY') || '';
     const neuralDeepKey = Deno.env.get('NEURALDEEP_KEY') || '';
 
     if (!neuralDeepKey) {

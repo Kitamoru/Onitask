@@ -116,7 +116,7 @@ export interface UseTelegramReturn {
   /** Access raw initData for authentication */
   initData: string;
   /** Access raw initDataUnsafe parsed object */
-  initDataUnsafe: TelegramWebAppExtended['Telegram']['WebApp']['initDataUnsafe'];
+  initDataUnsafe: NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe'];
   /** Referral code from Telegram Mini App deep link (start_param) */
   startParam: string | null;
   /** Fire haptic feedback */
@@ -146,7 +146,7 @@ export function useTelegram(): UseTelegramReturn {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
 
-  const tgRef = useRef<TelegramWebAppExtended['Telegram']['WebApp'] | null>(null);
+  const tgRef = useRef<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null>(null);
 
   // Get Telegram Web App instance
   useEffect(() => {

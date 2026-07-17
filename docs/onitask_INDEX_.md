@@ -11,6 +11,7 @@
 | `onitask_Architecture_Master_.md` | Инварианты (INV-01…INV-16), аксиомы (A-1…A-12), полная схема БД, task_relations, `data_sharing_level`, `mcp_api_keys`, конкурентность, retention |
 | `onitask_ai_.md` | F-01 Cognitive Budget, F-03 Enrichment (RAG + implicit calibration + embedding cache + data_sharing_level), F-04 Instant Parse, F-06 MCP Router, Workspace Context Rebuild Pipeline, LTM Pipeline + Injection Linter |
 | `onitask_flow_.md` | Flow Board UX, колонки, роли, Stream, аномалии, AI Flow Summary, Risk Pulse, Worker Sheet, Operator Queue, Task Sheet (Блокировки), Workspace Manager |
+| `src/app/boards/page.tsx` | Boards Overview Page ("Стол") — RiskPulse сводка по всем доскам + список досок пользователя с карточками (BoardCard) |
 | `onitask_team_tab.md` | ⚠️ Deprecated (v1.3.0) — SQL-запросы velocity/агентов, escalate_task MCP tool, Operator Queue SQL (справочник) |
 | `onitask_bot.md` | Bot команды, workspace resolution, freemium, сценарии, Realtime-уведомления, output sanitization (escapeHtml, sanitizeOutput), Bot Notify Worker (§6.5) |
 | `onitask_mcp_contract_.md` | MCP tools: сигнатуры, blocked_by, subgraph, smart backlog, cascade unblock, allowed_tools scopes, rate limit, DFS cycle check, ошибки, рекомендации агентам *(операционное приложение)* |

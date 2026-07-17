@@ -1,0 +1,155 @@
+/**
+ * Design Tokens — Onitask Design System
+ * 
+ * Все цвета, отступы, радиусы и типографика определяются через CSS-переменные.
+ * Hex-значения хардкодятся только здесь — в компонентах использовать только токены.
+ * 
+ * Last updated: 2026-07-17
+ */
+
+:root {
+  /* ==========================================
+     COLORS
+     ========================================== */
+  
+  /* Backgrounds */
+  --color-bg-primary-dark: #0A0A0A;
+  --color-bg-dark: #101010;
+  --color-bg-surface: #1A1A1A;
+  --color-bg-surface-hover: #2A2A2A;
+  --color-bg-light: #FAFAFA;
+
+  /* Text */
+  --color-text-primary: #FAFAFA;
+  --color-text-muted: #8B8B8B;
+  --color-text-secondary: #808080;
+  --color-text-white: #FFFFFF;
+
+  /* Accent */
+  --color-accent-amber: #F59E0B;
+  --color-accent-amber-subtle: rgba(245, 158, 11, 0.1);
+
+  /* Error */
+  --color-error: #EF4444;
+
+  /* Border / Divider */
+  --color-border-default: rgba(139, 139, 139, 0.2);
+  --color-border-white-subtle: rgba(255, 255, 255, 0.1);
+
+  /* Gradient border (input-field pattern) */
+  --gradient-border-start: rgba(250, 250, 250, 0.38);
+  --gradient-border-mid: rgba(250, 250, 250, 0.08);
+  --gradient-border-end: rgba(250, 250, 250, 0.38);
+
+  /* Signal colors */
+  --color-signal-yellow: #F59E0B;
+  --color-signal-red: #EF4444;
+
+  /* ==========================================
+     SPACING (based on 4px grid, expressed in rem)
+     Assumes base font-size: 16px → 1rem = 16px
+     ========================================== */
+  
+  --spacing-0: 0;
+  --spacing-0.5: 0.125rem;   /* 2px */
+  --spacing-1: 0.25rem;      /* 4px */
+  --spacing-1.5: 0.375rem;   /* 6px */
+  --spacing-2: 0.5rem;       /* 8px */
+  --spacing-2.5: 0.625rem;   /* 10px */
+  --spacing-3: 0.75rem;      /* 12px */
+  --spacing-3.5: 0.875rem;   /* 14px — for input padding md */
+  --spacing-4: 1rem;         /* 16px */
+  --spacing-5: 1.25rem;      /* 20px */
+  --spacing-6: 1.5rem;       /* 24px */
+  --spacing-8: 2rem;         /* 32px */
+  --spacing-16: 4rem;        /* 64px */
+
+  /* Semantic spacing */
+  --spacing-section-gap: var(--spacing-6);        /* 24px between sections */
+  --spacing-section-padding: var(--spacing-3);     /* 12px internal section padding */
+  --spacing-form-max-width: 22.375rem;            /* 358px */
+
+  /* ==========================================
+     BORDER RADIUS
+     ========================================== */
+  
+  --radius-none: 0;
+  --radius-xs: 0.0625rem;    /* 1px */
+  --radius-sm: 0.25rem;      /* 4px */
+  --radius-card: 0.5rem;     /* 8px */
+  --radius-md: 0.375rem;     /* 6px */
+
+  /* ==========================================
+     TYPOGRAPHY
+     ========================================== */
+  
+  /* Font families */
+  --font-family-base: 'Inter', system-ui, sans-serif;
+  --font-family-display: 'Inter Display', system-ui, sans-serif;
+
+  /* Heading sizes */
+  --text-heading-sm: clamp(0.875rem, 1vw, 0.875rem);   /* 14px */
+  --text-heading-sm-line: 1.125;                         /* 18px */
+  --text-heading-md: clamp(1rem, 1.2vw, 1rem);          /* 16px */
+  --text-heading-md-line: 1.25;                          /* 20px */
+
+  /* Body sizes */
+  --text-body-xs: clamp(0.6875rem, 0.8vw, 0.6875rem);   /* 11px */
+  --text-body-xs-line: 1.364;                            /* 15px */
+  --text-body-sm: clamp(0.75rem, 0.9vw, 0.75rem);       /* 12px */
+  --text-body-sm-line: 1.167;                            /* 14px */
+  --text-body-md: clamp(0.875rem, 1vw, 0.875rem);       /* 14px */
+  --text-body-md-line: 1.286;                            /* 18px */
+  --text-body-lg: clamp(1rem, 1.2vw, 1rem);             /* 16px */
+  --text-body-lg-line: 1.25;                             /* 20px */
+  --text-body-xl: clamp(1rem, 1.2vw, 1rem);             /* 16px */
+  --text-body-xl-line: 1.25;                             /* 20px */
+
+  /* Font weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Letter spacing */
+  --letter-spacing-tight: -0.0313em;
+  --letter-spacing-tighter: -0.0357em;
+  --letter-spacing-tightest: -0.0417em;
+
+  /* ==========================================
+     LAYOUT
+     ========================================== */
+  
+  /* Avatar sizes */
+  --size-avatar: 2.25rem;    /* 36px */
+
+  /* Accent line */
+  --size-accent-line-width: 0.125rem;   /* 2px */
+  --size-accent-line-height: 1.125rem;  /* 18px */
+
+  /* Toggle nail */
+  --size-toggle-nail: 1.5rem;   /* 24px */
+  --size-toggle-track: 3rem;    /* 48px */
+  --size-toggle-track-height: 1.5rem;  /* 24px */
+
+  /* Counter buttons */
+  --size-counter-btn: 2.25rem;  /* 36px for w/h */
+
+  /* ==========================================
+     TRANSITIONS
+     ========================================== */
+  
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 200ms ease-in-out;
+}
+
+/* ==========================================
+   RESPONSIVE BREAKPOINTS (Tailwind-aligned)
+   ========================================== */
+/* 
+   sm: 640px  — mobile landscape
+   md: 768px  — tablet
+   lg: 1024px — desktop
+   
+   На md+: form max-width увеличивается до 480px
+   На lg+: grid-колонки могут расширяться
+*/

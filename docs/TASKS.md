@@ -167,6 +167,11 @@ format is deliberately compact so that agents can load the file quickly.
       Реализовано: app/api/workspaces/[id]/documents/route.ts.
       POST: file validation (.md, ≤512KB), Supabase Storage upload, workspace_documents INSERT, enrichment_queue(doc_process).
       GET: list documents with status tracking.
+- [x] DOC-02 Edge Function `doc-process` развёрнута на atarmvtzvlwhkheeabeb #infra !med
+      Развёрнута: 2026-07-15. Переименованы env vars (SUPABASE_ префикс заблокирован): SB_URL, SB_SERVICE_ROLE_KEY, NEURALDEEP_KEY.
+      Обновлено: 2026-07-16 — код + перезадеплоена.
+- [ ] DOC-03 Создать bucket 'documents' в Supabase Storage (ручное создание через Dashboard) #infra !high
+      Dashboard → Storage → Create Bucket → name: `documents`, public: OFF, file_size_limit: 524288.
 
 ---
 

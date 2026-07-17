@@ -14,8 +14,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateTelegramInitData } from '../../../../lib/telegramAuth';
-import { createServerClient } from '../../../../lib/supabase';
+import { validateTelegramInitData } from '../../../../../lib/telegramAuth';
+import { createServerClient } from '../../../../../lib/supabase';
 
 // ═══════════════════════════════════════════════════════
 // Types

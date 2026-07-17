@@ -6,6 +6,8 @@ import { TextInput } from './TextInput';
 /**
  * LinkInputGroup — renders only the two input fields and the add button.
  * The parent component (BoardForm) handles the toggle and header.
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface LinkInputGroupProps {
   /** Resource name value */
@@ -61,20 +63,20 @@ export function LinkInputGroup({
             flex items-center justify-center w-full h-10
             rounded-md
             bg-surface/50
-            border border-white/10
-            text-bg-light
+            border border-border-white-subtle
+            text-primary
             font-semibold
-            transition-colors duration-150
+            transition-colors duration-fast
             hover:bg-surface/70
             active:bg-surface/40
             disabled:opacity-40 disabled:cursor-not-allowed
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
           "
           style={{
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '600',
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-semibold)',
           }}
           aria-label="Добавить ссылку"
       >

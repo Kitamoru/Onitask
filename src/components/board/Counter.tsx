@@ -11,6 +11,8 @@ import React from 'react';
  *   - Label: Inter Display, Semi Bold, 14px, lineHeight: 18px
  *   - Background: gradient border shape
  *   - Icons: outline/minus and outline/plus
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface CounterProps {
   /** Current value */
@@ -43,7 +45,7 @@ function MinusIcon() {
     >
       <path
         d="M5.83337 10H14.1667"
-        stroke="#FAFAFA"
+        stroke="var(--color-text-primary)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -64,14 +66,14 @@ function PlusIcon() {
     >
       <path
         d="M10 5.83337V14.1667"
-        stroke="#FAFAFA"
+        stroke="var(--color-text-primary)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M5.83337 10H14.1667"
-        stroke="#FAFAFA"
+        stroke="var(--color-text-primary)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -106,10 +108,9 @@ export function Counter({
     <div className={`relative inline-flex items-center ${className}`}>
       {/* Gradient background shape */}
       <div
-        className="absolute inset-0 pointer-events-none rounded-[4px]"
+        className="absolute inset-0 pointer-events-none rounded-sm"
         style={{
-          backgroundImage:
-            'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+          backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
           mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
           WebkitMaskComposite: 'xor',
           maskComposite: 'exclude',
@@ -126,9 +127,9 @@ export function Counter({
           aria-label="Уменьшить значение"
           className={`
             flex items-center justify-center w-10 h-10
-            rounded-[4px]
+            rounded-sm
             bg-surface
-            transition-colors duration-150
+            transition-colors duration-fast
             hover:bg-surface/80
             active:bg-surface/60
             disabled:opacity-40 disabled:cursor-not-allowed
@@ -141,15 +142,15 @@ export function Counter({
         {/* Value label container */}
         <div
           className="flex items-center justify-center px-4 h-10"
-          style={{ minWidth: '100px' }}
+          style={{ minWidth: '6.25rem' }}
         >
           <span
-            className="text-bg-light font-semibold whitespace-nowrap"
+            className="text-primary font-semibold whitespace-nowrap"
             style={{
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '14px',
-              lineHeight: '18px',
-              fontWeight: '600',
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-body-md)',
+              lineHeight: 'var(--text-body-md-line)',
+              fontWeight: 'var(--font-weight-semibold)',
             }}
           >
             {label}
@@ -164,9 +165,9 @@ export function Counter({
           aria-label="Увеличить значение"
           className={`
             flex items-center justify-center w-10 h-10
-            rounded-[4px]
+            rounded-sm
             bg-surface
-            transition-colors duration-150
+            transition-colors duration-fast
             hover:bg-surface/80
             active:bg-surface/60
             disabled:opacity-40 disabled:cursor-not-allowed

@@ -13,7 +13,7 @@ import { BoardForm, type BoardFormData } from '@/components/board';
  * Flow:
  * 1. User fills BoardForm
  * 2. Submit → POST /api/workspaces with form data + Telegram init_data
- * 3. On success → redirect to /board/[slug]
+ * 3. On success → redirect to /boards (Стол overview)
  * 4. On error → show error message in form
  */
 

@@ -1,11 +1,13 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import nextConfig from "eslint-config-next";
+
+// eslint-config-next exports a flat config object (CommonJS)
+// Convert to array for spreading into our config
+const nextConfigArray = Array.isArray(nextConfig) ? nextConfig : [nextConfig];
 
 // Build config array before passing to defineConfig
 const baseConfig = [
-  ...nextVitals,
-  ...nextTs,
+  ...nextConfigArray,
   // Override default ignores of eslint-config-next.
   globalIgnores([
     ".next/**",

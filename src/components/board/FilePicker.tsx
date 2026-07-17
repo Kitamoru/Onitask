@@ -10,6 +10,8 @@ import React from 'react';
  *   - padding: 10px 12px
  *   - Text: "Выберите файл"
  *   - Helper text: "до 10 документов, до 5мегабайт в сумме, формат .md"
+ * 
+ * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
  */
 export interface FilePickerProps {
   /** Selected file */
@@ -36,21 +38,21 @@ function UploadIcon() {
     >
       <path
         d="M10 14.1667V5.83333"
-        stroke="#8B8B8B"
+        stroke="var(--color-text-muted)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M6.66675 7.5L10 4.16667L13.3334 7.5"
-        stroke="#8B8B8B"
+        stroke="var(--color-text-muted)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M15.8334 10V14.1667C15.8334 14.6087 15.658 15.0287 15.3455 15.3412C15.033 15.6537 14.613 15.8334 14.1717 15.8334H5.83341C5.39138 15.8334 4.97133 15.6537 4.65884 15.3412C4.34635 15.0287 4.16675 14.6087 4.16675 14.1667V10"
-        stroke="#8B8B8B"
+        stroke="var(--color-text-muted)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -78,9 +80,8 @@ export function FilePicker({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage:
-              'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
-            borderRadius: '4px',
+            backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
+            borderRadius: 'var(--radius-sm)',
             mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             WebkitMaskComposite: 'xor',
             maskComposite: 'exclude',
@@ -88,16 +89,16 @@ export function FilePicker({
           }}
           aria-hidden="true"
         />
-        <div className="flex items-center w-full py-2.5 px-3">
+        <div className="flex items-center w-full" style={{ padding: 'var(--spacing-2.5) var(--spacing-3)' }}>
           {/* File name or placeholder */}
           <span
-            className={`flex-1 min-w-0 truncate ${file ? 'text-bg-light' : 'text-text-muted opacity-50'}`}
+            className={`flex-1 min-w-0 truncate ${file ? 'text-primary' : 'text-muted opacity-50'}`}
             style={{
-              fontFamily: "'Inter', system-ui, sans-serif",
-              fontSize: '14px',
-              lineHeight: '20px',
-              letterSpacing: '-0.0357em',
-              fontWeight: '500',
+              fontFamily: 'var(--font-family-base)',
+              fontSize: 'var(--text-body-md)',
+              lineHeight: 'var(--text-body-md-line)',
+              letterSpacing: 'var(--letter-spacing-tighter)',
+              fontWeight: 'var(--font-weight-medium)',
             }}
           >
             {file ? file.name : 'Выберите файл'}
@@ -141,13 +142,13 @@ export function FilePicker({
       </div>
       {/* Helper text */}
       <p
-        className="text-text-muted"
+        className="text-muted"
         style={{
-          fontFamily: "'Inter', system-ui, sans-serif",
-          fontSize: '12px',
-          lineHeight: '16px',
-          letterSpacing: '-0.0417em',
-          fontWeight: '400',
+          fontFamily: 'var(--font-family-base)',
+          fontSize: 'var(--text-body-sm)',
+          lineHeight: 'var(--text-body-sm-line)',
+          letterSpacing: 'var(--letter-spacing-tightest)',
+          fontWeight: 'var(--font-weight-regular)',
         }}
       >
         до 10 документов, до 5 МБ в сумме, формат .md
@@ -155,7 +156,7 @@ export function FilePicker({
       {error && (
         <p
           className="mt-1 text-xs"
-          style={{ color: '#F59E0B' }}
+          style={{ color: 'var(--color-accent-amber)' }}
           role="alert"
         >
           {error}
