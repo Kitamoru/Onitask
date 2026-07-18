@@ -525,6 +525,7 @@ Supabase Realtime-триггер → Edge Function → Bot API `sendMessage` в 
 - `trg_handoff_chain_alert` (sql_anomalies_.md §5.7)
 - `enrichment-failure-alert` cron (Master §9)
 - Ручной INSERT из `/api/bot/task/:fullId/resolve` (§5.8)
+- `trg_schedule_calendar_reminder` (Master §6.19, onitask_calendar_.md §5) — напоминания календаря
 
 **Архитектура доставки:**
 
@@ -534,29 +535,75 @@ INSERT enrichment_queue (type='bot_notify')
   ├─ DB Webhook (on INSERT WHERE type='bot_notify') ──┐
   │                                                     │
   └─ pg_cron 'bot-notify-fallback' (hourly, Master §9) ┤ страховка при пропущенном webhook
-                                                         ▼
-                                    Edge Function bot-notify (Deno)
-                                                         │
-             SELECT * FROM enrichment_queue
-             WHERE type='bot_notify' AND status='pending'
-               AND scheduled_at <= NOW()
-             ORDER BY scheduled_at ASC
-             FOR UPDATE SKIP LOCKED LIMIT 20
-                                                         │
-                                    для каждой записи:
-                                    1. Резолвить workspace_id
-                                       (task_id → tasks.workspace_id, либо
-                                       payload->>'workspace_id' — sql_anomalies_.md §4)
-                                    2. SELECT chat_id FROM workspace_telegram_chats
-                                       WHERE workspace_id = $1 AND is_active = true
-                                    3. Фильтр по notification_settings
-                                       (on_inbox_move/on_overload/quiet_hours, §5.5) —
-                                       не проходит фильтр → status='done' без отправки
-                                    4. POST /api/bot/notify { chat_id, text,
-                                       alert_type, workspace_id } — на каждый
-                                       привязанный чат
-                                    5. UPDATE enrichment_queue
-                                       SET status='done'|'failed', processed_at=NOW()
+                                                          ▼
+                                     Edge Function bot-notify (Deno)
+                                                          │
+              SELECT * FROM enrichment_queue
+              WHERE type='bot_notify' AND status='pending'
+                AND scheduled_at <= NOW()
+              ORDER BY
+                CASE WHEN payload->>'alert_type' = 'calendar_reminder' THEN 1
+                     ELSE 2 END,
+                scheduled_at ASC
+              FOR UPDATE SKIP LOCKED LIMIT 20
+                                                          │
+                                     для каждой записи:
+                                     1. Резолвить workspace_id
+                                        (task_id → tasks.workspace_id, либо
+                                        payload->>'workspace_id', либо
+                                        event_id → calendar_events.workspace_id)
+                                     2. Проверить payload->>'target_worker_id':
+                                        ┌─ ЕСЛИ есть → личная доставка (§6.5.1)
+                                        └─ ЕСЛИ нет → broadcast (§6.5.2)
+                                     3. UPDATE enrichment_queue
+                                        SET status='done'|'failed', processed_at=NOW()
+```
+
+### 6.5.1 Личная доставка (target_worker_id present)
+
+Если `payload->>'target_worker_id'` присутствует (например, `alert_type='calendar_reminder'`):
+
+```
+1. Резолвим worker → profile:
+   SELECT p.telegram_id
+   FROM workers w
+   JOIN profiles p ON p.id = w.source_id::uuid
+   WHERE w.id = UUID(payload->>'target_worker_id')
+     AND w.is_active = true
+   LIMIT 1;
+
+2. Если telegram_id найден:
+   POST /api/bot/notify { chat_id: telegram_id, text, alert_type }
+   → Telegram шлёт sendMessage напрямую в личный чат (chat_id = telegram_id)
+
+3. Edge case: пользователь никогда не писал боту (/start не было)
+   → Telegram вернёт 403 (Bot has no access), DM невозможен.
+   → Обрабатываем как failed, БЕЗ ретраев (это не временная ошибка).
+   → На старте почти все воркеры проходят через /start при онбординге (§5.9),
+     так что это редкий кейс, но должен быть задокументирован, а не выяснен в проде.
+```
+
+Формат сообщения для `calendar_reminder`:
+```
+📅 Напоминание: «${event.title}»
+⏰ Начало: ${formatTime(event.start_at)}
+📍 Длительность: ${duration(event.start_at, event.end_at)}
+
+[Открыть в TWA →]
+```
+
+### 6.5.2 Broadcast (target_worker_id absent)
+
+Если `payload->>'target_worker_id'` отсутствует — текущее поведение:
+
+```
+1. SELECT chat_id FROM workspace_telegram_chats
+   WHERE workspace_id = $1 AND is_active = true
+2. Фильтр по notification_settings
+   (on_inbox_move/on_overload/quiet_hours, §5.5) —
+   не проходит фильтр → status='done' без отправки
+3. POST /api/bot/notify { chat_id, text, alert_type, workspace_id }
+   — на каждый привязанный чат
 ```
 
 **Route Handler `POST /api/bot/notify`** (Vercel, внутренний — не для внешних агентов):

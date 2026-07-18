@@ -1,6 +1,6 @@
 # onitask · Индекс документации
 
-**Версия:** 2.7.4 · июнь 2026
+**Версия:** 2.8.0 · июль 2026
 
 ---
 
@@ -13,7 +13,8 @@
 | `onitask_flow_.md` | Flow Board UX, колонки, роли, Stream, аномалии, AI Flow Summary, Risk Pulse, Worker Sheet, Operator Queue, Task Sheet (Блокировки), Workspace Manager |
 | `src/app/boards/page.tsx` | Boards Overview Page ("Стол") — RiskPulse сводка по всем доскам + список досок пользователя с карточками (BoardCard) |
 | `onitask_team_tab.md` | ⚠️ Deprecated (v1.3.0) — SQL-запросы velocity/агентов, escalate_task MCP tool, Operator Queue SQL (справочник) |
-| `onitask_bot.md` | Bot команды, workspace resolution, freemium, сценарии, Realtime-уведомления, output sanitization (escapeHtml, sanitizeOutput), Bot Notify Worker (§6.5) |
+| `onitask_bot.md` | Bot команды, workspace resolution, freemium, сценарии, Realtime-уведомления, output sanitization (escapeHtml, sanitizeOutput), Bot Notify Worker (§6.5, личная доставка + broadcast) |
+| `onitask_calendar_.md` | Модуль «Календарь»: провайдеры Yandex/Outlook, OAuth flow, синхронизация, напоминания через бота, UI календаря, лицензионные ограничения |
 | `onitask_mcp_contract_.md` | MCP tools: сигнатуры, blocked_by, subgraph, smart backlog, cascade unblock, allowed_tools scopes, rate limit, DFS cycle check, ошибки, рекомендации агентам *(операционное приложение)* |
 | `onitask_sql_anomalies_.md` | SQL-вьюхи (orphan_blockers, handoff_chain), триггеры (cascade_unblock, handoff_chain_alert), воркер аномалий *(операционное приложение)* |
 | `onitask_security_.md` | OWASP LLM Top 10 (2025): Prompt Injection (JSON mode, UUID-теги, LTM linter), data_sharing_level уровни, MCP allowed_tools scopes, HTML sanitization, DFS cycle detection, тест-векторы, pre-deploy чеклист *(операционное приложение)* |
@@ -151,6 +152,18 @@
 | Настроить Realtime-уведомления | ✅ 6.9 | ✅ bot §6.4 |
 | Freemium проверки в боте | — | ✅ bot §4 |
 | Реализовать Bot Notify Worker (доставка bot_notify) | ✅ 6.5 (enrichment_queue), 9 (bot-notify-fallback) | ✅ bot §6.5, security §4.1 |
+| Реализовать личную доставку (target_worker_id → DM) | ✅ 6.19 | ✅ bot §6.5.1, calendar §5 |
+
+### Календарь
+
+| Задача | Master | Feature |
+|---|---|---|
+| Понять архитектуру модуля Calendar | ✅ 6.19, INV-17 | ✅ calendar §1–2 |
+| Создать миграцию calendar_events/calendar_connections | ✅ 6.19 | ✅ supabase/migrations/009 |
+| Реализовать Edge Function calendar_sync | ✅ A-1, 6.19 | ✅ calendar §4 |
+| Реализовать Edge Function calendar_reminder | ✅ 6.19, bot §6.5.1 | ✅ calendar §5 |
+| Построить UI календаря (React-Day-Picker) | — | ✅ calendar §6.2 |
+| Подключить OAuth Yandex/Outlook | ✅ 6.19, INV-17 | ✅ calendar §3 |
 
 ### Продукт и стратегия
 
@@ -194,11 +207,12 @@
 
 | Файл | Версия |
 |---|---|
-| onitask_Architecture_Master_.md | **0.13.4** |
+| onitask_Architecture_Master_.md | **0.14.0** |
 | onitask_ai_.md | **0.10.1** |
 | onitask_flow_.md | **3.6.0** |
 | onitask_team_tab.md | **1.3.0 (Deprecated)** |
-| onitask_bot.md | **0.6.0** |
+| onitask_bot.md | **0.7.0** |
+| onitask_calendar_.md | **0.1.0 (новый)** |
 | onitask_mcp_contract_.md | **0.7.1** |
 | onitask_sql_anomalies_.md | **1.6** |
 | onitask_security_.md | **0.1.1** |
@@ -210,6 +224,25 @@
 ---
 
 ## Changelog (актуальный)
+
+**Master v0.14.0 / bot v0.7.0 / calendar v0.1.0 / INDEX v2.8.0 — июль 2026**
+
+**Модуль «Календарь»:**
+- Новый файл `onitask_calendar_.md` v0.1.0: спецификация модуля, провайдеры Yandex/Outlook,
+  OAuth flow, синхронизация через Edge Functions, напоминания через enrichment_queue,
+  UX-макеты, roadmap
+- Master §6.19 (новый): таблицы `calendar_events`, `calendar_connections`; триггеры
+  `trg_schedule_calendar_reminder`, `trg_cancel_calendar_reminder`, `trg_validate_calendar_times`;
+  RLS-политики; INV-17 (шифрование OAuth-токенов); типы событий enrichment_queue; маршрутизация
+  напоминаний через `target_worker_id`; политика хранения
+- Migration `009_calendar_events.sql`: DDL таблиц, индексы, триггеры, RLS
+- bot §6.5: расширение контракта Bot Notify Worker — поддержка `target_worker_id` для личной
+  доставки (DM) vs broadcast; приоритет calendar_reminder в ORDER BY воркера
+- bot §6.5.1 (новый): личная доставка — резолвинг worker → profile.telegram_id, обработка 403
+- bot §6.5.2 (новый): broadcast — текущее поведение при отсутствии target_worker_id
+- INDEX: раздел «Календарь», обновлённые версии Master/bot/calendar
+
+---
 
 **Master v0.13.4 / bot v0.6.0 / security v0.1.1 / dev_setup v0.2.2 / INDEX v2.7.4 — июнь 2026**
 
@@ -416,4 +449,4 @@
 
 ---
 
-*onitask · INDEX · v2.7.4 · июнь 2026*
+*onitask · INDEX · v2.8.0 · июль 2026*

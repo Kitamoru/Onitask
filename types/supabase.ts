@@ -135,6 +135,103 @@ export interface Database {
         }
         Relationships: []
       }
+      calendar_connections: {
+        Row: {
+          id: string
+          workspace_id: string
+          worker_id: string
+          provider: string
+          provider_account_email: string
+          encrypted_oauth_tokens: string
+          token_expires_at: string | null
+          is_active: boolean
+          connected_at: string
+          last_sync_at: string | null
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          worker_id: string
+          provider: string
+          provider_account_email: string
+          encrypted_oauth_tokens: string
+          token_expires_at?: string | null
+          is_active?: boolean
+          connected_at?: string
+          last_sync_at?: string | null
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          worker_id?: string
+          provider?: string
+          provider_account_email?: string
+          encrypted_oauth_tokens?: string
+          token_expires_at?: string | null
+          is_active?: boolean
+          connected_at?: string
+          last_sync_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: "calendar_connections_worker_id_fkey"; columns: ["worker_id"]; referencedRelation: "workers"; referencedColumns: ["id"] },
+          { foreignKeyName: "calendar_connections_workspace_id_fkey"; columns: ["workspace_id"]; referencedRelation: "workspaces"; referencedColumns: ["id"] },
+        ]
+      }
+      calendar_events: {
+        Row: {
+          id: string
+          workspace_id: string
+          provider: string
+          remote_event_id: string
+          title: string
+          description: string | null
+          start_at: string
+          end_at: string
+          reminder_minutes_before: number | null
+          created_by: string | null
+          updated_by: string | null
+          source_synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          provider: string
+          remote_event_id: string
+          title: string
+          description?: string | null
+          start_at: string
+          end_at: string
+          reminder_minutes_before?: number | null
+          created_by?: string | null
+          updated_by?: string | null
+          source_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          provider?: string
+          remote_event_id?: string
+          title?: string
+          description?: string | null
+          start_at?: string
+          end_at?: string
+          reminder_minutes_before?: number | null
+          created_by?: string | null
+          updated_by?: string | null
+          source_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "calendar_events_created_by_fkey"; columns: ["created_by"]; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "calendar_events_updated_by_fkey"; columns: ["updated_by"]; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "calendar_events_workspace_id_fkey"; columns: ["workspace_id"]; referencedRelation: "workspaces"; referencedColumns: ["id"] },
+        ]
+      }
       consolidation_errors: {
         Row: {
           id: string

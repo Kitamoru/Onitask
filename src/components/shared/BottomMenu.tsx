@@ -39,9 +39,9 @@ type MenuItem = {
 
 const MENU_ITEMS: MenuItem[] = [
   {
-    id: 'boards',
+    id: 'flowboard',
     label: 'Доска',
-    href: '/boards',
+    href: '/flowboard',
     icon: IconLayoutList,
   },
   {
@@ -60,7 +60,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'calendar',
     label: 'Календарь',
-    href: '/board/calendar',
+    href: '/calendar',
     icon: IconCalendarWeek,
   },
   {
@@ -129,7 +129,24 @@ export function BottomMenu() {
  * Handles active state, main button styling, and responsive sizing.
  */
 function BottomMenuItem({ item, currentPath }: { item: MenuItem; currentPath: string }) {
-  const isActive = currentPath === item.href || (item.isMain && currentPath?.startsWith('/board'));
+  /**
+   * Active state logic:
+   * - /boards → only "Стол" (kanban) is active
+   * - /flowboard → only "Доска" (flowboard) is active
+   * - /board/create → only main (+) is active
+   * - /calendar → only "Календарь" is active
+   * - /settings → only "Настройки" is active
+   */
+  let isActive = false;
+
+  if (item.isMain) {
+    // Main button active for /board/* but NOT /boards and NOT /calendar
+    isActive = currentPath !== '/boards' && currentPath !== '/calendar' && currentPath?.startsWith('/board') === true;
+  } else if (currentPath === item.href) {
+    // Exact match — but if multiple items share this href, only the first one wins
+    const firstMatchingItem = MENU_ITEMS.find((m) => m.href === item.href);
+    isActive = firstMatchingItem?.id === item.id;
+  }
   const IconComponent = item.icon;
 
   if (item.isMain) {
@@ -175,9 +192,9 @@ function BottomMenuItem({ item, currentPath }: { item: MenuItem; currentPath: st
           aria-hidden="true"
         />
         <IconComponent
-          size="var(--size-bottom-menu-icon-main)"
-          color="var(--color-text-white)"
-          strokeWidth={1.5}
+          size={48}
+          stroke={1.5}
+          style={{ color: 'var(--color-text-white)' }}
           className="relative z-10"
         />
       </Link>
@@ -205,9 +222,9 @@ function BottomMenuItem({ item, currentPath }: { item: MenuItem; currentPath: st
       aria-current={isActive ? 'page' : undefined}
     >
       <IconComponent
-        size="var(--size-bottom-menu-icon)"
-        color={isActive ? 'var(--color-text-white)' : 'var(--color-text-muted)'}
-        strokeWidth={isActive ? 2 : 1.5}
+        size={24}
+        stroke={isActive ? 2 : 1.5}
+        style={{ color: isActive ? 'var(--color-text-white)' : 'var(--color-text-muted)' }}
       />
       {item.label && (
         <span

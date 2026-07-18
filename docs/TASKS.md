@@ -308,6 +308,45 @@ format is deliberately compact so that agents can load the file quickly.
 
 ---
 
+## Stage 13 · Calendar Integration — Final Configuration
+
+> Файлы реализованы: `app/api/calendar/connect/[provider]/route.ts`, `app/api/calendar/callback/[provider]/route.ts`,
+> `supabase/functions/calendar-sync/index.ts` (OAuth token exchange, encrypt/decrypt, refresh),
+> `app/calendar/page.tsx` (disconnect button).
+> DoD: пользователь может подключить Yandex/Outlook календарь через OAuth flow, токены зашифрованы,
+> sync работает, токен обновляется автоматически.
+
+- [ ] CAL-01 Configure OAuth credentials in Supabase project settings + Vercel env vars #infra !critical @blocked_by:CAL-01
+        Необходимо создать приложения в консолях разработчиков и добавить 5 переменных окружения:
+        
+        **Yandex OAuth:**
+        1. Перейти на https://oauth.yandex.ru/client/new
+        2. Название: "onitask Calendar"
+        3. Платформа: Web Service
+        4. Redirect URI: `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/yandex`
+        5. Скопировать Client ID и Client Secret
+        
+        **Microsoft Graph API:**
+        1. Перейти на https://entra.microsoft.com/ → App registrations → New registration
+        2. Supported account types: "Accounts in any organizational directory"
+        3. Redirect URI: `Web` → `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/outlook`
+        4. Grant admin consent для `Cal.Read`
+        5. Generate client secret
+        
+        **Environment Variables (Supabase Functions + Vercel):**
+        ```
+        YANDEX_OAUTH_CLIENT_ID=...
+        YANDEX_OAUTH_CLIENT_SECRET=...
+        OUTLOOK_OAUTH_CLIENT_ID=...
+        OUTLOOK_OAUTH_CLIENT_SECRET=...
+        ENCRYPTION_KEY=<32-byte random string, AES-256-GCM key for INV-17>
+        ```
+        
+        ENCRYPTION_KEY генерация: `openssl rand -base64 32` или `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+        Важно: ключ должен быть одинаковым для Edge Function и любого будущего серверного кода.
+
+---
+
 ## Stage 12 · LTM Pipeline
 
 > dev_setup §3: Edge Function `consolidate`, `task_events` → `agent_memory`, `consolidation_errors`. DoD: задачи старше 30 дней консолидируются, RAG через `match_tasks()` находит релевантные.
