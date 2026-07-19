@@ -27,16 +27,16 @@ export default function HomePage() {
     // Prevent repeated redirects on data reference changes
     if (hasRedirectedRef.current) return;
 
-    // Redirect based on user type
-    if (data?.is_new_user) {
+    // Redirect based on user type (use primitive value, not object reference)
+    if (data?.is_new_user === true) {
       hasRedirectedRef.current = true;
       router.replace('/board/create');
-    } else if (data && !data.is_new_user) {
+    } else if (data?.is_new_user === false) {
       hasRedirectedRef.current = true;
       router.replace('/flowboard');
     }
-    // If error, stay on this page and show error below
-  }, [isLoading, data, router]);
+    // If error or no data, stay on this page and show error below
+  }, [isLoading, data?.is_new_user, router]);
 
   // Loading state
   if (isLoading) {
