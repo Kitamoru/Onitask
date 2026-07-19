@@ -32,14 +32,14 @@ export default function CreateBoardPage() {
   useEffect(() => {
     if (authLoading) return;
     if (authError) return;
-    // Prevent repeated redirects on authData reference changes
+    // Prevent repeated redirects
     if (hasRedirectedRef.current) return;
     // If user is not new (already has account), redirect to flowboard
-    if (authData && !authData.is_new_user) {
+    if (authData?.is_new_user === false) {
       hasRedirectedRef.current = true;
       router.replace('/flowboard');
     }
-  }, [authLoading, authError, authData, router]);
+  }, [authLoading, authError, authData?.is_new_user, router]);
 
   /**
    * Get Telegram init_data for authentication.

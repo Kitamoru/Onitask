@@ -1,19 +1,157 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* ============================================================================
-   Telegram Web App Theme Integration
+   Base Design Tokens — исходные значения (hex/px/rem)
+   Эти переменные определены в :root ДО @theme inline, чтобы @theme мог их использовать через var()
    ============================================================================ */
 
-/* Base CSS custom properties — fallback values for browser testing */
 :root {
+  /* Backgrounds */
+  --color-bg-primary-dark: #0A0A0A;
+  --color-bg-dark: #101010;
+  --color-bg-surface: #1A1A1A;
+  --color-bg-surface-hover: #2A2A2A;
+  --color-bg-light: #FAFAFA;
+
+  /* Text */
+  --color-text-primary: #FAFAFA;
+  --color-text-muted: #8B8B8B;
+  --color-text-secondary: #808080;
+  --color-text-white: #FFFFFF;
+
+  /* Accent */
+  --color-accent-amber: #F59E0B;
+  --color-accent-amber-subtle: rgba(245, 158, 11, 0.1);
+
+  /* Error */
+  --color-error: #EF4444;
+
+  /* Border / Divider */
+  --color-border-default: rgba(139, 139, 139, 0.2);
+  --color-border-white-subtle: rgba(255, 255, 255, 0.1);
+
+  /* Signal colors */
+  --color-signal-yellow: #F59E0B;
+  --color-signal-red: #EF4444;
+  --color-signal-green: #4ADE80;
+  --color-signal-cyan: #22D3EE;
+
+  /* Priority badge colors */
+  --color-priority-green-bg: rgba(74, 222, 128, 0.2);
+  --color-priority-green-text: #4ADE80;
+  --color-priority-green-border: #4ADE80;
+  --color-priority-amber-bg: rgba(245, 158, 11, 0.2);
+  --color-priority-amber-text: #F59E0B;
+  --color-priority-amber-border: #F59E0B;
+  --color-priority-red-bg: rgba(239, 68, 68, 0.2);
+  --color-priority-red-text: #EF4444;
+  --color-priority-red-border: #EF4444;
+  --color-priority-cyan-bg: rgba(34, 211, 238, 0.2);
+  --color-priority-cyan-text: #22D3EE;
+  --color-priority-cyan-border: #22D3EE;
+
+  /* Spacing (4px grid, in rem) */
+  --spacing-0: 0;
+  --spacing-0.5: 0.125rem;
+  --spacing-1: 0.25rem;
+  --spacing-1.5: 0.375rem;
+  --spacing-2: 0.5rem;
+  --spacing-2.5: 0.625rem;
+  --spacing-3: 0.75rem;
+  --spacing-3.5: 0.875rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-16: 4rem;
+
+  /* FlowBoard spacing */
+  --spacing-flowboard-padding: var(--spacing-4);
+  --spacing-flowboard-section-gap: var(--spacing-6);
+  --spacing-flowboard-card-padding: var(--spacing-3);
+
+  /* Semantic spacing */
+  --spacing-section-gap: var(--spacing-6);
+  --spacing-section-padding: var(--spacing-3);
+  --spacing-form-max-width: 22.375rem;
+
+  /* Border radius */
+  --radius-none: 0;
+  --radius-xs: 0.0625rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-card: 0.5rem;
+  --radius-flowboard-section: 0.25rem;
+
+  /* Typography */
+  --font-family-base: 'Inter', system-ui, sans-serif;
+  --font-family-display: 'Inter Display', system-ui, sans-serif;
+
+  --text-heading-sm: clamp(0.875rem, 1vw, 0.875rem);
+  --text-heading-sm-line: 1.125;
+  --text-heading-md: clamp(1rem, 1.2vw, 1rem);
+  --text-heading-md-line: 1.25;
+  --text-body-xs: clamp(0.6875rem, 0.8vw, 0.6875rem);
+  --text-body-xs-line: 1.364;
+  --text-body-sm: clamp(0.75rem, 0.9vw, 0.75rem);
+  --text-body-sm-line: 1.167;
+  --text-body-md: clamp(0.875rem, 1vw, 0.875rem);
+  --text-body-md-line: 1.286;
+  --text-body-lg: clamp(1rem, 1.2vw, 1rem);
+  --text-body-lg-line: 1.25;
+  --text-body-xl: clamp(1rem, 1.2vw, 1rem);
+  --text-body-xl-line: 1.25;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --letter-spacing-tight: -0.0313em;
+  --letter-spacing-tighter: -0.0357em;
+  --letter-spacing-tightest: -0.0417em;
+
+  /* Layout */
+  --size-avatar: 2.25rem;
+  --size-accent-line-width: 0.125rem;
+  --size-accent-line-height: 1.125rem;
+  --size-toggle-nail: 1.5rem;
+  --size-toggle-track: 3rem;
+  --size-toggle-track-height: 1.5rem;
+  --size-counter-btn: 2.25rem;
+
+  /* Bottom Menu */
+  --size-bottom-menu-height: clamp(3.375rem, 6vh, 5.5rem);
+  --size-bottom-menu-icon: clamp(1.25rem, 3vw, 1.5rem);
+  --size-bottom-menu-icon-main: clamp(2.5rem, 6vw, 3rem);
+  --text-bottom-menu-label: clamp(0.5rem, 1.2vw, 0.625rem);
+  --text-bottom-menu-label-line: 1.25;
+  --spacing-bottom-menu-gap: var(--spacing-1);
+  --spacing-bottom-menu-padding: var(--spacing-1.5);
+  --color-bottom-menu-text-inactive: var(--color-text-muted);
+  --color-bottom-menu-text-active: var(--color-text-white);
+  --color-bottom-menu-bg: var(--color-bg-primary-dark);
+  --gradient-bottom-menu-start: rgba(230, 199, 33, 0.15);
+  --gradient-bottom-menu-mid-1: rgba(46, 169, 140, 0.75);
+  --gradient-bottom-menu-mid-2: rgba(46, 169, 140, 0);
+  --gradient-bottom-menu-mid-3: rgba(46, 169, 140, 0.45);
+  --gradient-bottom-menu-end: rgba(230, 199, 33, 0.15);
+  --shadow-main-btn-inner-dark: inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2);
+  --shadow-main-btn-inner-teal: inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2);
+  --shadow-main-btn-inner-white-1: inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05);
+  --shadow-main-btn-inner-white-2: inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1);
+  --blur-bottom-menu: blur(30px);
+
+  /* Transitions */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 200ms ease-in-out;
+
+  /* ============================================================================
+     Telegram Web App Theme Integration
+     Переопределяются Telegram SDK при запуске внутри TWA
+     ============================================================================ */
   --background: #ffffff;
   --foreground: #171717;
-  
-  /* Telegram Theme Variables — populated by Telegram SDK at runtime */
-  /* If not in TWA, these fall back to our design tokens */
   --tg-theme-bg-color: var(--color-bg-primary-dark);
   --tg-theme-text-color: var(--color-text-primary);
   --tg-theme-hint-color: var(--color-text-muted);
@@ -27,16 +165,6 @@
   --tg-theme-destructive-text-color: var(--color-error);
 }
 
-/* Telegram overrides our :root vars when running inside TWA */
-/* We listen for themeChanged and apply tg-theme-* vars dynamically */
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -45,17 +173,146 @@
 }
 
 /* ============================================================================
+   Tailwind v4 Design Tokens — @theme inline (ОДИН блок, первый обрабатывается)
+   Все кастомные утилиты определяются здесь через CSS custom properties
+   ============================================================================ */
+
+@theme inline {
+  /* ==========================================
+     BREAKPOINTS
+     ========================================== */
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+
+  /* ==========================================
+     COLORS
+     ========================================== */
+  --color-primary-dark: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
+  --color-bg-dark: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
+  --color-surface: var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-bg-surface)));
+  --color-surface-hover: var(--color-bg-surface-hover);
+  --color-bg-light: var(--color-bg-light);
+  --color-text-primary: var(--tg-theme-text-color, var(--color-text-primary));
+  --color-text-muted: var(--tg-theme-hint-color, var(--color-text-muted));
+  --color-text-secondary: var(--tg-theme-section-header-text-color, var(--color-text-secondary));
+  --color-text-subtle: var(--tg-theme-subtitle-text-color, var(--color-text-muted));
+  --color-accent-amber: var(--tg-theme-button-color, var(--color-accent-amber));
+  --color-accent-amber-subtle: var(--color-accent-amber-subtle);
+  --color-accent-button-text: var(--tg-theme-button-text-color, var(--color-text-white));
+  --color-error: var(--tg-theme-destructive-text-color, var(--color-error));
+  --color-signal-yellow: var(--color-signal-yellow);
+  --color-signal-red: var(--color-signal-red);
+  --color-signal-green: var(--color-signal-green);
+  --color-signal-cyan: var(--color-signal-cyan);
+  --color-border-default: var(--color-border-default);
+  --color-border-white-subtle: var(--color-border-white-subtle);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* ==========================================
+     FONT FAMILIES
+     ========================================== */
+  --font-family-base: 'Inter', system-ui, sans-serif;
+  --font-family-display: 'Inter Display', system-ui, sans-serif;
+  --font-family-inter: 'Inter', system-ui, sans-serif;
+  --font-family-inter-display: 'Inter Display', system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* ==========================================
+     BORDER RADIUS
+     ========================================== */
+  --radius-none: var(--radius-none);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-input-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-card: var(--radius-card);
+  --radius-default: var(--radius-card);
+  --radius-lg: var(--radius-md);
+  --radius-full: 9999px;
+
+  /* ==========================================
+     SPACING
+     ========================================== */
+  --spacing-0: var(--spacing-0);
+  --spacing-0\.5: var(--spacing-0.5);
+  --spacing-1: var(--spacing-1);
+  --spacing-1\.5: var(--spacing-1.5);
+  --spacing-2: var(--spacing-2);
+  --spacing-2\.5: var(--spacing-2.5);
+  --spacing-3: var(--spacing-3);
+  --spacing-4: var(--spacing-4);
+  --spacing-5: var(--spacing-5);
+  --spacing-6: var(--spacing-6);
+  --spacing-8: var(--spacing-8);
+  --spacing-16: var(--spacing-16);
+
+  /* ==========================================
+     FONT SIZES
+     ========================================== */
+  --text-heading-sm: var(--text-heading-sm);
+  --text-heading-sm-line: var(--text-heading-sm-line);
+  --text-heading-md: var(--text-heading-md);
+  --text-heading-md-line: var(--text-heading-md-line);
+  --text-body-xs: var(--text-body-xs);
+  --text-body-xs-line: var(--text-body-xs-line);
+  --text-body-sm: var(--text-body-sm);
+  --text-body-sm-line: var(--text-body-sm-line);
+  --text-body-md: var(--text-body-md);
+  --text-body-md-line: var(--text-body-md-line);
+  --text-body-lg: var(--text-body-lg);
+  --text-body-lg-line: var(--text-body-lg-line);
+  --text-body-xl: var(--text-body-xl);
+  --text-body-xl-line: var(--text-body-xl-line);
+
+  /* Letter spacing */
+  --letter-spacing-tight: var(--letter-spacing-tight);
+  --letter-spacing-tighter: var(--letter-spacing-tighter);
+  --letter-spacing-tightest: var(--letter-spacing-tightest);
+
+  /* Transitions */
+  --transition-duration-fast: var(--transition-fast);
+  --transition-duration-normal: var(--transition-normal);
+
+  /* Height */
+  --height-tg-screen: var(--tg-viewport-stable-height, 100dvh);
+
+  /* Min height */
+  --min-height-web-only-dvh: 100dvh;
+  --min-height-web-only-svh: 100svh;
+  --min-height-web-only-vh: 100vh;
+
+  /* Padding — safe area */
+  --padding-tg-safe-top: var(--tg-safe-top, env(safe-area-inset-top, 0px));
+  --padding-tg-safe-bottom: var(--tg-safe-bottom, env(safe-area-inset-bottom, 0px));
+  --padding-tg-content-top: var(--tg-content-safe-top, 0px);
+  --padding-tg-content-bottom: var(--tg-content-safe-bottom, 0px);
+
+  /* Max width */
+  --max-width-mobile: 480px;
+  --max-width-mobile-sm: 390px;
+  --max-width-form: var(--spacing-form-max-width);
+
+  /* Z-index */
+  --z-index-modal: 100;
+  --z-index-toast: 90;
+  --z-index-bottom-menu: 50;
+}
+
+/* ============================================================================
    Safe Area Inset Support (notched devices, Dynamic Island)
    ============================================================================ */
 html {
-  /* Fallback: no safe area */
   padding-top: 0;
   padding-bottom: 0;
   padding-left: 0;
   padding-right: 0;
 }
 
-/* When env() is supported, use safe-area-inset */
 @supports (padding: max(0px)) {
   html {
     padding-top: env(safe-area-inset-top, 0);
@@ -69,32 +326,26 @@ html {
    Body & Global Reset
    ============================================================================ */
 * {
-  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-family-base), Arial, Helvetica, sans-serif;
-  /* Prevent overscroll bounce on iOS */
   overscroll-behavior-y: contain;
-  /* Ensure content doesn't go behind status bar */
-  min-height: 100dvh; /* dynamic viewport height */
+  min-height: 100dvh;
 }
 
-/* ============================================================================
-   Telegram-specific body adjustments
-   ============================================================================ */
 .tg-webapp body {
   background: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
   color: var(--tg-theme-text-color, var(--color-text-primary));
 }
 
 /* ============================================================================
-   Custom Utilities
+   Custom Utilities (не Tailwind, обычные CSS классы)
    ============================================================================ */
 
-/* Scrollbar styling for webkit */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -113,17 +364,11 @@ body {
   background: var(--color-text-muted);
 }
 
-/* ============================================================================
-   Form Container — scrollable form area with proper spacing
-   ============================================================================ */
 .form-container {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-default) transparent;
 }
 
-/* ============================================================================
-   Safe area utilities — for notched devices
-   ============================================================================ */
 .pt-safe-top {
   padding-top: max(var(--spacing-4), env(safe-area-inset-top, 0px));
 }
@@ -140,15 +385,11 @@ body {
   padding-right: max(var(--spacing-4), env(safe-area-inset-right, 0px));
 }
 
-/* Safe area for main content wrapper (prevents overlap with Telegram header + bottom menu) */
 .content-with-safeties {
   padding-top: max(0px, env(safe-area-inset-top, 0px));
   padding-bottom: max(var(--size-bottom-menu-height), env(safe-area-inset-bottom, 0px));
 }
 
-/* ============================================================================
-   Card stretch animation
-   ============================================================================ */
 .card-stretch {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -157,9 +398,6 @@ body {
   transform: scale(0.98);
 }
 
-/* ============================================================================
-   Slide-up animation for modals
-   ============================================================================ */
 @keyframes slide-up {
   from {
     transform: translateY(100%);
@@ -175,18 +413,7 @@ body {
   animation: slide-up 0.25s ease-out;
 }
 
-/* ============================================================================
-   Responsive Breakpoints — Mobile-first
-   ============================================================================ */
-
-/* xs: 480px — small mobile (iPhone SE, etc.) */
-/* sm: 640px — large mobile / small tablet landscape */
-/* md: 768px — tablet */
-/* lg: 1024px — desktop */
-
-/* ============================================================================
-   react-day-picker overrides (CalendarView)
-   ============================================================================ */
+/* react-day-picker overrides */
 .rdp {
   --rdp-cell-size: 36px;
   --rdp-background-color: var(--color-accent-amber);
