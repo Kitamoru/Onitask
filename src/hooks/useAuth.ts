@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { InitResponse } from '../../types/api';
 
@@ -182,10 +182,15 @@ export function useAuth(): UseAuthReturn {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Stabilize data reference to prevent infinite re-renders in consumers.
+  // Without this, each render creates a new object reference even when content is identical,
+  // causing useEffect([data]) on pages like / and /board/create to fire repeatedly.
+  const stableData = useMemo(() => data, [data?.worker?.id, data?.is_new_user]);
+
   return {
     isLoading,
     error,
-    data,
+    data: stableData,
     isTWA,
     refresh: fetchInit,
   };
