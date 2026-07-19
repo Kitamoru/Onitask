@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { BoardForm, type BoardFormData } from '@/components/board';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,12 +25,18 @@ export default function CreateBoardPage() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData } = useAuth();
 
+  // Prevent infinite redirect loops using a ref
+  const hasRedirectedRef = useRef(false);
+
   // Redirect existing users back to flowboard
   useEffect(() => {
     if (authLoading) return;
     if (authError) return;
+    // Prevent repeated redirects on authData reference changes
+    if (hasRedirectedRef.current) return;
     // If user is not new (already has account), redirect to flowboard
     if (authData && !authData.is_new_user) {
+      hasRedirectedRef.current = true;
       router.replace('/flowboard');
     }
   }, [authLoading, authError, authData, router]);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { FlowBoard } from '@/components/flowboard';
 import type {
@@ -40,6 +40,9 @@ export default function FlowBoardPage() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [allTasks, setAllTasks] = useState<TasksRow[]>([]);
 
+  // Prevent infinite redirect loops using a ref
+  const hasRedirectedRef = useRef(false);
+
   // Handle authentication states and onboarding redirection
   useEffect(() => {
     if (authLoading) return;
@@ -48,14 +51,19 @@ export default function FlowBoardPage() {
       setLoading(false);
       return;
     }
+    // Prevent repeated redirects on authData reference changes
+    if (hasRedirectedRef.current) return;
+
     // If the user is new (no workspace), send them to onboarding
     if (authData?.is_new_user) {
+      hasRedirectedRef.current = true;
       router.replace('/board/create');
       return;
     }
     // Guard: if workspace_id is missing or empty, redirect to onboarding
     const wsId = authData?.worker.workspace_id;
     if (!wsId) {
+      hasRedirectedRef.current = true;
       router.replace('/board/create');
       return;
     }

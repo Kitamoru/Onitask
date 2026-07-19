@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -19,13 +19,20 @@ export default function HomePage() {
   const router = useRouter();
   const { isLoading, error, data } = useAuth();
 
+  const hasRedirectedRef = useRef(false);
+
   useEffect(() => {
     if (isLoading) return;
 
+    // Prevent repeated redirects on data reference changes
+    if (hasRedirectedRef.current) return;
+
     // Redirect based on user type
     if (data?.is_new_user) {
+      hasRedirectedRef.current = true;
       router.replace('/board/create');
     } else if (data && !data.is_new_user) {
+      hasRedirectedRef.current = true;
       router.replace('/flowboard');
     }
     // If error, stay on this page and show error below
