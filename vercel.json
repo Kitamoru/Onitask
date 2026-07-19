@@ -27,20 +27,11 @@
   "routes": [
     {
       "src": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://api.telegram.org https://login.yandex.ru https://login.microsoftonline.com; frame-ancestors 'self' https://*.telegram.org;"
-        }
-      ]
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://api.telegram.org https://login.yandex.ru https://login.microsoftonline.com; frame-ancestors 'self' https://*.telegram.org;"
+      }
     }
   ]
 }
