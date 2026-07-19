@@ -70,9 +70,11 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
 
     // 2. Find profile by telegram_id (SEC-06: convert to number for bigint column)
-    const { data: existingProfile, error: profileError } = await supabase
+    // Note: workers.source_id is text, profiles.id is uuid — no FK relationship exists.
+    // We query profiles first, then fetch workers separately.
+    const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('*, workers!inner(workspace_id, role)')
+      .select('id, telegram_id, display_name, avatar_url')
       .eq('telegram_id', Number(telegramUser.id))
       .maybeSingle();
 
@@ -84,13 +86,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3a. Profile exists тАФ return as-is (INV-16: do NOT update display_name/avatar_url)
-    if (existingProfile) {
-      const profile = existingProfile as Record<string, unknown>;
-      const profileId = profile.id as string;
-      const displayName = profile.display_name as string;
+    // 3a. Profile exists — find their workers
+    if (profileData) {
+      const profileId = profileData.id as string;
+      const displayName = profileData.display_name as string;
 
-      // Get all workspaces for this user
+      // Get all active workers for this profile (source_id matches profile id as text)
       const { data: workersData, error: workersError } = await supabase
         .from('workers')
         .select('workspace_id, role')
