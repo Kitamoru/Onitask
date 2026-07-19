@@ -1,7 +1,7 @@
 {
   "framework": "nextjs",
   "functions": {
-    "pages/api/**/*.ts": {
+    "app/api/**/route.ts": {
       "maxDuration": 30,
       "memory": 1024
     }
