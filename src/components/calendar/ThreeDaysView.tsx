@@ -50,6 +50,23 @@ export function ThreeDaysView({
     return map;
   }, [events, days]);
 
+  // Pre-compute events by hour for each day (moved out of JSX)
+  const eventsByHourMap = useMemo(() => {
+    const result = new Map<string, Record<number, CalendarEvent[]>>();
+    for (const day of days) {
+      const key = day.toISOString().split('T')[0];
+      const byHour: Record<number, CalendarEvent[]> = {};
+      const dayEvents = eventsByDate.get(key) ?? [];
+      for (const event of dayEvents) {
+        const startHour = new Date(event.start_at).getHours();
+        if (!byHour[startHour]) byHour[startHour] = [];
+        byHour[startHour].push(event);
+      }
+      result.set(key, byHour);
+    }
+    return result;
+  }, [days, eventsByDate]);
+
   // Format header dates — abbreviated weekday + date number
   const day1Weekday = days[0].toLocaleDateString('ru-RU', { weekday: 'short' });
   const day1Num = days[0].getDate();
@@ -154,16 +171,7 @@ export function ThreeDaysView({
           const day1 = days[0];
           const dateKey1 = day1.toISOString().split('T')[0];
           const isSelected1 = dateKey1 === selectedDate.toISOString().split('T')[0];
-          const dayEvents1 = eventsByDate.get(dateKey1) ?? [];
-          const eventsByHour1 = useMemo(() => {
-            const byHour: Record<number, CalendarEvent[]> = {};
-            for (const event of dayEvents1) {
-              const startHour = new Date(event.start_at).getHours();
-              if (!byHour[startHour]) byHour[startHour] = [];
-              byHour[startHour].push(event);
-            }
-            return byHour;
-          }, [dayEvents1]);
+          const eventsByHour1 = eventsByHourMap.get(dateKey1) ?? {};
 
           return (
             <div
@@ -247,16 +255,7 @@ export function ThreeDaysView({
           const day2 = days[1];
           const dateKey2 = day2.toISOString().split('T')[0];
           const isSelected2 = dateKey2 === selectedDate.toISOString().split('T')[0];
-          const dayEvents2 = eventsByDate.get(dateKey2) ?? [];
-          const eventsByHour2 = useMemo(() => {
-            const byHour: Record<number, CalendarEvent[]> = {};
-            for (const event of dayEvents2) {
-              const startHour = new Date(event.start_at).getHours();
-              if (!byHour[startHour]) byHour[startHour] = [];
-              byHour[startHour].push(event);
-            }
-            return byHour;
-          }, [dayEvents2]);
+          const eventsByHour2 = eventsByHourMap.get(dateKey2) ?? {};
 
           return (
             <div

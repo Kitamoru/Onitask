@@ -449,13 +449,16 @@ export function CalendarView({
   isLoading,
 }: CalendarViewProps) {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
+  
+  // Use JSON string as dependency to avoid reference change issues
+  const eventsKey = JSON.stringify(events.map(e => e.id));
+  const eventsByDate = useMemo(() => groupEventsByDate(events), [eventsKey]);
 
   /**
    * Custom week header — Russian day names.
    */
   const weekHeader = useMemo(
-    () => ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
+    () => ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const,
     []
   );
 
