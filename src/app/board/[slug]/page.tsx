@@ -69,7 +69,7 @@ export default function BoardDetailPage() {
 
         setWorkers(workers ?? []);
 
-        const workspaceIds = (workers ?? []).map((w) => w.workspace_id);
+        const workspaceIds = ((workers ?? []) as Worker[]).map((w: Worker) => w.workspace_id);
 
         if (workspaceIds.length === 0) {
           setLoading(false);
@@ -93,7 +93,7 @@ export default function BoardDetailPage() {
         setWorkspace(workspace);
 
         // Filter workers for this workspace
-        const wsWorkers = (workers ?? []).filter((w) => w.workspace_id === workspace.id);
+        const wsWorkers = ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === workspace!.id);
 
         // Get tasks for this workspace
         const { data: tasks } = await supabase
@@ -160,9 +160,9 @@ export default function BoardDetailPage() {
       column: t.column,
     }));
 
-  const colleagues = (workers ?? [])
-    .filter((w) => w.workspace_id === workspace?.id && w.type === 'human' && w.is_active)
-    .map((w) => {
+  const colleagues = ((workers ?? []) as Worker[])
+    .filter((w: Worker) => w.workspace_id === workspace?.id && w.type === 'human' && w.is_active)
+    .map((w: Worker) => {
       const workerTasks = (tasks ?? []).filter(
         (t) => t.assigned_to === w.id && t.column !== 'done'
       );

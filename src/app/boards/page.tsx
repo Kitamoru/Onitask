@@ -67,7 +67,7 @@ export default function BoardsPage() {
 
         setWorkers(workers ?? []);
 
-        const workspaceIds = (workers ?? []).map((w) => w.workspace_id);
+        const workspaceIds = ((workers ?? []) as Worker[]).map((w: Worker) => w.workspace_id);
 
         if (workspaceIds.length === 0) {
           setLoading(false);
@@ -93,7 +93,7 @@ export default function BoardsPage() {
         let processCount = 0;
         let escalationCount = 0;
 
-        (tasks ?? []).forEach((task) => {
+        ((tasks ?? []) as Task[]).forEach((task: Task) => {
           if (task.assigned_to) {
             peopleSet.add(task.assigned_to);
           }
@@ -112,24 +112,20 @@ export default function BoardsPage() {
         });
 
         // Build board cards
-        const cards: BoardCardData[] = (workspaces ?? []).map((ws) => {
-          const wsTasks = (tasks ?? []).filter((t) => t.workspace_id === ws.id);
+        const cards: BoardCardData[] = ((workspaces ?? []) as Workspace[]).map((ws: Workspace) => {
+          const wsTasks = ((tasks ?? []) as Task[]).filter((t: Task) => t.workspace_id === ws.id);
           
           return {
             id: ws.id,
             name: ws.name,
             slug: ws.slug,
-            memberCount: (workers ?? [])
-              .filter((w) => w.workspace_id === ws.id && w.type === 'human')
-              .length,
-            agentCount: (workers ?? [])
-              .filter((w) => w.workspace_id === ws.id && w.type === 'agent')
-              .length,
+            memberCount: ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'human').length,
+            agentCount: ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'agent').length,
             stats: {
-              inWork: wsTasks.filter((t) => t.column === 'in_progress').length,
-              escalations: wsTasks.filter((t) => t.escalation_reason !== null).length,
+              inWork: wsTasks.filter((t: Task) => t.column === 'in_progress').length,
+              escalations: wsTasks.filter((t: Task) => t.escalation_reason !== null).length,
               overloaded: 0, // Would need attention_risk_score view data
-              done: wsTasks.filter((t) => t.column === 'done').length,
+              done: wsTasks.filter((t: Task) => t.column === 'done').length,
             },
             // Sprint info would come from sprints table
             sprint: undefined,
