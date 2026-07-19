@@ -38,9 +38,10 @@ export default function FlowBoardPage() {
   const [workers, setWorkers] = useState<WorkerCardData[]>([]);
   const [agents, setAgents] = useState<AgentCardData[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  // Store all tasks fetched from API for potential reuse (e.g., worker cards)
   const [allTasks, setAllTasks] = useState<TasksRow[]>([]);
 
-  // Redirect if not authenticated or new user
+  // Handle authentication states and onboarding redirection
   useEffect(() => {
     if (authLoading) return;
     if (authError) {
@@ -48,20 +49,24 @@ export default function FlowBoardPage() {
       setLoading(false);
       return;
     }
+    // If the user is new (no workspace), send them to onboarding
     if (authData?.is_new_user) {
       router.replace('/board/create');
       return;
     }
-    // Set workspace ID from auth data
-    if (authData?.worker.workspace_id) {
-      setWorkspaceId(authData.worker.workspace_id);
+    // If workspace_id is missing or empty, also treat as new user flow
+    const wsId = authData?.worker.workspace_id;
+    if (!wsId) {
+      router.replace('/board/create');
+      return;
     }
+    setWorkspaceId(wsId);
   }, [authLoading, authError, authData, router]);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
     if (!workspaceId) return;
-    
+
     setLoading(true);
     setError(null);
 
@@ -80,6 +85,10 @@ export default function FlowBoardPage() {
         setError(tasksError);
       }
 
+      // Store tasks for later use (e.g., worker cards)
+      const tasksRows = (apiTasks ?? []) as unknown as TasksRow[];
+      setAllTasks(tasksRows);
+
       // Transform metrics to UI data
       if (metrics.sprint) {
         setSprint(metrics.sprint);
@@ -87,7 +96,6 @@ export default function FlowBoardPage() {
 
       // Build signals from alerts
       const newSignals: SignalData[] = [];
-      
       // People signal: overloaded workers
       const overloadedCount = metrics.workers.filter(w => w.status === 'overloaded').length;
       if (overloadedCount > 0) {
@@ -174,14 +182,13 @@ export default function FlowBoardPage() {
         },
       ]);
 
-      // Build worker/agent cards
+      // Build worker/agent cards using the freshly fetched tasksRows
       const newWorkers: WorkerCardData[] = [];
       const newAgents: AgentCardData[] = [];
 
       for (const wm of metrics.workers) {
-        const workerTasks = allTasks.filter(t => t.assigned_to === wm.display_name);
-        const card = {
-          id: wm.display_name,
+        const workerTasks = tasksRows.filter(t => t.assigned_to === wm.display_name);
+        const cardBase = {
           cognitiveWeight: wm.cognitive_load,
           spPerDay: wm.type === 'human' ? 3.5 : 5.0,
           trendUp: true,
@@ -191,23 +198,29 @@ export default function FlowBoardPage() {
           tasks: tasksToWorkerTaskList(workerTasks),
           type: wm.type,
         };
-
         if (wm.type === 'human') {
-          newWorkers.push({ ...card, displayName: wm.display_name } as WorkerCardData);
+          newWorkers.push({
+            id: wm.display_name,
+            displayName: wm.display_name,
+            ...cardBase,
+          } as WorkerCardData);
         } else {
-          newAgents.push({ ...card, name: wm.display_name } as AgentCardData);
+          newAgents.push({
+            id: wm.display_name,
+            name: wm.display_name,
+            ...cardBase,
+          } as AgentCardData);
         }
       }
 
       setWorkers(newWorkers);
       setAgents(newAgents);
-      setAllTasks((apiTasks ?? []) as unknown as TasksRow[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, allTasks]);
+  }, [workspaceId]);
 
   // Initial fetch
   useEffect(() => {
