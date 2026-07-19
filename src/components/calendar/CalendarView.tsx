@@ -206,63 +206,86 @@ function EventDetailPanel({
     setShowReminder(false);
   };
 
+  /**
+   * Calculate bottom offset for Telegram MainButton area.
+   * When running inside Telegram WebApp, the modal must avoid overlap
+   * with the native Telegram "MainButton" which can occupy ~54px at bottom.
+   */
+  const tgBottomOffset = typeof window !== 'undefined'
+    ? ((window as any).Telegram?.WebApp?.mainButton?.height || 0)
+    : 0;
+
+  // Safe area bottom inset (CSS env() — read from computed styles if available)
+  const safeAreaBottom = typeof window !== 'undefined' && document.documentElement
+    ? parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-bottom') || '0', 10)
+    : 0;
+
   return (
     <div
       className="
-        fixed inset-0 z-50 flex items-end justify-center
+        fixed inset-x-0 z-modal flex items-end justify-center
         sm:items-center
+        /* On mobile: ensure panel doesn't go behind bottom safe area */
+        pb-safe-bottom
       "
+      style={{
+        // Push up above Telegram's MainButton + safe area when active
+        paddingBottom: Math.max(tgBottomOffset, safeAreaBottom, 16) + 'px',
+      }}
       role="dialog"
       aria-modal="true"
       aria-label={`Детали события: ${event.title}`}
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+       {/* Backdrop — full screen on mobile, centered on desktop */}
+       <div
+         className="absolute inset-0 bg-black/60"
+         onClick={onClose}
+         aria-hidden="true"
+       />
 
-      {/* Panel */}
-      <div
-        className="
-          relative w-full max-w-md
-          rounded-t-card sm:rounded-card
-          bg-dark
-          border border-border-default
-          animate-slide-up
-        "
-        style={{
-          maxHeight: '80vh',
-          overflowY: 'auto',
-        }}
-      >
-        {/* Header */}
-        <div
-          className="
-            flex items-center justify-between
-            px-4 py-3
-            border-b border-border-default
-          "
-        >
-          <h2
-            className="
-              truncate text-heading-sm font-semibold
-            "
-            style={{ color: 'var(--color-text-primary)' }}
-          >
-            {event.title}
-          </h2>
-          <button
-            onClick={onClose}
-            className="
-              rounded-sm p-1
-              transition-colors duration-fast
-              hover:bg-surface-hover
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-            "
-            aria-label="Закрыть"
-          >
+       {/* Panel — slide-up from bottom on mobile, centered on desktop */}
+       <div
+         className="
+           relative w-full max-w-md
+           rounded-t-card sm:rounded-card
+           bg-primary-dark
+           border border-border-default
+           animate-slide-up
+         "
+         style={{
+           maxHeight: `min(80vh, calc(100dvh - ${tgBottomOffset + 16}px))`,
+           overflowY: 'auto',
+           backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
+         }}
+       >
+         {/* Header */}
+         <div
+           className="
+             flex items-center justify-between
+             px-4 py-3
+             border-b
+           "
+           style={{ borderColor: 'var(--color-border-default)' }}
+         >
+           <h2
+             className="
+               truncate text-heading-sm font-semibold
+             "
+             style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+           >
+             {event.title}
+           </h2>
+           <button
+             onClick={onClose}
+             className="
+               rounded-sm p-1
+               transition-colors duration-fast
+               hover:bg-surface/50
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+               active:scale-95
+             "
+             aria-label="Закрыть"
+           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path
                 d="M4 4L12 12M12 4L4 12"
@@ -274,104 +297,110 @@ function EventDetailPanel({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="px-4 py-3 space-y-3">
-          {/* Provider badge */}
-          <div className="flex items-center gap-2">
+         {/* Content — scrollable event details */}
+         <div className="px-4 py-3 space-y-3">
+           {/* Provider badge */}
+           <div className="flex items-center gap-2 shrink-0">
             <ProviderBadge provider={event.provider} />
-            <span
-              className="text-body-sm"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              {event.provider === 'yandex' ? 'Yandex Календарь' : 'Outlook'}
-            </span>
+             <span
+               className="text-body-sm"
+               style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+             >
+               {event.provider === 'yandex' ? 'Yandex Календарь' : 'Outlook'}
+             </span>
           </div>
 
-          {/* Time */}
-          <div
-            className="
-              flex flex-col gap-1
-              rounded-md px-3 py-2
-              bg-surface
-            "
-            style={{ borderColor: 'var(--color-border-white-subtle)' }}
-          >
+           {/* Time */}
+           <div
+             className="
+               flex flex-col gap-1
+               rounded-md px-3 py-2
+               bg-surface
+             "
+             style={{ 
+               borderColor: 'var(--color-border-white-subtle)',
+               backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+             }}
+           >
             <div className="flex items-center justify-between">
-              <span
-                className="text-body-sm"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                Начало
-              </span>
-              <span
-                className="text-body-sm font-medium"
-                style={{ color: 'var(--color-text-primary)' }}
-              >
+               <span
+                 className="text-body-sm"
+                 style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+               >
+                 Начало
+               </span>
+               <span
+                 className="text-body-sm font-medium"
+                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+               >
                 {new Date(event.start_at).toLocaleString('ru-RU')}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span
-                className="text-body-sm"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                Окончание
-              </span>
-              <span
-                className="text-body-sm font-medium"
-                style={{ color: 'var(--color-text-primary)' }}
-              >
+               <span
+                 className="text-body-sm"
+                 style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+               >
+                 Окончание
+               </span>
+               <span
+                 className="text-body-sm font-medium"
+                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+               >
                 {new Date(event.end_at).toLocaleString('ru-RU')}
               </span>
             </div>
           </div>
 
-          {/* Description */}
-          {event.description && (
-            <div
-              className="
-                rounded-md px-3 py-2
-                bg-surface
-              "
-            >
-              <span
-                className="text-body-sm"
-                style={{ color: 'var(--color-text-primary)' }}
-              >
+           {/* Description */}
+           {event.description && (
+             <div
+               className="
+                 rounded-md px-3 py-2
+                 bg-surface
+               "
+               style={{ backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))' }}
+             >
+               <span
+                 className="text-body-sm"
+                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+               >
                 {event.description}
               </span>
             </div>
           )}
 
-          {/* Reminder settings */}
-          <div
-            className="
-              flex items-center justify-between
-              rounded-md px-3 py-2
-              bg-surface
-            "
-          >
-            <span
-              className="text-body-sm"
-              style={{ color: 'var(--color-text-primary)' }}
-            >
-              Напоминание
-            </span>
+           {/* Reminder settings */}
+           <div
+             className="
+               flex items-center justify-between
+               rounded-md px-3 py-2
+               bg-surface
+             "
+             style={{ backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))' }}
+           >
+             <span
+               className="text-body-sm"
+               style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+             >
+               Напоминание
+             </span>
             
             {!showReminder ? (
-              <button
-                onClick={() => setShowReminder(true)}
-                className="
-                  rounded-sm px-2 py-1
-                  transition-colors duration-fast
-                  hover:bg-surface-hover
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                "
-                style={{
-                  fontSize: 'var(--text-body-sm)',
-                  color: 'var(--color-accent-amber)',
-                }}
-              >
+               <button
+                 onClick={() => setShowReminder(true)}
+                 className="
+                   rounded-sm px-2 py-1
+                   transition-colors duration-fast
+                   hover:bg-surface/50
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                   active:scale-95
+                 "
+                 style={{
+                   fontSize: 'var(--text-body-sm)',
+                   color: 'var(--tg-theme-button-color, var(--color-accent-amber))',
+                 }}
+               >
                 {event.reminder_minutes_before === null
                   ? 'Без напоминания'
                   : `За ${event.reminder_minutes_before} мин`}
@@ -381,50 +410,58 @@ function EventDetailPanel({
                 <select
                   value={reminderValue ?? ''}
                   onChange={(e) => setReminderValue(e.target.value === '' ? null : Number(e.target.value))}
-                  className="
-                    rounded-sm px-2 py-1
-                    bg-surface-hover
-                    border border-border-default
-                    text-body-sm
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                  "
-                  style={{ color: 'var(--color-text-primary)' }}
+                   className="
+                     rounded-sm px-2 py-1
+                     bg-surface-hover
+                     border
+                     text-body-sm
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                     active:scale-95
+                   "
+                   style={{ 
+                     color: 'var(--tg-theme-text-color, var(--color-text-primary))',
+                     borderColor: 'var(--color-border-default)',
+                     backgroundColor: 'var(--color-bg-surface-hover)',
+                   }}
                   aria-label="Выбрать время напоминания"
                 >
-                  <option value="">Без напоминания</option>
-                  <option value={5}>За 5 мин</option>
-                  <option value={10}>За 10 мин</option>
-                  <option value={15}>За 15 мин</option>
-                  <option value={30}>За 30 мин</option>
-                  <option value={60}>За 1 час</option>
+                   {/* Options inherit text color from parent */}
+                   <option value="">Без напоминания</option>
+                   <option value={5}>За 5 мин</option>
+                   <option value={10}>За 10 мин</option>
+                   <option value={15}>За 15 мин</option>
+                   <option value={30}>За 30 мин</option>
+                   <option value={60}>За 1 час</option>
                 </select>
                 <button
                   onClick={handleSaveReminder}
-                  className="
-                    rounded-sm px-2 py-1
-                    transition-colors duration-fast
-                    hover:bg-surface-hover
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                  "
-                  style={{
-                    fontSize: 'var(--text-body-sm)',
-                    color: 'var(--color-signal-green)',
-                  }}
+                   className="
+                     rounded-sm px-2 py-1
+                     transition-colors duration-fast
+                     hover:bg-surface/50
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                     active:scale-95
+                   "
+                   style={{
+                     fontSize: 'var(--text-body-sm)',
+                     color: 'var(--color-signal-green)',
+                   }}
                 >
                   OK
                 </button>
                 <button
                   onClick={() => setShowReminder(false)}
-                  className="
-                    rounded-sm px-2 py-1
-                    transition-colors duration-fast
-                    hover:bg-surface-hover
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                  "
-                  style={{
-                    fontSize: 'var(--text-body-sm)',
-                    color: 'var(--color-text-muted)',
-                  }}
+                   className="
+                     rounded-sm px-2 py-1
+                     transition-colors duration-fast
+                     hover:bg-surface/50
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                     active:scale-95
+                   "
+                   style={{
+                     fontSize: 'var(--text-body-sm)',
+                     color: 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                   }}
                 >
                   Отмена
                 </button>

@@ -580,11 +580,25 @@ export function FlowBoard({
 
   return (
     <div
-      className="flex flex-col mx-auto p-4"
-      style={{ backgroundColor: 'var(--color-bg-primary-dark)', maxWidth: '100%', margin: '0 auto', gap: 'var(--spacing-6)', minHeight: '100vh' }}
+      className="
+        flex flex-col w-full mx-auto
+        xs:p-3 sm:p-4
+        bg-primary-dark
+        min-h-screen-dvh
+        /* Safe area for bottom menu + Telegram header */
+        pt-safe-top pb-safe-bottom
+      "
+      style={{ 
+        backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
+        maxWidth: '100%',
+        margin: '0 auto',
+        gap: 'var(--spacing-6)',
+        minHeight: 'calc(100dvh - var(--size-bottom-menu-height))',
+      }}
       aria-label="Флоу задач"
     >
-      <div className="flex w-full" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
+       {/* Header row — icon + title + date */}
+       <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
         <div className="flex items-center gap-2">
           <KanbanIcon />
           <h1
@@ -615,12 +629,22 @@ export function FlowBoard({
         </p>
       </div>
 
-      <SprintCompressedInfo sprint={sprint} />
+       <SprintCompressedInfo sprint={sprint} />
 
-      {signals.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <SectionHeader title="Сигналы" />
-          <div className="grid w-full" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }} aria-label="Сигналы команды">
+       {/* Signals section — 3-column grid on mobile, responsive on larger screens */}
+       {signals.length > 0 && (
+         <div className="flex flex-col gap-4">
+           <SectionHeader title="Сигналы" />
+           <div 
+             className="grid w-full" 
+             style={{ 
+               gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+               gap: '8px',
+               // Ensure cards don't overflow on small screens
+               minWidth: 0,
+             }} 
+             aria-label="Сигналы команды"
+           >
             {signals.map((signal) => (
               <SignalCard key={signal.id} signal={signal} />
             ))}
@@ -628,10 +652,19 @@ export function FlowBoard({
         </div>
       )}
 
-      {taskStatuses.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <SectionHeader title="Статусы задач" />
-          <div className="grid w-full" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }} aria-label="Статусы задач">
+       {/* Task statuses section — 2-column grid */}
+       {taskStatuses.length > 0 && (
+         <div className="flex flex-col gap-4">
+           <SectionHeader title="Статусы задач" />
+           <div 
+             className="grid w-full" 
+             style={{ 
+               gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+               gap: '8px',
+               minWidth: 0,
+             }} 
+             aria-label="Статусы задач"
+           >
             {taskStatuses.map((status) => (
               <TaskStatusCard key={status.id} status={status} />
             ))}
@@ -663,7 +696,12 @@ export function FlowBoard({
         </div>
       )}
 
-      <div className="h-20" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }} aria-hidden="true" />
+       {/* Bottom spacer — accounts for safe area + breathing room */}
+       <div 
+         className="h-16 xs:h-20 w-full shrink-0" 
+         style={{ backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))' }} 
+         aria-hidden="true" 
+       />
     </div>
   );
 }

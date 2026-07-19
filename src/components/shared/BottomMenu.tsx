@@ -77,16 +77,21 @@ export function BottomMenu() {
   return (
     <nav
       className="
-        fixed bottom-0 left-0 right-0 z-50
+        fixed bottom-0 left-0 right-0 z-bottom-menu
         flex flex-row items-center justify-center
-        bg-bottom-menu-bg
+        bg-primary-dark
         backdrop-blur-[var(--blur-bottom-menu)]
         transition-colors duration-fast
-        sm:px-2 md:px-4
+        xs:px-1 sm:px-2 md:px-4
+        /* Safe area inset for notched devices */
+        pb-safe-bottom
       "
       style={{
         height: 'var(--size-bottom-menu-height)',
-        padding: 'var(--spacing-bottom-menu-padding)',
+        paddingTop: 'var(--spacing-bottom-menu-padding)',
+        paddingBottom: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-bottom))',
+        paddingLeft: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-left))',
+        paddingRight: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-right))',
         gap: 'var(--spacing-bottom-menu-gap)',
         borderTop: `1px solid transparent`,
         borderImage: `linear-gradient(90deg, 

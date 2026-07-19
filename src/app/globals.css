@@ -3,10 +3,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   Telegram Web App Theme Integration
+   ============================================================================ */
+
+/* Base CSS custom properties — fallback values for browser testing */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* Telegram Theme Variables — populated by Telegram SDK at runtime */
+  /* If not in TWA, these fall back to our design tokens */
+  --tg-theme-bg-color: var(--color-bg-primary-dark);
+  --tg-theme-text-color: var(--color-text-primary);
+  --tg-theme-hint-color: var(--color-text-muted);
+  --tg-theme-link-color: var(--color-accent-amber);
+  --tg-theme-button-color: var(--color-accent-amber);
+  --tg-theme-button-text-color: var(--color-text-white);
+  --tg-theme-secondary-bg-color: var(--color-bg-surface);
+  --tg-theme-section-bg-color: var(--color-bg-surface);
+  --tg-theme-section-header-text-color: var(--color-text-secondary);
+  --tg-theme-subtitle-text-color: var(--color-text-muted);
+  --tg-theme-destructive-text-color: var(--color-error);
 }
+
+/* Telegram overrides our :root vars when running inside TWA */
+/* We listen for themeChanged and apply tg-theme-* vars dynamically */
 
 @theme inline {
   --color-background: var(--background);
@@ -22,8 +44,178 @@
   }
 }
 
+/* ============================================================================
+   Safe Area Inset Support (notched devices, Dynamic Island)
+   ============================================================================ */
+html {
+  /* Fallback: no safe area */
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* When env() is supported, use safe-area-inset */
+@supports (padding: max(0px)) {
+  html {
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
+  }
+}
+
+/* ============================================================================
+   Body & Global Reset
+   ============================================================================ */
+* {
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family-base), Arial, Helvetica, sans-serif;
+  /* Prevent overscroll bounce on iOS */
+  overscroll-behavior-y: contain;
+  /* Ensure content doesn't go behind status bar */
+  min-height: 100dvh; /* dynamic viewport height */
+}
+
+/* ============================================================================
+   Telegram-specific body adjustments
+   ============================================================================ */
+.tg-webapp body {
+  background: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
+  color: var(--tg-theme-text-color, var(--color-text-primary));
+}
+
+/* ============================================================================
+   Custom Utilities
+   ============================================================================ */
+
+/* Scrollbar styling for webkit */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ============================================================================
+   Form Container — scrollable form area with proper spacing
+   ============================================================================ */
+.form-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+}
+
+/* ============================================================================
+   Safe area utilities — for notched devices
+   ============================================================================ */
+.pt-safe-top {
+  padding-top: max(var(--spacing-4), env(safe-area-inset-top, 0px));
+}
+
+.pb-safe-bottom {
+  padding-bottom: max(var(--spacing-4), env(safe-area-inset-bottom, 0px));
+}
+
+.pl-safe-left {
+  padding-left: max(var(--spacing-4), env(safe-area-inset-left, 0px));
+}
+
+.pr-safe-right {
+  padding-right: max(var(--spacing-4), env(safe-area-inset-right, 0px));
+}
+
+/* Safe area for main content wrapper (prevents overlap with Telegram header + bottom menu) */
+.content-with-safeties {
+  padding-top: max(0px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(var(--size-bottom-menu-height), env(safe-area-inset-bottom, 0px));
+}
+
+/* ============================================================================
+   Card stretch animation
+   ============================================================================ */
+.card-stretch {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-stretch:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================================
+   Slide-up animation for modals
+   ============================================================================ */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
+}
+
+/* ============================================================================
+   Responsive Breakpoints — Mobile-first
+   ============================================================================ */
+
+/* xs: 480px — small mobile (iPhone SE, etc.) */
+/* sm: 640px — large mobile / small tablet landscape */
+/* md: 768px — tablet */
+/* lg: 1024px — desktop */
+
+/* ============================================================================
+   react-day-picker overrides (CalendarView)
+   ============================================================================ */
+.rdp {
+  --rdp-cell-size: 36px;
+  --rdp-background-color: var(--color-accent-amber);
+  --rdp-accent-color: var(--color-accent-amber);
+  margin: 0;
+}
+
+.rdp-button.rdp-day {
+  border-radius: var(--radius-xs);
+  transition: background-color 0.15s ease;
+}
+
+.rdp-button.rdp-day[rds-selected='true'] {
+  background-color: var(--tg-theme-button-color, var(--color-accent-amber));
+  color: var(--tg-theme-button-text-color, var(--color-text-white));
+}
+
+.rdp-button.rdp-today:not([rds-selected='true']) {
+  background-color: var(--color-bg-surface-hover);
+}
+
+.rdp-caption_label {
+  font-family: var(--font-family-display);
+  font-size: var(--text-heading-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--tg-theme-text-color, var(--color-text-primary));
+}
+
+.rdp-weekday {
+  font-size: var(--text-body-xs);
+  color: var(--tg-theme-hint-color, var(--color-text-muted));
 }

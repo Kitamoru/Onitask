@@ -216,8 +216,20 @@ export function BoardForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col w-full max-w-[358px] mx-auto overflow-y-auto bg-primary-dark form-container"
-      style={{ padding: 'var(--spacing-4)', gap: 'var(--spacing-section-gap)' }}
+      className="
+        flex flex-col w-full max-w-form mx-auto
+        overflow-y-auto
+        bg-primary-dark
+        form-container
+        /* Safe area padding for mobile */
+        xs:px-3 sm:px-4
+        pt-safe-top pb-safe-bottom
+      "
+      style={{ 
+        padding: 'var(--spacing-4)',
+        gap: 'var(--spacing-section-gap)',
+        minHeight: '100dvh',
+      }}
       noValidate
     >
       {/* Global error */}
