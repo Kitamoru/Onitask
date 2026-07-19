@@ -7,10 +7,8 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-
-export const dynamic = 'force-dynamic';
 import { CalendarView } from '@/components/calendar/CalendarView';
 import { getCalendarEvents, getCalendarConnections } from '@/lib/api/calendar';
 import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
@@ -22,10 +20,10 @@ import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 // ═══════════════════════════════════════════════════════
-// Main Page Component
+// Search Params Hook Component (wrapped in Suspense)
 // ═══════════════════════════════════════════════════════
 
-export default function CalendarPage() {
+function CalendarContent() {
   const searchParams = useSearchParams();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
@@ -312,5 +310,21 @@ export default function CalendarPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// Main Page Component
+// ═══════════════════════════════════════════════════════
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+      </div>
+    }>
+      <CalendarContent />
+    </Suspense>
   );
 }
