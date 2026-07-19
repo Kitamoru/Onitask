@@ -63,7 +63,7 @@ export function useTasksRealtime(
           table: 'tasks',
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        (payload) => {
+        (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null; commit_timestamp?: string }) => {
           const eventType = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE';
           callbackRef.current({
             eventType,
@@ -113,7 +113,7 @@ export function useFlowMetricsRealtime(
       .on(
         'broadcast',
         { event: 'task_changed' },
-        ({ payload }) => {
+        ({ payload }: { payload: { workspace_id?: string } }) => {
           if (payload.workspace_id === workspaceId) {
             invalidateRef.current();
           }
