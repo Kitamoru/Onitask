@@ -45,9 +45,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { init_data, start_param } = body as { init_data?: string; start_param?: string };
+    // Accept both camelCase (initData) and snake_case (init_data) for backward compatibility
+    const initData = (body.initData || body.init_data) as string | undefined;
+    const start_param = body.start_param as string | undefined;
 
-    if (!init_data) {
+    if (!initData) {
       return NextResponse.json(
         { success: false, error: 'missing_init_data' },
         { status: 400 },
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Verify Telegram initData (timingSafeEqual, A-2)
-    const validation = await validateTelegramInitData(init_data, TELEGRAM_BOT_TOKEN);
+    const validation = await validateTelegramInitData(initData, TELEGRAM_BOT_TOKEN);
 
     if (!validation.valid || !validation.user) {
       return NextResponse.json(

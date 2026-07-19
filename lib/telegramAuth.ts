@@ -1,8 +1,18 @@
 // validateTelegramInitData — Telegram Web App initData validation
 // Uses HMAC-SHA256 + timingSafeEqual (axiom A-2: Timing Safe & DB Isolation)
 // Works in both Node.js and Deno Edge Runtime (Vercel)
+//
+// Algorithm per Telegram Bot API docs:
+// 1. Parse initData into key=value pairs
+// 2. Exclude the hash parameter
+// 3. Sort remaining params alphabetically by key
+// 4. Join with newline: "key=value\nkey2=value2\n..."
+// 5. Derive secret key: HMAC_SHA256('WebAppData', botToken)
+// 6. Compute HMAC-SHA256(secretKey, dataToCheck)
+// 7. Compare computed hex hash with provided hash using timingSafeEqual
+// 8. Verify auth_date is not older than 24 hours
 
-import { webcrypto } from 'node:crypto';
+import crypto from 'crypto';
 
 export interface TelegramUser {
   id: string;
@@ -20,21 +30,50 @@ export interface ValidateResult {
 }
 
 /**
+ * Derives the secret key for Telegram initData validation.
+ * Per Telegram spec: secretKey = HMAC_SHA256('WebAppData', botToken)
+ */
+function deriveSecretKey(botToken: string): Buffer {
+  return crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+}
+
+/**
+ * Performs a timing-safe comparison of two strings.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    result |= bufA[i] ^ bufB[i];
+  }
+
+  return result === 0;
+}
+
+/**
  * Validates Telegram initData string using HMAC-SHA256.
- * 
+ *
  * Algorithm (per Telegram Bot API docs):
  * 1. Parse initData into key=value pairs
  * 2. Exclude the hash parameter
  * 3. Sort remaining params alphabetically by key
  * 4. Join with newline: "key=value\nkey2=value2\n..."
- * 5. Compute HMAC-SHA256(botToken, dataToCheck)
- * 6. Compare computed hex hash with provided hash using timingSafeEqual
- * 7. Verify auth_date is not older than 24 hours
+ * 5. Derive secret key: HMAC_SHA256('WebAppData', botToken)
+ * 6. Compute HMAC-SHA256(secretKey, dataToCheck)
+ * 7. Compare computed hex hash with provided hash using timingSafeEqual
+ * 8. Verify auth_date is not older than 24 hours
  */
-export async function validateTelegramInitData(
+export function validateTelegramInitData(
   initData: string,
   botToken: string,
-): Promise<ValidateResult> {
+): ValidateResult {
   if (!initData || !botToken) {
     return { valid: false, error: 'missing_params' };
   }
@@ -47,7 +86,7 @@ export async function validateTelegramInitData(
     for (const pair of pairs) {
       const [key, ...valueParts] = pair.split('=');
       if (key && valueParts.length > 0) {
-        params.set(key, valueParts.join('='));
+        params.set(key, decodeURIComponent(valueParts.join('=')));
       }
     }
 
@@ -76,41 +115,16 @@ export async function validateTelegramInitData(
       .map((key) => `${key}=${params.get(key)}`)
       .join('\n');
 
-    // Compute HMAC-SHA256
-    const encoder = new TextEncoder();
-    const keyMaterial = await webcrypto.subtle.importKey(
-      'raw',
-      encoder.encode(botToken),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign'],
-    );
+    // Derive secret key: HMAC_SHA256('WebAppData', botToken)
+    const secretKey = deriveSecretKey(botToken);
 
-    const signature = await webcrypto.subtle.sign(
-      'HMAC',
-      keyMaterial,
-      encoder.encode(dataToCheck),
-    );
-
-    // Convert to hex string
-    const computedHash = Array.from(new Uint8Array(signature))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Compute HMAC-SHA256(secretKey, dataToCheck)
+    const hmac = crypto.createHmac('sha256', secretKey);
+    hmac.update(dataToCheck);
+    const computedHash = hmac.digest('hex');
 
     // Timing-safe comparison
-    const providedHashBytes = encoder.encode(providedHash);
-    const computedHashBytes = encoder.encode(computedHash);
-
-    if (providedHashBytes.length !== computedHashBytes.length) {
-      return { valid: false, error: 'invalid_hash' };
-    }
-
-    let result = 0;
-    for (let i = 0; i < providedHashBytes.length; i++) {
-      result |= providedHashBytes[i] ^ computedHashBytes[i];
-    }
-
-    if (result !== 0) {
+    if (!timingSafeEqual(providedHash, computedHash)) {
       return { valid: false, error: 'invalid_hash' };
     }
 
