@@ -48,33 +48,43 @@ async function getCurrentWorkspaceId(): Promise<string | null> {
 
 /** Convert DB task row to our TaskEntity */
 function mapTaskRow(row: TasksRow): TaskEntity {
-  // Compute full_id from workspace prefix + task_number
-  // Note: workspace_prefix is not stored directly, we derive from task_number pattern
   const fullId = row.task_number ? `TASK-${row.task_number}` : row.id.slice(0, 8);
   
   return {
     id: row.id,
     full_id: fullId,
-    workspace_prefix: 'TASK', // placeholder - would need workspace lookup
+    workspace_prefix: 'TASK',
     task_number: row.task_number ?? 0,
     title: row.title,
     description: row.description,
-    ai_hint: null, // would come from task_enrichments
+    tags: row.tags ?? [],
+    ai_hint: null,
     column: row.column,
-    assigned_to: row.assigned_to,
-    reviewer_id: row.reviewer_id,
     priority: row.priority,
-    story_points: null, // would come from task_enrichments
-    cognitive_weight: row.cognitive_weight,
     deadline: row.deadline,
+    deadline_urgency: row.deadline_urgency ?? null,
+    is_inbox: row.is_inbox,
     is_blocked: row.is_blocked,
     needs_human: row.needs_human,
+    escalation_reason: row.escalation_reason ?? null,
+    assigned_to: row.assigned_to,
+    reviewer_id: row.reviewer_id,
+    handoff_to: row.handoff_to ?? null,
+    handoff_notes: row.handoff_notes ?? null,
     sprint_id: row.sprint_id,
-    is_inbox: row.is_inbox,
+    story_points: null,
+    cognitive_weight: row.cognitive_weight,
+    raw_input: row.raw_input ?? null,
+    clarity_score: row.clarity_score ?? null,
+    complexity: row.complexity ?? null,
+    enrichment_strategy: row.enrichment_strategy ?? null,
     version: row.version,
+    position: row.position,
+    source: row.source ?? null,
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
-    moved_to_column_at: row.moved_to_column_at,
+    moved_to_column_at: row.moved_to_column_at ?? null,
   };
 }
 

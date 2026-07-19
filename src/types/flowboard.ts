@@ -68,6 +68,29 @@ export interface TaskStatusData {
   color: string;
 }
 
+// ─── Agent Card ──────────────────────────────────────────────────────────────
+
+export interface AgentCardData {
+  /** Agent UUID */
+  id: string;
+  /** Agent name */
+  name: string;
+  /** Cognitive weight (0–3 scale) */
+  cognitiveWeight: number;
+  /** Story points per day velocity */
+  spPerDay: number;
+  /** Trend direction indicator */
+  trendUp: boolean;
+  /** Active days count */
+  activeDays: number;
+  /** Role label */
+  roleLabel: string;
+  /** Whether agent is overloaded */
+  overloaded?: boolean;
+  /** List of active task references */
+  tasks: string[];
+}
+
 // ─── Worker Card ─────────────────────────────────────────────────────────────
 
 export interface WorkerCardData {
@@ -208,32 +231,56 @@ export interface TaskEntity {
   title: string;
   /** Description */
   description: string | null;
+  /** Tags array */
+  tags: string[];
   /** AI-generated hint */
   ai_hint: string | null;
   /** Column: backlog, in_progress, review, done */
   column: string;
-  /** Assigned worker UUID */
-  assigned_to: string | null;
-  /** Reviewer worker UUID */
-  reviewer_id: string | null;
-  /** Priority: low, medium, high, urgent */
+  /** Priority: low, medium, high, critical */
   priority: string;
-  /** Story points */
-  story_points: number | null;
-  /** Cognitive weight */
-  cognitive_weight: number;
-  /** Deadline ISO string */
+  /** Deadline ISO string or null */
   deadline: string | null;
+  /** Deadline urgency level */
+  deadline_urgency: string | null;
+  /** Whether task is an inbox draft */
+  is_inbox: boolean;
   /** Whether task is blocked */
   is_blocked: boolean;
   /** Whether task needs human intervention */
   needs_human: boolean;
+  /** Escalation reason */
+  escalation_reason: string | null;
+  /** Assigned worker UUID */
+  assigned_to: string | null;
+  /** Reviewer worker UUID */
+  reviewer_id: string | null;
+  /** Handoff target worker UUID */
+  handoff_to: string | null;
+  /** Handoff notes */
+  handoff_notes: string | null;
   /** Sprint UUID */
   sprint_id: string | null;
-  /** Whether task is an inbox draft */
-  is_inbox: boolean;
+  /** Story points */
+  story_points: number | null;
+  /** Cognitive weight (0-3) */
+  cognitive_weight: number;
+  /** Raw natural language input */
+  raw_input: string | null;
+  /** Clarity score (0-1) */
+  clarity_score: number | null;
+  /** Complexity (1-3) */
+  complexity: number | null;
+  /** Enrichment strategy */
+  enrichment_strategy: string | null;
   /** Version for optimistic locking */
   version: number;
+  /** Drag position within column */
+  position: number;
+  /** Source of task creation */
+  source: string | null;
+  /** Additional metadata JSON */
+  metadata: Record<string, unknown>;
   /** Created at ISO string */
   created_at: string;
   /** Updated at ISO string */
@@ -262,10 +309,14 @@ export interface PatchTaskRequest {
   title?: string;
   /** New description */
   description?: string | null;
+  /** New tags */
+  tags?: string[];
   /** Expected version for optimistic lock */
   expected_version?: number;
   /** Whether to clear is_blocked flag */
   clear_blocked?: boolean;
+  /** New position for drag-and-drop ordering */
+  position?: number;
 }
 
 /** Response from PATCH /api/tasks/:id */

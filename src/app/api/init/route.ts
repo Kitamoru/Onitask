@@ -1,27 +1,27 @@
-'use server';
+﻿'use server';
 
 /**
- * POST /api/init — Find-or-create user profile and workspace membership
+ * POST /api/init тАФ Find-or-create user profile and workspace membership
  * 
- * INV-16: find-or-create ТОЛЬКО. display_name и avatar_url устанавливаются
- * при создании из Telegram initData и обновляются ТОЛЬКО через явные настройки
- * профиля в TWA. Автообновление при повторных вызовах /api-init запрещено.
+ * INV-16: find-or-create ╨в╨Ю╨Ы╨м╨Ъ╨Ю. display_name ╨╕ avatar_url ╤Г╤Б╤В╨░╨╜╨░╨▓╨╗╨╕╨▓╨░╤О╤В╤Б╤П
+ * ╨┐╤А╨╕ ╤Б╨╛╨╖╨┤╨░╨╜╨╕╨╕ ╨╕╨╖ Telegram initData ╨╕ ╨╛╨▒╨╜╨╛╨▓╨╗╤П╤О╤В╤Б╤П ╨в╨Ю╨Ы╨м╨Ъ╨Ю ╤З╨╡╤А╨╡╨╖ ╤П╨▓╨╜╤Л╨╡ ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨╕
+ * ╨┐╤А╨╛╤Д╨╕╨╗╤П ╨▓ TWA. ╨Р╨▓╤В╨╛╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨╕╨╡ ╨┐╤А╨╕ ╨┐╨╛╨▓╤В╨╛╤А╨╜╤Л╤Е ╨▓╤Л╨╖╨╛╨▓╨░╤Е /api-init ╨╖╨░╨┐╤А╨╡╤Й╨╡╨╜╨╛.
  * 
- * WS-06: Обработка start_param из Telegram Mini App deep link для инвайт-ссылок.
- * Если пользователь перешёл по реферальной ссылке — создаётся worker в целевом workspace.
+ * WS-06: ╨Ю╨▒╤А╨░╨▒╨╛╤В╨║╨░ start_param ╨╕╨╖ Telegram Mini App deep link ╨┤╨╗╤П ╨╕╨╜╨▓╨░╨╣╤В-╤Б╤Б╤Л╨╗╨╛╨║.
+ * ╨Х╤Б╨╗╨╕ ╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤М ╨┐╨╡╤А╨╡╤И╤С╨╗ ╨┐╨╛ ╤А╨╡╤Д╨╡╤А╨░╨╗╤М╨╜╨╛╨╣ ╤Б╤Б╤Л╨╗╨║╨╡ тАФ ╤Б╨╛╨╖╨┤╨░╤С╤В╤Б╤П worker ╨▓ ╤Ж╨╡╨╗╨╡╨▓╨╛╨╝ workspace.
  * 
  * Algorithm:
- * 1. Верифицировать Telegram initData (timingSafeEqual, A-2)
- * 2. Найти profiles WHERE telegram_id = user.id
- * 3. Если не найден → создать profile (+ worker если есть invite link)
- * 4. Если найден → вернуть как есть (НЕ обновлять display_name/avatar_url)
- * 5. Вернуть профиль + список workspace + is_new_user
+ * 1. ╨Т╨╡╤А╨╕╤Д╨╕╤Ж╨╕╤А╨╛╨▓╨░╤В╤М Telegram initData (timingSafeEqual, A-2)
+ * 2. ╨Э╨░╨╣╤В╨╕ profiles WHERE telegram_id = user.id
+ * 3. ╨Х╤Б╨╗╨╕ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜ тЖТ ╤Б╨╛╨╖╨┤╨░╤В╤М profile (+ worker ╨╡╤Б╨╗╨╕ ╨╡╤Б╤В╤М invite link)
+ * 4. ╨Х╤Б╨╗╨╕ ╨╜╨░╨╣╨┤╨╡╨╜ тЖТ ╨▓╨╡╤А╨╜╤Г╤В╤М ╨║╨░╨║ ╨╡╤Б╤В╤М (╨Э╨Х ╨╛╨▒╨╜╨╛╨▓╨╗╤П╤В╤М display_name/avatar_url)
+ * 5. ╨Т╨╡╤А╨╜╤Г╤В╤М ╨┐╤А╨╛╤Д╨╕╨╗╤М + ╤Б╨┐╨╕╤Б╨╛╨║ workspace + is_new_user
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateTelegramInitData } from '../../../lib/telegramAuth';
-import { createServerClient } from '../../../lib/supabase';
-import type { InitResponse } from '../../../types/api';
+import { validateTelegramInitData } from '../../../../lib/telegramAuth';
+import { createServerClient } from '../../../../lib/supabase';
+import type { InitResponse } from '../../../../types/api';
 
 interface WorkspaceInfo {
   id: string;
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3a. Profile exists — return as-is (INV-16: do NOT update display_name/avatar_url)
+    // 3a. Profile exists тАФ return as-is (INV-16: do NOT update display_name/avatar_url)
     if (existingProfile) {
       const profile = existingProfile as Record<string, unknown>;
       const profileId = profile.id as string;
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3c. New user — create profile + optionally worker from invite
+    // 3c. New user тАФ create profile + optionally worker from invite
     const userId = crypto.randomUUID();
 
     // Generate display_name from Telegram data
