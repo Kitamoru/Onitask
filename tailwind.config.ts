@@ -1,25 +1,24 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    './src/**/*.{js,jsx,ts,tsx}',
-    './app/**/*.{js,jsx,ts,tsx}',
-  ],
+  content: ['./src/**/*.{ts,tsx}', './app/**/*.{ts,tsx}'],
   theme: {
     extend: {
       /* ==========================================
          BREAKPOINTS — Mobile-first with xs (480px)
          ========================================== */
       screens: {
-        xs: '480px',
-        sm: '640px',
-        md: '768px',
-        lg: '1024px',
-        xl: '1280px',
+        xs: '480px',   // Small mobile (iPhone SE, etc.)
+        sm: '640px',   // Large mobile / landscape
+        md: '768px',   // Tablet
+        lg: '1024px',  // Desktop
+        xl: '1280px',  // Large desktop
       },
 
       /* ==========================================
          COLORS — mapped to CSS custom properties
-         Telegram Theme Variables имеют приоритет над design tokens:
+         All hex values are centralized in src/styles/tokens.css
+
+         Telegram Theme Variables优先于设计令牌:
          - --tg-theme-bg-color → фон основного контента
          - --tg-theme-text-color → основной текст
          - --tg-theme-button-color → цвет кнопок
@@ -129,8 +128,8 @@ module.exports = {
 
       /* ==========================================
          HEIGHT — единственный источник правды для
-         полноэкранных контейнеров в Telegram Mini App.
-         Использовать ТОЛЬКО h-tg-screen. Никогда h-screen/vh.
+          полноэкранных контейнеров в Telegram Mini App.
+          Использовать ТОЛЬКО h-tg-screen. Никогда h-screen/vh.
          ========================================== */
       height: {
         'tg-screen': 'var(--tg-viewport-stable-height, 100dvh)',
@@ -138,8 +137,8 @@ module.exports = {
 
       /* ==========================================
          MIN HEIGHT — сырые vh-юниты. НЕ для Telegram-
-         контейнеров (root layout, bottom menu, модалки).
-         Только для не-Telegram web-страниц, если такие есть.
+          контейнеров (root layout, bottom menu, модалки).
+          Только для не-Telegram web-страниц, если такие есть.
          ========================================== */
       minHeight: {
         'web-only-dvh': '100dvh',
@@ -149,9 +148,9 @@ module.exports = {
 
       /* ==========================================
          PADDING — safe area с приоритетом на данные
-         из Telegram WebApp SDK, env() — fallback.
-         tg-safe-*    → нотч / home indicator устройства
-         tg-content-* → нативный хедер/кнопки Telegram
+          из Telegram WebApp SDK, env() — fallback.
+          tg-safe-*    → нотч / home indicator устройства
+          tg-content-* → нативный хедер/кнопки Telegram
          ========================================== */
       padding: {
         'tg-safe-top': 'var(--tg-safe-top, env(safe-area-inset-top, 0px))',
