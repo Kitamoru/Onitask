@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BoardForm, type BoardFormData } from '@/components/board';
+import { useAuth } from '@/hooks/useAuth';
 
 /**
  * Create Board page — renders the "desk / create" design from Figma.
@@ -11,28 +12,37 @@ import { BoardForm, type BoardFormData } from '@/components/board';
  * Matches Figma node: 1:913 (desk / create)
  * 
  * Flow:
- * 1. User fills BoardForm
- * 2. Submit → POST /api/workspaces with form data + Telegram init_data
- * 3. On success → redirect to /board/[slug]
- * 4. On error → show error message in form
+ * 1. User arrives here either from root redirect (new user) or manually
+ * 2. If user already has a workspace (not new), redirect to /flowboard
+ * 3. User fills BoardForm
+ * 4. Submit → POST /api/workspaces with form data + Telegram init_data
+ * 5. On success → redirect to /boards
  */
 
 export default function CreateBoardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
+  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+
+  // Redirect existing users back to flowboard
+  useEffect(() => {
+    if (authLoading) return;
+    if (authError) return;
+    // If user is not new (already has account), redirect to flowboard
+    if (authData && !authData.is_new_user) {
+      router.replace('/flowboard');
+    }
+  }, [authLoading, authError, authData, router]);
 
   /**
    * Get Telegram init_data for authentication.
    * In TWA environment, this comes from Telegram.WebApp.initData.
-   * For development/testing, we use a mock flag.
    */
   function getTelegramInitData(): string {
-    // Check if running in Telegram Web App
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
       return (window as any).Telegram.WebApp.initData;
     }
-    // Development mode: return empty string (will need auth fix for local dev)
     return '';
   }
 
@@ -105,6 +115,34 @@ export default function CreateBoardPage() {
       setLoading(false);
     }
   };
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+      </div>
+    );
+  }
+
+  // Auth error state
+  if (authError) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen p-4"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <div className="text-center max-w-sm">
+          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
+            Ошибка авторизации. Откройте приложение через Telegram Web App.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

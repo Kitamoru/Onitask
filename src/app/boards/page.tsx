@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import type { Database } from '../../../types/supabase';
 import { RiskPulse, BoardCard } from '@/components/board';
 import type { RiskPulseData, BoardCardData } from '@/components/board';
@@ -10,7 +11,6 @@ import type { RiskPulseData, BoardCardData } from '@/components/board';
 type Worker = Database['public']['Tables']['workers']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Task = Database['public']['Tables']['tasks']['Row'];
-type Profile = Database['public']['Tables']['profiles']['Row'];
 
 /**
  * Boards Overview Page — "Стол" (Desk)
@@ -25,9 +25,9 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 export default function BoardsPage() {
   const router = useRouter();
   const supabase = getClient();
+  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
   
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [riskData, setRiskData] = useState<RiskPulseData>({
@@ -37,32 +37,27 @@ export default function BoardsPage() {
   });
   const [boardCards, setBoardCards] = useState<BoardCardData[]>([]);
 
+  // Redirect new users to create board page
+  useEffect(() => {
+    if (authLoading) return;
+    if (authError) return;
+    if (authData?.is_new_user) {
+      router.replace('/board/create');
+    }
+  }, [authLoading, authError, authData, router]);
+
+  // Load boards data when auth data is available
   useEffect(() => {
     async function loadData() {
+      if (!authData) return;
+
       try {
-        // Get current user session
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          // Redirect to login if not authenticated
-          router.push('/');
-          return;
-        }
-
-        // Get profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        setProfile(profile);
-
-        // Get all workers for this user
+        // Get all workers for this user from auth data
+        const workerId = authData.worker.id;
         const { data: workers } = await supabase
           .from('workers')
           .select('*')
-          .eq('source_id', user.id)
+          .eq('source_id', workerId)
           .eq('is_active', true);
 
         setWorkers(workers ?? []);
@@ -75,12 +70,13 @@ export default function BoardsPage() {
         }
 
         // Get all workspaces
-        const { data: workspaces } = await supabase
+        const { data: wsData } = await supabase
           .from('workspaces')
           .select('*')
           .in('id', workspaceIds);
 
-        setWorkspaces(workspaces ?? []);
+        const wsList = wsData as Workspace[] | null;
+        setWorkspaces(wsList ?? []);
 
         // Fetch tasks for risk pulse aggregation
         const { data: tasks } = await supabase
@@ -88,12 +84,14 @@ export default function BoardsPage() {
           .select('column, escalation_reason, assigned_to, workspace_id')
           .in('workspace_id', workspaceIds);
 
+        const tasksList = (tasks ?? []) as Task[];
+
         // Aggregate risk data
         const peopleSet = new Set<string>();
         let processCount = 0;
         let escalationCount = 0;
 
-        ((tasks ?? []) as Task[]).forEach((task: Task) => {
+        tasksList.forEach((task: Task) => {
           if (task.assigned_to) {
             peopleSet.add(task.assigned_to);
           }
@@ -112,15 +110,15 @@ export default function BoardsPage() {
         });
 
         // Build board cards
-        const cards: BoardCardData[] = ((workspaces ?? []) as Workspace[]).map((ws: Workspace) => {
-          const wsTasks = ((tasks ?? []) as Task[]).filter((t: Task) => t.workspace_id === ws.id);
+        const cards: BoardCardData[] = (wsList ?? []).map((ws: Workspace) => {
+          const wsTasks = tasksList.filter((t: Task) => t.workspace_id === ws.id);
           
           return {
             id: ws.id,
             name: ws.name,
             slug: ws.slug,
-            memberCount: ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'human').length,
-            agentCount: ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'agent').length,
+            memberCount: (workers ?? []).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'human').length,
+            agentCount: (workers ?? []).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'agent').length,
             stats: {
               inWork: wsTasks.filter((t: Task) => t.column === 'in_progress').length,
               escalations: wsTasks.filter((t: Task) => t.escalation_reason !== null).length,
@@ -141,7 +139,35 @@ export default function BoardsPage() {
     }
 
     loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authData, supabase]);
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+      </div>
+    );
+  }
+
+  // Auth error state
+  if (authError) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen p-4"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <div className="text-center max-w-sm">
+          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
+            Ошибка авторизации. Откройте приложение через Telegram Web App.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

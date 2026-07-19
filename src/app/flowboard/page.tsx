@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { FlowBoard } from '@/components/flowboard';
 import type {
   SprintInfo,
@@ -12,6 +13,7 @@ import type {
 import { getFlowMetrics, getTasks } from '@/lib/api/flow';
 import { useTasksRealtime } from '@/lib/realtime/tasks';
 import { getClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import type { Database } from '../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -25,6 +27,9 @@ function tasksToWorkerTaskList(tasks: TasksRow[]): string[] {
 }
 
 export default function FlowBoardPage() {
+  const router = useRouter();
+  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sprint, setSprint] = useState<SprintInfo | undefined>();
@@ -35,36 +40,23 @@ export default function FlowBoardPage() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [allTasks, setAllTasks] = useState<TasksRow[]>([]);
 
-  // Fetch current workspace ID on mount
+  // Redirect if not authenticated or new user
   useEffect(() => {
-    async function fetchWorkspace() {
-      try {
-        const supabase = getClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) {
-          setError('Не авторизован');
-          setLoading(false);
-          return;
-        }
-
-        const { data: workersData } = await supabase
-          .from('workers')
-          .select('workspace_id')
-          .eq('source_id', user.id)
-          .eq('is_active', true)
-          .limit(1);
-
-        const wsId = workersData?.[0]?.workspace_id ?? null;
-        setWorkspaceId(wsId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-        setLoading(false);
-      }
+    if (authLoading) return;
+    if (authError) {
+      setError(authError);
+      setLoading(false);
+      return;
     }
-    fetchWorkspace();
-  }, []);
+    if (authData?.is_new_user) {
+      router.replace('/board/create');
+      return;
+    }
+    // Set workspace ID from auth data
+    if (authData?.worker.workspace_id) {
+      setWorkspaceId(authData.worker.workspace_id);
+    }
+  }, [authLoading, authError, authData, router]);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -238,6 +230,34 @@ export default function FlowBoardPage() {
     day: 'numeric',
     month: 'long',
   });
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+      </div>
+    );
+  }
+
+  // Auth error state
+  if (authError) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen p-4"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <div className="text-center max-w-sm">
+          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
+            Ошибка авторизации. Откройте приложение через Telegram Web App.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <FlowBoard
