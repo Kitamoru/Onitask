@@ -8,14 +8,11 @@ const nextConfig: NextConfig = {
   // Best practice: CSR shell + streaming Suspense for data fetches.
   // Auth routes must NOT use ISR (Set-Cookie caching issues).
   experimental: {
-    // Enable streaming SSR with Suspense boundaries
-    // This shows the app shell immediately, then streams in data
-    dynamicIO: true,          // Allow dynamic I/O in app directory (Next.js 15+)
+    // Optimize bundle size by tree-shaking these packages
     optimizePackageImports: [
       '@supabase/ssr',
       '@supabase/supabase-js',
       'lucide-react',
-      'react-syntax-highlighter',
     ],
   },
 };
