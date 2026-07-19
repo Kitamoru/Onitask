@@ -3,7 +3,6 @@
   "installCommand": "npm install",
   "regions": ["iad1"],
   "outputDirectory": ".next",
-
   "headers": [
     {
       "source": "/(.*)",
@@ -49,22 +48,6 @@
       ]
     }
   ],
-
-  "rewrites": [
-    {
-      "source": "/api/mcp/:path*",
-      "destination": "/api/mcp/:path*"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/((?!api/|_next/|static/|favicon.ico|assets/.*).*)",
-      "destination": "/$1"
-    }
-  ],
-
   "redirects": [
     {
       "source": "/flowboard",
@@ -87,17 +70,10 @@
       "permanent": false
     }
   ],
-
-  "functions": {
-    "app/api/**/*": {
-      "runtime": "nodejs20.x"
-    }
-  },
-
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url-secret",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key-secret",
-    "NEXT_PUBLIC_WEBAPP_URL": "@webapp-url"
+    "NEXT_PUBLIC_WEBAPP_URL": "@webapp-url",
     "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key-secret",
     "TELEGRAM_BOT_TOKEN": "@telegram-token-secret",
     "MCP_API_KEY": "@mcp-api-key-secret",
