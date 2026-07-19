@@ -39,6 +39,12 @@ export default function FlowBoardPage() {
   const [agents, setAgents] = useState<AgentCardData[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [allTasks, setAllTasks] = useState<TasksRow[]>([]);
+  const allTasksRef = useRef<TasksRow[]>([]);
+
+  // Keep ref in sync so fetchData always sees latest value (avoids stale closure)
+  useEffect(() => {
+    allTasksRef.current = allTasks;
+  }, [allTasks]);
 
   // Prevent infinite redirect loops using a ref
   const hasRedirectedRef = useRef(false);
@@ -191,7 +197,7 @@ export default function FlowBoardPage() {
       const newAgents: AgentCardData[] = [];
 
       for (const wm of metrics.workers) {
-        const workerTasks = allTasks.filter(t => t.assigned_to === wm.display_name);
+        const workerTasks = allTasksRef.current.filter(t => t.assigned_to === wm.display_name);
         const card = {
           id: wm.display_name,
           cognitiveWeight: wm.cognitive_load,
@@ -219,7 +225,7 @@ export default function FlowBoardPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, allTasks]);
+  }, [workspaceId]);  // allTasks removed — was causing infinite loop (fetchData deps on allTasks but also setAllTasks)
 
   // Initial fetch
   useEffect(() => {
