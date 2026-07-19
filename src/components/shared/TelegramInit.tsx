@@ -1,21 +1,28 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-unresolved
 import { useTelegram } from '@/hooks/useTelegram';
 
 /**
- * Client-only component that initializes Telegram Web App SDK.
- * Calls tg.ready(), tg.expand(), and requests fullscreen on mount.
- * Gracefully degrades when not in Telegram (SSR / browser).
+ * Client-only component that initializes Telegram WebApp SDK on mount.
  *
- * Also logs diagnostic info for debugging Telegram auth issues.
+ * - Calls tg.ready(), tg.expand() inside useEffect → no SSR mismatch.
+ * - Uses a ref gate so effects fire exactly once.
+ * - Logs diagnostic info for debugging auth issues.
+ * - Renders nothing (returns null).
  */
 export function TelegramInit() {
   const telegram = useTelegram();
 
+  // Ref gate — ensure this effect runs at most once even with React StrictMode
+  const initRanRef = useRef(false);
+
   useEffect(() => {
+    if (initRanRef.current) return;
+    initRanRef.current = true;
+
     if (telegram.isAvailable) {
       console.log('[Telegram] ✅ WebApp initialized');
       console.log('[Telegram]    isExpanded:', telegram.isExpanded);
@@ -29,12 +36,15 @@ export function TelegramInit() {
       if (!telegram.initData) {
         console.warn(
           '[Telegram] ⚠️ WebApp is available but initData is empty. ' +
-          'Make sure the app is opened inside Telegram Mini App, not in a browser.'
+            'Make sure the app is opened inside Telegram Mini App, not in a browser.'
         );
       }
     } else {
       console.log('[Telegram] ❌ Not running inside Telegram WebApp');
-      console.log('[Telegram]    window.Telegram?.WebApp:', typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : 'N/A (SSR)');
+      console.log(
+        '[Telegram]    window.Telegram?.WebApp:',
+        typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : 'N/A (SSR)'
+      );
     }
   }, [telegram.isAvailable, telegram.isExpanded, telegram.viewportHeight, telegram.viewportStableHeight, telegram.initData, telegram.initDataUnsafe, telegram.startParam]);
 

@@ -2,7 +2,7 @@
 // Provides tg.ready(), tg.expand(), requestFullscreen(), MainButton, BackButton access
 // Works in browser environment (TWA) with graceful degradation for SSR/non-Telegram browsers
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 
 interface TelegramWebAppExtended extends Window {
   Telegram?: {
@@ -139,17 +139,27 @@ export interface UseTelegramReturn {
  * - Wraps MainButton and BackButton with React-friendly API
  * - Gracefully degrades when not in Telegram (SSR / browser)
  */
+// ── Stable empty defaults for SSR-safe initial render ──────────────────
+const EMPTY_USER = Object.freeze({});
+const EMPTY_UNSAFE = Object.freeze({} as NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe']);
+
 export function useTelegram(): UseTelegramReturn {
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [viewportStableHeight, setViewportStableHeight] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
+  const [initData, setInitData] = useState('');
+  const [initDataUnsafe, setInitDataUnsafe] = useState<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe']>(EMPTY_UNSAFE);
 
   const tgRef = useRef<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null>(null);
+  const initRanRef = useRef(false);
 
-  // Get Telegram Web App instance
+  // Get Telegram Web App instance — runs exactly once on mount
   useEffect(() => {
+    if (initRanRef.current) return;
+    initRanRef.current = true;
+
     const globalWindow = typeof window !== 'undefined' ? (window as unknown as TelegramWebAppExtended) : null;
     const telegramObj = globalWindow?.Telegram;
     const tg = telegramObj?.WebApp ?? null;
@@ -183,6 +193,8 @@ export function useTelegram(): UseTelegramReturn {
     setViewportHeight(tg.viewportHeight);
     setViewportStableHeight(tg.viewportStableHeight);
     setIsFullscreen(tg.isFullscreen || false);
+    setInitData(tg.initData || '');
+    setInitDataUnsafe(tg.initDataUnsafe || EMPTY_UNSAFE);
 
     // 5. Subscribe to viewport changes
     const handleViewportChange = () => {
@@ -262,7 +274,29 @@ export function useTelegram(): UseTelegramReturn {
     tgRef.current?.offEvent(name, callback);
   }, []);
 
-  return {
+  // Memoise the callback refs so they are referentially stable across renders
+  const mainButton = useMemo(() => ({
+    setText: (text: string) => tgRef.current?.MainButton.setText(text),
+    show: () => tgRef.current?.MainButton.show(),
+    hide: () => tgRef.current?.MainButton.hide(),
+    onClick: (callback: () => void) => tgRef.current?.MainButton.onClick(callback),
+    offClick: (callback: () => void) => tgRef.current?.MainButton.offClick(callback),
+    setActive: (active: boolean) => tgRef.current?.MainButton.setActive(active),
+    setColor: (color: string) => tgRef.current?.MainButton.setColor(color),
+    setTextColor: (color: string) => tgRef.current?.MainButton.setTextColor(color),
+    isVisible: tgRef.current?.MainButton.isVisible || false,
+  }), []);
+
+  const backButton = useMemo(() => ({
+    show: () => tgRef.current?.BackButton.show(),
+    hide: () => tgRef.current?.BackButton.hide(),
+    onClick: (callback: () => void) => tgRef.current?.BackButton.onClick(callback),
+    offClick: (callback: () => void) => tgRef.current?.BackButton.offClick(callback),
+    isVisible: tgRef.current?.BackButton.isVisible || false,
+  }), []);
+
+  // Memoise the entire return object so consumers get a stable reference
+  return useMemo(() => ({
     ready,
     expand,
     requestFullscreen,
@@ -272,30 +306,16 @@ export function useTelegram(): UseTelegramReturn {
     viewportHeight,
     viewportStableHeight,
     isFullscreen,
-    mainButton: {
-      setText: (text: string) => tgRef.current?.MainButton.setText(text),
-      show: () => tgRef.current?.MainButton.show(),
-      hide: () => tgRef.current?.MainButton.hide(),
-      onClick: (callback: () => void) => tgRef.current?.MainButton.onClick(callback),
-      offClick: (callback: () => void) => tgRef.current?.MainButton.offClick(callback),
-      setActive: (active: boolean) => tgRef.current?.MainButton.setActive(active),
-      setColor: (color: string) => tgRef.current?.MainButton.setColor(color),
-      setTextColor: (color: string) => tgRef.current?.MainButton.setTextColor(color),
-      isVisible: tgRef.current?.MainButton.isVisible || false,
-    },
-    backButton: {
-      show: () => tgRef.current?.BackButton.show(),
-      hide: () => tgRef.current?.BackButton.hide(),
-      onClick: (callback: () => void) => tgRef.current?.BackButton.onClick(callback),
-      offClick: (callback: () => void) => tgRef.current?.BackButton.offClick(callback),
-      isVisible: tgRef.current?.BackButton.isVisible || false,
-    },
-    initData: tgRef.current?.initData || '',
-    initDataUnsafe: tgRef.current?.initDataUnsafe || {},
-    startParam: tgRef.current?.initDataUnsafe.start_param || null,
+    mainButton,
+    backButton,
+    initData,
+    initDataUnsafe: initDataUnsafe || EMPTY_UNSAFE,
+    startParam: initDataUnsafe?.start_param || null,
     triggerHaptic,
     onEvent,
     offEvent,
     isAvailable,
-  };
+  }), [ready, expand, requestFullscreen, exitFullscreen, close, isExpanded, viewportHeight,
+    viewportStableHeight, isFullscreen, mainButton, backButton, initData, initDataUnsafe,
+    triggerHaptic, onEvent, offEvent, isAvailable]);
 }
