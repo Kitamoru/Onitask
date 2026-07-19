@@ -1,58 +1,74 @@
 {
-  "framework": "nextjs",
-  "functions": {
-    "pages/api/**/*.ts": {
-      "maxDuration": 30,
-      "memory": 1024
-    }
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url-secret",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key-secret",
-      "NEXT_PUBLIC_WEBAPP_URL": "@webapp-url"
-    }
-  },
-  "env": {
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key-secret",
-    "TELEGRAM_BOT_TOKEN": "@telegram-token-secret",
-    "MCP_API_KEY": "@mcp-api-key-secret",
-    "YANDEX_OAUTH_CLIENT_ID": "@yandex-oauth-client-id-secret",
-    "YANDEX_OAUTH_CLIENT_SECRET": "@yandex-oauth-client-secret-secret",
-    "OUTLOOK_OAUTH_CLIENT_ID": "@outlook-oauth-client-id-secret",
-    "OUTLOOK_OAUTH_CLIENT_SECRET": "@outlook-oauth-client-secret-secret",
-    "ENCRYPTION_KEY": "@encryption-key-secret",
-    "NEURALDEEP_KEY": "@neuraldeep-key-secret"
-  },
-  "routes": [
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "regions": ["iad1"],
+  "outputDirectory": ".next",
+  "headers": [
     {
-      "src": "/sprite.gif",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    },
-    {
-      "src": "/(.*)",
+      "source": "/(.*)",
       "headers": [
         {
           "key": "X-Content-Type-Options",
           "value": "nosniff"
         },
         {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "0"
+        },
+        {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
         },
         {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self' https://*.telegram.org;"
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(js|css|woff2|svg|png|jpg|jpeg|gif|webp)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/_next/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     }
   ],
-  "rewrites": [
+  "redirects": [
     {
-      "source": "/api/_next/:path*",
-      "destination": "/api/:path*"
+      "source": "/flowboard",
+      "destination": "/flowboard/",
+      "permanent": false
+    },
+    {
+      "source": "/boards",
+      "destination": "/boards/",
+      "permanent": false
+    },
+    {
+      "source": "/calendar",
+      "destination": "/calendar/",
+      "permanent": false
+    },
+    {
+      "source": "/wizard",
+      "destination": "/wizard/",
+      "permanent": false
     }
   ]
 }

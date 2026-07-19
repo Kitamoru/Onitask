@@ -9,6 +9,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+
+export const dynamic = 'force-dynamic';
 import { CalendarView } from '@/components/calendar/CalendarView';
 import { getCalendarEvents, getCalendarConnections } from '@/lib/api/calendar';
 import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
