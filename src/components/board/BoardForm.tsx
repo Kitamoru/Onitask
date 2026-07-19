@@ -228,7 +228,7 @@ export function BoardForm({
       style={{ 
         padding: 'var(--spacing-4)',
         gap: 'var(--spacing-section-gap)',
-        minHeight: '100dvh',
+        minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
       }}
       noValidate
     >

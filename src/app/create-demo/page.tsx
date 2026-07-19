@@ -17,7 +17,7 @@ export default function CreateDemoPage() {
 
   return (
     <div
-      className="min-h-screen w-full"
+      className="h-tg-screen w-full"
       style={{ backgroundColor: '#0A0A0A' }}
     >
       {/* Demo banner */}

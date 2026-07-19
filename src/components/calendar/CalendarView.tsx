@@ -225,8 +225,8 @@ function EventDetailPanel({
       className="
         fixed inset-x-0 z-modal flex items-end justify-center
         sm:items-center
-        /* On mobile: ensure panel doesn't go behind bottom safe area */
-        pb-safe-bottom
+        /* Safe area for notched devices + Telegram MainButton */
+        pb-safe-bottom pt-safe-top
       "
       style={{
         // Push up above Telegram's MainButton + safe area when active
@@ -253,7 +253,7 @@ function EventDetailPanel({
            animate-slide-up
          "
          style={{
-           maxHeight: `min(80vh, calc(100dvh - ${tgBottomOffset + 16}px))`,
+           maxHeight: `calc(var(--tg-viewport-stable-height, 100dvh) - ${tgBottomOffset + 16}px)`,
            overflowY: 'auto',
            backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
          }}

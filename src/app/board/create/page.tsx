@@ -120,7 +120,7 @@ export default function CreateBoardPage() {
   if (authLoading) {
     return (
       <div
-        className="flex items-center justify-center min-h-screen"
+        className="flex items-center justify-center h-tg-screen"
         style={{ backgroundColor: '#0A0A0A' }}
       >
         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
@@ -132,7 +132,7 @@ export default function CreateBoardPage() {
   if (authError) {
     return (
       <div
-        className="flex items-center justify-center min-h-screen p-4"
+        className="flex items-center justify-center h-tg-screen p-4"
         style={{ backgroundColor: '#0A0A0A' }}
       >
         <div className="text-center max-w-sm">
@@ -146,7 +146,7 @@ export default function CreateBoardPage() {
 
   return (
     <div
-      className="min-h-screen w-full"
+      className="h-tg-screen w-full"
       style={{ backgroundColor: '#0A0A0A' }}
     >
       <div className="mx-auto">

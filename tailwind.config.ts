@@ -140,13 +140,20 @@ module.exports = {
       },
 
       /* ==========================================
-         MIN HEIGHT — dynamic viewport for mobile
-         ========================================== */
-      minHeight: {
-        'screen-dvh': '100dvh',
-        'screen-svh': '100svh',
-        'screen-vh': '100vh',
-      },
+          HEIGHT — Telegram WebApp stable viewport
+          ========================================== */
+       height: {
+         'tg-screen': 'var(--tg-viewport-stable-height, 100dvh)',
+       },
+
+       /* ==========================================
+          MIN HEIGHT — dynamic viewport for mobile
+          ========================================== */
+       minHeight: {
+         'screen-dvh': '100dvh',
+         'screen-svh': '100svh',
+         'screen-vh': '100vh',
+       },
 
       /* ==========================================
          MAX WIDTH — mobile container constraints

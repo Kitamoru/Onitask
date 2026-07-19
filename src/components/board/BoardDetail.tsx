@@ -828,7 +828,7 @@ export function BoardDetail({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center min-h-screen"
+        className="flex items-center justify-center h-tg-screen"
         style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
       >
         <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>

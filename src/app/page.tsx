@@ -35,7 +35,7 @@ export default function HomePage() {
   if (isLoading) {
     return (
       <div
-        className="flex items-center justify-center min-h-screen"
+        className="flex items-center justify-center h-tg-screen"
         style={{ backgroundColor: '#0A0A0A' }}
       >
         <div className="text-center">
@@ -60,7 +60,7 @@ export default function HomePage() {
 
     return (
       <div
-        className="flex items-center justify-center min-h-screen p-4"
+        className="flex items-center justify-center h-tg-screen p-4"
         style={{ backgroundColor: '#0A0A0A' }}
       >
         <div className="text-center max-w-sm">
@@ -104,7 +104,7 @@ export default function HomePage() {
   // Fallback (should not happen, but just in case)
   return (
     <div
-      className="flex items-center justify-center min-h-screen"
+      className="flex items-center justify-center h-tg-screen"
       style={{ backgroundColor: '#0A0A0A' }}
     >
       <p style={{ color: '#8B8B8B' }}>Загрузка...</p>

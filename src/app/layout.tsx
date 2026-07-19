@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Viewport, Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomMenu } from "@/components/shared/BottomMenu";
@@ -14,6 +14,14 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: {
@@ -39,8 +47,10 @@ export default function RootLayout({
         {/* Telegram WebApp SDK — required for window.Telegram.WebApp */}
         {/* NOTE: Do NOT use async/defer — must load BEFORE any React code executes */}
         <script src="https://telegram.org/js/telegram-web-app.js" />
+        {/* Safe area viewport meta — required for env(safe-area-inset-*) on production */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body className="min-h-screen-dvh flex flex-col bg-primary-dark text-text-primary">
+      <body className="h-tg-screen flex flex-col bg-primary-dark text-text-primary">
         <TelegramThemeProvider>
           <TelegramInit />
           {children}

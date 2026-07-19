@@ -167,8 +167,8 @@ function BottomMenuItem({ item, currentPath }: { item: MenuItem; currentPath: st
           shrink-0
         "
         style={{
-          width: 'clamp(3rem, 18vw, 5rem)', /* 48px–80px */
-          height: 'clamp(2.25rem, 10vh, 3.375rem)', /* 36px–54px */
+          width: 'var(--size-main-btn-width)',
+          height: 'var(--size-main-btn-height)',
           boxShadow: `
             var(--shadow-main-btn-inner-dark),
             var(--shadow-main-btn-inner-teal),
@@ -192,7 +192,7 @@ function BottomMenuItem({ item, currentPath }: { item: MenuItem; currentPath: st
           style={{
             width: 'clamp(2.75rem, 16vw, 4.5rem)', /* 44px–72px */
             height: 'clamp(2.75rem, 16vw, 4.5rem)',
-            top: 'clamp(-0.5rem, -2vh, -0.25rem)',
+            top: 'calc(var(--spacing-2) * -1)',
           }}
           aria-hidden="true"
         />
