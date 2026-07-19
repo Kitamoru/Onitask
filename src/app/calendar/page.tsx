@@ -1,4 +1,4 @@
-n /**
+/**
  * Calendar Page — /calendar
  * 
  * Displays calendar events from connected providers (Yandex, Outlook).
