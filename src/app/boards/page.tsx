@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '../../../lib/supabase';
+import { getClient } from '@/lib/supabase/client';
 import type { Database } from '../../../types/supabase';
 import { RiskPulse, BoardCard } from '@/components/board';
 import type { RiskPulseData, BoardCardData } from '@/components/board';
@@ -24,7 +24,7 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 
 export default function BoardsPage() {
   const router = useRouter();
-  const supabase = createBrowserClient();
+  const supabase = getClient();
   
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -145,7 +145,7 @@ export default function BoardsPage() {
     }
 
     loadData();
-  }, [supabase, router]);
+  }, [router]);
 
   if (loading) {
     return (

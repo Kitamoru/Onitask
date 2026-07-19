@@ -7,7 +7,7 @@
  * Based on: docs/onitask_flow_.md §9–10, TASKS.md Stage 4 FLOW-01, FLOW-08
  */
 
-import { createBrowserClient } from '../../../lib/supabase';
+import { getClient } from '../supabase/client';
 import type { Database } from '../../../types/supabase';
 import type {
   TaskEntity,
@@ -28,7 +28,7 @@ type SprintsRow = Database['public']['Tables']['sprints']['Row'];
 
 /** Get current workspace ID from session */
 async function getCurrentWorkspaceId(): Promise<string | null> {
-  const supabase = createBrowserClient();
+  const supabase = getClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -99,7 +99,7 @@ export async function getTasks(): Promise<{ tasks: TaskEntity[]; error: string |
       return { tasks: [], error: 'Не авторизован' };
     }
 
-    const supabase = createBrowserClient();
+    const supabase = getClient();
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
@@ -126,7 +126,7 @@ export async function patchTask(
   payload: PatchTaskRequest,
 ): Promise<PatchTaskResponse> {
   try {
-    const supabase = createBrowserClient();
+    const supabase = getClient();
 
     // Build update object with only defined values
     const update: Partial<TasksRow> = {};
@@ -197,7 +197,7 @@ export async function createTask(payload: {
       return { task: null, error: 'Не авторизован' };
     }
 
-    const supabase = createBrowserClient();
+    const supabase = getClient();
     const insertPayload: Database['public']['Tables']['tasks']['Insert'] = {
       workspace_id: workspaceId,
       title: payload.title,
@@ -258,7 +258,7 @@ export async function getFlowMetrics(): Promise<{
       };
     }
 
-    const supabase = createBrowserClient();
+    const supabase = getClient();
 
     // 1. Sprint info
     const { data: sprintData, error: sprintError } = await supabase

@@ -3,10 +3,7 @@
  * Клиентские обёртки для Edge Functions calendar_sync и calendar_reminder.
  */
 
-import { createBrowserClient } from '../../../lib/supabase';
-
-// Client-side supabase instance (uses anon key + RLS)
-const supabase = createBrowserClient();
+import { getClient } from '../supabase/client';
 import type {
   CalendarEvent,
   CalendarConnection,
@@ -42,6 +39,7 @@ export interface ConnectOAuthParams {
  * Gets the current user's workspace_id from Supabase auth.
  */
 async function getCurrentWorkspaceId(): Promise<string | null> {
+  const supabase = getClient();
   // Get current user session
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -71,6 +69,7 @@ export async function getCalendarEvents(
     limit?: number;
   }
 ): Promise<{ data: CalendarEvent[] | null; error: unknown }> {
+  const supabase = getClient();
   const { startDate, endDate, provider, limit = 200 } = options ?? {};
 
   let query = supabase
@@ -105,6 +104,7 @@ export async function upsertCalendarEvent(
   workspaceId: string,
   eventData: Omit<CalendarEvent, 'id' | 'workspace_id' | 'created_at' | 'updated_at'>
 ): Promise<{ data: CalendarEvent | null; error: unknown }> {
+  const supabase = getClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data, error } = await supabase
@@ -127,6 +127,7 @@ export async function upsertCalendarEvent(
  * Deletes a calendar event.
  */
 export async function deleteCalendarEvent(eventId: string): Promise<{ error: unknown }> {
+  const supabase = getClient();
   const { error } = await supabase
     .from('calendar_events')
     .delete()
@@ -145,6 +146,7 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error: unk
 export async function getCalendarConnections(
   workspaceId: string
 ): Promise<{ data: CalendarConnection[] | null; error: unknown }> {
+  const supabase = getClient();
   const { data, error } = await supabase
     .from('calendar_connections')
     .select('*')
@@ -162,6 +164,7 @@ export async function getCalendarConnections(
  * Initiates OAuth flow by calling calendar_sync Edge Function.
  */
 export async function syncCalendar(params: SyncCalendarParams): Promise<CalendarSyncResponse> {
+  const supabase = getClient();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 
   const { data: { session } } = await supabase.auth.getSession();
@@ -220,6 +223,7 @@ export async function updateReminderSettings(
   reminderMinutes: number | null
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    const supabase = getClient();
     const { error } = await supabase
       .from('calendar_events')
       .update({ reminder_minutes_before: reminderMinutes })

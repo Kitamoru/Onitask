@@ -11,7 +11,7 @@ import type {
 } from '@/types/flowboard';
 import { getFlowMetrics, getTasks } from '@/lib/api/flow';
 import { useTasksRealtime } from '@/lib/realtime/tasks';
-import { createBrowserClient } from '../../../lib/supabase';
+import { getClient } from '@/lib/supabase/client';
 import type { Database } from '../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -39,7 +39,7 @@ export default function FlowBoardPage() {
   useEffect(() => {
     async function fetchWorkspace() {
       try {
-        const supabase = createBrowserClient();
+        const supabase = getClient();
         const {
           data: { user },
         } = await supabase.auth.getUser();

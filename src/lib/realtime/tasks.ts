@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createBrowserClient } from '../../../lib/supabase';
+import { getClient } from '../supabase/client';
 import type { Database } from '../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -50,7 +50,7 @@ export function useTasksRealtime(
   useEffect(() => {
     if (!workspaceId) return;
 
-    const supabase = createBrowserClient();
+    const supabase = getClient();
 
     // Create channel for tasks table in this workspace
     const channel = supabase
@@ -106,7 +106,7 @@ export function useFlowMetricsRealtime(
   useEffect(() => {
     if (!workspaceId) return;
 
-    const supabase = createBrowserClient();
+    const supabase = getClient();
 
     const channel = supabase
       .channel(`flowboard-metrics-${workspaceId}`)

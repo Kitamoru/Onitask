@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { createBrowserClient } from '../../../../lib/supabase';
+import { getClient } from '@/lib/supabase/client';
 import type { Database } from '../../../../types/supabase';
 import { BoardDetail } from '@/components/board';
 import type { ExternalLinkData, DocumentData } from '@/components/board';
@@ -30,7 +30,7 @@ export default function BoardDetailPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
-  const supabase = createBrowserClient();
+  const supabase = getClient();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Database['public']['Tables']['profiles']['Row'] | null>(null);
@@ -131,7 +131,7 @@ export default function BoardDetailPage() {
     }
 
     loadData();
-  }, [supabase, router, slug]);
+  }, [router, slug]);
 
   // Transform data for BoardDetail component
   const activeSprint = sprints[0];
