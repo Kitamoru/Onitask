@@ -141,7 +141,7 @@ export default function BoardsPage() {
     }
 
     loadData();
-  }, [router]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
