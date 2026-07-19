@@ -34,6 +34,15 @@ interface WorkspaceInfo {
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 export async function POST(req: NextRequest) {
+  // Guard: require TELEGRAM_BOT_TOKEN to be set
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    console.error('init: TELEGRAM_BOT_TOKEN is not set in environment variables');
+    return NextResponse.json(
+      { success: false, error: 'server_configuration_error' },
+      { status: 500 },
+    );
+  }
+
   try {
     const body = await req.json();
     const { init_data, start_param } = body as { init_data?: string; start_param?: string };

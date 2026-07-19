@@ -13,10 +13,6 @@
           "value": "nosniff"
         },
         {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
           "key": "X-XSS-Protection",
           "value": "0"
         },
@@ -47,28 +43,6 @@
           "value": "public, max-age=31536000, immutable"
         }
       ]
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/flowboard",
-      "destination": "/flowboard/",
-      "permanent": false
-    },
-    {
-      "source": "/boards",
-      "destination": "/boards/",
-      "permanent": false
-    },
-    {
-      "source": "/calendar",
-      "destination": "/calendar/",
-      "permanent": false
-    },
-    {
-      "source": "/wizard",
-      "destination": "/wizard/",
-      "permanent": false
     }
   ]
 }
