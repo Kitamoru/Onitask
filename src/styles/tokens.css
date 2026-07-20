@@ -1,0 +1,22 @@
+/* ============================================================================
+   Design Tokens — CSS Custom Properties
+   These variables are used by components via var() and Tailwind @theme inline
+   ============================================================================ */
+
+:root {
+  /* Gradient border colors for input fields and cards */
+  --gradient-border-start: rgba(250, 250, 250, 0.38);
+  --gradient-border-mid: rgba(250, 250, 250, 0.08);
+  --gradient-border-end: rgba(250, 250, 250, 0.38);
+
+  /* Toggle sizes */
+  --size-toggle-track: 3rem;
+  --size-toggle-track-height: 1.5rem;
+  --size-toggle-nail: 1.5rem;
+
+  /* Counter button size */
+  --size-counter-btn: 2.25rem;
+
+  /* Input field small border radius */
+  --radius-input-sm: 0.25rem;
+}

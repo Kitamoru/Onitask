@@ -2,6 +2,12 @@
 @import "tailwindcss";
 
 /* ============================================================================
+   Design Tokens — CSS Custom Properties
+   These variables are used by components via var() and Tailwind @theme inline
+   ============================================================================ */
+@import "../styles/tokens.css";
+
+/* ============================================================================
    Base Design Tokens — исходные значения (hex/px/rem)
    Эти переменные определены в :root ДО @theme inline, чтобы @theme мог их использовать через var()
    ============================================================================ */
@@ -278,9 +284,10 @@
   --letter-spacing-tighter: var(--letter-spacing-tighter);
   --letter-spacing-tightest: var(--letter-spacing-tightest);
 
-  /* Transitions */
-  --transition-duration-fast: var(--transition-fast);
-  --transition-duration-normal: var(--transition-normal);
+  /* Transitions - for duration-* utilities */
+  --transition-duration-fast: 150ms;
+  --transition-duration-normal: 200ms;
+  --transition-duration-slow: 300ms;
 
   /* Height */
   --height-tg-screen: var(--tg-viewport-stable-height, 100dvh);

@@ -17,7 +17,7 @@ export default function CreateDemoPage() {
 
   return (
     <div
-      className="h-full min-h-dvh w-full"
+      className="h-full min-h-dvh w-full flex items-center justify-center"
       style={{ backgroundColor: '#0A0A0A' }}
     >
       {/* Demo banner */}
@@ -28,7 +28,7 @@ export default function CreateDemoPage() {
         Demo — Create Board UI (Figma node 1:913) | http://localhost:3000/create-demo
       </div>
 
-      <div className="mx-auto">
+      <div className="w-full max-w-form mx-auto">
         <BoardForm onSubmit={handleSubmit} />
       </div>
     </div>

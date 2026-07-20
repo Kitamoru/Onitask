@@ -152,10 +152,10 @@ export default function CreateBoardPage() {
 
   return (
     <div
-      className="h-full min-h-dvh w-full"
+      className="h-full min-h-dvh w-full flex items-center justify-center"
       style={{ backgroundColor: '#0A0A0A' }}
     >
-      <div className="mx-auto">
+      <div className="w-full max-w-form mx-auto">
         <BoardForm 
           onSubmit={handleSubmit} 
           loading={loading} 
