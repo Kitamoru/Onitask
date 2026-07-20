@@ -67,14 +67,14 @@ export default function FlowBoardPage() {
       return;
     }
     // Guard: if workspace_id is missing or empty, redirect to onboarding
-    const wsId = authData?.worker.workspace_id;
+    const wsId = authData?.worker?.workspace_id;
     if (!wsId) {
       hasRedirectedRef.current = true;
       router.replace('/board/create');
       return;
     }
     setWorkspaceId(wsId);
-  }, [authLoading, authError, authData, router]);
+  }, [authLoading, authError, authData?.is_new_user, authData?.worker?.workspace_id, router]);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {

@@ -44,7 +44,7 @@ export default function BoardsPage() {
     if (authData?.is_new_user) {
       router.replace('/board/create');
     }
-  }, [authLoading, authError, authData, router]);
+  }, [authLoading, authError, authData?.is_new_user, router]);
 
   // Load boards data when auth data is available
   useEffect(() => {

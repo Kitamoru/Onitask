@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import type { InitResponse } from '../../types/api';
 
 /**
@@ -74,9 +74,9 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-  // Try cache first
+    // Try cache first
     const cached = loadFromStorage();
-    if (cached) {
+    if (cached && !dataEqual(cached, dataRef.current)) {
       dataRef.current = cached;
       setData(cached);
       setIsLoading(false);
@@ -126,10 +126,9 @@ export function useAuth(): UseAuthReturn {
     performInit();
   }, [performInit]);
 
-  // Stabilize data reference to prevent infinite re-renders in consumers.
-  // Without this, each render creates a new object reference even when content is identical,
-  // causing useEffect([data]) on pages like / and /board/create to fire repeatedly.
-  const stableData = useMemo(() => data, [data?.worker?.id, data?.is_new_user]);
+  // Return stable reference - use dataRef to prevent new object on every render
+  // when data is null (useMemo with null deps still creates new ref)
+  const stableData = dataRef.current;
 
   return {
     isLoading,
