@@ -74,15 +74,6 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-    // Try cache first
-    const cached = loadFromStorage();
-    if (cached && !dataEqual(cached, dataRef.current)) {
-      dataRef.current = cached;
-      setData(cached);
-      setIsLoading(false);
-      return;
-    }
-
     try {
       const startParam = telegramWebApp.initDataUnsafe?.start_param || '';
 

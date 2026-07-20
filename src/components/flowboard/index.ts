@@ -1,4 +1,5 @@
 export { FlowBoard } from './FlowBoard';
+export { OnboardingModal } from './OnboardingModal';
 export type {
   FlowBoardProps,
   SprintInfo,

@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { FlowBoard } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal } from '@/components/flowboard';
 import type {
   SprintInfo,
   SignalData,
@@ -12,7 +11,6 @@ import type {
 } from '@/types/flowboard';
 import { getFlowMetrics, getTasks } from '@/lib/api/flow';
 import { useTasksRealtime } from '@/lib/realtime/tasks';
-import { getClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { Database } from '../../../types/supabase';
 
@@ -27,8 +25,7 @@ function tasksToWorkerTaskList(tasks: TasksRow[]): string[] {
 }
 
 export default function FlowBoardPage() {
-  const router = useRouter();
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,10 +43,7 @@ export default function FlowBoardPage() {
     allTasksRef.current = allTasks;
   }, [allTasks]);
 
-  // Prevent infinite redirect loops using a ref
-  const hasRedirectedRef = useRef(false);
-
-  // Handle authentication states and onboarding redirection
+  // Handle authentication states and workspace detection
   useEffect(() => {
     if (authLoading) return;
     if (authError) {
@@ -57,24 +51,15 @@ export default function FlowBoardPage() {
       setLoading(false);
       return;
     }
-    // Prevent repeated redirects on authData reference changes
-    if (hasRedirectedRef.current) return;
 
-    // If the user is new (no workspace), send them to onboarding
-    if (authData?.is_new_user) {
-      hasRedirectedRef.current = true;
-      router.replace('/board/create');
-      return;
-    }
-    // Guard: if workspace_id is missing or empty, redirect to onboarding
+    // Guard: if workspace_id is missing or empty, user needs to create a board
     const wsId = authData?.worker?.workspace_id;
     if (!wsId) {
-      hasRedirectedRef.current = true;
-      router.replace('/board/create');
+      // Don't set workspaceId - this will trigger the modal
       return;
     }
     setWorkspaceId(wsId);
-  }, [authLoading, authError, authData?.is_new_user, authData?.worker?.workspace_id, router]);
+  }, [authLoading, authError, authData?.worker?.workspace_id]);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -225,7 +210,7 @@ export default function FlowBoardPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);  // allTasks removed — was causing infinite loop (fetchData deps on allTasks but also setAllTasks)
+  }, [workspaceId]);
 
   // Initial fetch
   useEffect(() => {
@@ -240,8 +225,14 @@ export default function FlowBoardPage() {
     fetchData();
   }, [fetchData]));
 
-  // Flow metrics invalidation
-  // (would use useFlowMetricsRealtime here when broadcast events are implemented)
+  // Handle board creation success - refresh auth to get new workspace
+  const handleBoardCreated = useCallback(() => {
+    refreshAuth();
+  }, [refreshAuth]);
+
+  // Check if we need to show onboarding modal
+  const isNewUser = authData?.is_new_user === true;
+  const needsOnboarding = !workspaceId && !authLoading && !authError;
 
   const currentDate = new Date().toLocaleDateString('ru-RU', {
     weekday: 'long',
@@ -278,19 +269,27 @@ export default function FlowBoardPage() {
   }
 
   return (
-    <FlowBoard
-      title="Флоу задач"
-      currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
-      sprint={sprint}
-      signals={signals}
-      taskStatuses={taskStatuses}
-      workers={workers}
-      agents={agents}
-      loading={loading}
-      error={error}
-      onAddWorker={() => console.log('Add worker clicked')}
-      onAddAgent={() => console.log('Add agent clicked')}
-      onRefresh={fetchData}
-    />
+    <>
+      <FlowBoard
+        title="Флоу задач"
+        currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
+        sprint={sprint}
+        signals={signals}
+        taskStatuses={taskStatuses}
+        workers={workers}
+        agents={agents}
+        loading={loading}
+        error={error}
+        onAddWorker={() => console.log('Add worker clicked')}
+        onAddAgent={() => console.log('Add agent clicked')}
+        onRefresh={fetchData}
+        isNewUser={isNewUser}
+      />
+      
+      {/* Onboarding modal for new users */}
+      {needsOnboarding && (
+        <OnboardingModal onSuccess={handleBoardCreated} />
+      )}
+    </>
   );
 }

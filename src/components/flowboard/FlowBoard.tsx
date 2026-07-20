@@ -89,6 +89,10 @@ export interface FlowBoardProps {
   onAddWorker?: () => void;
   onAddAgent?: () => void;
   onRefresh?: () => void;
+  /** Show onboarding modal for new users (no workspace) */
+  isNewUser?: boolean;
+  /** Callback when board is created successfully */
+  onBoardCreate?: () => void;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
