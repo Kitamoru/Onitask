@@ -79,46 +79,37 @@ export function BottomMenu() {
       className="
         fixed bottom-0 left-0 right-0 z-50
         flex flex-row items-center justify-center
+        w-full
         bg-primary-dark
         transition-colors duration-fast
         xs:px-1 sm:px-2 md:px-4
-        /* Safe area inset for notched devices */
         pb-safe-bottom
+        before:absolute before:inset-x-0 before:top-0 before:h-px
+        before:bg-gradient-to-r
+        before:from-[var(--gradient-bottom-menu-start)]
+        before:via-[var(--gradient-bottom-menu-mid-1)]
+        before:via-[var(--gradient-bottom-menu-mid-2)]
+        before:via-[var(--gradient-bottom-menu-mid-3)]
+        before:to-[var(--gradient-bottom-menu-end)]
+        before:opacity-60
+        before:pointer-events-none
       "
       style={{
         height: 'var(--size-bottom-menu-height)',
+        width: '100%',
+        minWidth: '100%',
+        maxWidth: '100%',
+        left: '0',
+        right: '0',
         paddingTop: 'var(--spacing-bottom-menu-padding)',
         paddingBottom: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-bottom))',
         paddingLeft: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-left))',
         paddingRight: 'max(var(--spacing-bottom-menu-padding), env(safe-area-inset-right))',
         gap: 'var(--spacing-bottom-menu-gap)',
-        borderTop: `1px solid transparent`,
-        borderImage: `linear-gradient(90deg, 
-          var(--gradient-bottom-menu-start) 0%, 
-          var(--gradient-bottom-menu-mid-1) 40%, 
-          var(--gradient-bottom-menu-mid-2) 41%, 
-          var(--gradient-bottom-menu-mid-2) 59%, 
-          var(--gradient-bottom-menu-mid-3) 60%, 
-          var(--gradient-bottom-menu-end) 100%
-        ) 1`,
-        backdropFilter: 'blur(var(--blur-bottom-menu))',
       }}
       aria-label="Основная навигация"
       role="navigation"
     >
-      {/* Inner gradient border overlay */}
-      <div
-        className="
-          pointer-events-none absolute inset-x-0 top-0
-          h-px
-          bg-gradient-to-r
-          from-[var(--gradient-bottom-menu-start)] via-[var(--gradient-bottom-menu-mid-1)] 
-          via-[var(--gradient-bottom-menu-mid-2)] via-[var(--gradient-bottom-menu-mid-3)] 
-          to-[var(--gradient-bottom-menu-end)]
-          opacity-60
-        "
-        aria-hidden="true"
-      />
 
       <div className="flex flex-row items-center justify-center gap-1 sm:gap-2 w-full max-w-[358px] sm:max-w-full">
         {MENU_ITEMS.map((item) => (
