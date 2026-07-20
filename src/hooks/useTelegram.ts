@@ -131,7 +131,7 @@ export interface UseTelegramReturn {
 
 // ── Stable empty defaults for SSR-safe initial render ──────────────────
 const EMPTY_USER = Object.freeze({});
-const EMPTY_UNSAFE = Object.freeze({} as NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe']);
+const EMPTY_UNSAFE: NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe'] = Object.freeze({});
 
 export function useTelegram(): UseTelegramReturn {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -144,6 +144,14 @@ export function useTelegram(): UseTelegramReturn {
 
   const tgRef = useRef<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null>(null);
   const initRanRef = useRef(false);
+  
+  // Refs to track previous values and prevent unnecessary state updates
+  const prevInitDataRef = useRef<string>('');
+  const prevInitDataUnsafeRef = useRef<Record<string, unknown>>(EMPTY_UNSAFE);
+  const prevIsExpandedRef = useRef<boolean>(false);
+  const prevViewportHeightRef = useRef<number>(0);
+  const prevViewportStableHeightRef = useRef<number>(0);
+  const prevIsFullscreenRef = useRef<boolean>(false);
 
   // Get Telegram Web App instance — runs exactly once on mount
   useEffect(() => {
@@ -182,22 +190,28 @@ export function useTelegram(): UseTelegramReturn {
     const currentInitData = tg.initData || '';
     const currentInitDataUnsafe = tg.initDataUnsafe || EMPTY_UNSAFE;
     
-    if (currentInitData !== initData) {
+    if (currentInitData !== prevInitDataRef.current) {
+      prevInitDataRef.current = currentInitData;
       setInitData(currentInitData);
     }
-    if (currentInitDataUnsafe !== initDataUnsafe) {
+    if (currentInitDataUnsafe !== prevInitDataUnsafeRef.current) {
+      prevInitDataUnsafeRef.current = currentInitDataUnsafe;
       setInitDataUnsafe(currentInitDataUnsafe);
     }
-    if (tg.isExpanded !== isExpanded) {
+    if (tg.isExpanded !== prevIsExpandedRef.current) {
+      prevIsExpandedRef.current = tg.isExpanded;
       setIsExpanded(tg.isExpanded);
     }
-    if (tg.viewportHeight !== viewportHeight) {
+    if (tg.viewportHeight !== prevViewportHeightRef.current) {
+      prevViewportHeightRef.current = tg.viewportHeight;
       setViewportHeight(tg.viewportHeight);
     }
-    if (tg.viewportStableHeight !== viewportStableHeight) {
+    if (tg.viewportStableHeight !== prevViewportStableHeightRef.current) {
+      prevViewportStableHeightRef.current = tg.viewportStableHeight;
       setViewportStableHeight(tg.viewportStableHeight);
     }
-    if ((tg.isFullscreen || false) !== isFullscreen) {
+    if ((tg.isFullscreen || false) !== prevIsFullscreenRef.current) {
+      prevIsFullscreenRef.current = tg.isFullscreen || false;
       setIsFullscreen(tg.isFullscreen || false);
     }
 
@@ -208,9 +222,18 @@ export function useTelegram(): UseTelegramReturn {
         const newViewportHeight = tgRef.current.viewportHeight;
         const newViewportStableHeight = tgRef.current.viewportStableHeight;
         
-        if (newExpanded !== isExpanded) setIsExpanded(newExpanded);
-        if (newViewportHeight !== viewportHeight) setViewportHeight(newViewportHeight);
-        if (newViewportStableHeight !== viewportStableHeight) setViewportStableHeight(newViewportStableHeight);
+        if (newExpanded !== prevIsExpandedRef.current) {
+          prevIsExpandedRef.current = newExpanded;
+          setIsExpanded(newExpanded);
+        }
+        if (newViewportHeight !== prevViewportHeightRef.current) {
+          prevViewportHeightRef.current = newViewportHeight;
+          setViewportHeight(newViewportHeight);
+        }
+        if (newViewportStableHeight !== prevViewportStableHeightRef.current) {
+          prevViewportStableHeightRef.current = newViewportStableHeight;
+          setViewportStableHeight(newViewportStableHeight);
+        }
       }
     };
 
@@ -219,13 +242,15 @@ export function useTelegram(): UseTelegramReturn {
     // 6. Subscribe to fullscreen changes
     const handleFullscreen = () => {
       const newFullscreen = tgRef.current?.isFullscreen || false;
-      if (newFullscreen !== isFullscreen) {
+      if (newFullscreen !== prevIsFullscreenRef.current) {
+        prevIsFullscreenRef.current = newFullscreen;
         setIsFullscreen(newFullscreen);
       }
     };
     tg.onEvent('fullscreen', handleFullscreen);
     const handleFullscreenFailed = () => {
-      if (isFullscreen !== false) {
+      if (prevIsFullscreenRef.current !== false) {
+        prevIsFullscreenRef.current = false;
         setIsFullscreen(false);
       }
     };
