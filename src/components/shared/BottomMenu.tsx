@@ -77,10 +77,9 @@ export function BottomMenu() {
   return (
     <nav
       className="
-        fixed bottom-0 left-0 right-0 z-bottom-menu
+        fixed bottom-0 left-0 right-0 z-50
         flex flex-row items-center justify-center
         bg-primary-dark
-        backdrop-blur-[var(--blur-bottom-menu)]
         transition-colors duration-fast
         xs:px-1 sm:px-2 md:px-4
         /* Safe area inset for notched devices */
@@ -102,6 +101,7 @@ export function BottomMenu() {
           var(--gradient-bottom-menu-mid-3) 60%, 
           var(--gradient-bottom-menu-end) 100%
         ) 1`,
+        backdropFilter: 'blur(var(--blur-bottom-menu))',
       }}
       aria-label="Основная навигация"
       role="navigation"

@@ -124,6 +124,8 @@
   --size-bottom-menu-height: clamp(3.375rem, 6vh, 5.5rem);
   --size-bottom-menu-icon: clamp(1.25rem, 3vw, 1.5rem);
   --size-bottom-menu-icon-main: clamp(2.5rem, 6vw, 3rem);
+  --size-main-btn-width: 80px;
+  --size-main-btn-height: 54px;
   --text-bottom-menu-label: clamp(0.5rem, 1.2vw, 0.625rem);
   --text-bottom-menu-label-line: 1.25;
   --spacing-bottom-menu-gap: var(--spacing-1);
@@ -140,7 +142,7 @@
   --shadow-main-btn-inner-teal: inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2);
   --shadow-main-btn-inner-white-1: inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05);
   --shadow-main-btn-inner-white-2: inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1);
-  --blur-bottom-menu: blur(30px);
+  --blur-bottom-menu: 30px;
 
   /* Transitions */
   --transition-fast: 150ms ease-in-out;
@@ -303,6 +305,9 @@
   --z-index-modal: 100;
   --z-index-toast: 90;
   --z-index-bottom-menu: 50;
+
+  /* Custom z-index utilities */
+  --z-50: 50;
 }
 
 /* ============================================================================
@@ -345,7 +350,17 @@ body {
 }
 
 /* ============================================================================
-   Custom Utilities (не Tailwind, обычные CSS классы)
+   Custom Utilities (Tailwind v4 arbitrary values)
+   ============================================================================ */
+
+@layer utilities {
+  .h-tg-screen {
+    height: var(--tg-viewport-stable-height, 100dvh);
+  }
+}
+
+/* ============================================================================
+   Custom CSS Classes (не Tailwind)
    ============================================================================ */
 
 ::-webkit-scrollbar {

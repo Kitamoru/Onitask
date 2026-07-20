@@ -117,7 +117,7 @@ export function WorkspaceWizard({ onSuccess }: WorkspaceWizardProps) {
 
   return (
     <div
-      className="h-tg-screen w-full bg-primary-dark"
+      className="h-full min-h-dvh w-full bg-primary-dark"
       style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
     >
       <div className="mx-auto">

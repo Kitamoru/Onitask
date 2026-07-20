@@ -134,56 +134,56 @@ export default function BoardsPage() {
     loadData();
   }, [authData, supabase]);
 
-  // Auth loading state
-  if (authLoading) {
-    return (
-      <div
-        className="flex items-center justify-center h-tg-screen"
-        style={{ backgroundColor: '#0A0A0A' }}
-      >
-        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
-      </div>
-    );
-  }
+   // Auth loading state
+   if (authLoading) {
+     return (
+       <div
+         className="flex items-center justify-center h-full min-h-dvh"
+         style={{ backgroundColor: '#0A0A0A' }}
+       >
+         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+       </div>
+     );
+   }
 
-  // Auth error state
-  if (authError) {
-    return (
-      <div
-        className="flex items-center justify-center h-tg-screen p-4"
-        style={{ backgroundColor: '#0A0A0A' }}
-      >
-        <div className="text-center max-w-sm">
-          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
-            Ошибка авторизации. Откройте приложение через Telegram Web App.
-          </p>
-        </div>
-      </div>
-    );
-  }
+   // Auth error state
+   if (authError) {
+     return (
+       <div
+         className="flex items-center justify-center h-full min-h-dvh p-4"
+         style={{ backgroundColor: '#0A0A0A' }}
+       >
+         <div className="text-center max-w-sm">
+           <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
+             Ошибка авторизации. Откройте приложение через Telegram Web App.
+           </p>
+         </div>
+       </div>
+     );
+   }
 
-  if (loading) {
-    return (
-      <div
-        className="flex items-center justify-center h-tg-screen"
-        style={{ backgroundColor: '#0A0A0A' }}
-      >
-        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
-      </div>
-    );
-  }
+   if (loading) {
+     return (
+       <div
+         className="flex items-center justify-center h-full min-h-dvh"
+         style={{ backgroundColor: '#0A0A0A' }}
+       >
+         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+       </div>
+     );
+   }
 
-  const activeWorkspace = workspaces[0]?.slug || '';
+   const activeWorkspace = workspaces[0]?.slug || '';
 
-  return (
-    <div
-      className="h-tg-screen p-4"
-      style={{
-        backgroundColor: '#0A0A0A',
-        maxWidth: '390px',
-        margin: '0 auto',
-      }}
-    >
+   return (
+     <div
+       className="h-full min-h-dvh p-4"
+       style={{
+         backgroundColor: '#0A0A0A',
+         maxWidth: '390px',
+         margin: '0 auto',
+       }}
+     >
       {/* Header: "Стол" */}
       <div className="flex flex-col items-center gap-1 mb-6">
         <div className="flex items-center justify-center gap-2">

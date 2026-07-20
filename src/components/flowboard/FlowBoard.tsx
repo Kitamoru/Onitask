@@ -539,7 +539,7 @@ export function FlowBoard({
 }: FlowBoardProps) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-tg-screen" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
+      <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
         <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
       </div>
     );
@@ -547,7 +547,7 @@ export function FlowBoard({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-tg-screen px-4" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
+      <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
         <div
           className="flex flex-col items-center gap-4 p-6 rounded max-w-md w-full"
           style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px' }}
@@ -588,7 +588,7 @@ export function FlowBoard({
         flex flex-col w-full mx-auto
         xs:p-3 sm:p-4
         bg-primary-dark
-        h-tg-screen
+        h-full
         /* Safe area for bottom menu + Telegram header */
         pt-safe-top pb-safe-bottom
       "

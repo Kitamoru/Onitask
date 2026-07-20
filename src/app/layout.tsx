@@ -51,7 +51,7 @@ export default function RootLayout({
         {/* Safe area viewport meta — required for env(safe-area-inset-*) on production */}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body className="h-tg-screen flex flex-col bg-primary-dark text-text-primary">
+      <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
         <TelegramProvider>
           <TelegramThemeProvider>
             <TelegramInit />

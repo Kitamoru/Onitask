@@ -18,7 +18,7 @@ import { WorkspaceWizard } from '@/components/board';
 
 export default function WizardPage() {
   return (
-    <div className="h-tg-screen w-full" style={{ backgroundColor: '#0A0A0A' }}>
+    <div className="h-full min-h-dvh w-full" style={{ backgroundColor: '#0A0A0A' }}>
       <WorkspaceWizard />
     </div>
   );

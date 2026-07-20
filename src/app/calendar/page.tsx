@@ -112,14 +112,14 @@ function CalendarContent() {
     }
   }
 
-  return (
-    <div
-      className="
-        flex flex-col h-tg-screen
-        bg-primary-dark
-      "
-      style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
-    >
+   return (
+     <div
+       className="
+         flex flex-col h-full min-h-dvh
+         bg-primary-dark
+       "
+       style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
+     >
       {/* Top bar */}
       <header
         className="
@@ -320,7 +320,7 @@ function CalendarContent() {
 export default function CalendarPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-tg-screen">
+      <div className="flex items-center justify-center h-full min-h-dvh">
         <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
       </div>
     }>
