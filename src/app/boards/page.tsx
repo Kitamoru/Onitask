@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,14 +37,7 @@ export default function BoardsPage() {
   });
   const [boardCards, setBoardCards] = useState<BoardCardData[]>([]);
 
-  // Redirect new users to create board page
-  useEffect(() => {
-    if (authLoading) return;
-    if (authError) return;
-    if (authData?.is_new_user) {
-      router.replace('/board/create');
-    }
-  }, [authLoading, authError, authData?.is_new_user, router]);
+  // No redirect - new users will see empty state and can create board via modal
 
   // Load boards data when auth data is available
   useEffect(() => {
