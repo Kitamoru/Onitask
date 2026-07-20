@@ -236,15 +236,17 @@
   --radius-full: 9999px;
 
   /* ==========================================
-     SPACING
-     ========================================== */
+      SPACING
+      ========================================== */
   --spacing-0: var(--spacing-0);
+  --spacing-px: 1px;
   --spacing-0\.5: var(--spacing-0.5);
   --spacing-1: var(--spacing-1);
   --spacing-1\.5: var(--spacing-1.5);
   --spacing-2: var(--spacing-2);
   --spacing-2\.5: var(--spacing-2.5);
   --spacing-3: var(--spacing-3);
+  --spacing-3\.5: var(--spacing-3.5);
   --spacing-4: var(--spacing-4);
   --spacing-5: var(--spacing-5);
   --spacing-6: var(--spacing-6);
