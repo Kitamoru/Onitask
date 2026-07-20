@@ -1,0 +1,157 @@
+{
+  "name": "[dev] ONITASK",
+  "document": {
+    "id": "0:1",
+    "name": "WIP"
+  },
+  "summary": {
+    "total_components": 100,
+    "total_component_sets": 30,
+    "total_elements": 500,
+    "screens": [
+      "start (Screen)",
+      "desk / create",
+      "desk [empty]",
+      "desk-flow",
+      "desks-stream",
+      "desk / [desk_UUID] / edit",
+      "desk / task / view",
+      "desk / task / create"
+    ]
+  },
+  "global_vars": {
+    "layout_747b6eed": {
+      "mode": "column",
+      "sizing": { "horizontal": "fixed", "vertical": "fixed" },
+      "dimensions": { "width": 390, "height": 844 }
+    },
+    "fill_0dc61961": ["#0A0A0A"],
+    "fill_2863e263": ["rgba(0, 0, 0, 0.05)"],
+    "fill_fa023af3": ["#8B8B8B"],
+    "fill_34dc0314": ["#000000"]
+  },
+  "components": {
+    "1:57": {
+      "id": "1:57",
+      "key": "668063095536a8a02d336c1e5f908d8dd82e6ca2",
+      "name": "Header (iOS)"
+    },
+    "1:433": {
+      "id": "1:433",
+      "key": "73362621391c0e97f1f75e8851cf54c030268f9d",
+      "name": "buttom-menu"
+    },
+    "7:6302": {
+      "id": "7:6302",
+      "key": "484b51e6c3b6d68a5a249c2fabf36c6e18c3dcd9",
+      "name": "button-prim-m",
+      "propertyDefinitions": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      }
+    },
+    "7:7369": {
+      "id": "7:7369",
+      "key": "4cdf5fbd6ec863e4996e579ef51f6800a9412807",
+      "name": "button-prim-s",
+      "propertyDefinitions": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      }
+    },
+    "7:8172": {
+      "id": "7:8172",
+      "key": "85ae537d99fabc0d0600bdf7bb1e63c4a38b6f56",
+      "name": "button-sec-s",
+      "propertyDefinitions": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      }
+    },
+    "10:10763": {
+      "id": "10:10763",
+      "key": "65a36960e6bf16837744de22badad0a99a17453a",
+      "name": "task-card",
+      "propertyDefinitions": {
+        "has-svetofor": { "type": "boolean", "defaultValue": false },
+        "show-status": { "type": "boolean", "defaultValue": true }
+      }
+    },
+    "1:663": {
+      "id": "1:663",
+      "key": "971b773ae1fe6ab08174098a227373d1568ef16f",
+      "name": "task-create"
+    },
+    "210:21251": {
+      "id": "210:21251",
+      "key": "ed62b4204973d6d4e455564c6c122a52a826915b",
+      "name": "bottom-sheet"
+    },
+    "3:3999": {
+      "id": "3:3999",
+      "key": "ba19ff72dc757057d9564b7e80e87f739fa48412",
+      "name": "Screen"
+    }
+  },
+  "component_sets": {
+    "7:5575": {
+      "id": "7:5575",
+      "key": "0555d603061e23630c29601c75b532fcb0cf6b1d",
+      "name": "menu / tasks"
+    },
+    "7:5568": {
+      "id": "7:5568",
+      "key": "cafa14f8c31752e18535bbab5046056c2a0c83ec",
+      "name": "menu / button-main"
+    },
+    "7:7734": {
+      "id": "7:7734",
+      "key": "614f58a6bef4005027ca070ac6ac2260842e3fb0",
+      "name": "input-field-m",
+      "propertyDefinitions": {
+        "leading-icon": { "type": "boolean", "defaultValue": false },
+        "trailing-icon": { "type": "boolean", "defaultValue": false }
+      }
+    },
+    "168:22591": {
+      "id": "168:22591",
+      "key": "3cc3a87f9b88de1b82a6a2254c6ee7ae3d09cf52",
+      "name": "cognitive-weight-indicator"
+    }
+  },
+  "key_components": [
+    "buttom-menu",
+    "button-prim-m",
+    "button-prim-s",
+    "button-sec-s",
+    "task-card",
+    "task-CW-indicator",
+    "input-field-m",
+    "input-field-s",
+    "text-area-m",
+    "toggle",
+    "badge",
+    "section-button-sec",
+    "section-button-group",
+    "cognitive-weight-container",
+    "backlog-tasks-accordion",
+    "sprint-tasks"
+  ],
+  "fonts": {
+    "Inter": {
+      "usage": "Primary font for UI",
+      "weights": ["Regular", "Medium", "Semi Bold"]
+    }
+  },
+  "colors": {
+    "background": "#0A0A0A",
+    "text": "#8B8B8B",
+    "text_secondary": "#000000",
+    "accent": "#0FEE9E",
+    "border": "rgba(0, 0, 0, 0.05)"
+  },
+  "note": "Full Figma data (1.5MB) was retrieved. This is a structured summary. For complete data, use Figma API directly with fileKey: EhjoAgxmDSPu7jsuUEXl46"
+}

@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { BoardForm, type BoardFormData } from '@/components/board';
+import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
 
 /**
- * Create Demo page — renders the "desk / create" UI from Figma (node 1:913).
+ * Create Demo page — renders the new pixel‑perfect desk/create UI.
  * 
  * Route: /create-demo
  * Purpose: Quick visual verification of all board creation UI components.
  */
 export default function CreateDemoPage() {
-  const handleSubmit = async (data: BoardFormData) => {
-    console.log('Board form submitted:', JSON.stringify(data, null, 2));
-    alert(`Board "${data.name}" data logged to console! (${Object.keys(data).length} fields)`);
+  const handleSubmit = async (value: CreateDeskFormValue) => {
+    console.log('Board form submitted:', JSON.stringify(value, null, 2));
+    alert(`Board "${value.name}" data logged to console! (${Object.keys(value).length} fields)`);
   };
 
   return (
@@ -28,7 +28,10 @@ export default function CreateDemoPage() {
         Demo — Create Board UI (Figma node 1:913) | http://localhost:3000/create-demo
       </div>
 
-      <BoardForm onSubmit={handleSubmit} />
+      <CreateDeskForm
+        onSubmit={handleSubmit}
+        onAddColleague={() => console.log('add colleague')}
+      />
     </div>
   );
 }

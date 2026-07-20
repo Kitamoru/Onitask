@@ -1,0 +1,294 @@
+{
+  "fileKey": "EhjoAgxmDSPu7jsuUEXl46",
+  "nodeId": "0-1",
+  "timestamp": "2026-07-20T18:44:00+03:00",
+  "screens": {
+    "start": {
+      "id": "64:83023",
+      "name": "content",
+      "description": "Start screen with logo and main button",
+      "elements": [
+        {
+          "type": "INSTANCE",
+          "component": "logo",
+          "id": "7:6898",
+          "layout": {
+            "mode": "row",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "gap": 8,
+            "dimensions": { "width": 200, "height": 200 }
+          }
+        },
+        {
+          "type": "INSTANCE",
+          "component": "button-prim-m",
+          "id": "7:6302",
+          "label": "Начать",
+          "layout": {
+            "mode": "row",
+            "padding": "12px",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "gap": 8,
+            "dimensions": { "height": 48 }
+          }
+        }
+      ]
+    },
+    "desk_create": {
+      "id": "65:83023",
+      "name": "desk / create",
+      "description": "Create board screen with form inputs",
+      "sections": [
+        {
+          "name": "Основное",
+          "label": "Основное",
+          "fields": [
+            { "type": "input-field-m", "label": "Название доски" },
+            { "type": "input-field-m", "label": "@desk" }
+          ]
+        },
+        {
+          "name": "Функциональное",
+          "label": "Функциональное",
+          "fields": [
+            { "type": "text-area-m", "label": "Краткое описание" },
+            { "type": "input-field-s", "label": "1 SP" },
+            { "type": "input-field-s", "label": "1 час" },
+            { "type": "input-field-s", "label": "3 SP" },
+            { "type": "input-field-s", "label": "5 SP" },
+            { "type": "input-field-s", "label": "7 SP" },
+            { "type": "input-field-s", "label": "13 SP" }
+          ]
+        },
+        {
+          "name": "Коворкинг",
+          "label": "Коворкинг",
+          "fields": [
+            { "type": "badge", "text": "0 коллег" },
+            { "type": "button-sec-s", "label": "Добавить коллегу" }
+          ]
+        },
+        {
+          "name": "Контекст доски",
+          "label": "Контекст доски",
+          "fields": [
+            { "type": "text-area-m", "label": "Краткое описание" }
+          ]
+        },
+        {
+          "name": "Модификации",
+          "label": "Модификации",
+          "fields": [
+            { "type": "toggle", "label": "1 день" },
+            { "type": "toggle", "label": "3 дня" }
+          ]
+        }
+      ]
+    },
+    "desk_flow": {
+      "id": "1:445",
+      "name": "desk-flow",
+      "description": "Flow board view with task cards and signals",
+      "sections": [
+        {
+          "name": "sprint-compressed-info",
+          "elements": [
+            { "type": "TEXT", "text": "Спринт 3" },
+            { "type": "TEXT", "text": "Auth & MCP" },
+            { "type": "TEXT", "text": "19–25 мая" },
+            { "type": "TEXT", "text": "6/14 дней" }
+          ]
+        },
+        {
+          "name": "desk-signals",
+          "elements": [
+            { "type": "TEXT", "text": "1" },
+            { "type": "TEXT", "text": "Люди" },
+            { "type": "TEXT", "text": "@kitamoru 7/6" },
+            { "type": "TEXT", "text": "3" },
+            { "type": "TEXT", "text": "Процессы" },
+            { "type": "TEXT", "text": "Ревью 2, Блокеры 13" },
+            { "type": "TEXT", "text": "2" },
+            { "type": "TEXT", "text": "Эскалации" }
+          ]
+        },
+        {
+          "name": "statuses",
+          "elements": [
+            { "type": "TEXT", "text": "7" },
+            { "type": "TEXT", "text": "В работе" },
+            { "type": "TEXT", "text": "1" },
+            { "type": "TEXT", "text": "Эскалации" },
+            { "type": "TEXT", "text": "12" },
+            { "type": "TEXT", "text": "Готово" }
+          ]
+        }
+      ]
+    },
+    "desk_settings": {
+      "id": "1:836",
+      "name": "desk / [desk_UUID] / edit",
+      "description": "Board settings screen",
+      "sections": [
+        {
+          "name": "main",
+          "elements": [
+            { "type": "TEXT", "text": "Название доски" },
+            { "type": "TEXT", "text": "@desk" }
+          ]
+        },
+        {
+          "name": "mates",
+          "elements": [
+            { "type": "TEXT", "text": "0 коллег" },
+            { "type": "button-sec-s", "label": "Добавить коллегу" }
+          ]
+        },
+        {
+          "name": "context",
+          "elements": [
+            { "type": "text-area-m", "label": "Краткое описание" }
+          ]
+        },
+        {
+          "name": "extention",
+          "elements": [
+            { "type": "toggle", "label": "Документы" },
+            { "type": "toggle", "label": "Внешние ссылки" }
+          ]
+        }
+      ]
+    }
+  },
+  "component_definitions": {
+    "button-prim-m": {
+      "id": "7:6302",
+      "name": "button-prim-m",
+      "properties": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      },
+      "variants": [
+        { "name": "state=default", "id": "1:127" },
+        { "name": "state=hover", "id": "1:128" },
+        { "name": "state=pressed", "id": "1:129" }
+      ]
+    },
+    "button-prim-s": {
+      "id": "7:7369",
+      "name": "button-prim-s",
+      "properties": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      }
+    },
+    "button-sec-s": {
+      "id": "7:8172",
+      "name": "button-sec-s",
+      "properties": {
+        "show leading-icon": { "type": "boolean", "defaultValue": true },
+        "show trailing-icon": { "type": "boolean", "defaultValue": true },
+        "label": { "type": "text", "defaultValue": "Кнопка" }
+      }
+    },
+    "input-field-m": {
+      "id": "7:7734",
+      "name": "input-field-m",
+      "properties": {
+        "leading-icon": { "type": "boolean", "defaultValue": false },
+        "trailing-icon": { "type": "boolean", "defaultValue": false }
+      }
+    },
+    "text-area-m": {
+      "id": "83:17453",
+      "name": "text-area-m",
+      "properties": {
+        "leading-icon": { "type": "boolean", "defaultValue": false },
+        "trailing-icon": { "type": "boolean", "defaultValue": false }
+      }
+    },
+    "toggle": {
+      "id": "22:5993",
+      "name": "toggle",
+      "properties": {
+        "is-active": { "type": "boolean", "defaultValue": false }
+      }
+    },
+    "badge": {
+      "id": "17:8819",
+      "name": "badge",
+      "properties": {
+        "text": { "type": "text", "defaultValue": "Текст" }
+      }
+    },
+    "task-card": {
+      "id": "10:10763",
+      "name": "task-card",
+      "properties": {
+        "has-svetofor": { "type": "boolean", "defaultValue": false },
+        "show-status": { "type": "boolean", "defaultValue": true }
+      }
+    },
+    "task-CW-indicator": {
+      "id": "167:22591",
+      "name": "cognitive-weight-indicator",
+      "variants": [
+        { "name": "weight=0", "id": "167:22592" },
+        { "name": "weight=1", "id": "167:22610" },
+        { "name": "weight=2", "id": "167:22610" },
+        { "name": "weight=3", "id": "167:22610" }
+      ]
+    }
+  },
+  "text_styles": {
+    "body/16-20 sb": {
+      "fontFamily": "Inter",
+      "fontStyle": "Semi Bold",
+      "fontWeight": 600,
+      "fontSize": 16,
+      "lineHeight": "20px",
+      "letterSpacing": "-0.0313em",
+      "textAlignHorizontal": "LEFT",
+      "textAlignVertical": "CENTER"
+    },
+    "body/14-18 m": {
+      "fontFamily": "Inter Display",
+      "fontStyle": "Medium",
+      "fontWeight": 500,
+      "fontSize": 14,
+      "lineHeight": "18px",
+      "letterSpacing": "-0.0357em",
+      "textAlignHorizontal": "LEFT",
+      "textAlignVertical": "CENTER"
+    },
+    "body/12-14 m": {
+      "fontFamily": "Inter Display",
+      "fontStyle": "Medium",
+      "fontWeight": 500,
+      "fontSize": 12,
+      "lineHeight": "14px",
+      "letterSpacing": "-0.0417em",
+      "textAlignHorizontal": "LEFT",
+      "textAlignVertical": "CENTER"
+    }
+  },
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#101010",
+    "text_primary": "#8B8B8B",
+    "text_secondary": "#000000",
+    "accent": "#0FEE9E",
+    "border": "rgba(0, 0, 0, 0.05)",
+    "divider": "rgba(255, 255, 255, 0.2)"
+  },
+  "layout": {
+    "screen_width": 390,
+    "screen_height": 844,
+    "border_radius": "24px",
+    "padding": "16px"
+  }
+}
