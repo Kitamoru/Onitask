@@ -117,16 +117,14 @@ export function WorkspaceWizard({ onSuccess }: WorkspaceWizardProps) {
 
   return (
     <div
-      className="h-full min-h-dvh w-full flex items-center justify-center bg-primary-dark"
-      style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
+      className="h-full min-h-dvh w-full"
+      style={{ backgroundColor: '#0A0A0A' }}
     >
-      <div className="w-full max-w-form mx-auto">
-        <BoardForm
-          onSubmit={handleSubmit}
-          loading={loading}
-          error={error}
-        />
-      </div>
+      <BoardForm
+        onSubmit={handleSubmit}
+        loading={loading}
+        error={error}
+      />
     </div>
   );
 }

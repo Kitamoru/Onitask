@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { BoardHeader } from './Header';
 import { TextInput } from './TextInput';
 import { Toggle } from './Toggle';
-import { Counter } from './Counter';
 import { TextArea } from './TextArea';
 import { FilePicker } from './FilePicker';
 import { LinkInputGroup } from './LinkInputGroup';
@@ -21,7 +20,7 @@ import { SubmitButton } from './SubmitButton';
  *   - Primary submit button at bottom
  *   - Bottom filler (64px) for safe area
  * 
- * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
+ * Design tokens: all colors, spacing, typography use CSS variables
  */
 export interface BoardFormData {
   name: string;
@@ -58,16 +57,6 @@ const DEFAULT_SP_VALUES: [number, number, number, number, number] = [1, 3, 5, 7,
 const MAX_DOCUMENTS = 10;
 const MAX_EXTERNAL_LINKS = 6;
 
-/** Shared gradient border style — extracted from token variables */
-const GRADIENT_BORDER_STYLE: React.CSSProperties = {
-  backgroundImage: `linear-gradient(135deg, var(--gradient-border-start) 0%, var(--gradient-border-mid) 50%, var(--gradient-border-end) 100%)`,
-  borderRadius: 'var(--radius-sm)',
-  mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-  maskComposite: 'exclude',
-  WebkitMaskComposite: 'xor',
-  padding: '1px',
-};
-
 const DEFAULT_SIGNALS = [
   { value: 3, label: '3 дня' },
   { value: 1, label: '1 день' },
@@ -85,7 +74,7 @@ export function BoardForm({
   const [nameError, setNameError] = useState<string | undefined>(undefined);
   const [slugError, setSlugError] = useState<string | undefined>(undefined);
 
-  // Functional settings — все toggle выключены по умолчанию
+  // Functional settings
   const [spEnabled, setSpEnabled] = useState(initialData.storyPoints?.enabled ?? false);
   const [spValues, setSpValues] = useState<[number, number, number, number, number]>(
     initialData.storyPoints?.values || DEFAULT_SP_VALUES
@@ -99,17 +88,17 @@ export function BoardForm({
   // Context
   const [context, setContext] = useState(initialData.context || '');
 
-  // Documents — toggle выключен по умолчанию, поддержка до 10 файлов
+  // Documents
   const [documentsEnabled, setDocumentsEnabled] = useState(false);
   const [documents, setDocuments] = useState<File[]>(initialData.documents || []);
 
-  // External links — toggle выключен по умолчанию, до 6 ссылок
+  // External links
   const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<Array<{ name: string; url: string }>>(
     initialData.externalLinks || []
   );
 
-  // Signals — toggle выключен по умолчанию
+  // Signals
   const [signalsEnabled, setSignalsEnabled] = useState(
     initialData.signals?.enabled ?? false
   );
@@ -213,30 +202,82 @@ export function BoardForm({
     await onSubmit(formData);
   };
 
+  // Shared styles
+  const sectionStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    gap: '8px',
+  };
+
+  const cardStyle: React.CSSProperties = {
+    position: 'relative',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    backgroundImage: 'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+    backgroundOrigin: 'border-box',
+    backgroundClip: 'content-box, border-box',
+    padding: '1px',
+  };
+
+  const cardInnerStyle: React.CSSProperties = {
+    padding: '12px',
+    backgroundColor: '#1A1A1A',
+  };
+
+  const headerRowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '12px',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontFamily: "'Inter Display', system-ui, sans-serif",
+    fontSize: '16px',
+    lineHeight: '1.25',
+    fontWeight: '500',
+    letterSpacing: '-0.0313em',
+    color: '#FAFAFA',
+  };
+
+  const descriptionStyle: React.CSSProperties = {
+    fontFamily: "'Inter', system-ui, sans-serif",
+    fontSize: '12px',
+    lineHeight: '1.33',
+    letterSpacing: '-0.0417em',
+    fontWeight: '400',
+    color: '#8B8B8B',
+    marginBottom: '12px',
+  };
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="
-        flex flex-col w-full max-w-form mx-auto
-        overflow-y-auto
-        bg-primary-dark
-        form-container
-        /* Safe area padding for mobile */
-        xs:px-3 sm:px-4
-        pt-safe-top pb-safe-bottom
-      "
-      style={{ 
-        padding: 'var(--spacing-4)',
-        gap: 'var(--spacing-section-gap)',
-        minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        maxWidth: '358px',
+        margin: '0 auto',
+        padding: '16px',
+        gap: '24px',
+        minHeight: '100dvh',
+        backgroundColor: '#0A0A0A',
+        overflowY: 'auto',
       }}
       noValidate
     >
       {/* Global error */}
       {globalError && (
         <div
-          className="px-4 py-2 rounded-md text-sm"
-          style={{ backgroundColor: 'var(--color-accent-amber-subtle)', color: 'var(--color-accent-amber)' }}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '6px',
+            fontSize: '14px',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            color: '#F59E0B',
+          }}
           role="alert"
         >
           {globalError}
@@ -244,9 +285,9 @@ export function BoardForm({
       )}
 
       {/* ===== Section: Основное ===== */}
-      <Section>
+      <section style={sectionStyle}>
         <BoardHeader title="Основное" />
-        <div className="mt-4 space-y-3">
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <TextInput
               id="board-name"
@@ -257,7 +298,7 @@ export function BoardForm({
               aria-label="Название доски"
             />
             {nameError && (
-              <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }} role="alert">
+              <p style={{ marginTop: '4px', fontSize: '12px', color: '#EF4444' }} role="alert">
                 {nameError}
               </p>
             )}
@@ -272,40 +313,23 @@ export function BoardForm({
               aria-label="Идентификатор доски"
             />
             {slugError && (
-              <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }} role="alert">
+              <p style={{ marginTop: '4px', fontSize: '12px', color: '#EF4444' }} role="alert">
                 {slugError}
               </p>
             )}
           </div>
         </div>
-      </Section>
+      </section>
 
       {/* ===== Section: Функциональное ===== */}
-      <Section>
+      <section style={sectionStyle}>
         <BoardHeader title="Функциональное" />
 
         {/* Story Points Toggle */}
-        <div className="mt-4 relative rounded-card overflow-hidden">
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={GRADIENT_BORDER_STYLE}
-            aria-hidden="true"
-          />
-          <div className="p-3 relative">
-            {/* Header row — toggle справа */}
-            <div className="flex items-center justify-between mb-3">
-              <span
-                className="text-primary"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  letterSpacing: 'var(--letter-spacing-tight)',
-                }}
-              >
-                Стоимость сторипоинта
-              </span>
+        <div style={{ ...cardStyle, marginTop: '16px' }}>
+          <div style={cardInnerStyle}>
+            <div style={headerRowStyle}>
+              <span style={labelStyle}>Стоимость сторипоинта</span>
               <Toggle
                 checked={spEnabled}
                 onChange={setSpEnabled}
@@ -313,31 +337,37 @@ export function BoardForm({
               />
             </div>
 
-            {/* SP value inputs — gradient border per Figma input-field-s (7:8090) */}
+            {/* SP value inputs */}
             {spEnabled && (
-              <div className="space-y-1.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {['1 SP', '3 SP', '5 SP', '7 SP', '13 SP'].map((label, index) => (
-                  <div key={label} className="flex items-center gap-2">
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span
-                      className="text-primary shrink-0"
                       style={{
-                        fontFamily: 'var(--font-family-display)',
-                        fontSize: 'var(--text-body-md)',
-                        lineHeight: 'var(--text-body-md-line)',
-                        fontWeight: 'var(--font-weight-medium)',
+                        ...labelStyle,
+                        fontSize: '14px',
                         width: '40px',
+                        flexShrink: 0,
                       }}
                     >
                       {label}
                     </span>
-                    <div className="relative flex-1">
-                      {/* Gradient background shape (Figma input-field-s border) */}
+                    <div style={{ position: 'relative', flex: 1 }}>
                       <div
-                        className="absolute inset-0 pointer-events-none"
-                        style={GRADIENT_BORDER_STYLE}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          borderRadius: '4px',
+                          backgroundImage: 'linear-gradient(135deg, rgba(250,250,250,0.38) 0%, rgba(250,250,250,0.08) 50%, rgba(250,250,250,0.38) 100%)',
+                          mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                          maskComposite: 'exclude',
+                          WebkitMaskComposite: 'xor',
+                          padding: '1px',
+                          pointerEvents: 'none',
+                        }}
                         aria-hidden="true"
                       />
-                      <div className="flex items-center w-full" style={{ padding: 'var(--spacing-2.5) var(--spacing-3)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '10px 12px' }}>
                         <input
                           type="number"
                           min="0"
@@ -350,20 +380,16 @@ export function BoardForm({
                             setSpValues(newValues);
                           }}
                           disabled={!spEnabled}
-                          className="
-                            flex-1 min-w-0 bg-transparent text-primary outline-none
-                            disabled:opacity-50
-                            focus-visible:ring-2 focus-visible:ring-accent-amber
-                            [-moz-appearance:textfield]
-                            [&::-webkit-outer-spin-button]:appearance-none
-                            [&::-webkit-inner-spin-button]:appearance-none
-                          "
                           style={{
-                            fontFamily: 'var(--font-family-base)',
-                            fontSize: 'var(--text-body-md)',
-                            lineHeight: 'var(--text-body-lg-line)',
-                            letterSpacing: 'var(--letter-spacing-tighter)',
-                            fontWeight: 'var(--font-weight-medium)',
+                            flex: 1,
+                            minWidth: 0,
+                            backgroundColor: 'transparent',
+                            color: '#FAFAFA',
+                            fontFamily: "'Inter', system-ui, sans-serif",
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            outline: 'none',
+                            border: 'none',
                           }}
                           aria-label={`Story point значение для ${label}`}
                         />
@@ -377,27 +403,10 @@ export function BoardForm({
         </div>
 
         {/* Cognitive Weight Toggle */}
-        <div className="mt-4 relative rounded-card overflow-hidden">
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={GRADIENT_BORDER_STYLE}
-            aria-hidden="true"
-          />
-          <div className="p-3 relative">
-            {/* Header row — toggle справа */}
-            <div className="flex items-center justify-between mb-2">
-              <span
-                className="text-primary"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  letterSpacing: 'var(--letter-spacing-tight)',
-                }}
-              >
-                Когнитивный вес
-              </span>
+        <div style={{ ...cardStyle, marginTop: '16px' }}>
+          <div style={cardInnerStyle}>
+            <div style={{ ...headerRowStyle, marginBottom: '8px' }}>
+              <span style={labelStyle}>Когнитивный вес</span>
               <Toggle
                 checked={cwEnabled}
                 onChange={setCwEnabled}
@@ -405,29 +414,19 @@ export function BoardForm({
               />
             </div>
 
-            {/* Description text */}
             {cwEnabled && (
-              <p
-                className="text-muted mb-3"
-                style={{
-                  fontFamily: 'var(--font-family-base)',
-                  fontSize: 'var(--text-body-sm)',
-                  lineHeight: 'var(--text-body-sm-line)',
-                  letterSpacing: 'var(--letter-spacing-tightest)',
-                  fontWeight: 'var(--font-weight-regular)',
-                }}
-              >
+              <p style={descriptionStyle}>
                 Текст описание функционала когнитивного веса задачи, который расписан в 2-3 строчки, чтобы пользователь понимал, что оно из себя представляет
               </p>
             )}
           </div>
         </div>
-      </Section>
+      </section>
 
       {/* ===== Section: Контекст доски ===== */}
-      <Section>
+      <section style={sectionStyle}>
         <BoardHeader title="Контекст доски" />
-        <div className="mt-4">
+        <div style={{ marginTop: '16px' }}>
           <TextArea
             placeholder="Краткое описание"
             value={context}
@@ -437,32 +436,17 @@ export function BoardForm({
             aria-label="Контекст доски"
           />
         </div>
-      </Section>
+      </section>
 
       {/* ===== Section: Дополнительные материалы ===== */}
-      <Section>
+      <section style={sectionStyle}>
         <BoardHeader title="Дополнительные материалы" />
-        <div className="mt-4 relative rounded-card overflow-hidden">
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={GRADIENT_BORDER_STYLE}
-            aria-hidden="true"
-          />
-          <div className="p-3 relative">
-            {/* Docs header — toggle справа */}
-            <div className="flex items-center justify-between mb-3">
-              <span
-                className="text-primary"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  letterSpacing: 'var(--letter-spacing-tight)',
-                }}
-              >
-                Документы
-              </span>
+        
+        {/* Documents toggle */}
+        <div style={{ ...cardStyle, marginTop: '16px' }}>
+          <div style={cardInnerStyle}>
+            <div style={headerRowStyle}>
+              <span style={labelStyle}>Документы</span>
               <Toggle
                 checked={documentsEnabled}
                 onChange={setDocumentsEnabled}
@@ -470,11 +454,10 @@ export function BoardForm({
               />
             </div>
 
-            {/* File pickers — показывается только когда toggle включён */}
             {documentsEnabled && (
               <>
                 {documents.map((doc, index) => (
-                  <div key={index} className="mb-2 flex items-center gap-2">
+                  <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <FilePicker
                       file={doc}
                       onChange={(file) => handleDocumentChange(index, file)}
@@ -483,7 +466,20 @@ export function BoardForm({
                       <button
                         type="button"
                         onClick={() => handleRemoveDocument(index)}
-                        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md bg-surface/50 border border-border-white-subtle text-primary font-semibold hover:bg-surface/70 active:bg-surface/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                        style={{
+                          flexShrink: 0,
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(26, 26, 26, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#FAFAFA',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
                         aria-label="Удалить документ"
                       >
                         ×
@@ -495,23 +491,20 @@ export function BoardForm({
                   <button
                     type="button"
                     onClick={handleAddDocument}
-                    className="
-                      flex items-center justify-center w-full h-10
-                      rounded-md
-                      bg-surface/50
-                      border border-border-white-subtle
-                      text-primary
-                      font-semibold
-                      transition-colors duration-fast
-                      hover:bg-surface/70
-                      active:bg-surface/40
-                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                    "
                     style={{
-                      fontFamily: 'var(--font-family-display)',
-                      fontSize: 'var(--text-body-md)',
-                      lineHeight: 'var(--text-body-md-line)',
-                      fontWeight: 'var(--font-weight-semibold)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '100%',
+                      height: '40px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(26, 26, 26, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#FAFAFA',
+                      fontFamily: "'Inter Display', system-ui, sans-serif",
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
                     }}
                     aria-label="Добавить документ"
                   >
@@ -523,27 +516,11 @@ export function BoardForm({
           </div>
         </div>
 
-        {/* External Links — toggle справа */}
-        <div className="mt-4 relative rounded-card overflow-hidden">
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={GRADIENT_BORDER_STYLE}
-            aria-hidden="true"
-          />
-          <div className="p-3 relative">
-            <div className="flex items-center justify-between mb-3">
-              <span
-                className="text-primary"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  letterSpacing: 'var(--letter-spacing-tight)',
-                }}
-              >
-                Внешние ссылки
-              </span>
+        {/* External Links toggle */}
+        <div style={{ ...cardStyle, marginTop: '16px' }}>
+          <div style={cardInnerStyle}>
+            <div style={headerRowStyle}>
+              <span style={labelStyle}>Внешние ссылки</span>
               <Toggle
                 checked={linksEnabled}
                 onChange={setLinksEnabled}
@@ -551,12 +528,11 @@ export function BoardForm({
               />
             </div>
 
-            {/* Multiple link rows — up to 6 */}
             {linksEnabled && (
               <>
                 {links.map((link, idx) => (
-                  <div key={idx} className="mb-2 flex items-start gap-2 group/link-row">
-                    <div className="flex-1">
+                  <div key={idx} style={{ marginBottom: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ flex: 1 }}>
                       <LinkInputGroup
                         resourceName={link.name}
                         onResourceNameChange={(val) => handleUpdateLink(idx, 'name', val)}
@@ -570,14 +546,21 @@ export function BoardForm({
                       <button
                         type="button"
                         onClick={() => handleRemoveLink(idx)}
-                        className="
-                          shrink-0 w-8 h-8 mt-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-border-white-subtle
-                          text-primary font-semibold
-                          hover:bg-surface/70 active:bg-surface/40
-                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                          transition-colors duration-fast
-                        "
+                        style={{
+                          flexShrink: 0,
+                          width: '32px',
+                          height: '32px',
+                          marginTop: '24px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(26, 26, 26, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#FAFAFA',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
                         aria-label={`Удалить ссылку ${idx + 1}`}
                       >
                         ×
@@ -586,9 +569,8 @@ export function BoardForm({
                   </div>
                 ))}
 
-                {/* New link row (if we have capacity) */}
                 {links.length < MAX_EXTERNAL_LINKS && (
-                  <div className="mt-2">
+                  <div style={{ marginTop: '8px' }}>
                     <LinkInputGroup
                       resourceName=""
                       onResourceNameChange={(val) => handleUpdateLink(links.length, 'name', val)}
@@ -600,15 +582,12 @@ export function BoardForm({
                   </div>
                 )}
 
-                {/* Counter badge */}
-                <div className="mt-2 flex items-center justify-end">
+                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
                   <span
-                    className="text-muted text-xs"
                     style={{
-                      fontFamily: 'var(--font-family-base)',
-                      fontSize: 'var(--text-body-xs)',
-                      lineHeight: 'var(--text-body-xs-line)',
-                      fontWeight: 'var(--font-weight-regular)',
+                      fontSize: '11px',
+                      color: '#8B8B8B',
+                      fontFamily: "'Inter', system-ui, sans-serif",
                     }}
                   >
                     {links.length}/{MAX_EXTERNAL_LINKS}
@@ -618,34 +597,17 @@ export function BoardForm({
             )}
           </div>
         </div>
-      </Section>
+      </section>
 
       {/* ===== Section: Модификации ===== */}
-      <Section>
+      <section style={sectionStyle}>
         <BoardHeader title="Модификации" />
 
-        {/* Signals toggle + counters */}
-        <div className="mt-4 relative rounded-card overflow-hidden">
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={GRADIENT_BORDER_STYLE}
-            aria-hidden="true"
-          />
-          <div className="p-3 relative">
-            {/* Header row — toggle справа */}
-            <div className="flex items-center justify-between mb-2">
-              <span
-                className="text-primary"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  letterSpacing: 'var(--letter-spacing-tight)',
-                }}
-              >
-                Сигналы светофора
-              </span>
+        {/* Signals toggle */}
+        <div style={{ ...cardStyle, marginTop: '16px' }}>
+          <div style={cardInnerStyle}>
+            <div style={{ ...headerRowStyle, marginBottom: '8px' }}>
+              <span style={labelStyle}>Сигналы светофора</span>
               <Toggle
                 checked={signalsEnabled}
                 onChange={setSignalsEnabled}
@@ -653,53 +615,51 @@ export function BoardForm({
               />
             </div>
 
-            {/* Description and counters — shown only when toggle is on */}
             {signalsEnabled && (
               <>
-                <p
-                  className="text-muted mb-3"
-                  style={{
-                    fontFamily: 'var(--font-family-base)',
-                    fontSize: 'var(--text-body-sm)',
-                    lineHeight: 'var(--text-body-sm-line)',
-                    letterSpacing: 'var(--letter-spacing-tightest)',
-                    fontWeight: 'var(--font-weight-regular)',
-                  }}
-                >
+                <p style={descriptionStyle}>
                   Обозначьте срок, при котором коллегам будет приходить дополнительное уведомление о скором дедлайне задачи
                 </p>
 
-                {/* Signal counters с кнопками +/- */}
-                <div className="space-y-3">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {signalValues.map((signal, index) => (
-                    <div key={index} className="flex items-center gap-2">
+                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button
                         type="button"
                         onClick={() => handleSignalDecrement(index)}
                         disabled={!signalsEnabled}
-                        className="
-                          w-8 h-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-border-white-subtle
-                          text-primary font-semibold
-                          disabled:opacity-50 disabled:cursor-not-allowed
-                          hover:bg-surface/70 active:bg-surface/40
-                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                        "
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(26, 26, 26, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#FAFAFA',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          opacity: !signalsEnabled ? 0.5 : 1,
+                        }}
                         aria-label={`Уменьшить количество дней для ${signal.label}`}
                       >
                         −
                       </button>
                       <div
-                      className={`flex-1 h-8 px-3 rounded-input-sm flex items-center justify-center
-                        bg-transparent text-primary border
-                        ${index === 0 ? 'border-signal-yellow' : 'border-signal-red'}
-                        disabled:opacity-50`}
                         style={{
-                          fontFamily: 'var(--font-family-base)',
-                          fontSize: 'var(--text-body-md)',
-                          lineHeight: 'var(--text-body-lg-line)',
-                          letterSpacing: 'var(--letter-spacing-tighter)',
-                          fontWeight: 'var(--font-weight-medium)',
+                          flex: 1,
+                          height: '32px',
+                          padding: '0 12px',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: `1px solid ${index === 0 ? '#F59E0B' : '#EF4444'}`,
+                          color: '#FAFAFA',
+                          fontFamily: "'Inter', system-ui, sans-serif",
+                          fontSize: '14px',
+                          fontWeight: '500',
                         }}
                       >
                         {signal.value}
@@ -708,14 +668,20 @@ export function BoardForm({
                         type="button"
                         onClick={() => handleSignalIncrement(index)}
                         disabled={!signalsEnabled}
-                        className="
-                          w-8 h-8 flex items-center justify-center
-                          rounded-md bg-surface/50 border border-border-white-subtle
-                          text-primary font-semibold
-                          disabled:opacity-50 disabled:cursor-not-allowed
-                          hover:bg-surface/70 active:bg-surface/40
-                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-                        "
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(26, 26, 26, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#FAFAFA',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          opacity: !signalsEnabled ? 0.5 : 1,
+                        }}
                         aria-label={`Увеличить количество дней для ${signal.label}`}
                       >
                         +
@@ -727,30 +693,18 @@ export function BoardForm({
             )}
           </div>
         </div>
-      </Section>
+      </section>
 
       {/* ===== Submit Button ===== */}
-      <div className="w-full">
+      <div style={{ width: '100%' }}>
         <SubmitButton loading={loading} type="submit" />
       </div>
 
       {/* Bottom filler for safe area */}
       <div
-        className="w-full"
-        style={{ height: 'var(--spacing-16)', backgroundColor: 'var(--color-bg-primary-dark)' }}
+        style={{ width: '100%', height: '64px', backgroundColor: '#0A0A0A' }}
         aria-hidden="true"
       />
     </form>
-  );
-}
-
-/**
- * Section wrapper with consistent styling.
- */
-function Section({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col w-full gap-3">
-      {children}
-    </section>
   );
 }
