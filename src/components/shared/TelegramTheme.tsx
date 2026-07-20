@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 
 /**
  * TelegramThemeProvider — Context provider for Telegram WebApp theme integration.
@@ -45,6 +45,7 @@ export function useTelegramThemeContext(): TelegramThemeContextValue {
 
 export function TelegramThemeProvider({ children }: { children: ReactNode }) {
   const [contextValue, setContextValue] = useState<TelegramThemeContextValue>(DEFAULT_CONTEXT);
+  const contextValueRef = useRef<TelegramThemeContextValue>(DEFAULT_CONTEXT);
 
   useEffect(() => {
     // Only run on client side
@@ -73,25 +74,36 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
     // Add tg-webapp class to html for CSS targeting
     root.classList.add('tg-webapp');
 
+    contextValueRef.current = value;
     setContextValue(value);
 
     // Subscribe to theme changes
     const handleThemeChanged = () => {
       const newTp = tg.themeParams || {};
       const newValue: TelegramThemeContextValue = {
-        ...value,
-        bgColor: newTp.bg_color || value.bgColor,
-        textColor: newTp.text_color || value.textColor,
-        buttonColor: newTp.button_color || value.buttonColor,
-        buttonText: newTp.button_text_color || value.buttonText,
+        isAvailable: true,
+        bgColor: newTp.bg_color || contextValueRef.current.bgColor,
+        textColor: newTp.text_color || contextValueRef.current.textColor,
+        buttonColor: newTp.button_color || contextValueRef.current.buttonColor,
+        buttonText: newTp.button_text_color || contextValueRef.current.buttonText,
       };
-      setContextValue(newValue);
+      
+      // Only update if values actually changed
+      if (
+        newValue.bgColor !== contextValueRef.current.bgColor ||
+        newValue.textColor !== contextValueRef.current.textColor ||
+        newValue.buttonColor !== contextValueRef.current.buttonColor ||
+        newValue.buttonText !== contextValueRef.current.buttonText
+      ) {
+        contextValueRef.current = newValue;
+        setContextValue(newValue);
 
-      // Update CSS vars
-      root.style.setProperty('--tg-theme-bg-color', newValue.bgColor);
-      root.style.setProperty('--tg-theme-text-color', newValue.textColor);
-      root.style.setProperty('--tg-theme-button-color', newValue.buttonColor);
-      root.style.setProperty('--tg-theme-button-text-color', newValue.buttonText);
+        // Update CSS vars
+        root.style.setProperty('--tg-theme-bg-color', newValue.bgColor);
+        root.style.setProperty('--tg-theme-text-color', newValue.textColor);
+        root.style.setProperty('--tg-theme-button-color', newValue.buttonColor);
+        root.style.setProperty('--tg-theme-button-text-color', newValue.buttonText);
+      }
     };
 
     tg.onEvent('themeChanged', handleThemeChanged);

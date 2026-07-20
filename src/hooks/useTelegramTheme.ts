@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 /**
  * useTelegramTheme — Manages Telegram Web App theme integration.
@@ -49,6 +49,23 @@ const DEFAULT_THEME: TelegramThemeVars = {
   destructiveTextColor: '#EF4444',
 };
 
+// Deep equality check for theme objects
+function themesEqual(a: TelegramThemeVars, b: TelegramThemeVars): boolean {
+  return (
+    a.bgColor === b.bgColor &&
+    a.textColor === b.textColor &&
+    a.hintColor === b.hintColor &&
+    a.linkColor === b.linkColor &&
+    a.buttonColor === b.buttonColor &&
+    a.buttonText === b.buttonText &&
+    a.secondaryBgColor === b.secondaryBgColor &&
+    a.sectionBgColor === b.sectionBgColor &&
+    a.sectionHeaderTextColor === b.sectionHeaderTextColor &&
+    a.subtitleTextColor === b.subtitleTextColor &&
+    a.destructiveTextColor === b.destructiveTextColor
+  );
+}
+
 export function useTelegramTheme(): {
   /** Whether Telegram WebApp environment is available */
   isAvailable: boolean;
@@ -59,6 +76,8 @@ export function useTelegramTheme(): {
 } {
   const [isAvailable, setIsAvailable] = useState(false);
   const [theme, setTheme] = useState<TelegramThemeVars>(DEFAULT_THEME);
+  const initRanRef = useRef(false);
+  const themeRef = useRef<TelegramThemeVars>(DEFAULT_THEME);
 
   /**
    * Extracts theme values from Telegram.WebApp.themeParams.
@@ -107,25 +126,34 @@ export function useTelegramTheme(): {
   }, []);
 
   useEffect(() => {
+    if (initRanRef.current) return;
+    initRanRef.current = true;
+
     const tg = (window as any).Telegram?.WebApp;
     if (!tg) {
       setIsAvailable(false);
       return;
     }
 
-    // Mark as available and expand to full height
+    // Mark as available
     setIsAvailable(true);
     tg.expand?.();
 
-    // Read initial theme
+    // Read initial theme (only set if different)
     const initialTheme = readThemeFromTelegram();
-    setTheme(initialTheme);
+    if (!themesEqual(initialTheme, themeRef.current)) {
+      themeRef.current = initialTheme;
+      setTheme(initialTheme);
+    }
     applyThemeToDom(initialTheme);
 
     // Subscribe to themeChanged event for live updates
     const handleThemeChanged = () => {
       const newTheme = readThemeFromTelegram();
-      setTheme(newTheme);
+      if (!themesEqual(newTheme, themeRef.current)) {
+        themeRef.current = newTheme;
+        setTheme(newTheme);
+      }
       applyThemeToDom(newTheme);
     };
 
@@ -133,10 +161,8 @@ export function useTelegramTheme(): {
 
     // Handle viewport changes (keyboard open/close)
     const handleViewportChanged = () => {
-      const viewportHeight = tg.viewportHeight;
-      const headerHeight = tg.headerColor;
       console.log('[TelegramTheme] viewportChanged:', {
-        viewportHeight,
+        viewportHeight: tg.viewportHeight,
         viewportStableHeight: tg.viewportStableHeight,
       });
     };
@@ -148,7 +174,7 @@ export function useTelegramTheme(): {
       tg.offEvent('themeChanged', handleThemeChanged);
       tg.offEvent('viewportChanged', handleViewportChanged);
     };
-  }, [readThemeFromTelegram, applyThemeToDom]);
+  }, [readThemeFromTelegram, applyThemeToDom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     isAvailable,

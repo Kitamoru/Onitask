@@ -129,16 +129,6 @@ export interface UseTelegramReturn {
   isAvailable: boolean;
 }
 
-/**
- * Hook providing access to Telegram Web App API.
- * 
- * Features:
- * - Calls tg.ready() and tg.expand() on mount
- * - Requests fullscreen mode via tg.requestFullscreen()
- * - Subscribes to viewportChanged events
- * - Wraps MainButton and BackButton with React-friendly API
- * - Gracefully degrades when not in Telegram (SSR / browser)
- */
 // ── Stable empty defaults for SSR-safe initial render ──────────────────
 const EMPTY_USER = Object.freeze({});
 const EMPTY_UNSAFE = Object.freeze({} as NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe']);
@@ -188,20 +178,39 @@ export function useTelegram(): UseTelegramReturn {
       }
     }
 
-    // 4. Initialize state from current values
-    setIsExpanded(tg.isExpanded);
-    setViewportHeight(tg.viewportHeight);
-    setViewportStableHeight(tg.viewportStableHeight);
-    setIsFullscreen(tg.isFullscreen || false);
-    setInitData(tg.initData || '');
-    setInitDataUnsafe(tg.initDataUnsafe || EMPTY_UNSAFE);
+    // 4. Initialize state from current values (only if actually changed)
+    const currentInitData = tg.initData || '';
+    const currentInitDataUnsafe = tg.initDataUnsafe || EMPTY_UNSAFE;
+    
+    if (currentInitData !== initData) {
+      setInitData(currentInitData);
+    }
+    if (currentInitDataUnsafe !== initDataUnsafe) {
+      setInitDataUnsafe(currentInitDataUnsafe);
+    }
+    if (tg.isExpanded !== isExpanded) {
+      setIsExpanded(tg.isExpanded);
+    }
+    if (tg.viewportHeight !== viewportHeight) {
+      setViewportHeight(tg.viewportHeight);
+    }
+    if (tg.viewportStableHeight !== viewportStableHeight) {
+      setViewportStableHeight(tg.viewportStableHeight);
+    }
+    if ((tg.isFullscreen || false) !== isFullscreen) {
+      setIsFullscreen(tg.isFullscreen || false);
+    }
 
     // 5. Subscribe to viewport changes
     const handleViewportChange = () => {
       if (tgRef.current) {
-        setIsExpanded(tgRef.current.isExpanded);
-        setViewportHeight(tgRef.current.viewportHeight);
-        setViewportStableHeight(tgRef.current.viewportStableHeight);
+        const newExpanded = tgRef.current.isExpanded;
+        const newViewportHeight = tgRef.current.viewportHeight;
+        const newViewportStableHeight = tgRef.current.viewportStableHeight;
+        
+        if (newExpanded !== isExpanded) setIsExpanded(newExpanded);
+        if (newViewportHeight !== viewportHeight) setViewportHeight(newViewportHeight);
+        if (newViewportStableHeight !== viewportStableHeight) setViewportStableHeight(newViewportStableHeight);
       }
     };
 
@@ -209,11 +218,16 @@ export function useTelegram(): UseTelegramReturn {
 
     // 6. Subscribe to fullscreen changes
     const handleFullscreen = () => {
-      setIsFullscreen(tgRef.current?.isFullscreen || false);
+      const newFullscreen = tgRef.current?.isFullscreen || false;
+      if (newFullscreen !== isFullscreen) {
+        setIsFullscreen(newFullscreen);
+      }
     };
     tg.onEvent('fullscreen', handleFullscreen);
     const handleFullscreenFailed = () => {
-      setIsFullscreen(false);
+      if (isFullscreen !== false) {
+        setIsFullscreen(false);
+      }
     };
     tg.onEvent('fullscreenFailed', handleFullscreenFailed);
 
@@ -225,7 +239,7 @@ export function useTelegram(): UseTelegramReturn {
         tgRef.current.offEvent('fullscreenFailed', handleFullscreenFailed);
       }
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ready = useCallback(() => {
     tgRef.current?.ready();

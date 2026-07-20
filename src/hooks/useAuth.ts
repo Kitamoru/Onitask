@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import type { InitResponse } from '../../types/api';
 
 /**
@@ -43,15 +42,26 @@ function saveToStorage(data: InitResponse): void {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+// Deep equality check for InitResponse
+function dataEqual(a: InitResponse | null, b: InitResponse | null): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.worker.id === b.worker.id &&
+    a.worker.display_name === b.worker.display_name &&
+    a.is_new_user === b.is_new_user
+  );
+}
+
 export function useAuth(): UseAuthReturn {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InitResponse | null>(null);
   const [isTWA, setIsTWA] = useState(false);
+  const dataRef = useRef<InitResponse | null>(null);
+  const initRanRef = useRef(false);
 
-  const fetchInit = useCallback(async () => {
-    // Check if we're in Telegram WebApp
+  const performInit = useCallback(async () => {
     const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
     const telegramWebApp = globalWindow?.Telegram?.WebApp;
     const hasInitData = !!telegramWebApp?.initData;
@@ -64,9 +74,10 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-    // Try to load from storage first (avoid unnecessary API calls on refresh)
+  // Try cache first
     const cached = loadFromStorage();
-    if (cached && !router) {
+    if (cached) {
+      dataRef.current = cached;
       setData(cached);
       setIsLoading(false);
       return;
@@ -96,6 +107,7 @@ export function useAuth(): UseAuthReturn {
 
       const initResponse = json.data as InitResponse;
       saveToStorage(initResponse);
+      dataRef.current = initResponse;
       setData(initResponse);
       setError(null);
     } catch (err) {
@@ -105,82 +117,14 @@ export function useAuth(): UseAuthReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, []);
 
+  // Run init once on mount
   useEffect(() => {
-    let mounted = true;
-
-    async function init() {
-      if (!mounted) return;
-
-      // Check if we're in Telegram WebApp
-      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
-      const telegramWebApp = globalWindow?.Telegram?.WebApp;
-
-      if (!telegramWebApp?.initData) {
-        if (!mounted) return;
-        setIsTWA(false);
-        setError('not_in_twa');
-        setIsLoading(false);
-        return;
-      }
-
-      setIsTWA(true);
-
-      // Try cache first
-      const cached = loadFromStorage();
-      if (cached) {
-        if (!mounted) return;
-        setData(cached);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch from server
-      try {
-        const startParam = telegramWebApp.initDataUnsafe?.start_param || '';
-
-        const res = await fetch('/api/init', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            initData: telegramWebApp.initData,
-            start_param: startParam,
-          }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(errData.error || errData.message || 'init_failed');
-        }
-
-        const json = await res.json();
-        if (!json.success) {
-          throw new Error(json.error || 'init_failed');
-        }
-
-        const initResponse = json.data as InitResponse;
-        saveToStorage(initResponse);
-        if (!mounted) return;
-        setData(initResponse);
-        setError(null);
-      } catch (err) {
-        if (!mounted) return;
-        const message = err instanceof Error ? err.message : 'init_error';
-        setError(message);
-        setData(null);
-      } finally {
-        if (!mounted) return;
-        setIsLoading(false);
-      }
-    }
-
-    init();
-
-    return () => {
-      mounted = false;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (initRanRef.current) return;
+    initRanRef.current = true;
+    performInit();
+  }, [performInit]);
 
   // Stabilize data reference to prevent infinite re-renders in consumers.
   // Without this, each render creates a new object reference even when content is identical,
@@ -192,6 +136,6 @@ export function useAuth(): UseAuthReturn {
     error,
     data: stableData,
     isTWA,
-    refresh: fetchInit,
+    refresh: performInit,
   };
 }

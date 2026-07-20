@@ -46,7 +46,7 @@ export function TelegramInit() {
         typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : 'N/A (SSR)'
       );
     }
-  }, [telegram.isAvailable, telegram.isExpanded, telegram.viewportHeight, telegram.viewportStableHeight, telegram.initData, telegram.initDataUnsafe, telegram.startParam]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null; // This component renders nothing
 }
