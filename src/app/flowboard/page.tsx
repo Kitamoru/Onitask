@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { FlowBoard, OnboardingModal } from '@/components/flowboard';
 import type {
   SprintInfo,
@@ -9,14 +9,13 @@ import type {
   WorkerCardData,
   AgentCardData,
 } from '@/types/flowboard';
-import { getFlowMetrics, getTasks } from '@/lib/api/flow';
+import { getFlowMetrics } from '@/lib/api/flow';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/contexts/DataContext';
 import type { Database } from '../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 
-/** Convert DB task row to WorkerCardData tasks list */
 function tasksToWorkerTaskList(tasks: TasksRow[]): string[] {
   return tasks.slice(0, 3).map((t) => {
     const fullId = t.task_number ? `TASK-${t.task_number}` : t.id.slice(0, 8);
@@ -28,14 +27,9 @@ export default function FlowBoardPage() {
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useAuth();
   const { state, dispatch } = useData();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
 
-  // Derived UI state from global store
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];
@@ -121,105 +115,26 @@ export default function FlowBoardPage() {
       });
   }, [metrics, tasks]);
 
-  // Handle authentication states and workspace detection
-  useEffect(() => {
-    if (authLoading) return;
-    if (authError) {
-      setError(authError);
-      setLoading(false);
-      return;
-    }
-
-    // Guard: if workspace_id is missing or empty, user needs to create a board
-    const wsId = authData?.worker?.workspace_id;
-    if (!wsId) {
-      // Don't set workspaceId - this will trigger the modal
-      return;
-    }
-    setWorkspaceId(wsId);
-  }, [authLoading, authError, authData?.worker?.workspace_id]);
-
-  // Fetch initial data
-  const fetchData = useCallback(async () => {
-    if (!workspaceId) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch metrics
-      const { metrics, error: metricsError } = await getFlowMetrics();
-      if (metricsError) {
-        setError(metricsError);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch tasks for detailed display
-      const { tasks: apiTasks, error: tasksError } = await getTasks();
-      if (tasksError) {
-        setError(tasksError);
-      }
-
-      // Store metrics in global state
-      dispatch({ type: 'SET_METRICS', payload: metrics });
-
-      // Store tasks in global state
-      if (apiTasks) {
-        dispatch({ type: 'SET_TASKS', payload: apiTasks as unknown as TasksRow[] });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, dispatch]);
-
-  // Refresh metrics only
   const refreshMetrics = useCallback(async () => {
-    if (!workspaceId) return;
     try {
       const { metrics, error: metricsError } = await getFlowMetrics();
       if (metricsError) {
-        setError(metricsError);
+        console.error('Failed to refresh metrics:', metricsError);
         return;
       }
       dispatch({ type: 'SET_METRICS', payload: metrics });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      console.error('Refresh metrics error:', err);
     }
-  }, [workspaceId, dispatch]);
-
-  // Initial fetch
-  useEffect(() => {
-    if (workspaceId) {
-      fetchData();
-    }
-  }, [workspaceId, fetchData]);
+  }, [dispatch]);
 
   // Refresh metrics periodically
-  useEffect(() => {
-    if (!workspaceId) return;
+  React.useEffect(() => {
     const interval = setInterval(() => {
       refreshMetrics();
     }, 30000); // every 30s
     return () => clearInterval(interval);
-  }, [workspaceId, refreshMetrics]);
-
-  // Handle board creation success - refresh auth to get new workspace
-  const handleBoardCreated = useCallback(() => {
-    refreshAuth();
-  }, [refreshAuth]);
-
-  // Check if we need to show onboarding modal
-  const isNewUser = authData?.is_new_user === true;
-  const needsOnboarding = !workspaceId && !authLoading && !authError && isNewUser;
-
-  const currentDate = new Date().toLocaleDateString('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  }, [refreshMetrics]);
 
   // Auth loading state
   if (authLoading) {
@@ -249,6 +164,15 @@ export default function FlowBoardPage() {
     );
   }
 
+  const currentDate = new Date().toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  const isNewUser = authData?.is_new_user === true;
+  const needsOnboarding = !authData?.worker?.workspace_id && !authLoading && !authError && isNewUser;
+
   return (
     <>
       <FlowBoard
@@ -259,17 +183,17 @@ export default function FlowBoardPage() {
         taskStatuses={taskStatuses}
         workers={workers}
         agents={agents}
-        loading={loading}
-        error={error}
+        loading={false}
+        error={null}
         onAddWorker={() => console.log('Add worker clicked')}
         onAddAgent={() => console.log('Add agent clicked')}
-        onRefresh={fetchData}
+        onRefresh={refreshMetrics}
         isNewUser={isNewUser}
       />
       
       {/* Onboarding modal for new users */}
       {needsOnboarding && (
-        <OnboardingModal onSuccess={handleBoardCreated} />
+        <OnboardingModal onSuccess={refreshAuth} />
       )}
     </>
   );

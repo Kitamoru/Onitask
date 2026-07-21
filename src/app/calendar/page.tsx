@@ -11,7 +11,6 @@ type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 function CalendarContent() {
   const searchParams = useSearchParams();
-  const { isLoading: authLoading, error: authError } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,26 +20,6 @@ function CalendarContent() {
   const [error, setError] = useState<string | null>(null);
 
   const workspaceId = searchParams.get('workspace_id') ?? '';
-
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
-        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-dvh p-4" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
-        <div className="text-center max-w-sm">
-          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
-            Ошибка авторизации. Откройте приложение через Telegram Web App.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   useEffect(() => {
     loadData();

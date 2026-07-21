@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/contexts/DataContext';
@@ -29,11 +29,8 @@ function getTelegramInitData(): string {
 
 export default function BoardsPage() {
   const router = useRouter();
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
-  const { state, loadBoardsData } = useData();
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { isLoading: authLoading, error: authError } = useAuth();
+  const { state } = useData();
   
   const workspaces = state.workspaces.items;
   const workers = state.workers.items;
@@ -45,28 +42,6 @@ export default function BoardsPage() {
   const boardCards = state.boards.cards;
 
   // No redirect - new users will see empty state and can create board via modal
-
-  // Load boards data when auth data is available
-  useEffect(() => {
-    async function loadData() {
-      if (!authData) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        await loadBoardsData();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        setError(message);
-        console.error('Boards page load error:', message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [authData, loadBoardsData]);
 
    // Auth loading state
    if (authLoading) {
@@ -96,45 +71,14 @@ export default function BoardsPage() {
      );
    }
 
-   if (loading) {
+   // Show skeleton while boards data is loading
+   if (!state.boards.lastUpdated) {
      return (
        <div
          className="flex items-center justify-center h-full min-h-dvh"
          style={{ backgroundColor: '#0A0A0A' }}
        >
          <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
-       </div>
-     );
-   }
-
-   if (error) {
-     return (
-       <div
-         className="flex items-center justify-center h-full min-h-dvh p-4"
-         style={{ backgroundColor: '#0A0A0A' }}
-       >
-         <div className="text-center max-w-sm">
-           <p style={{ color: '#EF4444', fontFamily: 'system-ui', fontSize: '14px' }}>
-             {error}
-           </p>
-           <button
-             onClick={() => window.location.reload()}
-             style={{
-               fontFamily: "'Inter', system-ui, sans-serif",
-               fontSize: '14px',
-               padding: '8px 16px',
-               borderRadius: '8px',
-               backgroundColor: '#F59E0B',
-               color: '#0A0A0A',
-               border: 'none',
-               cursor: 'pointer',
-               fontWeight: '600',
-               marginTop: '12px',
-             }}
-           >
-             Повторить
-           </button>
-         </div>
        </div>
      );
    }
