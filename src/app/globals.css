@@ -28,8 +28,25 @@
   --color-text-white: #FFFFFF;
 
   /* Accent */
-  --color-accent-amber: #F59E0B;
-  --color-accent-amber-subtle: rgba(245, 158, 11, 0.1);
+  --color-accent-amber: #ff9900;
+  --color-accent-amber-subtle: rgba(255, 153, 0, 0.1);
+  --color-accent: #ff9900;
+  --color-accent-strong: #ffad33;
+  --color-accent-ink: #1a1200;
+  --color-text: #f2f2f0;
+  --color-bg: #0a0a0a;
+  --color-surface: #101010;
+  --color-line: #3a3a3a;
+  --color-line-strong: #4a4a4a;
+  --color-toggle-track-off: #101010;
+  --color-toggle-track-on: var(--color-accent);
+  --color-toggle-knob: #fafafa;
+  --color-grad-add-from: #6a8a72;
+  --color-grad-add-to: #a9915a;
+  --color-grad-warning-from: #ffb547;
+  --color-grad-warning-to: #6e3f00;
+  --color-grad-urgent-from: #d9636b;
+  --color-grad-urgent-to: #55151a;
 
   /* Error */
   --color-error: #EF4444;

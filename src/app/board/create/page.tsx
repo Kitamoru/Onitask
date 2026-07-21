@@ -141,10 +141,7 @@ export default function CreateBoardPage() {
   }
 
   return (
-    <div
-      className="h-full min-h-dvh w-full"
-      style={{ backgroundColor: '#0A0A0A' }}
-    >
+    <div className="flex min-h-dvh w-full flex-col bg-bg pt-[48px]">
       {error && (
         <div className="px-4 pt-4">
           <div className="rounded-[10px] bg-accent-amber/10 px-4 py-2 text-sm text-[#F59E0B]" role="alert">

@@ -18,7 +18,7 @@ const config: Config = {
         // Base background colors (used directly via CSS variables)
         "primary-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
         "bg-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
-        surface: "var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-bg-surface, #1A1A1A)))",
+        surface: "var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-surface, #101010)))",
         "surface-hover": "var(--color-bg-surface-hover, #2A2A2A)",
         "bg-light": "var(--color-bg-light, #FAFAFA)",
 
@@ -31,9 +31,9 @@ const config: Config = {
         "text-subtle": "var(--tg-theme-subtitle-text-color, var(--color-text-muted, #8B8B8B))",
 
         // Accent
-        "accent-amber": "var(--tg-theme-button-color, var(--color-accent-amber, #F59E0B))",
-        accent: "var(--tg-theme-button-color, var(--color-accent-amber, #F59E0B))",
-        "accent-amber-subtle": "var(--color-accent-amber-subtle, rgba(245, 158, 11, 0.1))",
+        "accent-amber": "var(--tg-theme-button-color, var(--color-accent-amber, #ff9900))",
+        accent: "var(--tg-theme-button-color, var(--color-accent-amber, #ff9900))",
+        "accent-amber-subtle": "var(--color-accent-amber-subtle, rgba(255, 153, 0, 0.1))",
         "accent-ink": "#0A0A0A",
         "accent-button-text": "var(--tg-theme-button-text-color, var(--color-text-white, #FFFFFF))",
 
@@ -52,22 +52,22 @@ const config: Config = {
         line: "var(--color-border-default, rgba(139, 139, 139, 0.2))",
 
         // Toggle
-        "toggle-track-off": "#2A2A2A",
+        "toggle-track-off": "#101010",
         "toggle-knob": "#FAFAFA",
 
         // Gradients
-        "grad-add-from": "var(--color-accent-amber, #F59E0B)",
-        "grad-add-to": "var(--color-accent-amber, #F59E0B)",
-        "grad-warning-from": "var(--color-signal-yellow, #F59E0B)",
-        "grad-warning-to": "var(--color-signal-yellow, #F59E0B)",
-        "grad-urgent-from": "var(--color-signal-red, #EF4444)",
-        "grad-urgent-to": "var(--color-signal-red, #EF4444)",
+        "grad-add-from": "var(--color-grad-add-from, #6a8a72)",
+        "grad-add-to": "var(--color-grad-add-to, #a9915a)",
+        "grad-warning-from": "var(--color-grad-warning-from, #ffb547)",
+        "grad-warning-to": "var(--color-grad-warning-to, #6e3f00)",
+        "grad-urgent-from": "var(--color-grad-urgent-from, #d9636b)",
+        "grad-urgent-to": "var(--color-grad-urgent-to, #55151a)",
 
         // System
         background: "var(--background, #ffffff)",
         foreground: "var(--foreground, #171717)",
         "gray-custom-30": "rgba(139, 139, 139, 0.3)",
-        "ring-accent-amber": "var(--color-accent-amber, #F59E0B)",
+        "ring-accent-amber": "var(--color-accent-amber, #ff9900)",
       },
       fontFamily: {
         base: ["Inter", "system-ui", "sans-serif"],
@@ -96,6 +96,8 @@ const config: Config = {
         DEFAULT: "0.5rem",
         lg: "0.375rem",
         full: "9999px",
+        field: "16px",
+        notch: "16px",
       },
       spacing: {
         "0": "0",
@@ -111,6 +113,8 @@ const config: Config = {
         "6": "1.5rem",
         "8": "2rem",
         "16": "4rem",
+        "section-gap": "32px",
+        "page-gutter": "16px",
       },
       maxWidth: {
         mobile: "480px",
