@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
 import { useAuth } from '@/hooks/useAuth';
+import { useData } from '@/contexts/DataContext';
 
 /**
  * Create Board page — renders the desk/create design from Figma.
@@ -24,7 +25,8 @@ export default function CreateBoardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  const { isLoading: authLoading, error: authError, refresh } = useAuth();
+  const { loadBoardsData } = useData();
 
   // No redirect needed - this page is only for new users from root redirect
   // Existing users should use /boards/new for creating additional boards
@@ -94,6 +96,8 @@ export default function CreateBoardPage() {
         throw new Error(errData.error || errData.message || res.statusText || 'Failed to create board');
       }
 
+      await refresh();
+      await loadBoardsData();
       router.push('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

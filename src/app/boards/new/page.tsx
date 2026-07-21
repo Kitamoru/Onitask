@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
 import { useAuth } from '@/hooks/useAuth';
+import { useData } from '@/contexts/DataContext';
 
 /**
  * Create Board page — универсальная форма создания доски.
@@ -15,14 +16,15 @@ import { useAuth } from '@/hooks/useAuth';
  * 1. Проверяем авторизацию
  * 2. Пользователь заполняет CreateDeskForm
  * 3. Submit → POST /api/workspaces
- * 4. On success → redirect to /boards
+ * 4. On success → refresh auth + boards data → redirect to /boards
  */
 
 export default function CreateBoardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
-  const { isLoading: authLoading, error: authError } = useAuth();
+  const { isLoading: authLoading, error: authError, refresh } = useAuth();
+  const { loadBoardsData } = useData();
 
   function getTelegramInitData(): string {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
@@ -86,6 +88,10 @@ export default function CreateBoardPage() {
         throw new Error(errData.error || errData.message || res.statusText || 'Failed to create board');
       }
 
+      // Refresh auth and boards data before navigation
+      await refresh();
+      await loadBoardsData();
+      
       router.push('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

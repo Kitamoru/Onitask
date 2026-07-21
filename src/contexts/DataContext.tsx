@@ -9,29 +9,36 @@ type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Worker = Database['public']['Tables']['workers']['Row'];
 
 export interface FlowMetrics {
-  sprint?: {
+  sprint: {
     id: string;
     name: string;
-    start_date: string;
-    end_date: string;
-    goal?: string;
-  };
+    topic: string;
+    startDate: string;
+    endDate: string;
+    daysElapsed: number;
+    totalDays: number;
+    progress: number;
+    doneSP: number;
+    totalSP: number;
+    inProgress: number;
+    onReview: number;
+    isActive: boolean;
+  } | null;
   columns: Array<{
     name: string;
     wip_current: number;
-    wip_limit?: number;
+    wip_limit?: number | null;
     health: 'green' | 'yellow' | 'red';
   }>;
   workers: Array<{
     display_name: string;
     type: 'human' | 'agent';
-    status: 'normal' | 'overloaded';
+    status: 'ok' | 'overloaded';
     cognitive_load: number;
   }>;
   alerts: Array<{
-    id: string;
     type: string;
-    severity: 'info' | 'warning' | 'critical';
+    severity: 'low' | 'medium' | 'high';
     message: string;
   }>;
 }
@@ -58,6 +65,28 @@ interface DataStore {
     items: Worker[];
     lastUpdated: number | null;
   };
+  boards: {
+    riskData: {
+      people: number;
+      processes: number;
+      escalations: number;
+    } | null;
+    cards: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      memberCount: number;
+      agentCount: number;
+      stats: {
+        inWork: number;
+        escalations: number;
+        overloaded: number;
+        done: number;
+      };
+      sprint?: any;
+    }>;
+    lastUpdated: number | null;
+  };
 }
 
 type Action =
@@ -70,6 +99,7 @@ type Action =
   | { type: 'SET_METRICS'; payload: FlowMetrics }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
   | { type: 'SET_WORKERS'; payload: Worker[] }
+  | { type: 'SET_BOARDS'; payload: DataStore['boards'] }
   | { type: 'HYDRATE_FROM_STORAGE'; payload: Partial<DataStore> };
 
 const initialState: DataStore = {
@@ -92,6 +122,11 @@ const initialState: DataStore = {
   },
   workers: {
     items: [],
+    lastUpdated: null,
+  },
+  boards: {
+    riskData: null,
+    cards: [],
     lastUpdated: null,
   },
 };
@@ -191,6 +226,15 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
+    case 'SET_BOARDS':
+      return {
+        ...state,
+        boards: {
+          ...action.payload,
+          lastUpdated: Date.now(),
+        },
+      };
+
     case 'HYDRATE_FROM_STORAGE':
       return {
         ...state,
@@ -206,6 +250,7 @@ interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
   refreshAuth: () => Promise<void>;
+  loadBoardsData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -305,8 +350,98 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.auth.data?.worker?.workspace_id]);
 
+  const loadBoardsData = useCallback(async () => {
+    const workspaceId = state.auth.data?.worker?.workspace_id;
+    if (!workspaceId) return;
+
+    try {
+      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
+      const telegramWebApp = globalWindow?.Telegram?.WebApp;
+      const initData = telegramWebApp?.initData || '';
+
+      const res = await fetch('/api/workspaces/my-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: initData }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(errData.error || 'Failed to load board data');
+      }
+
+      const json = await res.json();
+      if (!json.success) {
+        throw new Error(json.error || 'Failed to load board data');
+      }
+
+      const { workers: workersData, workspaces: wsData, tasks } = json.data;
+
+      dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
+      dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+
+      const tasksList = tasks ?? [];
+      const peopleSet = new Set<string>();
+      let processCount = 0;
+      let escalationCount = 0;
+
+      tasksList.forEach((task: any) => {
+        if (task.assigned_to) {
+          peopleSet.add(task.assigned_to);
+        }
+        if (task.column === 'process') {
+          processCount++;
+        }
+        if (task.escalation_reason) {
+          escalationCount++;
+        }
+      });
+
+      const cards = (wsData ?? []).map((ws: any) => {
+        const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
+
+        return {
+          id: ws.id,
+          name: ws.name,
+          slug: ws.slug,
+          memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
+          agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
+          stats: {
+            inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
+            escalations: wsTasks.filter((t: any) => t.escalation_reason !== null).length,
+            overloaded: 0,
+            done: wsTasks.filter((t: any) => t.column === 'done').length,
+          },
+          sprint: undefined,
+        };
+      });
+
+      dispatch({
+        type: 'SET_BOARDS',
+        payload: {
+          riskData: {
+            people: peopleSet.size,
+            processes: processCount,
+            escalations: escalationCount,
+          },
+          cards,
+          lastUpdated: Date.now(),
+        },
+      });
+    } catch (err) {
+      console.error('DataProvider: failed to load boards data', err);
+    }
+  }, [state.auth.data?.worker?.workspace_id]);
+
+  // Load boards data when workspace is available
+  useEffect(() => {
+    if (state.auth.data?.worker?.workspace_id) {
+      loadBoardsData();
+    }
+  }, [state.auth.data?.worker?.workspace_id, loadBoardsData]);
+
   return (
-    <DataContext.Provider value={{ state, dispatch, refreshAuth }}>
+    <DataContext.Provider value={{ state, dispatch, refreshAuth, loadBoardsData }}>
       {children}
     </DataContext.Provider>
   );

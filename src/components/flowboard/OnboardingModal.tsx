@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
+import { useData } from '@/contexts/DataContext';
 
 interface OnboardingModalProps {
   /** Callback when board is created successfully */
@@ -18,6 +19,7 @@ interface OnboardingModalProps {
 export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const { refreshAuth, loadBoardsData } = useData();
 
   function getTelegramInitData(): string {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
@@ -86,6 +88,8 @@ export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
         throw new Error(errData.error || errData.message || res.statusText || 'Failed to create board');
       }
 
+      await refreshAuth();
+      await loadBoardsData();
       onSuccess();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

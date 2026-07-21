@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { FlowBoard, OnboardingModal } from '@/components/flowboard';
 import type {
   SprintInfo,
@@ -10,8 +10,8 @@ import type {
   AgentCardData,
 } from '@/types/flowboard';
 import { getFlowMetrics, getTasks } from '@/lib/api/flow';
-import { useTasksRealtime } from '@/lib/realtime/tasks';
 import { useAuth } from '@/hooks/useAuth';
+import { useData } from '@/contexts/DataContext';
 import type { Database } from '../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -26,22 +26,100 @@ function tasksToWorkerTaskList(tasks: TasksRow[]): string[] {
 
 export default function FlowBoardPage() {
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useAuth();
-  
+  const { state, dispatch } = useData();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sprint, setSprint] = useState<SprintInfo | undefined>();
-  const [signals, setSignals] = useState<SignalData[]>([]);
-  const [taskStatuses, setTaskStatuses] = useState<TaskStatusData[]>([]);
-  const [workers, setWorkers] = useState<WorkerCardData[]>([]);
-  const [agents, setAgents] = useState<AgentCardData[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [allTasks, setAllTasks] = useState<TasksRow[]>([]);
-  const allTasksRef = useRef<TasksRow[]>([]);
 
-  // Keep ref in sync so fetchData always sees latest value (avoids stale closure)
-  useEffect(() => {
-    allTasksRef.current = allTasks;
-  }, [allTasks]);
+  const metrics = state.metrics.data;
+  const tasks = state.tasks.items;
+
+  // Derived UI state from global store
+  const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
+  const signals = useMemo<SignalData[]>(() => {
+    if (!metrics) return [];
+    const newSignals: SignalData[] = [];
+    const overloadedCount = metrics.workers.filter(w => w.status === 'overloaded').length;
+    if (overloadedCount > 0) {
+      const overloadedNames = metrics.workers
+        .filter(w => w.status === 'overloaded')
+        .map(w => w.display_name)
+        .join(', ');
+      newSignals.push({ id: 'people', label: 'Люди', count: overloadedCount, description: overloadedNames });
+    } else {
+      newSignals.push({ id: 'people', label: 'Люди', count: 0, description: 'Все в норме' });
+    }
+    const bottleneckCount = metrics.columns.filter(c => c.health === 'red').length;
+    const stuckCount = 0;
+    if (bottleneckCount + stuckCount > 0) {
+      newSignals.push({ id: 'processes', label: 'Процессы', count: bottleneckCount + stuckCount, description: `Ревью ${bottleneckCount}, Блокеры ${stuckCount}` });
+    } else {
+      newSignals.push({ id: 'processes', label: 'Процессы', count: 0, description: 'Нет проблем' });
+    }
+    const escalationCount = metrics.alerts.filter(a => a.type === 'overloaded_member').length;
+    if (escalationCount > 0) {
+      newSignals.push({ id: 'escalations', label: 'Эскалации', count: escalationCount, description: 'Нужен менеджер' });
+    } else {
+      newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0, description: 'Нет эскалаций' });
+    }
+    return newSignals;
+  }, [metrics]);
+
+  const taskStatuses = useMemo<TaskStatusData[]>(() => {
+    if (!metrics) return [];
+    const backlogCount = metrics.columns.find(c => c.name === 'backlog')?.wip_current ?? 0;
+    const inProgressCount = metrics.columns.find(c => c.name === 'in_progress')?.wip_current ?? 0;
+    const reviewCount = metrics.columns.find(c => c.name === 'review')?.wip_current ?? 0;
+    const doneCount = metrics.columns.find(c => c.name === 'done')?.wip_current ?? 0;
+    return [
+      { id: 'active', label: 'Активные', count: inProgressCount, shapes: Math.min(inProgressCount, 10), maxShapes: 10, color: 'var(--color-accent-amber)' },
+      { id: 'queue', label: 'В очереди', count: backlogCount, shapes: Math.min(backlogCount, 10), maxShapes: 10, color: 'var(--color-text-primary)' },
+      { id: 'review', label: 'На проверке', count: reviewCount, shapes: Math.min(reviewCount, 10), maxShapes: 10, color: 'var(--color-signal-cyan)' },
+      { id: 'done', label: 'Сделано', count: doneCount, shapes: Math.min(doneCount, 10), maxShapes: 10, color: 'var(--color-signal-green)' },
+    ];
+  }, [metrics]);
+
+  const workers = useMemo<WorkerCardData[]>(() => {
+    if (!metrics) return [];
+    return metrics.workers
+      .filter(w => w.type === 'human')
+      .map(w => {
+        const workerTasks = tasks.filter(t => t.assigned_to === w.display_name);
+        return {
+          id: w.display_name,
+          displayName: w.display_name,
+          cognitiveWeight: w.cognitive_load,
+          spPerDay: 3.5,
+          trendUp: true,
+          activeDays: 5,
+          roleLabel: 'Участник команды',
+          overloaded: w.status === 'overloaded',
+          tasks: tasksToWorkerTaskList(workerTasks),
+          type: 'human',
+        } as WorkerCardData;
+      });
+  }, [metrics, tasks]);
+
+  const agents = useMemo<AgentCardData[]>(() => {
+    if (!metrics) return [];
+    return metrics.workers
+      .filter(w => w.type === 'agent')
+      .map(w => {
+        const workerTasks = tasks.filter(t => t.assigned_to === w.display_name);
+        return {
+          id: w.display_name,
+          name: w.display_name,
+          cognitiveWeight: w.cognitive_load,
+          spPerDay: 5.0,
+          trendUp: true,
+          activeDays: 5,
+          roleLabel: 'AI-агент',
+          overloaded: w.status === 'overloaded',
+          tasks: tasksToWorkerTaskList(workerTasks),
+        } as AgentCardData;
+      });
+  }, [metrics, tasks]);
 
   // Handle authentication states and workspace detection
   useEffect(() => {
@@ -64,7 +142,7 @@ export default function FlowBoardPage() {
   // Fetch initial data
   const fetchData = useCallback(async () => {
     if (!workspaceId) return;
-    
+
     setLoading(true);
     setError(null);
 
@@ -83,134 +161,34 @@ export default function FlowBoardPage() {
         setError(tasksError);
       }
 
-      // Transform metrics to UI data
-      if (metrics.sprint) {
-        setSprint(metrics.sprint);
+      // Store metrics in global state
+      dispatch({ type: 'SET_METRICS', payload: metrics });
+
+      // Store tasks in global state
+      if (apiTasks) {
+        dispatch({ type: 'SET_TASKS', payload: apiTasks as unknown as TasksRow[] });
       }
-
-      // Build signals from alerts
-      const newSignals: SignalData[] = [];
-      
-      // People signal: overloaded workers
-      const overloadedCount = metrics.workers.filter(w => w.status === 'overloaded').length;
-      if (overloadedCount > 0) {
-        const overloadedNames = metrics.workers
-          .filter(w => w.status === 'overloaded')
-          .map(w => w.display_name)
-          .join(', ');
-        newSignals.push({
-          id: 'people',
-          label: 'Люди',
-          count: overloadedCount,
-          description: overloadedNames,
-        });
-      } else {
-        newSignals.push({ id: 'people', label: 'Люди', count: 0, description: 'Все в норме' });
-      }
-
-      // Processes signal: bottleneck columns
-      const bottleneckCount = metrics.columns.filter(c => c.health === 'red').length;
-      const stuckCount = 0; // TODO: from stuck_tasks view
-      if (bottleneckCount + stuckCount > 0) {
-        newSignals.push({
-          id: 'processes',
-          label: 'Процессы',
-          count: bottleneckCount + stuckCount,
-          description: `Ревью ${bottleneckCount}, Блокеры ${stuckCount}`,
-        });
-      } else {
-        newSignals.push({ id: 'processes', label: 'Процессы', count: 0, description: 'Нет проблем' });
-      }
-
-      // Escalations signal
-      const escalationCount = metrics.alerts.filter(a => a.type === 'overloaded_member').length;
-      if (escalationCount > 0) {
-        newSignals.push({
-          id: 'escalations',
-          label: 'Эскалации',
-          count: escalationCount,
-          description: 'Нужен менеджер',
-        });
-      } else {
-        newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0, description: 'Нет эскалаций' });
-      }
-      setSignals(newSignals);
-
-      // Build task status cards
-      const backlogCount = metrics.columns.find(c => c.name === 'backlog')?.wip_current ?? 0;
-      const inProgressCount = metrics.columns.find(c => c.name === 'in_progress')?.wip_current ?? 0;
-      const reviewCount = metrics.columns.find(c => c.name === 'review')?.wip_current ?? 0;
-      const doneCount = metrics.columns.find(c => c.name === 'done')?.wip_current ?? 0;
-
-      setTaskStatuses([
-        {
-          id: 'active',
-          label: 'Активные',
-          count: inProgressCount,
-          shapes: Math.min(inProgressCount, 10),
-          maxShapes: 10,
-          color: 'var(--color-accent-amber)',
-        },
-        {
-          id: 'queue',
-          label: 'В очереди',
-          count: backlogCount,
-          shapes: Math.min(backlogCount, 10),
-          maxShapes: 10,
-          color: 'var(--color-text-primary)',
-        },
-        {
-          id: 'review',
-          label: 'На проверке',
-          count: reviewCount,
-          shapes: Math.min(reviewCount, 10),
-          maxShapes: 10,
-          color: 'var(--color-signal-cyan)',
-        },
-        {
-          id: 'done',
-          label: 'Сделано',
-          count: doneCount,
-          shapes: Math.min(doneCount, 10),
-          maxShapes: 10,
-          color: 'var(--color-signal-green)',
-        },
-      ]);
-
-      // Build worker/agent cards
-      const newWorkers: WorkerCardData[] = [];
-      const newAgents: AgentCardData[] = [];
-
-      for (const wm of metrics.workers) {
-        const workerTasks = allTasksRef.current.filter(t => t.assigned_to === wm.display_name);
-        const card = {
-          id: wm.display_name,
-          cognitiveWeight: wm.cognitive_load,
-          spPerDay: wm.type === 'human' ? 3.5 : 5.0,
-          trendUp: true,
-          activeDays: 5,
-          roleLabel: wm.type === 'human' ? 'Участник команды' : 'AI-агент',
-          overloaded: wm.status === 'overloaded',
-          tasks: tasksToWorkerTaskList(workerTasks),
-          type: wm.type,
-        };
-
-        if (wm.type === 'human') {
-          newWorkers.push({ ...card, displayName: wm.display_name } as WorkerCardData);
-        } else {
-          newAgents.push({ ...card, name: wm.display_name } as AgentCardData);
-        }
-      }
-
-      setWorkers(newWorkers);
-      setAgents(newAgents);
-      setAllTasks((apiTasks ?? []) as unknown as TasksRow[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, dispatch]);
+
+  // Refresh metrics only
+  const refreshMetrics = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const { metrics, error: metricsError } = await getFlowMetrics();
+      if (metricsError) {
+        setError(metricsError);
+        return;
+      }
+      dispatch({ type: 'SET_METRICS', payload: metrics });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, [workspaceId, dispatch]);
 
   // Initial fetch
   useEffect(() => {
@@ -219,11 +197,14 @@ export default function FlowBoardPage() {
     }
   }, [workspaceId, fetchData]);
 
-  // Realtime subscription
-  useTasksRealtime(workspaceId, useCallback((event) => {
-    // Invalidate and refetch on any task change
-    fetchData();
-  }, [fetchData]));
+  // Refresh metrics periodically
+  useEffect(() => {
+    if (!workspaceId) return;
+    const interval = setInterval(() => {
+      refreshMetrics();
+    }, 30000); // every 30s
+    return () => clearInterval(interval);
+  }, [workspaceId, refreshMetrics]);
 
   // Handle board creation success - refresh auth to get new workspace
   const handleBoardCreated = useCallback(() => {

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useData } from '@/contexts/DataContext';
 import { RiskPulse, BoardCard } from '@/components/board';
 import type { RiskPulseData, BoardCardData } from '@/components/board';
 
@@ -29,17 +30,19 @@ function getTelegramInitData(): string {
 export default function BoardsPage() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  const { state, loadBoardsData } = useData();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [workers, setWorkers] = useState<any[]>([]);
-  const [riskData, setRiskData] = useState<RiskPulseData>({
+  
+  const workspaces = state.workspaces.items;
+  const workers = state.workers.items;
+  const riskData: RiskPulseData = state.boards.riskData ?? {
     people: 0,
     processes: 0,
     escalations: 0,
-  });
-  const [boardCards, setBoardCards] = useState<BoardCardData[]>([]);
+  };
+  const boardCards = state.boards.cards;
 
   // No redirect - new users will see empty state and can create board via modal
 
@@ -47,82 +50,12 @@ export default function BoardsPage() {
   useEffect(() => {
     async function loadData() {
       if (!authData) return;
-
+      
+      setLoading(true);
+      setError(null);
+      
       try {
-        const res = await fetch('/api/workspaces/my-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ init_data: getTelegramInitData() }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(errData.error || 'Failed to load board data');
-        }
-
-        const json = await res.json();
-        if (!json.success) {
-          throw new Error(json.error || 'Failed to load board data');
-        }
-
-        const { workers: workersData, workspaces: wsData, tasks } = json.data;
-
-        setWorkers(workersData ?? []);
-        setWorkspaces(wsData ?? []);
-
-        const workspaceIds = (workersData ?? []).map((w: any) => w.workspace_id).filter(Boolean);
-
-        if (workspaceIds.length === 0) {
-          setLoading(false);
-          return;
-        }
-
-        const tasksList = tasks ?? [];
-
-        // Aggregate risk data
-        const peopleSet = new Set<string>();
-        let processCount = 0;
-        let escalationCount = 0;
-
-        tasksList.forEach((task: any) => {
-          if (task.assigned_to) {
-            peopleSet.add(task.assigned_to);
-          }
-          if (task.column === 'process') {
-            processCount++;
-          }
-          if (task.escalation_reason) {
-            escalationCount++;
-          }
-        });
-
-        setRiskData({
-          people: peopleSet.size,
-          processes: processCount,
-          escalations: escalationCount,
-        });
-
-        // Build board cards
-        const cards: BoardCardData[] = (wsData ?? []).map((ws: any) => {
-          const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
-          
-          return {
-            id: ws.id,
-            name: ws.name,
-            slug: ws.slug,
-            memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
-            agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
-            stats: {
-              inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
-              escalations: wsTasks.filter((t: any) => t.escalation_reason !== null).length,
-              overloaded: 0,
-              done: wsTasks.filter((t: any) => t.column === 'done').length,
-            },
-            sprint: undefined,
-          };
-        });
-
-        setBoardCards(cards);
+        await loadBoardsData();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
@@ -133,7 +66,7 @@ export default function BoardsPage() {
     }
 
     loadData();
-  }, [authData]);
+  }, [authData, loadBoardsData]);
 
    // Auth loading state
    if (authLoading) {
