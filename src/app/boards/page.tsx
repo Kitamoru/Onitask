@@ -327,7 +327,7 @@ export default function BoardsPage() {
 
         {/* "Добавить доску" button */}
         <button
-          onClick={() => router.push('/board/create')}
+          onClick={() => router.push('/boards/new')}
           className="flex items-center justify-center w-full h-10 rounded bg-surface border border-border-default hover:border-accent-amber/50 transition-colors mt-2"
           style={{
             fontFamily: "'Inter', system-ui, sans-serif",

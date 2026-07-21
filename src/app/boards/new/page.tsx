@@ -6,28 +6,23 @@ import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-crea
 import { useAuth } from '@/hooks/useAuth';
 
 /**
- * Create Board page — renders the desk/create design from Figma.
+ * Create Board page — универсальная форма создания доски.
  * 
- * Route: /board/create
- * Uses the pixel‑perfect CreateDeskForm with NotchedPanel, chamfered corners,
- * TrafficLight steppers, and all Telegram‑optimised safe‑area handling.
+ * Route: /boards/new
+ * Доступна для всех авторизованных пользователей (не только новых).
  * 
  * Flow:
- * 1. User arrives here either from root redirect (new user) or manually
- * 2. If user already has a workspace (not new), redirect to /flowboard
- * 3. User fills CreateDeskForm
- * 4. Submit → POST /api/workspaces with form data + Telegram init_data
- * 5. On success → redirect to /boards
+ * 1. Проверяем авторизацию
+ * 2. Пользователь заполняет CreateDeskForm
+ * 3. Submit → POST /api/workspaces
+ * 4. On success → redirect to /boards
  */
 
 export default function CreateBoardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
-
-  // No redirect needed - this page is only for new users from root redirect
-  // Existing users should use /boards/new for creating additional boards
+  const { isLoading: authLoading, error: authError } = useAuth();
 
   function getTelegramInitData(): string {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
@@ -38,8 +33,6 @@ export default function CreateBoardPage() {
 
   /**
    * Maps the new CreateDeskForm format to the API payload.
-   * SP hours are stored as raw strings; deadline signals are derived
-   * from the traffic‑light stepper values.
    */
   const handleSubmit = async (value: CreateDeskFormValue) => {
     setLoading(true);
@@ -52,7 +45,6 @@ export default function CreateBoardPage() {
         return;
       }
 
-      // Build the SP values array from the hours map (fall back to default)
       const spValues: [number, number, number, number, number] = [1, 3, 5, 7, 13];
 
       const payload: Record<string, unknown> = {

@@ -5,6 +5,7 @@ import { BottomMenu } from "@/components/shared/BottomMenu";
 import { TelegramInit } from "@/components/shared/TelegramInit";
 import { TelegramThemeProvider } from "@/components/shared/TelegramTheme";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
+import { AuthLoader } from "@/components/shared/AuthLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,7 +56,9 @@ export default function RootLayout({
         <TelegramProvider>
           <TelegramThemeProvider>
             <TelegramInit />
-            {children}
+            <AuthLoader>
+              {children}
+            </AuthLoader>
             <BottomMenu />
           </TelegramThemeProvider>
         </TelegramProvider>
