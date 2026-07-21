@@ -6,6 +6,7 @@ import { TelegramInit } from "@/components/shared/TelegramInit";
 import { TelegramThemeProvider } from "@/components/shared/TelegramTheme";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
+import { DataProvider } from "@/contexts/DataContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,9 +57,11 @@ export default function RootLayout({
         <TelegramProvider>
           <TelegramThemeProvider>
             <TelegramInit />
-            <AuthLoader>
-              {children}
-            </AuthLoader>
+            <DataProvider>
+              <AuthLoader>
+                {children}
+              </AuthLoader>
+            </DataProvider>
             <BottomMenu />
           </TelegramThemeProvider>
         </TelegramProvider>
