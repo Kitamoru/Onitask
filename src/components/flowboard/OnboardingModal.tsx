@@ -104,11 +104,11 @@ export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
       aria-label="Создание первой доски"
     >
       <div
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg"
+        className="w-full max-w-form xs:max-w-md sm:max-w-md max-h-[90vh] overflow-y-auto rounded-lg"
         style={{ backgroundColor: '#0A0A0A' }}
       >
         {error && (
-          <div className="px-4 pt-4">
+        <div className="px-4 xs:px-5 sm:px-6 pt-4">
             <div className="rounded-[10px] bg-accent-amber/10 px-4 py-2 text-sm text-[#F59E0B]" role="alert">
               {error}
             </div>

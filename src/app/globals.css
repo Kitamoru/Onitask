@@ -1,15 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ============================================================================
    Design Tokens — CSS Custom Properties
-   These variables are used by components via var() and Tailwind @theme inline
+   These variables are used by components via var() and Tailwind config
    ============================================================================ */
 @import "../styles/tokens.css";
 
 /* ============================================================================
    Base Design Tokens — исходные значения (hex/px/rem)
-   Эти переменные определены в :root ДО @theme inline, чтобы @theme мог их использовать через var()
    ============================================================================ */
 
 :root {
@@ -59,13 +60,13 @@
 
   /* Spacing (4px grid, in rem) */
   --spacing-0: 0;
-  --spacing-0.5: 0.125rem;
+  --spacing-0\.5: 0.125rem;
   --spacing-1: 0.25rem;
-  --spacing-1.5: 0.375rem;
+  --spacing-1\.5: 0.375rem;
   --spacing-2: 0.5rem;
-  --spacing-2.5: 0.625rem;
+  --spacing-2\.5: 0.625rem;
   --spacing-3: 0.75rem;
-  --spacing-3.5: 0.875rem;
+  --spacing-3\.5: 0.875rem;
   --spacing-4: 1rem;
   --spacing-5: 1.25rem;
   --spacing-6: 1.5rem;
@@ -181,168 +182,6 @@
 }
 
 /* ============================================================================
-   Tailwind v4 Design Tokens — @theme inline (ОДИН блок, первый обрабатывается)
-   Все кастомные утилиты определяются здесь через CSS custom properties
-   ============================================================================ */
-
-@theme inline {
-  /* ==========================================
-     BREAKPOINTS
-     ========================================== */
-  --breakpoint-xs: 480px;
-  --breakpoint-sm: 640px;
-  --breakpoint-md: 768px;
-  --breakpoint-lg: 1024px;
-  --breakpoint-xl: 1280px;
-
-  /* ==========================================
-     COLORS
-     ========================================== */
-  --color-primary-dark: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
-  --color-bg-dark: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
-  --color-surface: var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-bg-surface)));
-  --color-surface-hover: var(--color-bg-surface-hover);
-  --color-bg-light: var(--color-bg-light);
-  --color-text-primary: var(--tg-theme-text-color, var(--color-text-primary));
-  --color-text: var(--tg-theme-text-color, var(--color-text-primary));
-  --color-text-muted: var(--tg-theme-hint-color, var(--color-text-muted));
-  --color-text-faint: var(--color-text-muted);
-  --color-text-secondary: var(--tg-theme-section-header-text-color, var(--color-text-secondary));
-  --color-text-subtle: var(--tg-theme-subtitle-text-color, var(--color-text-muted));
-  --color-accent-amber: var(--tg-theme-button-color, var(--color-accent-amber));
-  --color-accent: var(--tg-theme-button-color, var(--color-accent-amber));
-  --color-accent-amber-subtle: var(--color-accent-amber-subtle);
-  --color-accent-ink: #0A0A0A;
-  --color-accent-button-text: var(--tg-theme-button-text-color, var(--color-text-white));
-  --color-error: var(--tg-theme-destructive-text-color, var(--color-error));
-  --color-signal-yellow: var(--color-signal-yellow);
-  --color-signal-red: var(--color-signal-red);
-  --color-signal-green: var(--color-signal-green);
-  --color-signal-cyan: var(--color-signal-cyan);
-  --color-border-default: var(--color-border-default);
-  --color-border-white-subtle: var(--color-border-white-subtle);
-  --color-line: var(--color-border-default);
-  --color-toggle-track-off: #2A2A2A;
-  --color-toggle-knob: #FAFAFA;
-  --color-grad-add-from: var(--color-accent-amber);
-  --color-grad-add-to: var(--color-accent-amber);
-  --color-grad-warning-from: var(--color-signal-yellow);
-  --color-grad-warning-to: var(--color-signal-yellow);
-  --color-grad-urgent-from: var(--color-signal-red);
-  --color-grad-urgent-to: var(--color-signal-red);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-gray-custom-30: rgba(139, 139, 139, 0.3);
-  --color-ring-accent-amber: var(--color-accent-amber);
-
-  /* Opacity values for /opacity utilities */
-  --opacity-20: 0.2;
-  --opacity-40: 0.4;
-  --opacity-50: 0.5;
-
-  /* Duration values for transition utilities */
-  --duration-fast: 150ms;
-  --duration-normal: 200ms;
-  --duration-slow: 300ms;
-
-  /* ==========================================
-     FONT FAMILIES
-     ========================================== */
-  --font-family-base: 'Inter', system-ui, sans-serif;
-  --font-family-display: 'Inter Display', system-ui, sans-serif;
-  --font-family-inter: 'Inter', system-ui, sans-serif;
-  --font-family-inter-display: 'Inter Display', system-ui, sans-serif;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
-  /* ==========================================
-     BORDER RADIUS
-     ========================================== */
-  --radius-none: var(--radius-none);
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-input-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-card: var(--radius-card);
-  --radius-default: var(--radius-card);
-  --radius-lg: var(--radius-md);
-  --radius-full: 9999px;
-
-  /* ==========================================
-      SPACING
-      ========================================== */
-  --spacing-0: var(--spacing-0);
-  --spacing-px: 1px;
-  --spacing-0\.5: var(--spacing-0.5);
-  --spacing-1: var(--spacing-1);
-  --spacing-1\.5: var(--spacing-1.5);
-  --spacing-2: var(--spacing-2);
-  --spacing-2\.5: var(--spacing-2.5);
-  --spacing-3: var(--spacing-3);
-  --spacing-3\.5: var(--spacing-3.5);
-  --spacing-4: var(--spacing-4);
-  --spacing-5: var(--spacing-5);
-  --spacing-6: var(--spacing-6);
-  --spacing-8: var(--spacing-8);
-  --spacing-16: var(--spacing-16);
-
-  /* ==========================================
-     FONT SIZES
-     ========================================== */
-  --text-heading-sm: var(--text-heading-sm);
-  --text-heading-sm-line: var(--text-heading-sm-line);
-  --text-heading-md: var(--text-heading-md);
-  --text-heading-md-line: var(--text-heading-md-line);
-  --text-body-xs: var(--text-body-xs);
-  --text-body-xs-line: var(--text-body-xs-line);
-  --text-body-sm: var(--text-body-sm);
-  --text-body-sm-line: var(--text-body-sm-line);
-  --text-body-md: var(--text-body-md);
-  --text-body-md-line: var(--text-body-md-line);
-  --text-body-lg: var(--text-body-lg);
-  --text-body-lg-line: var(--text-body-lg-line);
-  --text-body-xl: var(--text-body-xl);
-  --text-body-xl-line: var(--text-body-xl-line);
-
-  /* Letter spacing */
-  --letter-spacing-tight: var(--letter-spacing-tight);
-  --letter-spacing-tighter: var(--letter-spacing-tighter);
-  --letter-spacing-tightest: var(--letter-spacing-tightest);
-
-  /* Transitions - for duration-* utilities */
-  --transition-duration-fast: 150ms;
-  --transition-duration-normal: 200ms;
-  --transition-duration-slow: 300ms;
-
-  /* Height */
-  --height-tg-screen: var(--tg-viewport-stable-height, 100dvh);
-
-  /* Min height */
-  --min-height-web-only-dvh: 100dvh;
-  --min-height-web-only-svh: 100svh;
-  --min-height-web-only-vh: 100vh;
-
-  /* Padding — safe area */
-  --padding-tg-safe-top: var(--tg-safe-top, env(safe-area-inset-top, 0px));
-  --padding-tg-safe-bottom: var(--tg-safe-bottom, env(safe-area-inset-bottom, 0px));
-  --padding-tg-content-top: var(--tg-content-safe-top, 0px);
-  --padding-tg-content-bottom: var(--tg-content-safe-bottom, 0px);
-
-  /* Max width */
-  --max-width-mobile: 480px;
-  --max-width-mobile-sm: 390px;
-  --max-width-form: var(--spacing-form-max-width);
-
-  /* Z-index */
-  --z-index-modal: 100;
-  --z-index-toast: 90;
-  --z-index-bottom-menu: 50;
-
-  /* Custom z-index utilities */
-  --z-50: 50;
-}
-
-/* ============================================================================
    Safe Area Inset Support (notched devices, Dynamic Island)
    ============================================================================ */
 html {
@@ -382,7 +221,7 @@ body {
 }
 
 /* ============================================================================
-   Custom Utilities (Tailwind v4 arbitrary values)
+   Custom Utilities
    ============================================================================ */
 
 @layer utilities {

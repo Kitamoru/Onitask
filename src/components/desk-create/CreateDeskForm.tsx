@@ -79,8 +79,8 @@ export function CreateDeskForm({
   };
 
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-col gap-8 px-4 pb-4 pt-5">
+    <div className="flex flex-col w-full mx-auto max-w-form">
+      <div className="flex flex-col gap-8 px-4 xs:px-5 sm:px-6 pb-4 pt-5">
         <BasicInfoSection
           name={name}
           onNameChange={setName}
@@ -144,7 +144,7 @@ export function CreateDeskForm({
         </section>
       </div>
 
-      <div className="px-4 pb-6 pt-2 lg:hidden">
+      <div className="px-4 xs:px-5 sm:px-6 pb-6 pt-2 lg:hidden">
         <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
           Создать доску
         </Button>
