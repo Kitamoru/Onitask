@@ -111,24 +111,44 @@ export async function POST(req: NextRequest) {
       displayName = profileData.display_name as string;
     }
 
-    // 3. Create workspace
-    const { data: workspaceData, error: workspaceError } = await supabase
-      .from('workspaces')
-      .insert({
-        name,
-        slug,
-        task_prefix: slug.toUpperCase().slice(0, 4),
-      })
-      .select('id, name, slug, task_prefix')
-      .single();
+     // 3. Create workspace (pass owner_id explicitly since service role bypasses auth.uid())
+     // Note: owner_id must be set explicitly because service_role bypasses RLS and auth.uid() returns NULL
+     const { data: workspaceData, error: workspaceError } = await supabase
+       .from('workspaces')
+       .insert({
+         name,
+         slug,
+         task_prefix: slug.toUpperCase().slice(0, 4),
+         owner_id: profileId,
+       })
+       .select('id, name, slug, task_prefix')
+       .single();
 
-    if (workspaceError || !workspaceData) {
-      console.error('workspaces: workspace creation error', workspaceError);
-      return NextResponse.json(
-        { success: false, error: 'workspace_creation_failed' },
-        { status: 500 },
-      );
-    }
+     if (workspaceError) {
+       console.error('workspaces: workspace creation error', {
+         message: workspaceError.message,
+         details: workspaceError.details,
+         hint: workspaceError.hint,
+         code: workspaceError.code,
+       });
+       return NextResponse.json(
+         { 
+           success: false, 
+           error: 'workspace_creation_failed',
+           details: workspaceError.message,
+           code: workspaceError.code,
+         },
+         { status: 500 },
+       );
+     }
+
+     if (!workspaceData) {
+       console.error('workspaces: workspace creation returned no data');
+       return NextResponse.json(
+         { success: false, error: 'workspace_creation_failed', details: 'No data returned' },
+         { status: 500 },
+       );
+     }
 
     const workspaceId = workspaceData.id as string;
 

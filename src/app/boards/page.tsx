@@ -200,8 +200,8 @@ export default function BoardsPage() {
             <rect x="4" y="8" width="2" height="8" rx="0.5" fill="#F59E0B" />
             <rect x="14" y="8" width="2" height="8" rx="0.5" fill="#F59E0B" />
           </svg>
-          <h1
-            className="text-bg-light"
+           <h1
+             className="text-text-primary"
             style={{
               fontFamily: "'Inter Display', system-ui, sans-serif",
               fontSize: '20px',
@@ -266,7 +266,7 @@ export default function BoardsPage() {
               aria-hidden="true"
             />
             <h2
-              className="text-bg-light truncate"
+              className="text-text-primary truncate"
               style={{
                 fontFamily: "'Inter Display', system-ui, sans-serif",
                 fontSize: '14px',
@@ -295,7 +295,7 @@ export default function BoardsPage() {
         {/* "Добавить доску" button */}
         <button
           onClick={() => router.push('/board/create')}
-          className="flex items-center justify-center w-full h-10 rounded bg-surface border border-grayCustom/30 hover:border-accent-amber/50 transition-colors mt-2"
+          className="flex items-center justify-center w-full h-10 rounded bg-surface border border-border-default hover:border-accent-amber/50 transition-colors mt-2"
           style={{
             fontFamily: "'Inter', system-ui, sans-serif",
             fontSize: '14px',

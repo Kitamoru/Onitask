@@ -1,41 +1,54 @@
-# Active Context — Database Performance Audit (2026-07-16)
+# Active Context
 
-## Task: Comprehensive DB Performance Audit & Migration
+## Current Task: Fix workspace creation - owner_id NULL error (2026-07-21)
 
-### Findings Summary
+**Status**: ✅ Completed
 
-#### Critical Alerts (from Supabase Performance Advisors)
-1. **RLS Disabled on workspace_links** — Priority 1 (CRITICAL). Table fully exposed to anon/authenticated roles.
-2. **15 Unindexed Foreign Keys** — Affecting: agent_memory, assignment_history, invite_links, task_enrichments, task_events, task_relations, tasks, workspace_doc_chunks, workspace_documents, workspace_links, workspace_telegram_chats.
-3. **28 Unused Indexes** — Never queried; wasting write I/O and storage.
-4. **1 Duplicate Index** — `idx_invite_links_workspace` / `idx_invite_links_workspace_active` are identical.
-5. **49 auth_rls_initplan Warnings** — RLS policies using `auth.uid()` instead of `(select auth.uid())`, causing per-row re-evaluation overhead.
-6. **100+ multiple_permissive_policies Warnings** — Multiple permissive policies per role/action increase evaluation cost.
+**Problem Analysis:**
+- Error `postgres 23502` — null value in column "owner_id" violates not-null constraint
+- Error `edge 400` — POST to `/rest/v1/workspaces` with `auth_user: null`
+- Root cause: `auth.uid()` returns NULL для service_role, но миграция 011 использовала `DEFAULT auth.uid()`
 
-#### pg_stat_statements Top Heavy Queries
-All top queries were internal dashboard/MCP metadata queries (schema introspection, timezone names, extension listing). No application-level slow queries detected in pg_stat_statements at this time — database is likely still low-volume.
+**Root causes identified:**
+1. ✅ `DEFAULT auth.uid()` в миграции 011 возвращает NULL для service_role (bypasses RLS)
+2. ✅ Триггер `trg_init_workspace_columns` был создан в 001_init.sql, но **не привязан** к таблице workspaces
+3. ✅ `tracker.columns` имел политику `columns_insert` с проверкой `auth.uid() = workers.id`, что не работает для service_role
+4. ✅ Политика `authenticated_can_create_workspaces` требовала `auth.uid() IS NOT NULL`, что падает для Telegram WebApp auth (нет JWT)
 
-### Validation Results
-- ✅ Schema `tracker` confirmed exists (columns table found in pg_policies)
-- ✅ All 67 existing RLS policy names matched and handled in migration
-- ✅ Migration updated to drop ALL permissive policies before recreating (eliminates both auth_rls_initplan AND multiple_permissive_policies warnings)
+**Changes made:**
+1. **Migration `011_fix_workspace_columns_trigger_and_add_owner.sql`** — исправлена:
+   - Добавлен `trg_init_workspace_columns` trigger (был отсутствовать!)
+   - Функция `init_workspace_columns()` пересоздана как `SECURITY DEFINER`
+   - Предоставлены права `USAGE` и `INSERT` на схему `tracker` для `service_role`
+   - Добавлены RLS политики: `workspaces_insert_service_role`, `workspaces_insert_anon`, `workspaces_insert_own`
+   - Удалена конфликтующая политика `authenticated_can_create_workspaces`
 
-### Actions Taken
-1. Created migration `supabase/migrations/008_optimize_performance.sql`:
-   - **Part 1**: Added 15 indexes on unindexed foreign keys (CONCURRENTLY).
-   - **Part 2**: Dropped duplicate index `idx_invite_links_workspace_active`.
-   - **Part 3**: Enabled RLS on `workspace_links` + added member/admin policies.
-   - **Part 4**: Dropped ALL ~67 existing RLS policies and recreated with `(select auth.uid())` subselect pattern. This eliminates both auth_rls_initplan AND multiple_permissive_policies warnings.
-   - **Part 5**: Added 4 composite indexes for common query patterns.
+2. **Route handler `src/app/api/workspaces/route.ts`** — улучшена обработка ошибок:
+   - Добавлено детальное логирование с `message`, `details`, `hint`, `code`
+   - Добавлен отдельный чек на `!workspaceData`
+   - Возвращает детали ошибки в ответе для диагностики
 
-### Validation Commands (run after deployment)
-```bash
-supabase db push --dry-run          # Schema validation
-curl -X POST /api/workspaces        # API smoke test
-SELECT * FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE 'idx_%';  # Verify new indexes
-```
+3. **lib/supabase.ts** — добавлен warning при отсутствии `SUPABASE_SERVICE_ROLE_KEY`
 
-### Recommendations for Future
-- Monitor `pg_stat_user_indexes` after migration to confirm new indexes are being used.
-- Consider dropping unused indexes after 2 weeks of production traffic if still unused.
-- Schedule quarterly `get_advisors` runs to catch regressions early.
+**Database state (проверено через Supabase MCP):**
+- ✅ Триггер `trg_init_workspace_columns` создан и привязан к `public.workspaces`
+- ✅ Функция `init_workspace_columns()` имеет `SECURITY DEFINER`
+- ✅ Политика `columns_insert_service_role` существует для `tracker.columns`
+- ✅ Политика `workspaces_insert_service_role` существует для `public.workspaces`
+- ✅ Политика `workspaces_insert_anon` существует для `public.workspaces`
+- ✅ Политика `workspaces_insert_own` существует для `public.workspaces`
+
+**Validation:**
+- ✅ `npm run type-check` passed with no errors
+- ✅ Триггер `trg_init_workspace_columns` создан и привязан
+- ✅ Функция `init_workspace_columns()` имеет `SECURITY DEFINER`
+- ✅ Политика `columns_insert_service_role` существует
+- ✅ Политика `workspaces_insert_service_role` существует
+- ✅ Политика `workspaces_insert_anon` существует
+- ✅ Политика `workspaces_insert_own` существует
+
+**Next steps for deployment:**
+1. Убедиться, что `SUPABASE_SERVICE_ROLE_KEY` установлен в Vercel Environment Variables
+2. Перезапустить приложение после деплоя
+3. Проверить логи на наличие warning'а о missing service role key
+4. Протестировать создание workspace через Telegram WebApp

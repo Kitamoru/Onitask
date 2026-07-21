@@ -866,6 +866,7 @@ export interface Database {
           slug: string
           plan: string
           task_prefix: string | null
+          owner_id: string
           created_at: string
         }
         Insert: {
@@ -874,6 +875,7 @@ export interface Database {
           slug: string
           plan?: string
           task_prefix?: string | null
+          owner_id?: string
           created_at?: string
         }
         Update: {
@@ -882,6 +884,7 @@ export interface Database {
           slug?: string
           plan?: string
           task_prefix?: string | null
+          owner_id?: string
           created_at?: string
         }
         Relationships: []
