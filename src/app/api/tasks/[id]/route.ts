@@ -9,32 +9,42 @@
  *
  * Also broadcasts a 'task_changed' event for flow metrics cache invalidation.
  *
+ * Uses Telegram initData auth (server-side, service_role key) instead of Supabase Auth.
+ *
  * Based on: dev_setup §7.2, §7.3, TASKS.md Stage 4 FLOW-01
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
+import { authenticateRequest } from '../../../../../lib/api-auth';
 import type { Database } from '../../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function getAuthenticatedWorker() {
-  const supabase = createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+async function getAuthenticatedWorker(request: NextRequest) {
+  let initData: string | undefined;
 
-  const { data: worker } = await supabase
+  try {
+    const body = await request.clone().json();
+    initData = body.init_data as string | undefined;
+  } catch {
+    // Body not parseable
+  }
+
+  const auth = await authenticateRequest(initData);
+  if (!auth.authenticated) return null;
+
+  const supabase = createServerClient();
+  const { data: workers } = await supabase
     .from('workers')
     .select('id, workspace_id, source_id, type')
-    .eq('source_id', user.id)
+    .eq('source_id', auth.profileId!)
     .eq('is_active', true)
     .limit(1);
 
-  return worker?.[0] ?? null;
+  return workers?.[0] ?? null;
 }
 
 function mapTaskRow(row: TasksRow) {
@@ -82,7 +92,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const worker = await getAuthenticatedWorker();
+    const worker = await getAuthenticatedWorker(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
@@ -107,9 +117,6 @@ export async function PATCH(
     }
 
     // Auto-set moved_to_column_at when column changes
-    if (body.column !== undefined && update.column !== body.column) {
-      update.column = body.column;
-    }
     if ('column' in body && update.moved_to_column_at === undefined) {
       update.moved_to_column_at = new Date().toISOString();
     }
@@ -143,13 +150,17 @@ export async function PATCH(
     }
 
     // Broadcast task_changed event for flow metrics cache invalidation
-    await supabase
-      .channel('flowboard-metrics')
-      .send({
-        type: 'broadcast',
-        event: 'task_changed',
-        payload: { workspace_id: worker.workspace_id },
-      });
+    try {
+      await supabase
+        .channel('flowboard-metrics')
+        .send({
+          type: 'broadcast',
+          event: 'task_changed',
+          payload: { workspace_id: worker.workspace_id },
+        });
+    } catch {
+      // Broadcast is best-effort
+    }
 
     return NextResponse.json({ task: mapTaskRow(data as TasksRow) });
   } catch (err) {

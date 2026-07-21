@@ -7,36 +7,50 @@
  * Supports GET (list) and POST (create) at /api/tasks.
  * PATCH is handled by /api/tasks/[id]/route.ts.
  *
+ * Uses Telegram initData auth (server-side, service_role key) instead of Supabase Auth.
+ *
  * Based on: dev_setup §7.2, §7.3, TASKS.md Stage 4 FLOW-01
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
+import { authenticateRequest } from '../../../../lib/api-auth';
 import type { Database } from '../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function getAuthenticatedWorker() {
-  const supabase = createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+async function getAuthenticatedProfile(req: NextRequest) {
+  // Try body first (POST/PATCH), then header (GET)
+  let initData: string | undefined;
 
-  const { data: worker } = await supabase
+  if (req.method === 'GET') {
+    initData = req.headers.get('x-init-data') || undefined;
+  } else {
+    try {
+      const body = await req.clone().json();
+      initData = body.init_data as string | undefined;
+    } catch {
+      // Body not parseable
+    }
+  }
+
+  const auth = await authenticateRequest(initData);
+  if (!auth.authenticated) return null;
+
+  const supabase = createServerClient();
+  const { data: workers } = await supabase
     .from('workers')
     .select('id, workspace_id, source_id, type')
-    .eq('source_id', user.id)
+    .eq('source_id', auth.profileId!)
     .eq('is_active', true)
     .limit(1);
 
-  return worker?.[0] ?? null;
+  return workers?.[0] ?? null;
 }
 
 function mapTaskRow(row: TasksRow) {
-  // Derive full_id from task_number pattern
   const fullId = row.task_number ? `TASK-${row.task_number}` : row.id.slice(0, 8);
 
   return {
@@ -78,7 +92,7 @@ function mapTaskRow(row: TasksRow) {
 
 export async function GET(request: NextRequest) {
   try {
-    const worker = await getAuthenticatedWorker();
+    const worker = await getAuthenticatedProfile(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
@@ -132,7 +146,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const worker = await getAuthenticatedWorker();
+    const worker = await getAuthenticatedProfile(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }

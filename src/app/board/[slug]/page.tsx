@@ -2,16 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getClient } from '@/lib/supabase/client';
-import type { Database } from '../../../../types/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { BoardDetail } from '@/components/board';
-import type { ExternalLinkData, DocumentData } from '@/components/board';
-
-type Worker = Database['public']['Tables']['workers']['Row'];
-type Workspace = Database['public']['Tables']['workspaces']['Row'];
-type Task = Database['public']['Tables']['tasks']['Row'];
-type Sprint = Database['public']['Tables']['sprints']['Row'];
-type Document = Database['public']['Tables']['workspace_documents']['Row'];
+import type { ExternalLinkData, DocumentData, TaskCardData, WorkerCardData } from '@/components/board';
 
 /**
  * Board Detail Page — displays the content of a single board/workspace.
@@ -19,203 +12,172 @@ type Document = Database['public']['Tables']['workspace_documents']['Row'];
  * Route: /board/[slug]
  * Matches Figma node: 1:836 (desk / [desk_UUID] / edit)
  * 
- * Data loading:
- *   1. Get current user session
- *   2. Find workspace by slug
- *   3. Load workers, tasks, sprints, documents for that workspace
- *   4. Transform into BoardDetail props
+ * Now uses /api/workspaces/my-data (server-side, service_role key) 
+ * instead of direct Supabase client queries.
  */
+
+function getTelegramInitData(): string {
+  if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
+    return (window as any).Telegram.WebApp.initData;
+  }
+  return '';
+}
 
 export default function BoardDetailPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
-  const supabase = getClient();
+  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<Database['public']['Tables']['profiles']['Row'] | null>(null);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [sprints, setSprints] = useState<Sprint[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<any>(null);
+  const [workers, setWorkers] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (authError) {
+      setError(authError);
+      setLoading(false);
+      return;
+    }
+    if (!authData) return;
+
     async function loadData() {
       try {
-        // Get current user session
-        const { data: { user } } = await supabase.auth.getUser();
+        const res = await fetch('/api/workspaces/my-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: getTelegramInitData() }),
+        });
 
-        if (!user) {
-          router.push('/');
-          return;
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(errData.error || 'Failed to load board data');
         }
 
-        // Get profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to load board data');
+        }
 
-        setProfile(profile);
+        const { workers: workersData, workspaces: wsData, tasks: tasksData } = json.data;
 
-        // Get all worker workspace IDs
-        const { data: workers } = await supabase
-          .from('workers')
-          .select('*')
-          .eq('source_id', user.id)
-          .eq('is_active', true);
+        setWorkers(workersData ?? []);
 
-        setWorkers(workers ?? []);
-
-        const workspaceIds = ((workers ?? []) as Worker[]).map((w: Worker) => w.workspace_id);
+        const workspaceIds = (workersData ?? []).map((w: any) => w.workspace_id).filter(Boolean);
 
         if (workspaceIds.length === 0) {
           setLoading(false);
           return;
         }
 
-        // Get workspace by slug
-        const { data: workspace } = await supabase
-          .from('workspaces')
-          .select('*')
-          .in('id', workspaceIds)
-          .eq('slug', slug)
-          .maybeSingle();
-
-        if (!workspace) {
-          // Redirect to boards overview if not found
+        // Find workspace by slug
+        const ws = (wsData ?? []).find((w: any) => w.slug === slug);
+        if (!ws) {
           router.push('/boards');
           return;
         }
 
-        setWorkspace(workspace);
-
-        // Filter workers for this workspace
-        const wsWorkers = ((workers ?? []) as Worker[]).filter((w: Worker) => w.workspace_id === workspace!.id);
+        setWorkspace(ws);
 
         // Get tasks for this workspace
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('workspace_id', workspace.id);
-
-        setTasks(tasks ?? []);
-
-        // Get sprints for this workspace
-        const { data: sprints } = await supabase
-          .from('sprints')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .eq('status', 'active')
-          .order('start_date', { ascending: false })
-          .limit(1);
-
-        setSprints(sprints ?? []);
-
-        // Get documents for this workspace
-        const { data: docs } = await supabase
-          .from('workspace_documents')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .eq('status', 'ready')
-          .order('created_at', { ascending: false });
-
-        setDocuments(docs ?? []);
-      } catch (error) {
-        console.error('Board detail page load error:', error);
+        const wsTasks = (tasksData ?? []).filter((t: any) => t.workspace_id === ws.id);
+        setTasks(wsTasks ?? []);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        setError(message);
+        console.error('Board detail page load error:', message);
       } finally {
         setLoading(false);
       }
     }
 
     loadData();
-  }, [router, slug]);
+  }, [authLoading, authError, authData, slug, router]);
 
-  // Transform data for BoardDetail component
-  const activeSprint = sprints[0];
-  const sprintInfo = activeSprint
-    ? {
-        id: activeSprint.id,
-        name: activeSprint.name ?? `Спринт`,
-        topic: '',
-        startDate: new Date(activeSprint.start_date).toLocaleDateString('ru-RU'),
-        endDate: new Date(activeSprint.end_date).toLocaleDateString('ru-RU'),
-        daysElapsed: 0,
-        totalDays: Math.max(
-          1,
-          Math.ceil(
-            (new Date(activeSprint.end_date).getTime() - new Date(activeSprint.start_date).getTime()) / (1000 * 60 * 60 * 24)
-          )
-        ),
-      }
-    : undefined;
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: '#0A0A0A' }}>
+        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+      </div>
+    );
+  }
 
-  const sprintTasks = (tasks ?? [])
-    .filter((t) => t.sprint_id === activeSprint?.id)
-    .map((t) => ({
-      id: t.id,
-      title: t.title,
-      column: t.column,
-    }));
+  if (authError || error) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-dvh p-4" style={{ backgroundColor: '#0A0A0A' }}>
+        <div className="text-center max-w-sm">
+          <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
+            {authError || error}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              fontFamily: "'Inter', system-ui, sans-serif",
+              fontSize: '14px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              backgroundColor: '#F59E0B',
+              color: '#0A0A0A',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: '600',
+              marginTop: '12px',
+            }}
+          >
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const colleagues = ((workers ?? []) as Worker[])
-    .filter((w: Worker) => w.workspace_id === workspace?.id && w.type === 'human' && w.is_active)
-    .map((w: Worker) => {
-      const workerTasks = (tasks ?? []).filter(
-        (t) => t.assigned_to === w.id && t.column !== 'done'
-      );
-      const overloaded = workerTasks.length > 5;
+  if (!workspace) {
+    return null;
+  }
 
-      return {
-        id: w.id,
-        displayName: w.display_name,
-        avatarUrl: undefined, // Would need profiles.avatar_url
-        cognitiveWeight: 2, // Default; would need attention_risk_score view
-        spPerDay: 3.5, // Default; would need velocity calculation
-        trendUp: true,
-        roleLabel: getRoleLabel(w.role ?? undefined),
-        activeTasks: workerTasks.length,
-        overloaded,
-        tasks: workerTasks.map((t) => `📌 ${t.title}`),
-      };
-    });
+  // Transform data into BoardDetail props
+  const memberWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'human');
+  const agentWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'agent');
 
-  const externalLinks: ExternalLinkData[] = []; // Would come from workspace_links table
-
-  const documentList = (documents ?? []).map((d) => ({
-    id: d.id,
-    filename: d.filename,
-    fileType: d.file_type as 'markdown' | 'text',
+  // Build task cards
+  const taskCards: TaskCardData[] = tasks.map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    column: t.column || 'backlog',
   }));
+
+  // Build colleagues (human workers)
+  const colleagues: WorkerCardData[] = memberWorkers.map((w: any) => ({
+    id: w.id,
+    displayName: w.display_name || w.source_id.slice(0, 8),
+    avatarUrl: w.avatar_url,
+    cognitiveWeight: w.cognitive_weight ?? 1,
+    spPerDay: w.sp_per_day ?? 8,
+    trendUp: false,
+    roleLabel: w.role || 'member',
+    activeTasks: 0,
+    overloaded: false,
+    tasks: [],
+  }));
+
+  // Build external links placeholder
+  const externalLinks: ExternalLinkData[] = [];
+
+  // Build documents placeholder
+  const boardDocuments: DocumentData[] = [];
 
   return (
     <BoardDetail
-      boardName={workspace?.name || ''}
-      slug={slug}
-      sprint={sprintInfo}
-      sprintTasks={sprintTasks}
+      boardName={workspace.name}
+      slug={workspace.slug}
+      sprintTasks={taskCards}
       colleagues={colleagues}
       externalLinks={externalLinks}
-      documents={documentList}
-      deadlineWarningDays={1}
-      loading={loading}
+      documents={boardDocuments}
+      deadlineWarningDays={2}
     />
   );
-}
-
-function getRoleLabel(role?: string): string {
-  switch (role) {
-    case 'owner':
-      return '👑 Владелец';
-    case 'admin':
-      return '🛡️ Администратор';
-    case 'member':
-      return '👤 Участник';
-    case 'viewer':
-      return '👁️ Наблюдатель';
-    default:
-      return '👤 Участник';
-  }
 }

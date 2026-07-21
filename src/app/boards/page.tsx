@@ -2,15 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import type { Database } from '../../../types/supabase';
 import { RiskPulse, BoardCard } from '@/components/board';
 import type { RiskPulseData, BoardCardData } from '@/components/board';
-
-type Worker = Database['public']['Tables']['workers']['Row'];
-type Workspace = Database['public']['Tables']['workspaces']['Row'];
-type Task = Database['public']['Tables']['tasks']['Row'];
 
 /**
  * Boards Overview Page — "Стол" (Desk)
@@ -20,16 +14,26 @@ type Task = Database['public']['Tables']['tasks']['Row'];
  *   - Sub-header: board count + active board
  *   - RiskPulse section: aggregated metrics across all boards
  *   - Board list: cards with stats and sprint info
+ * 
+ * Uses /api/workspaces/my-data (server-side, service_role key) 
+ * instead of direct Supabase client queries (which fail due to RLS).
  */
+
+function getTelegramInitData(): string {
+  if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
+    return (window as any).Telegram.WebApp.initData;
+  }
+  return '';
+}
 
 export default function BoardsPage() {
   const router = useRouter();
-  const supabase = getClient();
   const { isLoading: authLoading, error: authError, data: authData } = useAuth();
   
   const [loading, setLoading] = useState(true);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [workers, setWorkers] = useState<any[]>([]);
   const [riskData, setRiskData] = useState<RiskPulseData>({
     people: 0,
     processes: 0,
@@ -45,46 +49,42 @@ export default function BoardsPage() {
       if (!authData) return;
 
       try {
-        // Get all workers for this user from auth data
-        const workerId = authData.worker.id;
-        const { data: workers } = await supabase
-          .from('workers')
-          .select('*')
-          .eq('source_id', workerId)
-          .eq('is_active', true);
+        const res = await fetch('/api/workspaces/my-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: getTelegramInitData() }),
+        });
 
-        setWorkers(workers ?? []);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(errData.error || 'Failed to load board data');
+        }
 
-        const workspaceIds = ((workers ?? []) as Worker[]).map((w: Worker) => w.workspace_id);
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to load board data');
+        }
+
+        const { workers: workersData, workspaces: wsData, tasks } = json.data;
+
+        setWorkers(workersData ?? []);
+        setWorkspaces(wsData ?? []);
+
+        const workspaceIds = (workersData ?? []).map((w: any) => w.workspace_id).filter(Boolean);
 
         if (workspaceIds.length === 0) {
           setLoading(false);
           return;
         }
 
-        // Get all workspaces
-        const { data: wsData } = await supabase
-          .from('workspaces')
-          .select('*')
-          .in('id', workspaceIds);
-
-        const wsList = wsData as Workspace[] | null;
-        setWorkspaces(wsList ?? []);
-
-        // Fetch tasks for risk pulse aggregation
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('column, escalation_reason, assigned_to, workspace_id')
-          .in('workspace_id', workspaceIds);
-
-        const tasksList = (tasks ?? []) as Task[];
+        const tasksList = tasks ?? [];
 
         // Aggregate risk data
         const peopleSet = new Set<string>();
         let processCount = 0;
         let escalationCount = 0;
 
-        tasksList.forEach((task: Task) => {
+        tasksList.forEach((task: any) => {
           if (task.assigned_to) {
             peopleSet.add(task.assigned_to);
           }
@@ -103,36 +103,37 @@ export default function BoardsPage() {
         });
 
         // Build board cards
-        const cards: BoardCardData[] = (wsList ?? []).map((ws: Workspace) => {
-          const wsTasks = tasksList.filter((t: Task) => t.workspace_id === ws.id);
+        const cards: BoardCardData[] = (wsData ?? []).map((ws: any) => {
+          const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
           
           return {
             id: ws.id,
             name: ws.name,
             slug: ws.slug,
-            memberCount: (workers ?? []).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'human').length,
-            agentCount: (workers ?? []).filter((w: Worker) => w.workspace_id === ws.id && w.type === 'agent').length,
+            memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
+            agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
             stats: {
-              inWork: wsTasks.filter((t: Task) => t.column === 'in_progress').length,
-              escalations: wsTasks.filter((t: Task) => t.escalation_reason !== null).length,
-              overloaded: 0, // Would need attention_risk_score view data
-              done: wsTasks.filter((t: Task) => t.column === 'done').length,
+              inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
+              escalations: wsTasks.filter((t: any) => t.escalation_reason !== null).length,
+              overloaded: 0,
+              done: wsTasks.filter((t: any) => t.column === 'done').length,
             },
-            // Sprint info would come from sprints table
             sprint: undefined,
           };
         });
 
         setBoardCards(cards);
-      } catch (error) {
-        console.error('Boards page load error:', error);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        setError(message);
+        console.error('Boards page load error:', message);
       } finally {
         setLoading(false);
       }
     }
 
     loadData();
-  }, [authData, supabase]);
+  }, [authData]);
 
    // Auth loading state
    if (authLoading) {
@@ -169,6 +170,38 @@ export default function BoardsPage() {
          style={{ backgroundColor: '#0A0A0A' }}
        >
          <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+       </div>
+     );
+   }
+
+   if (error) {
+     return (
+       <div
+         className="flex items-center justify-center h-full min-h-dvh p-4"
+         style={{ backgroundColor: '#0A0A0A' }}
+       >
+         <div className="text-center max-w-sm">
+           <p style={{ color: '#EF4444', fontFamily: 'system-ui', fontSize: '14px' }}>
+             {error}
+           </p>
+           <button
+             onClick={() => window.location.reload()}
+             style={{
+               fontFamily: "'Inter', system-ui, sans-serif",
+               fontSize: '14px',
+               padding: '8px 16px',
+               borderRadius: '8px',
+               backgroundColor: '#F59E0B',
+               color: '#0A0A0A',
+               border: 'none',
+               cursor: 'pointer',
+               fontWeight: '600',
+               marginTop: '12px',
+             }}
+           >
+             Повторить
+           </button>
+         </div>
        </div>
      );
    }
