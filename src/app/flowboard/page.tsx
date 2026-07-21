@@ -232,7 +232,7 @@ export default function FlowBoardPage() {
 
   // Check if we need to show onboarding modal
   const isNewUser = authData?.is_new_user === true;
-  const needsOnboarding = !workspaceId && !authLoading && !authError;
+  const needsOnboarding = !workspaceId && !authLoading && !authError && isNewUser;
 
   const currentDate = new Date().toLocaleDateString('ru-RU', {
     weekday: 'long',

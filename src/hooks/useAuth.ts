@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { InitResponse } from '../../types/api';
 
 /**
@@ -61,6 +61,19 @@ export function useAuth(): UseAuthReturn {
   const dataRef = useRef<InitResponse | null>(null);
   const initRanRef = useRef(false);
 
+  // Load cached auth data immediately on mount to avoid flash/loading screens
+  const initFromCache = React.useCallback(() => {
+    const cached = loadFromStorage();
+    if (cached) {
+      dataRef.current = cached;
+      setData(cached);
+      setIsTWA(true);
+      setIsLoading(false);
+      return true;
+    }
+    return false;
+  }, []);
+
   const performInit = useCallback(async () => {
     const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
     const telegramWebApp = globalWindow?.Telegram?.WebApp;
@@ -110,12 +123,16 @@ export function useAuth(): UseAuthReturn {
     }
   }, []);
 
-  // Run init once on mount
+  // Run init once on mount: try cache first, then network if needed
   useEffect(() => {
     if (initRanRef.current) return;
     initRanRef.current = true;
-    performInit();
-  }, [performInit]);
+
+    const hasCache = initFromCache();
+    if (!hasCache) {
+      performInit();
+    }
+  }, [performInit, initFromCache]);
 
   // Return stable reference - use dataRef to prevent new object on every render
   // when data is null (useMemo with null deps still creates new ref)
