@@ -28,8 +28,6 @@ export function DocumentsCard({
   const handlePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     if (!picked.length) return;
-    // Dedup by name+size — re-opening the picker and re-selecting a file
-    // already in the list (easy to do by accident) shouldn't double it.
     const existingKeys = new Set(files.map((f) => `${f.name}:${f.size}`));
     const deduped = picked.filter(
       (f) => !existingKeys.has(`${f.name}:${f.size}`)
@@ -96,6 +94,7 @@ export function DocumentsCard({
         <NotchedPanel
           corner="field"
           fill="var(--color-surface)"
+          className="h-full" // <-- ИСПРАВЛЕНИЕ: панель занимает всю высоту кнопки
           contentClassName="flex h-full w-full items-center justify-between px-4"
         >
           <span className="truncate text-base text-text-faint">
