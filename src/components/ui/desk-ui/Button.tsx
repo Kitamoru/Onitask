@@ -18,9 +18,6 @@ export function Button({
       {...props}
       disabled={disabled}
       className={cn(
-        // Measured off the reference: buttons run a compact 40px, not
-        // the 52px used by standalone inputs — an earlier pass matched
-        // them to the input height by mistake.
         "block h-10 w-full appearance-none border-0 bg-transparent p-0",
         disabled && "opacity-40",
         className
@@ -40,6 +37,7 @@ export function Button({
           variant === "outline" && "text-text",
           variant === "solid" && "text-accent-ink"
         )}
+        className="h-full" // <-- добавлено, чтобы панель занимала всю высоту кнопки
       >
         {children}
       </NotchedPanel>
