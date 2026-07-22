@@ -80,10 +80,14 @@ export function CreateDeskForm({
 
   return (
     <div className="flex flex-col">
-      {/* Scrollable form body. Bottom padding reserves room for the sticky
-          CTA + the device home indicator so the last card is never hidden
-          behind it (see CreateDeskPage for the sticky wrapper itself). */}
-      <div className="flex flex-col gap-6 px-4 pb-4 pt-5">
+      {/* Scrollable form body. 
+          Используем адаптивный отступ снизу: 
+          - 5rem (80px) – запас под кнопку и меню
+          - + safe-area-inset-bottom для устройств с вырезом */}
+      <div 
+        className="flex flex-col gap-6 px-4 pt-5"
+        style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <BasicInfoSection
           name={name}
           onNameChange={setName}
@@ -147,11 +151,11 @@ export function CreateDeskForm({
         </section>
       </div>
 
-      {/* Inline CTA fallback for non-Telegram / desktop preview.
-          On an actual TWA build, prefer wiring this to Telegram's native
-          MainButton instead — see the README "Sticky CTA vs MainButton"
-          note for why. Kept here so the component works standalone too. */}
-      <div className="px-4 pb-6 pt-2 lg:hidden">
+      {/* Inline CTA – также с адаптивным нижним отступом */}
+      <div 
+        className="px-4 pt-2 lg:hidden"
+        style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
           Создать доску
         </Button>
