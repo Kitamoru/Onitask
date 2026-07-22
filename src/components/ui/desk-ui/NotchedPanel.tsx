@@ -1,20 +1,3 @@
-import { type ReactNode } from "react";
-import { cn } from "@/lib/cn";
-import { clipPathFor, type CornerStyle } from "@/lib/notch";
-
-type NotchedPanelProps = {
-  corner: CornerStyle;
-  radius?: number;
-  notch?: number;
-  borderWidth?: number;
-  border?: string;
-  borderGradient?: [string, string];
-  fill?: string;
-  className?: string;
-  contentClassName?: string;
-  children?: ReactNode;
-};
-
 export function NotchedPanel({
   corner,
   radius = 16,
@@ -38,7 +21,7 @@ export function NotchedPanel({
 
   return (
     <div
-      className={cn("relative inline-flex", className)} // ← важно: inline-flex + flex
+      className={cn("relative", className)}   // ← вернули только relative
       style={{
         borderRadius: radius,
         clipPath: outerClip,
@@ -48,7 +31,7 @@ export function NotchedPanel({
     >
       <div
         className={cn(
-          "flex-1 w-full",           // ← flex-1 вместо h-full
+          "h-full w-full min-h-full",   // ← добавили min-h-full
           contentClassName
         )}
         style={{
