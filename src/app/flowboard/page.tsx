@@ -8,15 +8,13 @@ import type {
   TaskStatusData,
   WorkerCardData,
   AgentCardData,
+  TaskEntity,
 } from '@/types/flowboard';
 import { getFlowMetrics } from '@/lib/api/flow';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/contexts/DataContext';
-import type { Database } from '../../../types/supabase';
 
-type TasksRow = Database['public']['Tables']['tasks']['Row'];
-
-function tasksToWorkerTaskList(tasks: TasksRow[]): string[] {
+function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
   return tasks.slice(0, 3).map((t) => {
     const fullId = t.task_number ? `TASK-${t.task_number}` : t.id.slice(0, 8);
     return `${fullId} · ${t.title.slice(0, 30)}${t.title.length > 30 ? '…' : ''}`;

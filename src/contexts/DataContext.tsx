@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import type { Database } from '../../types/supabase';
+import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -50,7 +51,7 @@ interface DataStore {
     error: string | null;
   };
   tasks: {
-    items: TasksRow[];
+    items: TaskEntity[];
     lastUpdated: number | null;
   };
   metrics: {
@@ -93,8 +94,8 @@ type Action =
   | { type: 'SET_AUTH_LOADING'; payload: boolean }
   | { type: 'SET_AUTH_DATA'; payload: import('../../types/api').InitResponse }
   | { type: 'SET_AUTH_ERROR'; payload: string | null }
-  | { type: 'SET_TASKS'; payload: TasksRow[] }
-  | { type: 'PATCH_TASK'; payload: TasksRow }
+  | { type: 'SET_TASKS'; payload: TaskEntity[] }
+  | { type: 'PATCH_TASK'; payload: TaskEntity }
   | { type: 'REMOVE_TASK'; payload: string }
   | { type: 'SET_METRICS'; payload: FlowMetrics }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
@@ -235,11 +236,31 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
-    case 'HYDRATE_FROM_STORAGE':
+    case 'HYDRATE_FROM_STORAGE': {
+      const payload = action.payload as Partial<DataStore>;
+      const hydratedTasks = (payload.tasks?.items || []).map((task: any) => {
+        // Map old TasksRow format to TaskEntity if needed
+        if ('full_id' in task) return task as TaskEntity;
+        const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
+        return {
+          ...task,
+          full_id: fullId,
+          workspace_prefix: 'TASK',
+          ai_hint: null,
+          story_points: null,
+        } as TaskEntity;
+      });
+
       return {
         ...state,
-        ...action.payload,
+        ...payload,
+        tasks: {
+          ...state.tasks,
+          ...(payload.tasks || {}),
+          items: hydratedTasks,
+        },
       };
+    }
 
     default:
       return state;
@@ -337,7 +358,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         },
         (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            dispatch({ type: 'PATCH_TASK', payload: payload.new as TasksRow });
+            const raw = payload.new as TasksRow | null;
+            if (!raw) return;
+            const fullId = raw.task_number ? `TASK-${raw.task_number}` : raw.id.slice(0, 8);
+            const taskEntity: TaskEntity = {
+              ...raw,
+              full_id: fullId,
+              workspace_prefix: 'TASK',
+              ai_hint: null,
+              story_points: null,
+            } as TaskEntity;
+            dispatch({ type: 'PATCH_TASK', payload: taskEntity });
           } else if (payload.eventType === 'DELETE') {
             dispatch({ type: 'REMOVE_TASK', payload: (payload.old as TasksRow).id });
           }
@@ -460,6 +491,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadMetrics();
+  }, [state.auth.data?.worker?.workspace_id]);
+
+  // Load tasks when workspace is available
+  useEffect(() => {
+    const workspaceId = state.auth.data?.worker?.workspace_id;
+    if (!workspaceId) return;
+
+    async function loadTasks() {
+      try {
+        const flowApi = await import('@/lib/api/flow');
+        const result = await flowApi.getTasks();
+        if (result.error) {
+          console.error('Failed to load tasks:', result.error);
+          return;
+        }
+        // Map to TaskEntity format
+        const tasks: TaskEntity[] = result.tasks.map((task: any) => {
+          const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
+          return {
+            ...task,
+            full_id: fullId,
+            workspace_prefix: 'TASK',
+            ai_hint: null,
+            story_points: null,
+          } as TaskEntity;
+        });
+        dispatch({ type: 'SET_TASKS', payload: tasks });
+      } catch (err) {
+        console.error('Load tasks error:', err);
+      }
+    }
+
+    loadTasks();
   }, [state.auth.data?.worker?.workspace_id]);
 
   return (
