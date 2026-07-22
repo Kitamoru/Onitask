@@ -1,54 +1,38 @@
 # Active Context
 
-## Current Task: Fix workspace creation - owner_id NULL error (2026-07-21)
+## Current Task: UI Design Update — NotchedPanel radius, SectionHeader amber, toggle animation (2026-07-22)
 
-**Status**: ✅ Completed
+**Status**: 🔄 In Progress
 
-**Problem Analysis:**
-- Error `postgres 23502` — null value in column "owner_id" violates not-null constraint
-- Error `edge 400` — POST to `/rest/v1/workspaces` with `auth_user: null`
-- Root cause: `auth.uid()` returns NULL для service_role, но миграция 011 использовала `DEFAULT auth.uid()`
+**Changes Made:**
 
-**Root causes identified:**
-1. ✅ `DEFAULT auth.uid()` в миграции 011 возвращает NULL для service_role (bypasses RLS)
-2. ✅ Триггер `trg_init_workspace_columns` был создан в 001_init.sql, но **не привязан** к таблице workspaces
-3. ✅ `tracker.columns` имел политику `columns_insert` с проверкой `auth.uid() = workers.id`, что не работает для service_role
-4. ✅ Политика `authenticated_can_create_workspaces` требовала `auth.uid() IS NOT NULL`, что падает для Telegram WebApp auth (нет JWT)
+### 1. NotchedPanel.tsx — Default radius changed from 16 to 4 px
+- File: `src/components/ui/desk-ui/NotchedPanel.tsx`
+- Changed `radius = 16` → `radius = 4` in default props
+- `notch` default remains `16` for large containers
+- `notch` prop is already exposed for callers to override
 
-**Changes made:**
-1. **Migration `011_fix_workspace_columns_trigger_and_add_owner.sql`** — исправлена:
-   - Добавлен `trg_init_workspace_columns` trigger (был отсутствовать!)
-   - Функция `init_workspace_columns()` пересоздана как `SECURITY DEFINER`
-   - Предоставлены права `USAGE` и `INSERT` на схему `tracker` для `service_role`
-   - Добавлены RLS политики: `workspaces_insert_service_role`, `workspaces_insert_anon`, `workspaces_insert_own`
-   - Удалена конфликтующая политика `authenticated_can_create_workspaces`
+### 2. Card.tsx — Added notch prop passthrough
+- File: `src/components/ui/desk-ui/Card.tsx`
+- Added optional `notch?: number` prop
+- Passes `notch` through to `NotchedPanel`
 
-2. **Route handler `src/app/api/workspaces/route.ts`** — улучшена обработка ошибок:
-   - Добавлено детальное логирование с `message`, `details`, `hint`, `code`
-   - Добавлен отдельный чек на `!workspaceData`
-   - Возвращает детали ошибки в ответе для диагностики
+### 3. StoryPointCostCard.tsx — Toggle-controlled content visibility with animation
+- File: `src/components/desk-create/StoryPointCostCard.tsx`
+- Content area wrapped in `<div>` with `transition-all duration-300 ease-in-out`
+- Uses `max-h-[600px] opacity-100` when enabled, `max-h-0 opacity-0` when disabled
+- Provides smooth slide-up/slide-down animation
 
-3. **lib/supabase.ts** — добавлен warning при отсутствии `SUPABASE_SERVICE_ROLE_KEY`
+### 4. SectionHeader.tsx — Already uses amber
+- File: `src/components/ui/desk-ui/SectionHeader.tsx`
+- Uses `bg-accent` which maps to `#ff9900` (amber) in Tailwind config
+- No change needed — already correct
 
-**Database state (проверено через Supabase MCP):**
-- ✅ Триггер `trg_init_workspace_columns` создан и привязан к `public.workspaces`
-- ✅ Функция `init_workspace_columns()` имеет `SECURITY DEFINER`
-- ✅ Политика `columns_insert_service_role` существует для `tracker.columns`
-- ✅ Политика `workspaces_insert_service_role` существует для `public.workspaces`
-- ✅ Политика `workspaces_insert_anon` существует для `public.workspaces`
-- ✅ Политика `workspaces_insert_own` существует для `public.workspaces`
+**Validation Status:**
+- ⏳ `npm run type-check` — running (tsc --noEmit)
+- ❌ `npm run lint` — pre-existing ESLint module resolution issue (unrelated to changes)
 
-**Validation:**
-- ✅ `npm run type-check` passed with no errors
-- ✅ Триггер `trg_init_workspace_columns` создан и привязан
-- ✅ Функция `init_workspace_columns()` имеет `SECURITY DEFINER`
-- ✅ Политика `columns_insert_service_role` существует
-- ✅ Политика `workspaces_insert_service_role` существует
-- ✅ Политика `workspaces_insert_anon` существует
-- ✅ Политика `workspaces_insert_own` существует
-
-**Next steps for deployment:**
-1. Убедиться, что `SUPABASE_SERVICE_ROLE_KEY` установлен в Vercel Environment Variables
-2. Перезапустить приложение после деплоя
-3. Проверить логи на наличие warning'а о missing service role key
-4. Протестировать создание workspace через Telegram WebApp
+**Next Steps:**
+- Verify TypeScript compilation passes
+- Manually test UI in dev server
+- Update design docs if needed

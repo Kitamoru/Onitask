@@ -5,12 +5,19 @@ import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
 export function Card({
   children,
   className,
+  notch,
 }: {
   children: ReactNode;
   className?: string;
+  notch?: number;
 }) {
   return (
-    <NotchedPanel corner="panel" className={className} contentClassName={cn("p-[18px]")}>
+    <NotchedPanel
+      corner="panel"
+      notch={notch}
+      className={className}
+      contentClassName={cn("p-[18px]")}
+    >
       {children}
     </NotchedPanel>
   );

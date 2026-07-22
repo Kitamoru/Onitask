@@ -24,7 +24,7 @@ type NotchedPanelProps = {
  */
 export function NotchedPanel({
   corner,
-  radius = 16,
+  radius = 4,
   notch = 16,
   borderWidth = 1,
   border,

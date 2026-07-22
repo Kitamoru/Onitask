@@ -79,7 +79,13 @@ desk / create (65:7780)
 - Screen: 390×844px
 - Padding: 16px
 - Gap между секциями: 24px
-- Border-radius: 12px (карточки), 6px (инпуты), 999px (кнопки)
+- Border-radius: 4px (карточки NotchedPanel default), 8px (small containers notch), 16px (large containers notch default), 6px (инпуты), 999px (кнопки)
+
+### NotchedPanel Radius & Notch Values
+- Default `radius`: 4 px (changed from 16 in v0.13.3+)
+- Default `notch`: 16 px (large container chamfer)
+- Small containers: pass `notch={8}` for 8 px chamfer
+- Large containers: use default `notch={16}` or omit prop
 
 ### Цвета
 - Background: `#0A0A0A`

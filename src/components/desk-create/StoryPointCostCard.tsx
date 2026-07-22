@@ -30,21 +30,29 @@ export function StoryPointCostCard({
         />
       </div>
 
-      <div className="flex flex-col gap-3">
-        {SP_VALUES.map((sp) => (
-          <div key={sp}>
-            <label className="mb-1 block text-[13px] text-text">
-              {sp} SP
-            </label>
-            <TextInput
-              value={hoursBySp[sp]}
-              onChange={(e) => onHoursChange(sp, e.target.value)}
-              placeholder="1 час"
-              disabled={!enabled}
-              inputMode="text"
-            />
-          </div>
-        ))}
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          enabled
+            ? "max-h-[600px] opacity-100"
+            : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="flex flex-col gap-3">
+          {SP_VALUES.map((sp) => (
+            <div key={sp}>
+              <label className="mb-1 block text-[13px] text-text">
+                {sp} SP
+              </label>
+              <TextInput
+                value={hoursBySp[sp]}
+                onChange={(e) => onHoursChange(sp, e.target.value)}
+                placeholder="1 час"
+                disabled={!enabled}
+                inputMode="text"
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </Card>
   );
