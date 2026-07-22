@@ -4,6 +4,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect } 
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
@@ -45,11 +46,6 @@ export interface FlowMetrics {
 }
 
 interface DataStore {
-  auth: {
-    data: import('../../types/api').InitResponse | null;
-    isLoading: boolean;
-    error: string | null;
-  };
   tasks: {
     items: TaskEntity[];
     lastUpdated: number | null;
@@ -91,24 +87,16 @@ interface DataStore {
 }
 
 type Action =
-  | { type: 'SET_AUTH_LOADING'; payload: boolean }
-  | { type: 'SET_AUTH_DATA'; payload: import('../../types/api').InitResponse }
-  | { type: 'SET_AUTH_ERROR'; payload: string | null }
   | { type: 'SET_TASKS'; payload: TaskEntity[] }
   | { type: 'PATCH_TASK'; payload: TaskEntity }
   | { type: 'REMOVE_TASK'; payload: string }
   | { type: 'SET_METRICS'; payload: FlowMetrics }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
   | { type: 'SET_WORKERS'; payload: Worker[] }
-  | { type: 'SET_BOARDS'; payload: DataStore['boards'] }
-  | { type: 'HYDRATE_FROM_STORAGE'; payload: Partial<DataStore> };
+  | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
+  | { type: 'CLEAR_ALL'; payload: null };
 
 const initialState: DataStore = {
-  auth: {
-    data: null,
-    isLoading: true,
-    error: null,
-  },
   tasks: {
     items: [],
     lastUpdated: null,
@@ -134,32 +122,6 @@ const initialState: DataStore = {
 
 function dataReducer(state: DataStore, action: Action): DataStore {
   switch (action.type) {
-    case 'SET_AUTH_LOADING':
-      return {
-        ...state,
-        auth: { ...state.auth, isLoading: action.payload },
-      };
-
-    case 'SET_AUTH_DATA':
-      return {
-        ...state,
-        auth: {
-          data: action.payload,
-          isLoading: false,
-          error: null,
-        },
-      };
-
-    case 'SET_AUTH_ERROR':
-      return {
-        ...state,
-        auth: {
-          ...state.auth,
-          error: action.payload,
-          isLoading: false,
-        },
-      };
-
     case 'SET_TASKS':
       return {
         ...state,
@@ -236,31 +198,8 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
-    case 'HYDRATE_FROM_STORAGE': {
-      const payload = action.payload as Partial<DataStore>;
-      const hydratedTasks = (payload.tasks?.items || []).map((task: any) => {
-        // Map old TasksRow format to TaskEntity if needed
-        if ('full_id' in task) return task as TaskEntity;
-        const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
-        return {
-          ...task,
-          full_id: fullId,
-          workspace_prefix: 'TASK',
-          ai_hint: null,
-          story_points: null,
-        } as TaskEntity;
-      });
-
-      return {
-        ...state,
-        ...payload,
-        tasks: {
-          ...state.tasks,
-          ...(payload.tasks || {}),
-          items: hydratedTasks,
-        },
-      };
-    }
+    case 'CLEAR_ALL':
+      return initialState;
 
     default:
       return state;
@@ -270,120 +209,60 @@ function dataReducer(state: DataStore, action: Action): DataStore {
 interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
-  refreshAuth: () => Promise<void>;
   loadBoardsData: () => Promise<void>;
+  /** Whether auth data is available from useAuth */
+  authData: import('../../types/api').InitResponse | null;
+  isLoadingAuth: boolean;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
+  const { data: authData, isLoading: isLoadingAuth } = useAuth();
 
-  const refreshAuth = useCallback(async () => {
-    dispatch({ type: 'SET_AUTH_LOADING', payload: true });
-    try {
-      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
-      const telegramWebApp = globalWindow?.Telegram?.WebApp;
-      const hasInitData = !!telegramWebApp?.initData;
-
-      if (!hasInitData) {
-        dispatch({ type: 'SET_AUTH_ERROR', payload: 'not_in_twa' });
-        return;
-      }
-
-      const startParam = telegramWebApp.initDataUnsafe?.start_param || '';
-
-      const res = await fetch('/api/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          initData: telegramWebApp.initData,
-          start_param: startParam,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(errData.error || errData.message || 'init_failed');
-      }
-
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.error || 'init_failed');
-      }
-
-      dispatch({ type: 'SET_AUTH_DATA', payload: json.data });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'init_error';
-      dispatch({ type: 'SET_AUTH_ERROR', payload: message });
-    }
-  }, []);
-
-  // Hydrate from sessionStorage on mount
+  // Sync workspace and worker data from auth response (Step B: uses useAuth directly)
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('onitask_data');
-      if (raw) {
-        const cached = JSON.parse(raw);
-        dispatch({ type: 'HYDRATE_FROM_STORAGE', payload: cached });
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+    if (!authData?.worker) return;
 
-  // Persist to sessionStorage on changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      sessionStorage.setItem('onitask_data', JSON.stringify(state));
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [state]);
-
-  // Subscribe to realtime task changes
-  useEffect(() => {
-    const workspaceId = state.auth.data?.worker?.workspace_id;
-    if (!workspaceId) return;
-
-    const supabase = getClient();
-    const channel = supabase
-      .channel(`global-tasks-${workspaceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const raw = payload.new as TasksRow | null;
-            if (!raw) return;
-            const fullId = raw.task_number ? `TASK-${raw.task_number}` : raw.id.slice(0, 8);
-            const taskEntity: TaskEntity = {
-              ...raw,
-              full_id: fullId,
-              workspace_prefix: 'TASK',
-              ai_hint: null,
-              story_points: null,
-            } as TaskEntity;
-            dispatch({ type: 'PATCH_TASK', payload: taskEntity });
-          } else if (payload.eventType === 'DELETE') {
-            dispatch({ type: 'REMOVE_TASK', payload: (payload.old as TasksRow).id });
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    const worker: Worker = {
+      id: authData.worker.id,
+      workspace_id: authData.worker.workspace_id,
+      source_id: '',
+      type: 'human',
+      role: authData.worker.role,
+      display_name: authData.worker.display_name,
+      is_active: true,
+      created_at: new Date().toISOString(),
     };
-  }, [state.auth.data?.worker?.workspace_id]);
+
+    dispatch({ type: 'SET_WORKERS', payload: [worker] });
+
+    // Sync all workspaces from auth response
+    if (authData.workspaces.length > 0) {
+      const now = new Date().toISOString();
+      const workspaces: Workspace[] = authData.workspaces.map(ws => ({
+        id: ws.id,
+        name: ws.name,
+        slug: ws.slug,
+        task_prefix: ws.task_prefix,
+        owner_id: '',
+        plan: 'free',
+        story_points_enabled: false,
+        cognitive_budget_enabled: false,
+        telegram_chat_id: null,
+        linked_at: null,
+        created_at: now,
+        updated_at: now,
+      }));
+      dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
+    }
+  }, [authData?.worker?.id, authData?.workspaces]);
 
   const loadBoardsData = useCallback(async () => {
-    const workspaceId = state.auth.data?.worker?.workspace_id;
-    if (!workspaceId) return;
+    // Step C: Timeout protection — abort after 10 seconds
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
@@ -394,7 +273,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ init_data: initData }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
@@ -456,57 +338,106 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             escalations: escalationCount,
           },
           cards,
-          lastUpdated: Date.now(),
         },
       });
     } catch (err) {
-      console.error('DataProvider: failed to load boards data', err);
+      clearTimeout(timeoutId);
+      // Step C: Log errors clearly for debugging
+      console.error('[DataContext] failed to load boards data:', err);
     }
-  }, [state.auth.data?.worker?.workspace_id]);
+  }, []);
 
-  // Load boards data when workspace is available
+  // Subscribe to realtime task changes — uses authData directly (Step B)
   useEffect(() => {
-    if (state.auth.data?.worker?.workspace_id) {
+    const workspaceId = authData?.worker?.workspace_id;
+    if (!workspaceId) return;
+
+    const supabase = getClient();
+    const channel = supabase
+      .channel(`global-tasks-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const raw = payload.new as TasksRow | null;
+            if (!raw) return;
+            const fullId = raw.task_number ? `TASK-${raw.task_number}` : raw.id.slice(0, 8);
+            const taskEntity: TaskEntity = {
+              ...raw,
+              full_id: fullId,
+              workspace_prefix: 'TASK',
+              ai_hint: null,
+              story_points: null,
+            } as TaskEntity;
+            dispatch({ type: 'PATCH_TASK', payload: taskEntity });
+          } else if (payload.eventType === 'DELETE') {
+            dispatch({ type: 'REMOVE_TASK', payload: (payload.old as TasksRow).id });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authData?.worker?.workspace_id]);
+
+  // Load boards data when workspace_id is available from useAuth (Step B)
+  useEffect(() => {
+    const workspaceId = authData?.worker?.workspace_id;
+    if (workspaceId) {
       loadBoardsData();
     }
-  }, [state.auth.data?.worker?.workspace_id, loadBoardsData]);
+  }, [authData?.worker?.workspace_id, loadBoardsData]);
 
   // Load flow metrics when workspace is available
   useEffect(() => {
-    const workspaceId = state.auth.data?.worker?.workspace_id;
+    const workspaceId = authData?.worker?.workspace_id;
     if (!workspaceId) return;
+
+    let cancelled = false;
 
     async function loadMetrics() {
       try {
         const { getFlowMetrics } = await import('@/lib/api/flow');
         const { metrics, error: metricsError } = await getFlowMetrics();
+        if (cancelled) return;
         if (metricsError) {
-          console.error('Failed to load flow metrics:', metricsError);
+          console.error('[DataContext] Failed to load flow metrics:', metricsError);
           return;
         }
         dispatch({ type: 'SET_METRICS', payload: metrics });
       } catch (err) {
-        console.error('Load metrics error:', err);
+        if (!cancelled) console.error('[DataContext] Load metrics error:', err);
       }
     }
 
     loadMetrics();
-  }, [state.auth.data?.worker?.workspace_id]);
+    return () => { cancelled = true; };
+  }, [authData?.worker?.workspace_id]);
 
   // Load tasks when workspace is available
   useEffect(() => {
-    const workspaceId = state.auth.data?.worker?.workspace_id;
+    const workspaceId = authData?.worker?.workspace_id;
     if (!workspaceId) return;
+
+    let cancelled = false;
 
     async function loadTasks() {
       try {
         const flowApi = await import('@/lib/api/flow');
         const result = await flowApi.getTasks();
+        if (cancelled) return;
         if (result.error) {
-          console.error('Failed to load tasks:', result.error);
+          console.error('[DataContext] Failed to load tasks:', result.error);
           return;
         }
-        // Map to TaskEntity format
         const tasks: TaskEntity[] = result.tasks.map((task: any) => {
           const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
           return {
@@ -519,15 +450,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
         dispatch({ type: 'SET_TASKS', payload: tasks });
       } catch (err) {
-        console.error('Load tasks error:', err);
+        if (!cancelled) console.error('[DataContext] Load tasks error:', err);
       }
     }
 
     loadTasks();
-  }, [state.auth.data?.worker?.workspace_id]);
+    return () => { cancelled = true; };
+  }, [authData?.worker?.workspace_id]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch, refreshAuth, loadBoardsData }}>
+    <DataContext.Provider value={{ state, dispatch, loadBoardsData, authData, isLoadingAuth }}>
       {children}
     </DataContext.Provider>
   );
