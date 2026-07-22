@@ -50,13 +50,12 @@ export function NotchedPanel({
         borderRadius: radius,
         clipPath: outerClip,
         background,
+        padding: borderWidth,
       }}
     >
       <div
         className={cn("h-full w-full", contentClassName)}
         style={{
-          padding: borderWidth,
-          boxSizing: "border-box",        // ← важно
           borderRadius: innerRadius,
           clipPath: innerClip,
           background: fill,
