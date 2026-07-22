@@ -440,6 +440,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.auth.data?.worker?.workspace_id, loadBoardsData]);
 
+  // Load flow metrics when workspace is available
+  useEffect(() => {
+    const workspaceId = state.auth.data?.worker?.workspace_id;
+    if (!workspaceId) return;
+
+    async function loadMetrics() {
+      try {
+        const { getFlowMetrics } = await import('@/lib/api/flow');
+        const { metrics, error: metricsError } = await getFlowMetrics();
+        if (metricsError) {
+          console.error('Failed to load flow metrics:', metricsError);
+          return;
+        }
+        dispatch({ type: 'SET_METRICS', payload: metrics });
+      } catch (err) {
+        console.error('Load metrics error:', err);
+      }
+    }
+
+    loadMetrics();
+  }, [state.auth.data?.worker?.workspace_id]);
+
   return (
     <DataContext.Provider value={{ state, dispatch, refreshAuth, loadBoardsData }}>
       {children}
