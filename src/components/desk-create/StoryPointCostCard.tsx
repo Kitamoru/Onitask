@@ -19,7 +19,7 @@ export function StoryPointCostCard({
 }) {
   return (
     <Card>
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between">
         <span className="text-[15px] font-medium text-text">
           Стоимость сторипоинта
         </span>
@@ -30,10 +30,10 @@ export function StoryPointCostCard({
         />
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         {SP_VALUES.map((sp) => (
           <div key={sp}>
-            <label className="mb-1.5 block text-[13px] text-text">
+            <label className="mb-1 block text-[13px] text-text">
               {sp} SP
             </label>
             <TextInput

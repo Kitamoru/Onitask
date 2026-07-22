@@ -7,6 +7,7 @@ import { TelegramThemeProvider } from "@/components/shared/TelegramTheme";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
 import { DataProvider } from "@/contexts/DataContext";
+import { TelegramViewportBridge } from "@/components/shared/TelegramViewportBridge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,10 +54,11 @@ export default function RootLayout({
         {/* Safe area viewport meta — required for env(safe-area-inset-*) on production */}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
-        <TelegramProvider>
-          <TelegramThemeProvider>
-            <TelegramInit />
+        <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
+          <TelegramProvider>
+            <TelegramThemeProvider>
+              <TelegramViewportBridge />
+              <TelegramInit />
             <DataProvider>
               <AuthLoader>
                 {children}

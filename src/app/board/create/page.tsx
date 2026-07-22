@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
 import { useAuth } from '@/hooks/useAuth';
@@ -133,7 +133,25 @@ export default function CreateBoardPage() {
   }
 
   return (
-    <div className="flex min-h-dvh w-full flex-col bg-bg pt-[48px]">
+    <main
+      className="min-h-[var(--tg-viewport-stable-height)] bg-bg"
+      style={{
+        // Telegram's own chrome (back button / chat title / "..." menu,
+        // or the collapsed Main Button slot) sits on top of the OS safe
+        // area. `--tg-content-safe-top` covers that dynamically via the
+        // WebApp API, but it isn't reliable on every client version (and
+        // is simply 0 before the JS bridge has run on first paint) — so
+        // this is a *floor*, not a replacement: whichever is bigger wins.
+        // 48px was picked to clear Telegram's standard header row; bump
+        // it if your bot's header ends up taller.
+        paddingTop: "max(48px, var(--tg-content-safe-top))",
+        // At the bottom we stack the OS home-indicator inset *under*
+        // Telegram's chrome so the last card / CTA never sits flush
+        // against either.
+        paddingBottom:
+          "calc(var(--tg-content-safe-bottom) + var(--tg-safe-area-bottom))",
+      }}
+    >
       {error && (
         <div className="px-4 pt-4">
           <div className="rounded-[10px] bg-accent-amber/10 px-4 py-2 text-sm text-[#F59E0B]" role="alert">
@@ -145,7 +163,7 @@ export default function CreateBoardPage() {
         onSubmit={handleSubmit}
         onAddColleague={() => console.log('add colleague')}
       />
-    </div>
+    </main>
   );
 }
 

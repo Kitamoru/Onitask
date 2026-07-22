@@ -6,3 +6,4 @@ export { ToggleSwitch } from './ToggleSwitch';
 export { Stepper } from './Stepper';
 export { CountBadge } from './CountBadge';
 export { SectionHeader } from './SectionHeader';
+export { TextArea } from './TextArea';
