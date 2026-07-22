@@ -5,11 +5,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { GlobalLoader } from './GlobalLoader';
 
 /**
- * AuthLoader — клиентская обёртка, которая управляет глобальным лоадером
- * на основе состояния авторизации.
+ * AuthLoader — управляет глобальным лоадером на основе состояния авторизации.
  *
- * Используется в layout.tsx для плавной загрузки при старте приложения.
+ * Минимальные изменения: добавлена минимальная задержка скрытия лоадера
+ * (LOADER_MIN_DISPLAY_MS = 400ms) — гарантирует что интерфейс не "мигает"
+ * при быстрых ререндерах кэшированных данных.
  */
+
+const LOADER_MIN_DISPLAY_MS = 400;
 
 interface AuthLoaderProps {
   children: React.ReactNode;
@@ -17,10 +20,21 @@ interface AuthLoaderProps {
 
 export function AuthLoader({ children }: AuthLoaderProps) {
   const { isLoading } = useAuth();
+  const [visible, setVisible] = React.useState(true);
+  const resolvedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isLoading && !resolvedRef.current) {
+      resolvedRef.current = true;
+      // Keep loader visible for minimum display time to prevent flash
+      const timer = setTimeout(() => setVisible(false), LOADER_MIN_DISPLAY_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
 
   return (
     <>
-      <GlobalLoader ready={!isLoading} />
+      <GlobalLoader ready={!visible} />
       {children}
     </>
   );

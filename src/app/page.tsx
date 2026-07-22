@@ -19,20 +19,20 @@ export default function HomePage() {
   const router = useRouter();
   const { isLoading, error, data } = useAuth();
 
-  const hasRedirectedRef = useRef(false);
+  // Guard: once redirected, NEVER redirect again.
+  // Fixes board creation issue where refresh() flips is_new_user to false
+  // and triggers unwanted redirect to /flowboard.
+  const hasNavigatedRef = useRef(false);
 
   useEffect(() => {
     if (isLoading) return;
+    if (hasNavigatedRef.current) return;
 
-    // Prevent repeated redirects on data reference changes
-    if (hasRedirectedRef.current) return;
-
-    // Redirect based on user type (use primitive value, not object reference)
     if (data?.is_new_user === true) {
-      hasRedirectedRef.current = true;
+      hasNavigatedRef.current = true;
       router.replace('/board/create');
     } else if (data?.is_new_user === false) {
-      hasRedirectedRef.current = true;
+      hasNavigatedRef.current = true;
       router.replace('/flowboard');
     }
     // If error or no data, stay on this page and show error below
