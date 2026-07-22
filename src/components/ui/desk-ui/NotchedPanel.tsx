@@ -54,10 +54,7 @@ export function NotchedPanel({
       }}
     >
       <div
-        className={cn(
-          "h-full w-full min-h-full",   // ← ключевые изменения здесь
-          contentClassName
-        )}
+        className={cn("h-full w-full", contentClassName)}
         style={{
           borderRadius: innerRadius,
           clipPath: innerClip,
