@@ -28,8 +28,7 @@ export default function CreateBoardPage() {
   const { isLoading: authLoading, error: authError, refresh } = useAuth();
   const { loadBoardsData } = useData();
 
-  // No redirect needed - this page is only for new users from root redirect
-  // Existing users should use /boards/new for creating additional boards
+  // This page is accessible to all authenticated users for creating boards.
 
   function getTelegramInitData(): string {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
