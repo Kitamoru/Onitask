@@ -20,7 +20,7 @@ import { useData } from '@/contexts/DataContext';
  */
 
 export default function CreateBoardPage() {
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
   const { isLoading: authLoading, error: authError, refresh } = useAuth();
@@ -34,16 +34,22 @@ export default function CreateBoardPage() {
   }
 
   /**
-   * Maps the new CreateDeskForm format to the API payload.
+   * Submit handler for board creation.
+   * 
+   * Flow: validate → POST /api/workspaces → refresh auth + reload boards → redirect to /boards
+   * 
+   * IMPORTANT: We do NOT redirect to /flowboard here — always go to /boards so user
+   * can see their newly created board in the list alongside existing ones.
    */
   const handleSubmit = async (value: CreateDeskFormValue) => {
-    setLoading(true);
+    setSubmitting(true);
     setError(undefined);
 
     try {
+      // Validate slug length
       if (value.slug.length > 0 && (value.slug.length < 4 || value.slug.length > 5)) {
         setError('Идентификатор доски должен быть 4 или 5 символов');
-        setLoading(false);
+        setSubmitting(false);
         return;
       }
 
@@ -88,16 +94,16 @@ export default function CreateBoardPage() {
         throw new Error(errData.error || errData.message || res.statusText || 'Failed to create board');
       }
 
-      // Refresh auth and boards data before navigation
-      await refresh();
-      await loadBoardsData();
+      // Refresh auth session and reload boards list
+      await Promise.all([refresh(), loadBoardsData()]);
       
-      router.push('/boards');
+      // Always redirect to /boards (not /flowboard) — user expects to see their board list
+      router.replace('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -128,7 +134,8 @@ export default function CreateBoardPage() {
   }
 
   return (
-    <div className="flex min-h-dvh w-full flex-col bg-bg pt-[48px]">
+    <div className="relative flex min-h-dvh w-full flex-col bg-bg pt-[48px]">
+      {/* Error banner */}
       {error && (
         <div className="px-4 pt-4">
           <div className="rounded-[10px] bg-accent-amber/10 px-4 py-2 text-sm text-[#F59E0B]" role="alert">
@@ -136,6 +143,31 @@ export default function CreateBoardPage() {
           </div>
         </div>
       )}
+
+      {/* Submit overlay — prevents double-submission and shows loading state */}
+      {submitting && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          aria-live="polite"
+        >
+          <div className="text-center">
+            <div
+              className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-accent-amber/30 border-t-accent-amber"
+              style={{ width: '40px', height: '40px' }}
+            />
+            <p
+              style={{
+                color: '#FAFAFA',
+                fontFamily: "'Inter Display', system-ui, sans-serif",
+                fontSize: '14px',
+              }}
+            >
+              Создание доски...
+            </p>
+          </div>
+        </div>
+      )}
+
       <CreateDeskForm
         onSubmit={handleSubmit}
         onAddColleague={() => console.log('add colleague')}

@@ -19,20 +19,23 @@ export default function HomePage() {
   const router = useRouter();
   const { isLoading, error, data } = useAuth();
 
-  const hasRedirectedRef = useRef(false);
+  // Guard against repeated redirects. Once we've redirected, never redirect again.
+  // This prevents race conditions when auth data refreshes (e.g., after workspace creation).
+  const hasNavigatedRef = useRef(false);
 
   useEffect(() => {
     if (isLoading) return;
 
-    // Prevent repeated redirects on data reference changes
-    if (hasRedirectedRef.current) return;
+    // Once navigated away from root, NEVER come back or re-redirect
+    if (hasNavigatedRef.current) return;
 
-    // Redirect based on user type (use primitive value, not object reference)
+    // Only redirect on initial mount/resolution, not on subsequent data changes
+    // This fixes the board creation issue where refresh() flips is_new_user to false
     if (data?.is_new_user === true) {
-      hasRedirectedRef.current = true;
+      hasNavigatedRef.current = true;
       router.replace('/board/create');
     } else if (data?.is_new_user === false) {
-      hasRedirectedRef.current = true;
+      hasNavigatedRef.current = true;
       router.replace('/flowboard');
     }
     // If error or no data, stay on this page and show error below
