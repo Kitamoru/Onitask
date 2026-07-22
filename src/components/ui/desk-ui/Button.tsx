@@ -18,7 +18,10 @@ export function Button({
       {...props}
       disabled={disabled}
       className={cn(
-        "block h-[52px] w-full appearance-none border-0 bg-transparent p-0",
+        // Measured off the reference: buttons run a compact 40px, not
+        // the 52px used by standalone inputs — an earlier pass matched
+        // them to the input height by mistake.
+        "block h-10 w-full appearance-none border-0 bg-transparent p-0",
         disabled && "opacity-40",
         className
       )}

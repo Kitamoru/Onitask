@@ -17,6 +17,7 @@ const config: Config = {
       colors: {
         // Base background colors (used directly via CSS variables)
         "primary-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
+        "bg": "var(--color-bg, #0a0a0a)",
         "bg-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
         surface: "var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-surface, #101010)))",
         "surface-hover": "var(--color-bg-surface-hover, #2A2A2A)",
