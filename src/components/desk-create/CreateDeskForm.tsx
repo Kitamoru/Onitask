@@ -80,13 +80,11 @@ export function CreateDeskForm({
 
   return (
     <div className="flex flex-col">
-      {/* Scrollable form body. 
-          Используем адаптивный отступ снизу: 
-          - 5rem (80px) – запас под кнопку и меню
-          - + safe-area-inset-bottom для устройств с вырезом */}
-      <div 
+      {/* Scrollable form body – компактный нижний отступ, как раньше,
+          но с учётом safe-area для iPhone с вырезом */}
+      <div
         className="flex flex-col gap-6 px-4 pt-5"
-        style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <BasicInfoSection
           name={name}
@@ -151,10 +149,11 @@ export function CreateDeskForm({
         </section>
       </div>
 
-      {/* Inline CTA – также с адаптивным нижним отступом */}
-      <div 
+      {/* Inline CTA – сохранены старые отступы (pt-2 + pb-6),
+          адаптированы через safe-area для нижней части */}
+      <div
         className="px-4 pt-2 lg:hidden"
-        style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
           Создать доску
