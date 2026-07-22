@@ -1,3 +1,27 @@
+import { type ReactNode } from "react";
+import { cn } from "@/lib/cn";
+import { clipPathFor, type CornerStyle } from "@/lib/notch";
+
+type NotchedPanelProps = {
+  corner: CornerStyle;
+  radius?: number;
+  notch?: number;
+  borderWidth?: number;
+  /** Solid border color. Ignored if `borderGradient` is set. */
+  border?: string;
+  /** [from, to] — rendered as a 135deg linear-gradient border. */
+  borderGradient?: [string, string];
+  fill?: string;
+  className?: string;
+  contentClassName?: string;
+  children?: ReactNode;
+};
+
+/**
+ * Visual-only wrapper — does not render a semantic element. Put a real
+ * <input>/<button> etc. inside as children; this just paints the
+ * chamfered-corner background + border shape around it.
+ */
 export function NotchedPanel({
   corner,
   radius = 16,
@@ -21,7 +45,7 @@ export function NotchedPanel({
 
   return (
     <div
-      className={cn("relative", className)}   // ← вернули только relative
+      className={cn("relative", className)}
       style={{
         borderRadius: radius,
         clipPath: outerClip,
@@ -31,7 +55,7 @@ export function NotchedPanel({
     >
       <div
         className={cn(
-          "h-full w-full min-h-full",   // ← добавили min-h-full
+          "h-full w-full min-h-full",   // ← ключевые изменения здесь
           contentClassName
         )}
         style={{
