@@ -22,8 +22,9 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
   ) {
     const autosizeRef = useAutosizeTextarea(value);
 
+    const fieldNotch = corner === "field" ? 8 : undefined;
     return (
-      <NotchedPanel corner={corner} fill="var(--color-surface)">
+      <NotchedPanel corner={corner} notch={fieldNotch} fill="var(--color-surface)">
         <textarea
           ref={(node) => {
             autosizeRef.current = node;

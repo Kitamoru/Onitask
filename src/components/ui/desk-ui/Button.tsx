@@ -25,6 +25,7 @@ export function Button({
     >
       <NotchedPanel
         corner="action"
+        notch={8}
         borderWidth={variant === "outline" ? 1.5 : 0}
         borderGradient={
           variant === "outline"
