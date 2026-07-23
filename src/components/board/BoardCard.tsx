@@ -64,7 +64,7 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
             : undefined
         }
         border={isActive ? undefined : "var(--color-line)"}
-        fill="var(--color-card)"
+        fill={isActive ? "var(--color-surface-hover)" : "var(--color-surface)"}
         contentClassName="p-4"
       >
         {/* Head: avatar + name/handle */}
@@ -145,9 +145,10 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
               </span>
               <span
                 style={{
-                  fontSize: "20px",
-                  fontWeight: "700",
-                  lineHeight: "1",
+                  fontFamily: "var(--font-family-display)",
+                  fontSize: "var(--text-body-xl)",
+                  lineHeight: "var(--text-body-xl-line)",
+                  fontWeight: "var(--font-weight-medium)",
                   color: "var(--color-text-white)",
                 }}
               >

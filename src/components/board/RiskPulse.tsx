@@ -29,20 +29,6 @@ const pulseCards = [
 export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
   return (
     <div className="flex flex-col w-full gap-4">
-      {/* Section title */}
-      <p
-        style={{
-          fontFamily: "var(--font-family-display)",
-          fontSize: "var(--text-body-md)",
-          lineHeight: "var(--text-body-md-line)",
-          fontWeight: "var(--font-weight-medium)",
-          textAlign: "left" as const,
-          color: "var(--color-text-muted)",
-        }}
-      >
-        Сводка по всем моим доскам
-      </p>
-
       {/* Summary cards grid */}
       <div className="grid w-full grid-cols-3 gap-3">
         {pulseCards.map(({ label, key }) => (
@@ -64,10 +50,15 @@ export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
             </span>
             <span
               className={cn(
-                "font-bold leading-none text-2xl",
                 key === "processes" && data[key] > 1 && "text-danger"
               )}
-              style={{ color: "var(--color-text-white)" }}
+              style={{
+                color: "var(--color-text-white)",
+                fontFamily: "var(--font-family-display)",
+                fontSize: "var(--text-body-xl)",
+                lineHeight: "var(--text-body-xl-line)",
+                fontWeight: "var(--font-weight-medium)",
+              }}
             >
               {data[key]}
             </span>

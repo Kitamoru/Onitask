@@ -21,13 +21,6 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
  *   - Active board + "Добавить доску" get teal→gold gradient border
  */
 
-function getTelegramInitData(): string {
-  if (typeof window !== "undefined" && (window as any).Telegram?.WebApp?.initData) {
-    return (window as any).Telegram.WebApp.initData;
-  }
-  return "";
-}
-
 export default function BoardsPage() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useAuth();
@@ -91,7 +84,7 @@ export default function BoardsPage() {
         paddingBottom: "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
       }}
     >
-      <div className="mx-auto max-w-[390px] px-4 pb-8">
+      <div className="mx-auto w-full max-w-[390px] px-4 pb-8">
         {/* Header: "Стол" with flag icon */}
         <div className="flex items-center gap-2">
           <svg
@@ -138,24 +131,7 @@ export default function BoardsPage() {
           )}
         </p>
 
-        {/* Summary section */}
-        <p
-          style={{
-            marginTop: "10px",
-            fontSize: "14px",
-            lineHeight: "1.286",
-            color: "#8B8B8B",
-          }}
-        >
-          Сводка по всем моим доскам
-        </p>
-
         <RiskPulse data={riskData} onSprintClick={() => router.push("/sprints")} />
-
-        {/* "К спринту" button — outline variant with gradient border */}
-        <Button corner="field" variant="outline" className="mt-2">
-          К спринту
-        </Button>
 
         {/* Board list section */}
         <SectionHeader title="Мои доски" />
