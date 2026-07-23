@@ -50,7 +50,7 @@ export function RiskPulse({ data }: RiskPulseProps) {
         {pulseCards.map(({ label, key }) => (
           <NotchedPanel
             key={key}
-            corner="field"
+            corner="action"
             radius={4}
             notch={8}
             borderWidth={1}

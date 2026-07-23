@@ -161,7 +161,7 @@ export default function BoardsPage() {
 
           {/* "Добавить доску" button — button-sec-s, height=40, padding=0 16px */}
           <Button
-            corner="field"
+            corner="action"
             variant="outline"
             className="h-10 px-4"
             onClick={() => router.push("/board/create")}

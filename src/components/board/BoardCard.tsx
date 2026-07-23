@@ -63,6 +63,8 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
     }
   };
 
+  const highlighted = isActive || isSelected;
+
   return (
     <button
       type="button"
@@ -74,14 +76,14 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
         corner="field"
         radius={4}
         notch={16}
-        borderWidth={isActive ? 1.5 : 1}
+        borderWidth={highlighted ? 1.5 : 1}
         borderGradient={
-          isActive
+          highlighted
             ? ["var(--color-grad-add-from)", "var(--color-grad-add-to)"]
             : undefined
         }
-        border={isActive ? undefined : "var(--color-line)"}
-        fill="var(--color-card)"
+        border={highlighted ? undefined : "var(--color-line)"}
+        fill={highlighted ? "var(--color-card)" : "var(--color-surface)"}
         contentClassName="p-3"
       >
         {/* Head: logo + name/handle */}
@@ -147,7 +149,7 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
           {statLabels.map((key, i) => (
             <NotchedPanel
               key={key}
-              corner="field"
+              corner="action"
               radius={4}
               notch={8}
               borderWidth={1}
