@@ -1,24 +1,30 @@
 "use client";
 
-import React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useData } from "@/contexts/DataContext";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
-import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 import type { RiskPulseData, BoardCardData } from "@/components/board";
 
 /**
  * Boards Overview Page — "Стол" (Desk)
  *
+ * Figma specs (from /boards page "stol"):
+ *   - Main frame: padding=16px, gap=24px, bg=#0A0A0A, width=390px
+ *   - Header: row gap=8px, icon 20x20, "Стол" fontSize=20 fontWeight=500, color=#FFFFFF
+ *   - Sub-header: row gap=4px, "N доски • активная:" fontSize=12 fontWeight=500, color=#8B8B8B
+ *     active slug color=#F59E0B
+ *   - center-container: column gap=20px
+ *   - Summary section: label "Сводка по всем моим доскам" fontSize=14 fontWeight=500
+ *   - RiskPulse cards: grid 3-col gap=8px
+ *   - "К спринту" button: button-sec-s, height=40, padding=0 16px
+ *   - Board list: column gap=12px
+ *   - "Добавить доску" button: button-sec-s, height=40, padding=0 16px
+ *   - bottom-filler: height=80px
+ *
  * Telegram viewport safe areas via --tg-viewport-stable-height,
  * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
- *
- * Layout specs from docs/onitask-boards:
- *   - Large containers (board cards): radius=4px, notch=16px
- *   - Small containers (summary tiles, stat pills): radius=4px, notch=8px
- *   - Active board + "Добавить доску" get teal→gold gradient border
  */
 
 export default function BoardsPage() {
@@ -85,7 +91,7 @@ export default function BoardsPage() {
       }}
     >
       <div className="mx-auto w-full max-w-[390px] px-4 pb-8">
-        {/* Header: "Стол" with flag icon */}
+        {/* Header: "Стол" with desk icon (20x20) */}
         <div className="flex items-center gap-2">
           <svg
             viewBox="0 0 24 24"
@@ -94,7 +100,7 @@ export default function BoardsPage() {
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="h-[22px] w-[22px] flex-none text-text-primary"
+            className="h-5 w-5 flex-none text-text-primary"
             aria-hidden="true"
           >
             <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
@@ -102,24 +108,25 @@ export default function BoardsPage() {
           </svg>
           <h1
             style={{
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: "24px",
-              lineHeight: "1.2",
-              fontWeight: "700",
+              fontFamily: "Inter Display, system-ui, sans-serif",
+              fontSize: "20px",
+              lineHeight: "24px",
+              fontWeight: 500,
               letterSpacing: "-0.025em",
-              color: "#FAFAFA",
+              color: "#FFFFFF",
             }}
           >
             Стол
           </h1>
         </div>
 
-        {/* Sub-header: board count + active */}
+        {/* Sub-header: board count + active (fontSize=12, fontWeight=500) */}
         <p
           style={{
             marginTop: "4px",
-            fontSize: "14px",
-            lineHeight: "1.25",
+            fontSize: "12px",
+            lineHeight: "14px",
+            fontWeight: 500,
             color: "#8B8B8B",
           }}
         >
@@ -127,35 +134,50 @@ export default function BoardsPage() {
           {pluralDoski(workspaces.length)}
           {" · активная:"}{" "}
           {activeWorkspace && (
-            <span style={{ color: "#ff9900" }}>@{activeWorkspace}</span>
+            <span style={{ color: "#F59E0B" }}>@{activeWorkspace}</span>
           )}
         </p>
 
-        <RiskPulse data={riskData} onSprintClick={() => router.push("/sprints")} />
+        {/* center-container: column gap=20px */}
+        <div className="mt-6 flex flex-col gap-5">
+          {/* Summary section */}
+          <RiskPulse data={riskData} onSprintClick={() => router.push("/sprints")} />
 
-        {/* Board list section */}
-        <SectionHeader title="Мои доски" />
+          {/* "К спринту" button — button-sec-s, height=40, padding=0 16px */}
+          <Button
+            corner="field"
+            variant="outline"
+            className="h-10 px-4"
+            onClick={() => router.push("/sprints")}
+          >
+            К спринту
+          </Button>
 
-        <div className="flex flex-col gap-2">
-          {boardCards.map((card) => (
-            <BoardCard
-              key={card.id}
-              data={card as BoardCardData}
-              onClick={() => router.push(`/board/${card.slug}`)}
-              isActive={card.slug === activeWorkspace}
-            />
-          ))}
+          {/* Board list section — column gap=12px */}
+          <div className="flex flex-col gap-3">
+            {boardCards.map((card) => (
+              <BoardCard
+                key={card.id}
+                data={card as BoardCardData}
+                onClick={() => router.push(`/board/${card.slug}`)}
+                isActive={card.slug === activeWorkspace}
+              />
+            ))}
+          </div>
+
+          {/* "Добавить доску" button — button-sec-s, height=40, padding=0 16px */}
+          <Button
+            corner="field"
+            variant="outline"
+            className="h-10 px-4"
+            onClick={() => router.push("/board/create")}
+          >
+            Добавить доску
+          </Button>
         </div>
 
-        {/* "Добавить доску" — outline variant with gradient border */}
-        <Button
-          corner="field"
-          variant="outline"
-          className="mt-2"
-          onClick={() => router.push("/board/create")}
-        >
-          Добавить доску
-        </Button>
+        {/* bottom-filler: height=80px */}
+        <div className="h-20" />
       </div>
     </main>
   );

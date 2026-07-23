@@ -1,12 +1,16 @@
 "use client";
 
-import { cn } from "@/lib/cn";
 import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
 
 /**
  * RiskPulse component — displays aggregated risk metrics across all boards.
  *
- * Uses NotchedPanel with corner="field", radius=4, notch=8 for summary tiles.
+ * Figma specs (from boards page):
+ *   - Summary label: "Сводка по всем моим доскам", fontSize=14, fontWeight=500, lineHeight=16px, color=#8B8B8B
+ *   - Grid: 3-col, gap=8px
+ *   - Card: padding=12px, gap=8px, radius=4, notch=8
+ *   - Number: fontSize=16, fontWeight=500 (Medium), color=#FAFAFA
+ *   - Label: fontSize=12, fontWeight=500, lineHeight=14px, color=#8B8B8B
  */
 
 export interface RiskPulseData {
@@ -29,8 +33,21 @@ const pulseCards = [
 export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
   return (
     <div className="flex flex-col w-full gap-4">
-      {/* Summary cards grid */}
-      <div className="grid w-full grid-cols-3 gap-3">
+      {/* Summary label */}
+      <p
+        style={{
+          fontFamily: "Inter Display, system-ui, sans-serif",
+          fontSize: "14px",
+          lineHeight: "16px",
+          fontWeight: 500,
+          color: "#8B8B8B",
+        }}
+      >
+        Сводка по всем моим доскам
+      </p>
+
+      {/* Summary cards grid — 3-col, gap=8px */}
+      <div className="grid w-full grid-cols-3 gap-2">
         {pulseCards.map(({ label, key }) => (
           <NotchedPanel
             key={key}
@@ -40,24 +57,26 @@ export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
             borderWidth={1}
             border="var(--color-border-default)"
             fill="var(--color-surface)"
-            contentClassName="flex flex-col gap-1 px-3.5 py-[9px]"
+            contentClassName="flex flex-col gap-2 p-3"
           >
             <span
-              className="leading-tight text-text-muted"
-              style={{ fontSize: "13px" }}
+              style={{
+                fontFamily: "Inter Display, system-ui, sans-serif",
+                fontSize: "12px",
+                lineHeight: "14px",
+                fontWeight: 500,
+                color: "#8B8B8B",
+              }}
             >
               {label}
             </span>
             <span
-              className={cn(
-                key === "processes" && data[key] > 1 && "text-danger"
-              )}
               style={{
-                color: "var(--color-text-white)",
-                fontFamily: "var(--font-family-display)",
-                fontSize: "var(--text-body-xl)",
-                lineHeight: "var(--text-body-xl-line)",
-                fontWeight: "var(--font-weight-medium)",
+                fontFamily: "Inter Display, system-ui, sans-serif",
+                fontSize: "16px",
+                lineHeight: "20px",
+                fontWeight: 500,
+                color: data[key] > 1 && key === "processes" ? "#EF4444" : "#FAFAFA",
               }}
             >
               {data[key]}

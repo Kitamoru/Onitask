@@ -1,13 +1,20 @@
 "use client";
 
-import { cn } from "@/lib/cn";
 import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
 
 /**
  * BoardCard component — displays a single board/workspace card.
  *
- * Uses NotchedPanel with corner="field", radius=4, notch=16 (large container).
- * Active board gets teal→gold gradient border via borderGradient prop.
+ * Figma specs (task-card / selected=true):
+ *   - Card: padding=12px, gap=12px, radius=4, notch=16
+ *   - Logo: 36x36, borderRadius=1.6px
+ *   - Name: fontSize=16, fontWeight=500 (Medium), color=#FAFAFA
+ *   - Info: fontSize=12, fontWeight=500, color=#8B8B8B
+ *   - Stats grid: 4-col, gap=4px
+ *   - Stat pill: padding=8px 4px, gap=2px
+ *   - Stat number: fontSize=16, fontWeight=600 (SemiBold), color=#FAFAFA
+ *   - Stat label: fontSize=10, fontWeight=500, color=#8B8B8B
+ *   - Active board gets teal→gold gradient border
  */
 
 export interface BoardStats {
@@ -41,7 +48,7 @@ export interface BoardCardProps {
   isActive?: boolean;
 }
 
-// New stat labels per requirement #3
+// Stat labels per Figma: "В работе", "Эскалации", "Перегружен", "Готово"
 const statLabels: (keyof BoardStats)[] = ["inQueue", "inWork", "onReview", "done"];
 const statLabelsRu = ["В очереди", "В работе", "На проверке", "Сделано"];
 
@@ -65,14 +72,14 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
         }
         border={isActive ? undefined : "var(--color-line)"}
         fill={isActive ? "var(--color-surface-hover)" : "var(--color-surface)"}
-        contentClassName="p-4"
+        contentClassName="p-3"
       >
-        {/* Head: avatar + name/handle */}
+        {/* Head: logo + name/handle */}
         <div className="flex items-start gap-3">
-          {/* Avatar/logo */}
+          {/* Logo — 36x36, borderRadius=1.6px */}
           <div
-            className="h-9 w-9 flex-none overflow-hidden rounded-lg object-cover"
-            style={{ backgroundColor: "var(--color-bg-surface-hover)" }}
+            className="h-9 w-9 flex-none overflow-hidden"
+            style={{ borderRadius: "1.6px" }}
           >
             {data.avatarUrl ? (
               <img
@@ -85,9 +92,10 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
               <div className="flex h-full w-full items-center justify-center">
                 <span
                   style={{
+                    fontFamily: "Inter Display, system-ui, sans-serif",
                     fontSize: "14px",
-                    fontWeight: "var(--font-weight-medium)",
-                    color: "var(--color-text-muted)",
+                    fontWeight: 500,
+                    color: "#8B8B8B",
                   }}
                 >
                   {data.name.charAt(0).toUpperCase()}
@@ -99,62 +107,61 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
           <div className="pt-px">
             <div
               style={{
-                fontFamily: "var(--font-family-display)",
-                fontSize: "var(--text-heading-md)",
-                lineHeight: "var(--text-heading-md-line)",
-                fontWeight: "var(--font-weight-semibold)",
-                color: "var(--color-text-primary)",
+                fontFamily: "Inter Display, system-ui, sans-serif",
+                fontSize: "16px",
+                lineHeight: "20px",
+                fontWeight: 500,
+                color: "#FAFAFA",
               }}
             >
               {data.name}
             </div>
             <div
-              className="mt-[3px]"
+              className="mt-[2px] flex items-center gap-1"
               style={{
-                fontSize: "13px",
-                lineHeight: "1.2",
-                color: "var(--color-text-muted)",
+                fontSize: "12px",
+                lineHeight: "14px",
+                fontWeight: 500,
+                color: "#8B8B8B",
               }}
             >
-              @{data.slug} • {data.memberCount} участника + {data.agentCount} агента
+              <span>@{data.slug}</span>
+              <span>•</span>
+              <span>{data.memberCount} участника + {data.agentCount} агента</span>
             </div>
           </div>
         </div>
 
-        {/* Stat pills row */}
-        <div className="mt-2 flex gap-2">
+        {/* Stats grid — 4-col, gap=4px */}
+        <div className="mt-3 grid w-full grid-cols-4 gap-1">
           {statLabels.map((key, i) => (
-            <NotchedPanel
+            <div
               key={key}
-              corner="field"
-              radius={4}
-              notch={8}
-              borderWidth={1}
-              border="var(--color-border-default)"
-              fill="var(--color-surface)"
-              contentClassName="flex flex-col gap-[3px] py-[7px] pl-3 pr-1"
+              className="flex flex-col items-center gap-1 px-1 py-2"
             >
               <span
                 style={{
-                  fontSize: "11.5px",
-                  lineHeight: "1.1",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                {statLabelsRu[i]}
-              </span>
-              <span
-                style={{
-                  fontFamily: "var(--font-family-display)",
-                  fontSize: "var(--text-body-xl)",
-                  lineHeight: "var(--text-body-xl-line)",
-                  fontWeight: "var(--font-weight-medium)",
-                  color: "var(--color-text-white)",
+                  fontFamily: "Inter Display, system-ui, sans-serif",
+                  fontSize: "16px",
+                  lineHeight: "20px",
+                  fontWeight: 600,
+                  color: "#FAFAFA",
                 }}
               >
                 {data.stats[key]}
               </span>
-            </NotchedPanel>
+              <span
+                style={{
+                  fontFamily: "Inter Display, system-ui, sans-serif",
+                  fontSize: "10px",
+                  lineHeight: "12px",
+                  fontWeight: 500,
+                  color: "#8B8B8B",
+                }}
+              >
+                {statLabelsRu[i]}
+              </span>
+            </div>
           ))}
         </div>
 
@@ -164,13 +171,19 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
         {/* Sprint info */}
         {data.sprint && (
           <div
+            className="mt-3 flex items-center gap-1"
             style={{
-              marginTop: "8px",
-              fontSize: "13px",
-              color: "var(--color-text-muted)",
+              fontSize: "12px",
+              lineHeight: "14px",
+              fontWeight: 500,
+              color: "#8B8B8B",
             }}
           >
-            {data.sprint.name} • {data.sprint.topic} • {data.sprint.daysElapsed}/{data.sprint.totalDays} дней
+            <span>{data.sprint.name}</span>
+            <span>•</span>
+            <span>{data.sprint.topic}</span>
+            <span>•</span>
+            <span>{data.sprint.daysElapsed}/{data.sprint.totalDays} дней</span>
           </div>
         )}
       </NotchedPanel>
