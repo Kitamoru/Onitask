@@ -82,7 +82,14 @@ export default function BoardsPage() {
     );
   }
 
-  const activeWorkspace = workspaces[0]?.slug || "";
+  // The first workspace is considered "active" by default.
+  // When user taps another card, selectedBoardId takes over.
+  const defaultActiveSlug = workspaces[0]?.slug || "";
+  // Show slug of selected board, or the default active one
+  const selectedBoard = selectedBoardId
+    ? boardCards.find(c => c.id === selectedBoardId)
+    : null;
+  const displaySlug = selectedBoard?.slug ?? defaultActiveSlug;
 
   return (
     <main
@@ -122,7 +129,7 @@ export default function BoardsPage() {
           </h1>
         </div>
 
-        {/* Sub-header: board count + active (fontSize=12, fontWeight=500) */}
+        {/* Sub-header: board count + active slug (fontSize=12, fontWeight=500) */}
         <p
           style={{
             marginTop: "4px",
@@ -135,8 +142,8 @@ export default function BoardsPage() {
           {workspaces.length}{" "}
           {pluralDoski(workspaces.length)}
           {" · активная:"}{" "}
-          {activeWorkspace && (
-            <span style={{ color: "#F59E0B" }}>@{activeWorkspace}</span>
+          {displaySlug && (
+            <span style={{ color: "#F59E0B" }}>@{displaySlug}</span>
           )}
         </p>
 
@@ -151,7 +158,7 @@ export default function BoardsPage() {
               <BoardCard
                 key={card.id}
                 data={card as BoardCardData}
-                isActive={card.slug === activeWorkspace}
+                isActive={selectedBoardId === null && card.slug === defaultActiveSlug}
                 isSelected={selectedBoardId === card.id}
                 onSelect={(id) => setSelectedBoardId(id)}
                 onClick={() => router.push(`/board/${card.slug}`)}
@@ -159,11 +166,12 @@ export default function BoardsPage() {
             ))}
           </div>
 
-          {/* "Добавить доску" button — button-sec-s, height=40, padding=0 16px */}
+          {/* "Добавить доску" button — button-sec-s, height=40 */}
+          {/* Same width as BoardCard — no px-4 to avoid extra inner padding */}
           <Button
             corner="action"
             variant="outline"
-            className="h-10 px-4"
+            className="h-10"
             onClick={() => router.push("/board/create")}
           >
             Добавить доску
