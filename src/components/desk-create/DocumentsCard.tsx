@@ -56,76 +56,84 @@ export function DocumentsCard({
         />
       </div>
 
-      {files.length > 0 && (
-        <ul className="mb-3 flex flex-col gap-2">
-          {files.map((file, i) => (
-            <li key={`${file.name}-${file.size}-${i}`}>
-              <NotchedPanel
-                corner="field"
-                fill="var(--color-surface)"
-                contentClassName="flex items-center justify-between px-4 py-3"
-              >
-                <span className="truncate text-[14px] text-text">
-                  {file.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeFile(i)}
-                  aria-label={`Удалить ${file.name}`}
-                  className="ml-3 shrink-0 text-text-muted"
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          enabled
+            ? "max-h-[800px] opacity-100"
+            : "max-h-0 opacity-0"
+        }`}
+      >
+        {files.length > 0 && (
+          <ul className="mb-3 flex flex-col gap-2">
+            {files.map((file, i) => (
+              <li key={`${file.name}-${file.size}-${i}`}>
+                <NotchedPanel
+                  corner="field"
+                  fill="var(--color-surface)"
+                  contentClassName="flex items-center justify-between px-4 py-3"
                 >
-                  <X className="h-4 w-4" />
-                </button>
-              </NotchedPanel>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <button
-        type="button"
-        disabled={!enabled || atLimit}
-        onClick={openPicker}
-        className={cn(
-          "block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left",
-          (!enabled || atLimit) && "opacity-40"
+                  <span className="truncate text-[14px] text-text">
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    aria-label={`Удалить ${file.name}`}
+                    className="ml-3 shrink-0 text-text-muted"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </NotchedPanel>
+              </li>
+            ))}
+          </ul>
         )}
-      >
-        <NotchedPanel
-          corner="field"
-          fill="var(--color-surface)"
-          className="h-full" // <-- ИСПРАВЛЕНИЕ: панель занимает всю высоту кнопки
-          contentClassName="flex h-full w-full items-center justify-between px-4"
+
+        <button
+          type="button"
+          disabled={!enabled || atLimit}
+          onClick={openPicker}
+          className={cn(
+            "block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left",
+            (!enabled || atLimit) && "opacity-40"
+          )}
         >
-          <span className="truncate text-base text-text-faint">
-            Выберите файл
-          </span>
-          <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
-        </NotchedPanel>
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".md"
-        multiple
-        hidden
-        onChange={handlePicked}
-      />
+          <NotchedPanel
+            corner="field"
+            fill="var(--color-surface)"
+            className="h-full"
+            contentClassName="flex h-full w-full items-center justify-between px-4"
+          >
+            <span className="truncate text-base text-text-faint">
+              Выберите файл
+            </span>
+            <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
+          </NotchedPanel>
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".md"
+          multiple
+          hidden
+          onChange={handlePicked}
+        />
 
-      <div className="mb-4 mt-3 flex items-start justify-between gap-3">
-        <p className="flex-1 text-[13px] leading-[1.4] text-text-muted">
-          до 10 документов, до 5 мегабайт в сумме, формат .md
-        </p>
-        <CountBadge>{files.length}/{MAX_DOCUMENTS}</CountBadge>
+        <div className="mb-4 mt-3 flex items-start justify-between gap-3">
+          <p className="flex-1 text-[13px] leading-[1.4] text-text-muted">
+            до 10 документов, до 5 мегабайт в сумме, формат .md
+          </p>
+          <CountBadge>{files.length}/{MAX_DOCUMENTS}</CountBadge>
+        </div>
+
+        <Button
+          variant="outline"
+          disabled={!enabled || atLimit}
+          onClick={openPicker}
+        >
+          Добавить .md файл
+        </Button>
       </div>
-
-      <Button
-        variant="outline"
-        disabled={!enabled || atLimit}
-        onClick={openPicker}
-      >
-        Добавить .md файл
-      </Button>
     </Card>
   );
 }

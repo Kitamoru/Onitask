@@ -47,23 +47,33 @@ export function TrafficLightCard({
         уведомление о скором дедлайне задачи
       </p>
 
-      <div className="flex flex-col gap-3">
-        <Stepper
-          value={warningDays}
-          unitLabel={dayLabel}
-          min={1}
-          max={urgentDays - 1}
-          onChange={onWarningDaysChange}
-          borderGradient={["var(--color-grad-warning-from)", "var(--color-grad-warning-to)"]}
-        />
-        <Stepper
-          value={urgentDays}
-          unitLabel={dayLabel}
-          min={warningDays + 1}
-          max={30}
-          onChange={onUrgentDaysChange}
-          borderGradient={["var(--color-grad-urgent-from)", "var(--color-grad-urgent-to)"]}
-        />
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          enabled
+            ? "max-h-[600px] opacity-100"
+            : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="flex flex-col gap-3">
+          {/* urgentDays — меньшее число (ближе к дедлайну): min=2, max=warningDays-1 */}
+          <Stepper
+            value={urgentDays}
+            unitLabel={dayLabel}
+            min={2}
+            max={warningDays - 1}
+            onChange={onUrgentDaysChange}
+            borderGradient={["var(--color-grad-urgent-from)", "var(--color-grad-urgent-to)"]}
+          />
+          {/* warningDays — большее число (дальше от дедлайна): min=urgentDays+1, max=30 */}
+          <Stepper
+            value={warningDays}
+            unitLabel={dayLabel}
+            min={urgentDays + 1}
+            max={30}
+            onChange={onWarningDaysChange}
+            borderGradient={["var(--color-grad-warning-from)", "var(--color-grad-warning-to)"]}
+          />
+        </div>
       </div>
     </Card>
   );

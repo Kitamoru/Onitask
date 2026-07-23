@@ -25,6 +25,7 @@ export function Stepper({
   return (
     <NotchedPanel
       corner="action"
+      notch={8}
       borderWidth={1.5}
       borderGradient={borderGradient}
       fill="var(--color-surface)"

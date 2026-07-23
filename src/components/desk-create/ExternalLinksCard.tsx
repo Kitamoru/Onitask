@@ -50,55 +50,63 @@ export function ExternalLinksCard({
         />
       </div>
 
-      {links.length > 0 && (
-        <ul className="mb-3 flex flex-col gap-2">
-          {links.map((link, i) => (
-            <li key={`${link.url}-${i}`}>
-              <NotchedPanel
-                corner="field"
-                fill="var(--color-surface)"
-                contentClassName="flex items-center justify-between px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[14px] text-text">{link.title}</p>
-                  <p className="truncate text-[12px] text-text-faint">
-                    {link.url}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeLink(i)}
-                  aria-label="Удалить ссылку"
-                  className="ml-3 shrink-0 text-text-muted"
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          enabled
+            ? "max-h-[800px] opacity-100"
+            : "max-h-0 opacity-0"
+        }`}
+      >
+        {links.length > 0 && (
+          <ul className="mb-3 flex flex-col gap-2">
+            {links.map((link, i) => (
+              <li key={`${link.url}-${i}`}>
+                <NotchedPanel
+                  corner="field"
+                  fill="var(--color-surface)"
+                  contentClassName="flex items-center justify-between px-4 py-3"
                 >
-                  <X className="h-4 w-4" />
-                </button>
-              </NotchedPanel>
-            </li>
-          ))}
-        </ul>
-      )}
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] text-text">{link.title}</p>
+                    <p className="truncate text-[12px] text-text-faint">
+                      {link.url}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeLink(i)}
+                    aria-label="Удалить ссылку"
+                    className="ml-3 shrink-0 text-text-muted"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </NotchedPanel>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      <div className="mb-3 flex flex-col gap-3">
-        <TextInput
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Название ресурса"
-          disabled={!enabled}
-        />
-        <TextInput
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Ссылка"
-          disabled={!enabled}
-          inputMode="url"
-          autoCapitalize="none"
-        />
+        <div className="mb-3 flex flex-col gap-3">
+          <TextInput
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Название ресурса"
+            disabled={!enabled}
+          />
+          <TextInput
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Ссылка"
+            disabled={!enabled}
+            inputMode="url"
+            autoCapitalize="none"
+          />
+        </div>
+
+        <Button variant="outline" disabled={!canAdd} onClick={addLink}>
+          Добавить ссылку
+        </Button>
       </div>
-
-      <Button variant="outline" disabled={!canAdd} onClick={addLink}>
-        Добавить ссылку
-      </Button>
     </Card>
   );
 }
