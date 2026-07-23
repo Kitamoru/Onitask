@@ -20,7 +20,7 @@ export function ToggleSwitch({
       onClick={() => onChange(!checked)}
       className={cn(
         "relative h-7 w-[52px] shrink-0 rounded-[10px] border border-line transition-colors duration-200",
-        checked ? "bg-accent" : "bg-toggle-track-off"
+        checked ? "bg-transparent" : "bg-toggle-track-off"
       )}
     >
       <span
