@@ -102,19 +102,14 @@ export default function BoardsPage() {
       <div className="w-full px-4 pb-8">
         {/* Header: "Стол" with desk icon (20x20) */}
         <div className="flex items-center gap-2">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <img
+            src="/icons/outline-desk.svg"
+            alt=""
+            width={20}
+            height={20}
             className="h-5 w-5 flex-none text-text-primary"
             aria-hidden="true"
-          >
-            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-            <line x1="4" y1="22" x2="4" y2="15" />
-          </svg>
+          />
           <h1
             style={{
               fontFamily: "Inter Display, system-ui, sans-serif",
