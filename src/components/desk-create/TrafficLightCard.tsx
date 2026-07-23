@@ -55,23 +55,23 @@ export function TrafficLightCard({
         }`}
       >
         <div className="flex flex-col gap-3">
-          {/* urgentDays — меньшее число (ближе к дедлайну): min=2, max=warningDays-1 */}
-          <Stepper
-            value={urgentDays}
-            unitLabel={dayLabel}
-            min={2}
-            max={warningDays - 1}
-            onChange={onUrgentDaysChange}
-            borderGradient={["var(--color-grad-urgent-from)", "var(--color-grad-urgent-to)"]}
-          />
-          {/* warningDays — большее число (дальше от дедлайна): min=urgentDays+1, max=30 */}
+          {/* warningDays — жёлтый, большее число (дальше от дедлайна): min=2, max=30 */}
           <Stepper
             value={warningDays}
             unitLabel={dayLabel}
-            min={urgentDays + 1}
+            min={2}
             max={30}
             onChange={onWarningDaysChange}
             borderGradient={["var(--color-grad-warning-from)", "var(--color-grad-warning-to)"]}
+          />
+          {/* urgentDays — красный, меньшее число (ближе к дедлайну): min=1, max=warningDays-1 */}
+          <Stepper
+            value={urgentDays}
+            unitLabel={dayLabel}
+            min={1}
+            max={warningDays - 1}
+            onChange={onUrgentDaysChange}
+            borderGradient={["var(--color-grad-urgent-from)", "var(--color-grad-urgent-to)"]}
           />
         </div>
       </div>
