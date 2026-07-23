@@ -92,7 +92,7 @@ export default function BoardsPage() {
         paddingBottom: "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
       }}
     >
-      <div className="mx-auto w-full max-w-[390px] px-4 pb-8">
+      <div className="w-full px-4 pb-8">
         {/* Header: "Стол" with desk icon (20x20) */}
         <div className="flex items-center gap-2">
           <svg
