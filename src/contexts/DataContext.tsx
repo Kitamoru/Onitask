@@ -302,7 +302,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (task.assigned_to) {
           peopleSet.add(task.assigned_to);
         }
-        if (task.column === 'process') {
+        if (task.column === 'in_progress') {
           processCount++;
         }
         if (task.escalation_reason) {
