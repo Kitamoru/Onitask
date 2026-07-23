@@ -55,6 +55,10 @@
   --color-border-default: rgba(139, 139, 139, 0.2);
   --color-border-white-subtle: rgba(255, 255, 255, 0.1);
 
+  /* Board-specific fill colors */
+  --color-card: #202020;   /* board card body — one step up from --color-surface */
+  --color-danger: #ff2b3a; /* red count in summary row (e.g. Processes) */
+
   /* Signal colors */
   --color-signal-yellow: #F59E0B;
   --color-signal-red: #EF4444;

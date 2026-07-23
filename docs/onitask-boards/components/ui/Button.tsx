@@ -1,11 +1,16 @@
 import { type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
-import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
+import { NotchedPanel } from "@/components/ui/NotchedPanel";
 import type { CornerStyle } from "@/lib/notch";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "solid";
-  /** Additive: defaults to "action" so existing call sites are unaffected. /boards uses "field". */
+  /**
+   * NEW — additive, defaults to the existing "action" (TR+BL cut) so every
+   * current call site is unaffected. /boards uses "field" (BR-only cut):
+   * on that screen every container, big or small, shares the single
+   * bottom-right-chamfer language — see components/boards/*.
+   */
   corner?: CornerStyle;
 };
 
@@ -22,6 +27,9 @@ export function Button({
       {...props}
       disabled={disabled}
       className={cn(
+        // Measured off the reference: buttons run a compact 40px, not
+        // the 52px used by standalone inputs — an earlier pass matched
+        // them to the input height by mistake.
         "block h-10 w-full appearance-none border-0 bg-transparent p-0",
         disabled && "opacity-40",
         className
@@ -30,7 +38,7 @@ export function Button({
       <NotchedPanel
         corner={corner}
         radius={corner === "field" ? 4 : undefined}
-        notch={corner === "field" ? 16 : 8}
+        notch={corner === "field" ? 16 : undefined}
         borderWidth={variant === "outline" ? 1.5 : 0}
         borderGradient={
           variant === "outline"
@@ -43,7 +51,6 @@ export function Button({
           variant === "outline" && "text-text",
           variant === "solid" && "text-accent-ink"
         )}
-        className="h-full"
       >
         {children}
       </NotchedPanel>

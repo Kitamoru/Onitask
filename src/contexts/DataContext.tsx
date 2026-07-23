@@ -75,9 +75,9 @@ interface DataStore {
       memberCount: number;
       agentCount: number;
       stats: {
+        inQueue: number;
         inWork: number;
-        escalations: number;
-        overloaded: number;
+        onReview: number;
         done: number;
       };
       sprint?: any;
@@ -320,9 +320,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
           agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
           stats: {
+            inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
             inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
-            escalations: wsTasks.filter((t: any) => t.escalation_reason !== null).length,
-            overloaded: 0,
+            onReview: wsTasks.filter((t: any) => t.column === 'review').length,
             done: wsTasks.filter((t: any) => t.column === 'done').length,
           },
           sprint: undefined,

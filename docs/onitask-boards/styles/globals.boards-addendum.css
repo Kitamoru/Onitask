@@ -1,0 +1,20 @@
+/* ==========================================================================
+   Addendum for /boards — append to the existing :root block in
+   styles/globals.css (don't replace the file, just merge these two lines
+   in). Everything else the page needs (--color-line, --color-accent,
+   --color-grad-add-*, spacing, etc.) already exists.
+
+   Why two new tokens: the desk-create screen has a single fill depth
+   (--color-surface, #101010 — "no tonal step between card and input in
+   the ref", per the comment already in globals.css). /boards actually
+   has TWO fill depths, confirmed by direct pixel sampling of the
+   reference screenshot:
+     - #101010 (var(--color-surface), already defined) — recessed fill,
+       used by the stat pills and both CTA buttons
+     - #202020 (NEW: --color-card) — the board card body itself, one
+       step lighter/"raised" relative to the pills sitting inside it
+   ========================================================================== */
+:root {
+  --color-card: #202020;   /* board card fill — one step up from --color-surface */
+  --color-danger: #ff2b3a; /* the single red count in the summary row (Процессы) */
+}

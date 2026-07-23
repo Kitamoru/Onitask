@@ -52,6 +52,10 @@ const config: Config = {
         "border-white-subtle": "var(--color-border-white-subtle, rgba(255, 255, 255, 0.1))",
         line: "var(--color-border-default, rgba(139, 139, 139, 0.2))",
 
+        // Board-specific fills
+        card: "var(--color-card)",
+        danger: "var(--color-danger)",
+
         // Toggle
         "toggle-track-off": "#101010",
         "toggle-knob": "#FAFAFA",

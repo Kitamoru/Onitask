@@ -1,39 +1,39 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { useData } from '@/contexts/DataContext';
-import { RiskPulse, BoardCard } from '@/components/board';
-import type { RiskPulseData, BoardCardData } from '@/components/board';
+import React from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { useData } from "@/contexts/DataContext";
+import { RiskPulse, BoardCard } from "@/components/board";
+import { Button } from "@/components/ui/desk-ui/Button";
+import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
+import type { RiskPulseData, BoardCardData } from "@/components/board";
 
 /**
  * Boards Overview Page — "Стол" (Desk)
- * 
- * Figma spec (node 307:28401 "stol"):
- *   - Header: "Стол" with desk icon
- *   - Sub-header: board count + active board
- *   - RiskPulse section: aggregated metrics across all boards
- *   - Board list: cards with stats and sprint info
- * 
- * Uses /api/workspaces/my-data (server-side, service_role key) 
- * instead of direct Supabase client queries (which fail due to RLS).
+ *
+ * Telegram viewport safe areas via --tg-viewport-stable-height,
+ * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
+ *
+ * Layout specs from docs/onitask-boards:
+ *   - Large containers (board cards): radius=4px, notch=16px
+ *   - Small containers (summary tiles, stat pills): radius=4px, notch=8px
+ *   - Active board + "Добавить доску" get teal→gold gradient border
  */
 
 function getTelegramInitData(): string {
-  if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
+  if (typeof window !== "undefined" && (window as any).Telegram?.WebApp?.initData) {
     return (window as any).Telegram.WebApp.initData;
   }
-  return '';
+  return "";
 }
 
 export default function BoardsPage() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useAuth();
   const { state } = useData();
-  
+
   const workspaces = state.workspaces.items;
-  const workers = state.workers.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {
     people: 0,
     processes: 0,
@@ -41,84 +41,80 @@ export default function BoardsPage() {
   };
   const boardCards = state.boards.cards;
 
-  // No redirect - new users will see empty state and can create board via modal
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]"
+        style={{ backgroundColor: "#0A0A0A" }}
+      >
+        <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
+      </div>
+    );
+  }
 
-   // Auth loading state
-   if (authLoading) {
-     return (
-       <div
-         className="flex items-center justify-center h-full min-h-dvh"
-         style={{ backgroundColor: '#0A0A0A' }}
-       >
-         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
-       </div>
-     );
-   }
+  // Auth error state
+  if (authError) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)] p-4"
+        style={{ backgroundColor: "#0A0A0A" }}
+      >
+        <div className="text-center max-w-sm">
+          <p style={{ color: "#EF4444", fontFamily: "system-ui" }}>
+            Ошибка авторизации. Откройте приложение через Telegram Web App.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-   // Auth error state
-   if (authError) {
-     return (
-       <div
-         className="flex items-center justify-center h-full min-h-dvh p-4"
-         style={{ backgroundColor: '#0A0A0A' }}
-       >
-         <div className="text-center max-w-sm">
-           <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
-             Ошибка авторизации. Откройте приложение через Telegram Web App.
-           </p>
-         </div>
-       </div>
-     );
-   }
+  // Show skeleton while boards data is loading
+  if (!state.boards.lastUpdated) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]"
+        style={{ backgroundColor: "#0A0A0A" }}
+      >
+        <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
+      </div>
+    );
+  }
 
-   // Show skeleton while boards data is loading
-   if (!state.boards.lastUpdated) {
-     return (
-       <div
-         className="flex items-center justify-center h-full min-h-dvh"
-         style={{ backgroundColor: '#0A0A0A' }}
-       >
-         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
-       </div>
-     );
-   }
+  const activeWorkspace = workspaces[0]?.slug || "";
 
-   const activeWorkspace = workspaces[0]?.slug || '';
-
-   return (
-     <div
-       className="h-full min-h-dvh p-4"
-       style={{
-         backgroundColor: '#0A0A0A',
-         maxWidth: '390px',
-         margin: '0 auto',
-       }}
-     >
-      {/* Header: "Стол" */}
-      <div className="flex flex-col items-center gap-1 mb-6">
-        <div className="flex items-center justify-center gap-2">
-          {/* Desk icon placeholder */}
+  return (
+    <main
+      className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
+      style={{
+        paddingTop: "max(48px, var(--tg-content-safe-top, 0px))",
+        paddingBottom: "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
+      }}
+    >
+      <div className="mx-auto max-w-[390px] px-4 pb-8">
+        {/* Header: "Стол" with flag icon */}
+        <div className="flex items-center gap-2">
           <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
+            viewBox="0 0 24 24"
             fill="none"
-            xmlns="http://www.w3.org/2000/svg"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-[22px] w-[22px] flex-none text-text-primary"
             aria-hidden="true"
           >
-            <rect x="2" y="6" width="16" height="2" rx="1" fill="#F59E0B" />
-            <rect x="4" y="8" width="2" height="8" rx="0.5" fill="#F59E0B" />
-            <rect x="14" y="8" width="2" height="8" rx="0.5" fill="#F59E0B" />
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+            <line x1="4" y1="22" x2="4" y2="15" />
           </svg>
-           <h1
-             className="text-text-primary"
+          <h1
             style={{
               fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '20px',
-              lineHeight: '24px',
-              fontWeight: '500',
-              letterSpacing: '-0.025em',
-              color: '#FAFAFA',
+              fontSize: "24px",
+              lineHeight: "1.2",
+              fontWeight: "700",
+              letterSpacing: "-0.025em",
+              color: "#FAFAFA",
             }}
           >
             Стол
@@ -126,100 +122,73 @@ export default function BoardsPage() {
         </div>
 
         {/* Sub-header: board count + active */}
-        <div className="flex items-center gap-1">
-          <span
-            style={{
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '12px',
-              lineHeight: '14px',
-              fontWeight: '500',
-              color: '#F59E0B',
-            }}
-          >
-            {workspaces.length} досок • активная:
-          </span>
-          <span
-            style={{
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '12px',
-              lineHeight: '14px',
-              fontWeight: '500',
-              color: '#F59E0B',
-            }}
-          >
-            @{activeWorkspace}
-          </span>
-        </div>
-      </div>
+        <p
+          style={{
+            marginTop: "4px",
+            fontSize: "14px",
+            lineHeight: "1.25",
+            color: "#8B8B8B",
+          }}
+        >
+          {workspaces.length}{" "}
+          {pluralDoski(workspaces.length)}
+          {" · активная:"}{" "}
+          {activeWorkspace && (
+            <span style={{ color: "#ff9900" }}>@{activeWorkspace}</span>
+          )}
+        </p>
 
-      {/* Main content */}
-      <div className="flex flex-col gap-5">
-        {/* Risk Pulse Section */}
-        <RiskPulse
-          data={riskData}
-          onSprintClick={() => router.push('/sprints')}
-        />
+        {/* Summary section */}
+        <p
+          style={{
+            marginTop: "10px",
+            fontSize: "14px",
+            lineHeight: "1.286",
+            color: "#8B8B8B",
+          }}
+        >
+          Сводка по всем моим доскам
+        </p>
 
-        {/* Divider */}
-        <div
-          className="my-1"
-          style={{ backgroundColor: '#8B8B8B', height: '1px' }}
-          aria-hidden="true"
-        />
+        <RiskPulse data={riskData} onSprintClick={() => router.push("/sprints")} />
 
-        {/* "Мои доски" section header */}
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2 min-w-0">
-            <div
-              className="bg-accent-amber shrink-0"
-              style={{ width: '2px', height: '18px' }}
-              aria-hidden="true"
-            />
-            <h2
-              className="text-text-primary truncate"
-              style={{
-                fontFamily: "'Inter Display', system-ui, sans-serif",
-                fontSize: '14px',
-                lineHeight: '18px',
-                fontWeight: '500',
-                color: '#FAFAFA',
-              }}
-            >
-              Мои доски
-            </h2>
-          </div>
-        </div>
+        {/* "К спринту" button — outline variant with gradient border */}
+        <Button corner="field" variant="outline" className="mt-2">
+          К спринту
+        </Button>
 
-        {/* Board Cards List */}
-        <div className="flex flex-col gap-3">
+        {/* Board list section */}
+        <SectionHeader title="Мои доски" />
+
+        <div className="flex flex-col gap-2">
           {boardCards.map((card) => (
             <BoardCard
               key={card.id}
-              data={card}
+              data={card as BoardCardData}
               onClick={() => router.push(`/board/${card.slug}`)}
               isActive={card.slug === activeWorkspace}
             />
           ))}
         </div>
 
-        {/* "Добавить доску" button */}
-        <button
-          onClick={() => router.push('/board/create')}
-          className="flex items-center justify-center w-full h-10 rounded bg-surface border border-border-default hover:border-accent-amber/50 transition-colors mt-2"
-          style={{
-            fontFamily: "'Inter', system-ui, sans-serif",
-            fontSize: '14px',
-            lineHeight: '18px',
-            fontWeight: '600',
-            letterSpacing: '-0.0357em',
-            color: '#FAFAFA',
-          }}
-          aria-label="Добавить доску"
+        {/* "Добавить доску" — outline variant with gradient border */}
+        <Button
+          corner="field"
+          variant="outline"
+          className="mt-2"
+          onClick={() => router.push("/board/create")}
         >
           Добавить доску
-        </button>
+        </Button>
       </div>
-
-    </div>
+    </main>
   );
+}
+
+function pluralDoski(n: number) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "доска";
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return "доски";
+  return "досок";
 }
