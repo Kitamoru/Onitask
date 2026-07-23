@@ -21,7 +21,6 @@ export interface RiskPulseData {
 
 export interface RiskPulseProps {
   data: RiskPulseData;
-  onSprintClick?: () => void;
 }
 
 const pulseCards = [
@@ -30,7 +29,7 @@ const pulseCards = [
   { label: "Эскалации", key: "escalations" as const },
 ];
 
-export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
+export function RiskPulse({ data }: RiskPulseProps) {
   return (
     <div className="flex flex-col w-full gap-4">
       {/* Summary label */}
@@ -55,7 +54,7 @@ export function RiskPulse({ data, onSprintClick }: RiskPulseProps) {
             radius={4}
             notch={8}
             borderWidth={1}
-            border="var(--color-border-default)"
+            border="var(--color-line)"
             fill="var(--color-surface)"
             contentClassName="flex flex-col gap-2 p-3"
           >

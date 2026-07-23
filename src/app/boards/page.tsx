@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useData } from "@/contexts/DataContext";
@@ -81,6 +82,7 @@ export default function BoardsPage() {
   }
 
   const activeWorkspace = workspaces[0]?.slug || "";
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 
   return (
     <main
@@ -141,17 +143,7 @@ export default function BoardsPage() {
         {/* center-container: column gap=20px */}
         <div className="mt-6 flex flex-col gap-5">
           {/* Summary section */}
-          <RiskPulse data={riskData} onSprintClick={() => router.push("/sprints")} />
-
-          {/* "К спринту" button — button-sec-s, height=40, padding=0 16px */}
-          <Button
-            corner="field"
-            variant="outline"
-            className="h-10 px-4"
-            onClick={() => router.push("/sprints")}
-          >
-            К спринту
-          </Button>
+          <RiskPulse data={riskData} />
 
           {/* Board list section — column gap=12px */}
           <div className="flex flex-col gap-3">
@@ -159,8 +151,12 @@ export default function BoardsPage() {
               <BoardCard
                 key={card.id}
                 data={card as BoardCardData}
-                onClick={() => router.push(`/board/${card.slug}`)}
                 isActive={card.slug === activeWorkspace}
+                isSelected={selectedBoardId === card.id}
+                onSelect={(id) =>
+                  setSelectedBoardId((prev) => (prev === id ? null : id))
+                }
+                onClick={() => router.push(`/board/${card.slug}`)}
               />
             ))}
           </div>

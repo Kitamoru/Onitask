@@ -46,17 +46,27 @@ export interface BoardCardProps {
   data: BoardCardData;
   onClick?: () => void;
   isActive?: boolean;
+  isSelected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 // Stat labels per Figma: "В работе", "Эскалации", "Перегружен", "Готово"
 const statLabels: (keyof BoardStats)[] = ["inQueue", "inWork", "onReview", "done"];
 const statLabelsRu = ["В очереди", "В работе", "На проверке", "Сделано"];
 
-export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
+export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: BoardCardProps) {
+  const handleClick = () => {
+    if (isSelected && onClick) {
+      onClick();
+    } else if (onSelect) {
+      onSelect(data.id);
+    }
+  };
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       className="block w-full appearance-none border-0 bg-transparent p-0 text-left"
       aria-label={`Доска ${data.name}`}
     >
@@ -71,7 +81,7 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
             : undefined
         }
         border={isActive ? undefined : "var(--color-line)"}
-        fill={isActive ? "var(--color-surface-hover)" : "var(--color-surface)"}
+        fill="var(--color-card)"
         contentClassName="p-3"
       >
         {/* Head: logo + name/handle */}
@@ -135,9 +145,15 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
         {/* Stats grid — 4-col, gap=4px */}
         <div className="mt-3 grid w-full grid-cols-4 gap-1">
           {statLabels.map((key, i) => (
-            <div
+            <NotchedPanel
               key={key}
-              className="flex flex-col items-center gap-1 px-1 py-2"
+              corner="field"
+              radius={4}
+              notch={8}
+              borderWidth={1}
+              border="var(--color-line)"
+              fill="var(--color-surface)"
+              contentClassName="flex flex-col items-center gap-1 py-2"
             >
               <span
                 style={{
@@ -161,7 +177,7 @@ export function BoardCard({ data, onClick, isActive }: BoardCardProps) {
               >
                 {statLabelsRu[i]}
               </span>
-            </div>
+            </NotchedPanel>
           ))}
         </div>
 
