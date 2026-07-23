@@ -32,7 +32,7 @@ const config: Config = {
         "text-subtle": "var(--tg-theme-subtitle-text-color, var(--color-text-muted, #8B8B8B))",
 
         // Accent
-        "accent-amber": "var(--tg-theme-button-color, var(--color-accent-amber, #ff9900))",
+        "accent-amber": "var(--color-accent-amber, #ff9900)",
         accent: "var(--tg-theme-button-color, var(--color-accent-amber, #ff9900))",
         "accent-amber-subtle": "var(--color-accent-amber-subtle, rgba(255, 153, 0, 0.1))",
         "accent-ink": "#0A0A0A",
