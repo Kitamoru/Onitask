@@ -32,6 +32,7 @@ export default function BoardsPage() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useAuth();
   const { state } = useData();
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 
   const workspaces = state.workspaces.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {
@@ -82,7 +83,6 @@ export default function BoardsPage() {
   }
 
   const activeWorkspace = workspaces[0]?.slug || "";
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 
   return (
     <main
@@ -153,9 +153,7 @@ export default function BoardsPage() {
                 data={card as BoardCardData}
                 isActive={card.slug === activeWorkspace}
                 isSelected={selectedBoardId === card.id}
-                onSelect={(id) =>
-                  setSelectedBoardId((prev) => (prev === id ? null : id))
-                }
+                onSelect={(id) => setSelectedBoardId(id)}
                 onClick={() => router.push(`/board/${card.slug}`)}
               />
             ))}
