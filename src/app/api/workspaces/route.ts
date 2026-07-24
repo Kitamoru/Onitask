@@ -16,6 +16,163 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
  * 4. Create owner worker record
  * 5. Return success
  */
+export async function PUT(req: NextRequest) {
+  // Guard: require TELEGRAM_BOT_TOKEN to be set
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    console.error('workspaces: TELEGRAM_BOT_TOKEN is not set in environment variables');
+    return NextResponse.json(
+      { success: false, error: 'server_configuration_error' },
+      { status: 500 },
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const init_data = body.init_data as string | undefined;
+    const workspace_id = body.workspace_id as string | undefined;
+    const name = body.name as string | undefined;
+    const workspace_context = body.workspace_context as string | undefined;
+    const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
+    const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
+
+    if (!init_data) {
+      return NextResponse.json(
+        { success: false, error: 'missing_init_data' },
+        { status: 400 },
+      );
+    }
+
+    if (!workspace_id) {
+      return NextResponse.json(
+        { success: false, error: 'missing_workspace_id' },
+        { status: 400 },
+      );
+    }
+
+    if (!name) {
+      return NextResponse.json(
+        { success: false, error: 'missing_name' },
+        { status: 400 },
+      );
+    }
+
+    // 1. Verify Telegram initData
+    const validation = await validateTelegramInitData(init_data, TELEGRAM_BOT_TOKEN);
+
+    if (!validation.valid || !validation.user) {
+      return NextResponse.json(
+        { success: false, error: validation.error || 'invalid_init_data' },
+        { status: 401 },
+      );
+    }
+
+    const telegramUser = validation.user;
+    const supabase = createServerClient();
+
+    // 2. Find profile by telegram_id
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, telegram_id')
+      .eq('telegram_id', Number(telegramUser.id))
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('workspaces: profile query error', profileError);
+      return NextResponse.json(
+        { success: false, error: 'database_error' },
+        { status: 500 },
+      );
+    }
+
+    if (!profileData) {
+      return NextResponse.json(
+        { success: false, error: 'profile_not_found' },
+        { status: 404 },
+      );
+    }
+
+    const profileId = profileData.id as string;
+
+    // 3. Verify user has access to this workspace (is owner or member)
+    const { data: workerData, error: workerError } = await supabase
+      .from('workers')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('source_id', profileId)
+      .maybeSingle();
+
+    if (workerError) {
+      console.error('workspaces: worker query error', workerError);
+      return NextResponse.json(
+        { success: false, error: 'database_error' },
+        { status: 500 },
+      );
+    }
+
+    if (!workerData) {
+      return NextResponse.json(
+        { success: false, error: 'forbidden' },
+        { status: 403 },
+      );
+    }
+
+    // 4. Update workspace
+    const updateData: any = { name };
+    
+    if (workspace_context !== undefined) {
+      updateData.workspace_context = workspace_context;
+    }
+    
+    if (external_links !== undefined) {
+      updateData.external_links = external_links;
+    }
+    
+    if (deadline_signals !== undefined) {
+      updateData.deadline_signals = deadline_signals;
+    }
+
+    const { data: updatedWorkspace, error: updateError } = await supabase
+      .from('workspaces')
+      .update(updateData)
+      .eq('id', workspace_id)
+      .select('id, name, slug, task_prefix')
+      .single();
+
+    if (updateError) {
+      console.error('workspaces: update error', updateError);
+      return NextResponse.json(
+        { success: false, error: 'workspace_update_failed', details: updateError.message },
+        { status: 500 },
+      );
+    }
+
+    if (!updatedWorkspace) {
+      return NextResponse.json(
+        { success: false, error: 'workspace_update_failed' },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        workspace: {
+          id: updatedWorkspace.id,
+          name: updatedWorkspace.name,
+          slug: updatedWorkspace.slug,
+          task_prefix: updatedWorkspace.task_prefix,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('workspaces: unexpected error', err);
+    return NextResponse.json(
+      { success: false, error: 'internal_error' },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   // Guard: require TELEGRAM_BOT_TOKEN to be set
   if (!process.env.TELEGRAM_BOT_TOKEN) {

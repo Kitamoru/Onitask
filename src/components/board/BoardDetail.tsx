@@ -80,6 +80,12 @@ export interface BoardDetailProps {
   documents: DocumentData[];
   /** Deadline warning days (for counter) */
   deadlineWarningDays: number;
+  /** Board settings */
+  boardSettings?: {
+    spCostEnabled: boolean;
+    cognitiveWeightEnabled: boolean;
+    context: string;
+  };
   /** Loading state */
   loading?: boolean;
 }
@@ -821,6 +827,7 @@ export function BoardDetail({
   externalLinks,
   documents,
   deadlineWarningDays,
+  boardSettings,
   loading = false,
 }: BoardDetailProps) {
   const router = useRouter();
@@ -905,6 +912,46 @@ export function BoardDetail({
 
       {/* Center container */}
       <div className="flex flex-col gap-4">
+        {/* Board settings summary */}
+        {boardSettings && (
+          <div
+            className="flex flex-col gap-2 p-3 rounded-card"
+            style={{
+              backgroundColor: 'var(--color-bg-surface)',
+              border: `1px solid var(--color-border-default)`,
+            }}
+          >
+            <p
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                lineHeight: 'var(--text-body-sm-line)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              Настройки доски
+            </p>
+            <div className="flex flex-col gap-1">
+              {boardSettings.spCostEnabled && (
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
+                  • Story Points: включено
+                </p>
+              )}
+              {boardSettings.cognitiveWeightEnabled && (
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
+                  • Когнитивный вес: включено
+                </p>
+              )}
+              {boardSettings.context && (
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
+                  • Контекст: {boardSettings.context.slice(0, 50)}{boardSettings.context.length > 50 ? '...' : ''}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Sprints section */}
         <SprintSection
           sprint={sprint}

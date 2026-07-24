@@ -169,6 +169,13 @@ export default function BoardDetailPage() {
   // Build documents placeholder
   const boardDocuments: DocumentData[] = [];
 
+  // Build board settings for display
+  const boardSettings = {
+    spCostEnabled: workspace.story_points_config?.enabled || false,
+    cognitiveWeightEnabled: workspace.enable_cognitive_budget || false,
+    context: workspace.workspace_context || '',
+  };
+
   return (
     <BoardDetail
       boardName={workspace.name}
@@ -178,6 +185,7 @@ export default function BoardDetailPage() {
       externalLinks={externalLinks}
       documents={boardDocuments}
       deadlineWarningDays={2}
+      boardSettings={boardSettings}
     />
   );
 }

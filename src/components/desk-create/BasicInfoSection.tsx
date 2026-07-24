@@ -8,11 +8,13 @@ export function BasicInfoSection({
   onNameChange,
   slug,
   onSlugChange,
+  disabled = false,
 }: {
   name: string;
   onNameChange: (v: string) => void;
   slug: string;
   onSlugChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <section>
@@ -44,6 +46,7 @@ export function BasicInfoSection({
           placeholder="desk"
           autoCapitalize="none"
           autoCorrect="off"
+          disabled={disabled}
         />
       </div>
     </section>
