@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-unresolved
-import { useTelegram } from '@/hooks/useTelegram';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 /**
  * Client-only component that initializes Telegram WebApp SDK on mount.
@@ -14,7 +14,7 @@ import { useTelegram } from '@/hooks/useTelegram';
  * - Renders nothing (returns null).
  */
 export function TelegramInit() {
-  const telegram = useTelegram();
+  const telegram = useTelegramAuth();
 
   // Ref gate — ensure this effect runs at most once even with React StrictMode
   const initRanRef = useRef(false);

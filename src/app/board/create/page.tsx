@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
 /**
@@ -25,7 +25,7 @@ export default function CreateBoardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const router = useRouter();
-  const { isLoading: authLoading, error: authError, refresh } = useAuth();
+  const { isLoading: authLoading, error: authError, refresh } = useTelegramAuth();
   const { loadBoardsData } = useData();
 
   // This page is accessible to all authenticated users for creating boards.

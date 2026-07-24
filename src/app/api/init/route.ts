@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateTelegramInitData } from '../../../../lib/telegramAuth';
+import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 import { createServerClient } from '../../../../lib/supabase';
 import type { InitResponse } from '../../../../types/api';
 

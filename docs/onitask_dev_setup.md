@@ -177,7 +177,11 @@ components/
 │   ├── SprintBar.tsx       # Sprint progress bar (Flow Board)
 │   └── SprintCloseWizard.tsx
 └── shared/
-    ├── TelegramProvider.tsx # useTelegram hook
+    ├── TelegramThemeProvider.tsx  # Объединяет TelegramTheme + ViewportBridge
+    ├── TelegramProvider.tsx       # Контекст Telegram WebApp
+    ├── TelegramInit.tsx           # Инициализация tg.ready()/expand()
+    ├── AuthLoader.tsx             # Глобальный лоадер по состоянию авторизации
+    ├── GlobalLoader.tsx
     ├── Toast.tsx
     ├── OfflineBanner.tsx
     └── UrgencyBadge.tsx     # Дедлайн светофор
@@ -188,29 +192,50 @@ components/
 ```
 lib/
 ├── supabase.ts             # createServerClient / createBrowserClient
-├── telegramAuth.ts         # validateTelegramInitData + timingSafeEqual (A-2)
-├── groq.ts                 # Groq client (Hot Path: F-04, LTM)
-├── aiQuota.ts              # Atomic quota RPC (A-3)
-├── aiPrompts.ts            # System prompts (шаблоны)
-├── urgency.ts              # getUrgency(dueDate, settings) — клиент
+├── api-auth.ts             # API key validation + timingSafeEqual (A-2)
+├── mcpAuth.ts              # MCP signing + timingSafeEqual (A-2)
 ├── bot.ts                  # Telegram Bot API helpers
-└── mcpAuth.ts              # API key validation + timingSafeEqual (A-2)
+├── urgency.ts              # getUrgency(dueDate, settings) — клиент
+├── workspace.ts            # Workspace helpers
+├── fractionalIndex.ts      # Fractional indexing для DnD
+└── ai/
+    ├── groq.ts             # Groq client (Hot Path: F-04, LTM)
+    ├── aiQuota.ts          # Atomic quota RPC (A-3)
+    └── aiPrompts.ts        # System prompts (шаблоны)
+
+src/lib/
+├── telegram/
+│   └── validate.ts         # validateTelegramInitData + timingSafeEqual (A-2)
+├── supabase/
+│   └── client.ts           # createBrowserClient
+├── api/
+│   ├── flow.ts             # Flow Board API
+│   └── calendar.ts         # Calendar API
+├── realtime/
+│   └── tasks.ts            # Realtime подписка на tasks
+├── cn.ts                   # clsx/twMerge helper
+└── notch.ts                # Notch-safe viewport helper
 ```
 
 ### 2.6 hooks/ и types/
 
 ```
 hooks/
-├── useTelegram.ts          # tg.ready(), tg.expand(), MainButton, BackButton
+├── useTelegramAuth.ts      # Объединяет useTelegram + useAuth
 ├── useKanban.ts            # Локальный стейт + optimistic updates
 ├── useVoiceRecorder.ts     # MediaRecorder lifecycle
 ├── useAiQuota.ts           # GET /api/ai/quota
-└── useTeamMetrics.ts       # Team Tab: velocity, escalations
+├── useTeamMetrics.ts       # Team Tab: velocity, escalations
+├── useTelegramTheme.ts     # Telegram theme params
+├── useTelegramViewport.ts  # Viewport height/bridge
+└── useAutosizeTextarea.ts  # Авто-ресайз textarea
 
 types/
 ├── database.ts             # Генерируется: supabase gen types typescript
 ├── api.ts                  # Request / Response типы для Route Handlers
-└── telegram.ts             # TelegramWebApp, InitData типы
+├── telegram.ts             # TelegramWebApp, InitData типы
+├── calendar.ts             # Calendar events/connections
+└── flowboard.ts            # Flow Board domain types
 ```
 
 ---

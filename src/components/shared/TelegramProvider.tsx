@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useMemo, ReactNode } from 'react';
-import { useTelegram } from '@/hooks/useTelegram';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 // ── Context types ───────────────────────────────────────────────────────
 // Match the shape from useTelegram — user is Record<string, unknown> there
@@ -49,7 +49,7 @@ export function useTelegramContext(): TelegramContextValue {
  * - Calls tg.ready() / tg.expand() exactly once via a ref gate.
  */
 export function TelegramProvider({ children }: { children: ReactNode }) {
-  const tg = useTelegram();
+  const tg = useTelegramAuth();
 
   // Build a stable context value — consumers won't get spurious re-renders
   const value = useMemo<TelegramContextValue>(

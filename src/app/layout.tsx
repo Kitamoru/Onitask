@@ -3,11 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomMenu } from "@/components/shared/BottomMenu";
 import { TelegramInit } from "@/components/shared/TelegramInit";
-import { TelegramThemeProvider } from "@/components/shared/TelegramTheme";
+import { TelegramThemeProvider } from "@/components/shared/TelegramThemeProvider";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
 import { DataProvider } from "@/contexts/DataContext";
-import { TelegramViewportBridge } from "@/components/shared/TelegramViewportBridge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,7 +56,6 @@ export default function RootLayout({
         <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
           <TelegramProvider>
             <TelegramThemeProvider>
-              <TelegramViewportBridge />
               <TelegramInit />
             <DataProvider>
               <AuthLoader>

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
 import { useData } from '@/contexts/DataContext';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 interface OnboardingModalProps {
   /** Callback when board is created successfully */
@@ -21,7 +21,7 @@ export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const { loadBoardsData } = useData();
-  const { refresh } = useAuth();
+  const { refresh } = useTelegramAuth();
 
   function getTelegramInitData(): string {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {

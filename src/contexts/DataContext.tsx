@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect } 
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
@@ -219,7 +219,7 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
-  const { data: authData, isLoading: isLoadingAuth } = useAuth();
+  const { data: authData, isLoading: isLoadingAuth } = useTelegramAuth();
 
   // Sync workspace and worker data from auth response (Step B: uses useAuth directly)
   useEffect(() => {
@@ -241,7 +241,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Sync all workspaces from auth response
     if (authData.workspaces.length > 0) {
       const now = new Date().toISOString();
-      const workspaces: Workspace[] = authData.workspaces.map(ws => ({
+      const workspaces: Workspace[] = authData.workspaces.map((ws: any) => ({
         id: ws.id,
         name: ws.name,
         slug: ws.slug,

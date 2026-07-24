@@ -11,9 +11,9 @@
  * 4. Server uses service_role key for all subsequent DB operations
  */
 
-import { validateTelegramInitData } from './telegramAuth';
+import { validateTelegramInitData } from '../src/lib/telegram/validate';
 import { createServerClient } from './supabase';
-import type { TelegramUser } from './telegramAuth';
+import type { TelegramUser } from '../src/lib/telegram/validate';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 

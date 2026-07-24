@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
@@ -30,7 +30,7 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
 
 export default function BoardsPage() {
   const router = useRouter();
-  const { isLoading: authLoading, error: authError } = useAuth();
+  const { isLoading: authLoading, error: authError } = useTelegramAuth();
   const { state } = useData();
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { EditDeskForm } from '@/components/desk-create/EditDeskForm';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
@@ -17,7 +17,7 @@ export default function BoardEditPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  const { isLoading: authLoading, error: authError, data: authData } = useTelegramAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

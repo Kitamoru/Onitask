@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
 import type { ExternalLinkData, DocumentData, TaskCardData, WorkerCardData } from '@/components/board';
 
@@ -27,7 +27,7 @@ export default function BoardDetailPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
-  const { isLoading: authLoading, error: authError, data: authData } = useAuth();
+  const { isLoading: authLoading, error: authError, data: authData } = useTelegramAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

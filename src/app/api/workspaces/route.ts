@@ -1,7 +1,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateTelegramInitData } from '../../../../lib/telegramAuth';
+import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 import { createServerClient } from '../../../../lib/supabase';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';

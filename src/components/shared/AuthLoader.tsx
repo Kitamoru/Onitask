@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { GlobalLoader } from './GlobalLoader';
 
 /**
@@ -19,7 +19,7 @@ interface AuthLoaderProps {
 }
 
 export function AuthLoader({ children }: AuthLoaderProps) {
-  const { isLoading } = useAuth();
+  const { isLoading } = useTelegramAuth();
   const [visible, setVisible] = React.useState(true);
   const resolvedRef = React.useRef(false);
 

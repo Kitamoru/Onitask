@@ -11,7 +11,7 @@ import type {
   TaskEntity,
 } from '@/types/flowboard';
 import { getFlowMetrics } from '@/lib/api/flow';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
 function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
@@ -22,7 +22,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 }
 
 export default function FlowBoardPage() {
-  const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useAuth();
+  const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useTelegramAuth();
   const { state, dispatch } = useData();
 
   const metrics = state.metrics.data;

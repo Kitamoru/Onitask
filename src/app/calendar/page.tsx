@@ -4,7 +4,7 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CalendarView } from '@/components/calendar/CalendarView';
 import { getCalendarEvents, getCalendarConnections } from '@/lib/api/calendar';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';

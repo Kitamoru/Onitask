@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 /**
  * Root page — Telegram Web App entry point.
@@ -17,7 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 export default function HomePage() {
   const router = useRouter();
-  const { isLoading, error, data } = useAuth();
+  const { isLoading, error, data } = useTelegramAuth();
 
   // Guard: once redirected, NEVER redirect again.
   // Fixes board creation issue where refresh() flips is_new_user to false
