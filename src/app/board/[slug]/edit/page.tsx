@@ -147,54 +147,6 @@ export default function BoardEditPage() {
 
   return (
     <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#0A0A0A' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid #2A2A2A' }}>
-        <div className="flex items-center gap-2">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <rect x="2" y="3" width="16" height="11" rx="1.5" stroke="#F59E0B" strokeWidth="1.5" />
-            <rect x="7" y="14" width="6" height="2" rx="0.5" fill="#F59E0B" />
-            <rect x="5" y="16" width="10" height="1" rx="0.5" fill="#F59E0B" />
-          </svg>
-          <h1
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-md)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Редактирование доски
-          </h1>
-        </div>
-        <button
-          onClick={() => router.push(`/board/${slug}`)}
-          className="flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-surface/50"
-          aria-label="Закрыть"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M5 5L15 15M15 5L5 15"
-              stroke="var(--color-text-muted)"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-
       {/* Form */}
       <EditDeskForm
         workspaceId={workspace.id}

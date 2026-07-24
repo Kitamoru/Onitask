@@ -53,8 +53,8 @@ export function CreateDeskForm({
   const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<ExternalLink[]>([]);
   const [trafficLightEnabled, setTrafficLightEnabled] = useState(false);
-  const [warningDays, setWarningDays] = useState(1);
-  const [urgentDays, setUrgentDays] = useState(3);
+  const [warningDays, setWarningDays] = useState(3);
+  const [urgentDays, setUrgentDays] = useState(1);
 
   const canSubmit = name.trim().length > 0 && slug.trim().length > 0;
 

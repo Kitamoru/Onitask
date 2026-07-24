@@ -56,10 +56,11 @@ const statLabelsRu = ["В очереди", "В работе", "На провер
 
 export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: BoardCardProps) {
   const handleClick = () => {
-    if (isSelected && onClick) {
-      onClick();
-    } else if (onSelect) {
+    if (onSelect) {
       onSelect(data.id);
+    }
+    if (onClick) {
+      onClick();
     }
   };
 
