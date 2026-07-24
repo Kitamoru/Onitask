@@ -1,113 +1,112 @@
-тзщ# Component Map — Onitask Design System
+# Component Map — Onitask Design System
 
 ## Overview
 This document maps Figma components to their code implementations in the Onitask project.
 All components use design tokens from `src/styles/tokens.css` (no hardcoded hex values).
 
----
-
-## Component Registry
-
-| Figma Node | Component Name | Code Path | Status | Notes |
-|------------|----------------|-----------|--------|-------|
-| 1:433 | `BottomMenu` | `src/components/shared/BottomMenu.tsx` | ✅ Implemented | Fixed bottom navigation bar |
-| 1:913 | `BoardForm` | `src/components/board/BoardForm.tsx` | ✅ Existing | Create board form |
-| — | `BoardHeader` | `src/components/board/Header.tsx` | ✅ Existing | Section header |
-| — | `Toggle` | `src/components/board/Toggle.tsx` | ✅ Existing | Toggle switch |
-| — | `Counter` | `src/components/board/Counter.tsx` | ✅ Existing | Number counter |
-| — | `TextInput` | `src/components/board/TextInput.tsx` | ✅ Existing | Text input field |
-| — | `TextArea` | `src/components/board/TextArea.tsx` | ✅ Existing | Text area |
-| — | `SubmitButton` | `src/components/board/SubmitButton.tsx` | ✅ Existing | Submit button |
-| — | `FilePicker` | `src/components/board/FilePicker.tsx` | ✅ Existing | File upload |
-| — | `LinkInputGroup` | `src/components/board/LinkInputGroup.tsx` | ✅ Existing | External link row |
-| — | `BadgeList` | `src/components/board/BadgeList.tsx` | ✅ Existing | Badge display |
-| — | `RiskPulse` | `src/components/board/RiskPulse.tsx` | ✅ Existing | Risk indicator |
-| — | `BoardDetail` | `src/components/board/BoardDetail.tsx` | ✅ Existing | Board detail view |
-| — | `WorkspaceWizard` | `src/components/board/WorkspaceWizard.tsx` | ✅ Existing | Workspace setup wizard |
+**Maintenance Rule**: When adding/modifying components, update this file immediately. See `.clinerules/.clinerules` § Front-End & Figma Code Generation Rules.
 
 ---
 
-## New Component: BottomMenu (2026-07-17)
+## 1. UI Kit (Atomic) — `src/components/ui/desk-ui/`
 
-### Figma Specification
-- **Node**: 1:433 (`buttom-menu`)
-- **Layout**: Row, 5px padding, 4px gap
-- **Background**: #0A0A0A (via `--color-bg-primary-dark`)
-- **Top Border**: Gradient (amber → teal → transparent → teal → amber)
-- **Backdrop Filter**: blur(30px)
-- **Height**: 54px functional / 88px designed (via `--size-bottom-menu-height` with clamp)
-
-### Menu Items
-| ID | Label | Icon (Tabler) | Route |
-|----|-------|---------------|-------|
-| boards | Доска | `IconLayoutList` | `/boards` |
-| kanban | Стол | `IconGridDots` | `/board/kanban` |
-| main | (empty) | `IconPlus` | `/board/create` |
-| calendar | Календарь | `IconCalendarWeek` | `/board/calendar` |
-| settings | Настройки | `IconSettings2` | `/settings` |
-
-### Token Mapping
-| Figma Property | CSS Token | Code Usage |
-|----------------|-----------|------------|
-| Background #0A0A0A | `--color-bg-primary-dark` | `bg-bottom-menu-bg` |
-| Icon color inactive #8B8B8B | `--color-text-muted` | `var(--color-bottom-menu-text-inactive)` |
-| Icon color active #FFFFFF | `--color-text-white` | `var(--color-bottom-menu-text-active)` |
-| Icon size 20px | `--size-bottom-menu-icon` | `clamp(1.25rem, 3vw, 1.5rem)` |
-| Main icon 40px | `--size-bottom-menu-icon-main` | `clamp(2.5rem, 6vw, 3rem)` |
-| Label 8px | `--text-bottom-menu-label` | `clamp(0.5rem, 1.2vw, 0.625rem)` |
-| Gap 4px | `--spacing-bottom-menu-gap` | `var(--spacing-1)` |
-| Blur 30px | `--blur-bottom-menu` | `backdrop-blur-[var(--blur-bottom-menu)]` |
-| Inner shadows | `--shadow-main-btn-*` | `boxShadow` on main button |
-
-### Responsive Breakpoints
-| Breakpoint | Behavior |
-|------------|----------|
-| Mobile (< 640px) | Compact layout, labels hidden on very small screens |
-| sm (≥ 640px) | Labels visible, increased padding |
-| md (≥ 768px) | Larger touch targets, text-xs labels |
-| lg (≥ 1024px) | Max-width constraint centered |
-
-### Accessibility
-- `<nav>` element with `aria-label="Основная навигация"`
-- Each link has `aria-label` describing its purpose
-- Active items have `aria-current="page"`
-- Focus-visible ring with accent color
-- Keyboard navigable via standard link behavior
-
-### Dependencies
-- `@tabler/icons-react` v3.45.0 (installed)
-- Next.js `Link` and `usePathname` for routing
-- Design tokens from `src/styles/tokens.css`
-
-### Integration
-- Added to `app/layout.tsx` as **global layout component** (renders on every page)
-- Body has bottom padding (`pb-[var(--size-bottom-menu-height)]`) to prevent content overlap
-- Fixed positioning at bottom of viewport, z-index 50
-- No duplicate instances in child pages (removed from `app/boards/page.tsx`)
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| Button | Button.tsx | variant, corner, disabled, className | Solid/outline button |
+| Card | Card.tsx | children, className | Basic container |
+| NotchedPanel | NotchedPanel.tsx | corner, radius, notch, borderWidth, borderGradient, border, fill, contentClassName | Panel with chamfered corners |
+| SectionHeader | SectionHeader.tsx | title | Section title with amber accent bar |
+| Stepper | Stepper.tsx | value, min, max, onChange, unitLabel, borderGradient | Number stepper with gradient border |
+| TextInput | TextInput.tsx | value, onChange, placeholder, disabled | Text input field |
+| TextArea | TextArea.tsx | value, onChange, placeholder, disabled | Multiline text input |
+| ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label | On/off toggle |
+| CountBadge | CountBadge.tsx | count | Number badge |
 
 ---
 
-## Updated Component: RiskPulse (2026-07-17)
+## 2. Feature Components
 
-### Bug Fix
-- **Problem**: Grid was using inline `gridTemplateColumns` with a malformed CSS value, causing cards to stretch horizontally across the full width instead of forming a proper 3-column grid.
-- **Solution**: Replaced inline style with Tailwind responsive grid classes:
-  - `grid-cols-1` on mobile (single column)
-  - `md:grid-cols-3` on tablet+ (three equal columns)
-  - Removed unused `grid-responsive` class
-  - Added responsive gap: `gap-2 sm:gap-4`
-- **Note**: Changes made in `src/components/board/RiskPulse.tsx` — shared by both `app/` and `src/app/` routes.
+### board/ — Boards
 
-### Token Mapping
-| Figma Property | CSS Token / Class | Code Usage |
-|----------------|-------------------|------------|
-| Card background | `--color-bg-surface` | `backgroundColor` |
-| Card border | `--color-border-default` | `border` |
-| Card padding | `--spacing-3` | `padding` |
-| Card gap | `--spacing-2` | `gap` |
-| Label color | `--color-text-muted` | `color` |
-| Value color | `--color-text-white` / `--color-error` | `color` |
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
+| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view |
+| RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
+| WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
+
+**Types**: `BoardCardData`, `BoardStats`, `SprintInfo`, `BoardDetailProps`, `WorkerCardData`, `ExternalLinkData`, `DocumentData`
 
 ---
 
-*Last updated: 2026-07-17*
+### desk-create/ — Board Creation/Editing
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| CreateDeskForm | CreateDeskForm.tsx | onSubmit, onAddColleague | Board creation form |
+| EditDeskForm | EditDeskForm.tsx | workspaceId, initialData, onAddColleague | Board editing form |
+| BasicInfoSection | BasicInfoSection.tsx | name, slug, onNameChange, onSlugChange, disabled | Name + @desk input |
+| StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange | SP cost config |
+| CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange | Cognitive weight toggle |
+| CoworkingSection | CoworkingSection.tsx | colleagueCount, onAddColleague | Colleagues section |
+| ContextSection | ContextSection.tsx | value, onChange | Context textarea |
+| DocumentsCard | DocumentsCard.tsx | enabled, onEnabledChange, files, onFilesChange | File upload |
+| ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange | External links |
+| TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange | Deadline signals |
+
+**Types**: `CreateDeskFormValue`, `EditDeskFormValue`, `ExternalLink`
+
+---
+
+### calendar/ — Calendar
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| CalendarView | CalendarView.tsx | — | Main calendar view |
+| CalendarTabs | CalendarTabs.tsx | — | Calendar tab navigation |
+| DayView | DayView.tsx | — | Day view |
+| ThreeDaysView | ThreeDaysView.tsx | — | 3-day view |
+| MonthListView | MonthListView.tsx | — | Month list view |
+| ListView | ListView.tsx | — | List view |
+
+---
+
+### flowboard/ — Flow Board
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| FlowBoard | FlowBoard.tsx | — | Main flow board |
+| TaskForm | TaskForm.tsx | — | Task creation/edit form |
+| UrgencyBadge | UrgencyBadge.tsx | — | Urgency indicator |
+| OnboardingModal | OnboardingModal.tsx | — | Onboarding modal |
+
+---
+
+### shared/ — Shared
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| BottomMenu | BottomMenu.tsx | — | Bottom navigation bar |
+| TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
+| TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
+| TelegramTheme | TelegramTheme.tsx | children | Theme provider |
+| TelegramViewportBridge | TelegramViewportBridge.tsx | — | Viewport height bridge |
+| AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
+| GlobalLoader | GlobalLoader.tsx | — | Global loading spinner |
+
+---
+
+## 3. Figma → Code Mapping
+
+| Figma Node | Component | File | Status |
+|------------|-----------|------|--------|
+| 1:433 | BottomMenu | BottomMenu.tsx | ✅ |
+| 1:913 | BoardForm | CreateDeskForm.tsx | ✅ |
+| desk card | BoardCard | BoardCard.tsx | ✅ |
+| desk detail | BoardDetail | BoardDetail.tsx | ✅ |
+| task-card | BoardCard | BoardCard.tsx | ✅ |
+| risk-pulse | RiskPulse | RiskPulse.tsx | ✅ |
+
+---
+
+*Last updated: 2026-07-24*

@@ -199,5 +199,6 @@ behavioral_safeguards:
 - Следуй design tokens (colors, spacing, typography)
 - Пиши чистый, типизированный код
 - Добавляй aria-атрибуты
+- Обновляй docs/design/component-map.md при добавлении/изменении компонентов
 
 Запрещено: hardcoded colors/spacing, div soup, inline styles если есть Tailwind.
