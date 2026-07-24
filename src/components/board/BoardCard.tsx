@@ -59,7 +59,8 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
     if (onSelect) {
       onSelect(data.id);
     }
-    if (onClick) {
+    // Only navigate if this board was already selected (second click)
+    if (onClick && isSelected) {
       onClick();
     }
   };
