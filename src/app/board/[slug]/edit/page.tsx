@@ -146,13 +146,18 @@ export default function BoardEditPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#0A0A0A' }}>
-      {/* Form */}
+    <main
+      className="min-h-[var(--tg-viewport-stable-height)] bg-bg"
+      style={{
+        paddingTop: "max(48px, var(--tg-content-safe-top))",
+        paddingBottom: "calc(var(--tg-content-safe-bottom) + var(--tg-safe-area-bottom))",
+      }}
+    >
       <EditDeskForm
         workspaceId={workspace.id}
         initialData={initialData}
         onAddColleague={() => router.push(`/board/${slug}/members`)}
       />
-    </div>
+    </main>
   );
 }
