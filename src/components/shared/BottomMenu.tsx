@@ -143,7 +143,7 @@ export function BottomMenu() {
             }}
             aria-hidden="true"
           />
-          {/* Create button SVG — 40×40px */}
+          {/* Create button SVG — 40×40px, only shape (no filter — box-shadow on parent) */}
           <svg
             viewBox="0 0 143 135"
             xmlns="http://www.w3.org/2000/svg"
