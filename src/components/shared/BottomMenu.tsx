@@ -99,12 +99,12 @@ export function BottomMenu() {
         <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
         <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
 
-        {/* Center "create" button — 80×54px, SVG 2x (80×80) centered, box-shadow on Link (clipped to Link bounds) */}
+        {/* Center "create" button — clipped to SVG pill shape, box-shadow follows the shape */}
         <Link
           href="/board/create"
           className="
             flex items-center justify-center
-            relative shrink-0 overflow-hidden
+            relative shrink-0
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -113,7 +113,7 @@ export function BottomMenu() {
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
             top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
-            borderRadius: '9999px',
+            clipPath: 'url(#create-button-clip)',
             boxShadow: `
               inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
               inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
@@ -124,7 +124,17 @@ export function BottomMenu() {
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Create button SVG — 2x size (80×80), centered, no box-shadow (on parent Link) */}
+          {/* Hidden SVG defining the clipPath (0×0, not rendered) */}
+          <svg width="0" height="0" className="absolute">
+            <defs>
+              <clipPath id="create-button-clip" clipPathUnits="objectBoundingBox">
+                <path
+                  d="M 0.056 0.489 L 0.056 0.489 Q 0.056 0.467 0.037 0.439 L 0.019 0.413 Q 0.000 0.385 0.000 0.319 L 0.000 0.200 Q 0.000 0.133 0.010 0.111 L 0.018 0.089 Q 0.028 0.067 0.040 0.054 L 0.051 0.042 Q 0.063 0.030 0.082 0.020 L 0.100 0.010 Q 0.119 0.000 0.182 0.000 L 0.301 0.000 Q 0.364 0.000 0.390 0.020 L 0.414 0.039 Q 0.441 0.059 0.481 0.059 L 0.519 0.059 Q 0.559 0.059 0.586 0.039 L 0.610 0.020 Q 0.636 0.000 0.699 0.000 L 0.818 0.000 Q 0.881 0.000 0.900 0.010 L 0.918 0.020 Q 0.937 0.030 0.949 0.042 L 0.958 0.054 Q 0.972 0.067 0.982 0.089 L 0.990 0.111 Q 1.000 0.133 1.000 0.200 L 1.000 0.319 Q 1.000 0.385 0.981 0.413 L 0.963 0.439 Q 0.944 0.467 0.944 0.489 L 0.944 0.511 Q 0.944 0.533 0.963 0.561 L 0.981 0.587 Q 1.000 0.615 1.000 0.681 L 1.000 0.800 Q 1.000 0.867 0.990 0.889 L 0.982 0.911 Q 0.972 0.933 0.958 0.946 L 0.949 0.958 Q 0.937 0.970 0.918 0.980 L 0.900 0.990 Q 0.881 1.000 0.818 1.000 L 0.699 1.000 Q 0.636 1.000 0.610 0.980 L 0.586 0.961 Q 0.559 0.941 0.519 0.941 L 0.481 0.941 Q 0.441 0.941 0.414 0.961 L 0.390 0.980 Q 0.364 1.000 0.301 1.000 L 0.182 1.000 Q 0.119 1.000 0.100 0.990 L 0.082 0.980 Q 0.063 0.970 0.051 0.958 L 0.040 0.946 Q 0.028 0.933 0.018 0.911 L 0.010 0.889 Q 0.000 0.867 0.000 0.800 L 0.000 0.681 Q 0.000 0.615 0.019 0.587 L 0.037 0.561 Q 0.056 0.533 0.056 0.511 Z"
+                />
+              </clipPath>
+            </defs>
+          </svg>
+          {/* Create button SVG — 2x size (80×80), centered, visible stroke + plus */}
           <svg
             viewBox="0 0 143 135"
             xmlns="http://www.w3.org/2000/svg"
