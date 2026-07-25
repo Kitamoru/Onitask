@@ -103,11 +103,11 @@ export default function BoardsPage() {
         {/* Header: "Стол" with desk icon (20x20) */}
         <div className="flex items-center gap-2">
           <img
-            src="/icons/outline-desk.svg"
+            src="/icons/desk.svg"
             alt=""
             width={20}
             height={20}
-            className="h-5 w-5 flex-none text-text-primary"
+            className="h-5 w-5 flex-none"
             aria-hidden="true"
           />
           <h1
