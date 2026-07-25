@@ -177,15 +177,24 @@ export default function BoardDetailPage() {
   };
 
   return (
-    <BoardDetail
-      boardName={workspace.name}
-      slug={workspace.slug}
-      sprintTasks={taskCards}
-      colleagues={colleagues}
-      externalLinks={externalLinks}
-      documents={boardDocuments}
-      deadlineWarningDays={2}
-      boardSettings={boardSettings}
-    />
+    <main
+      className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
+      style={{
+        paddingTop: "max(48px, var(--tg-content-safe-top, 0px))",
+        paddingBottom:
+          "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
+      }}
+    >
+      <BoardDetail
+        boardName={workspace.name}
+        slug={workspace.slug}
+        sprintTasks={taskCards}
+        colleagues={colleagues}
+        externalLinks={externalLinks}
+        documents={boardDocuments}
+        deadlineWarningDays={2}
+        boardSettings={boardSettings}
+      />
+    </main>
   );
 }

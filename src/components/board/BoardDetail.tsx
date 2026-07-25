@@ -110,8 +110,8 @@ export function BoardDetail({
         gap: 'var(--spacing-section-gap)',
       }}
     >
-      {/* Header: icon + board name + slug — left-aligned, above "Основное" block */}
-      <div className="flex flex-col gap-1">
+      {/* Header: icon + board name — left-aligned, above "Основное" block */}
+      <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <svg
             width="20"
@@ -121,9 +121,9 @@ export function BoardDetail({
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            <rect x="2" y="3" width="16" height="11" rx="1.5" stroke="var(--color-accent-amber)" strokeWidth="1.5" />
-            <rect x="7" y="14" width="6" height="2" rx="0.5" fill="var(--color-accent-amber)" />
-            <rect x="5" y="16" width="10" height="1" rx="0.5" fill="var(--color-accent-amber)" />
+            <rect x="2" y="3" width="16" height="11" rx="1.5" stroke="#FFFFFF" strokeWidth="1.5" />
+            <rect x="7" y="14" width="6" height="2" rx="0.5" fill="#FFFFFF" />
+            <rect x="5" y="16" width="10" height="1" rx="0.5" fill="#FFFFFF" />
           </svg>
           <h1
             style={{
@@ -137,31 +137,6 @@ export function BoardDetail({
           >
             {boardName}
           </h1>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <span
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              lineHeight: 'var(--text-body-sm-line)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-accent-amber)',
-            }}
-          >
-            1 доска • активная:
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              lineHeight: 'var(--text-body-sm-line)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-accent-amber)',
-            }}
-          >
-            @{slug}
-          </span>
         </div>
       </div>
 
