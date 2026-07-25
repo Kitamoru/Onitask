@@ -110,8 +110,8 @@ export function BottomMenu() {
             style={{
               width: 'var(--size-main-btn-width)',
               aspectRatio: '143 / 135',
-              top: 'calc(50% - 5px)',
-              transform: 'translateX(-50%)',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
             }}
             aria-label="Создать новую задачу"
             role="button"
