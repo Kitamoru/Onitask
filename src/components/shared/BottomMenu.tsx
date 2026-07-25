@@ -99,7 +99,7 @@ export function BottomMenu() {
         <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
         <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
 
-        {/* Center "create" button — clipped to SVG pill shape, box-shadow follows the shape */}
+        {/* Center "create" button */}
         <Link
           href="/board/create"
           className="
@@ -113,52 +113,19 @@ export function BottomMenu() {
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
             top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
-            clipPath: 'url(#create-button-clip)',
-            boxShadow: `
-              inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
-              inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
-              inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
-              inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
-            `,
           }}
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Hidden SVG defining the clipPath (0×0, not rendered) */}
-          <svg width="0" height="0" className="absolute">
-            <defs>
-              <clipPath id="create-button-clip" clipPathUnits="objectBoundingBox">
-                <path
-                  d="M 0.056 0.489 L 0.056 0.489 Q 0.056 0.467 0.037 0.439 L 0.019 0.413 Q 0.000 0.385 0.000 0.319 L 0.000 0.200 Q 0.000 0.133 0.010 0.111 L 0.018 0.089 Q 0.028 0.067 0.040 0.054 L 0.051 0.042 Q 0.063 0.030 0.082 0.020 L 0.100 0.010 Q 0.119 0.000 0.182 0.000 L 0.301 0.000 Q 0.364 0.000 0.390 0.020 L 0.414 0.039 Q 0.441 0.059 0.481 0.059 L 0.519 0.059 Q 0.559 0.059 0.586 0.039 L 0.610 0.020 Q 0.636 0.000 0.699 0.000 L 0.818 0.000 Q 0.881 0.000 0.900 0.010 L 0.918 0.020 Q 0.937 0.030 0.949 0.042 L 0.958 0.054 Q 0.972 0.067 0.982 0.089 L 0.990 0.111 Q 1.000 0.133 1.000 0.200 L 1.000 0.319 Q 1.000 0.385 0.981 0.413 L 0.963 0.439 Q 0.944 0.467 0.944 0.489 L 0.944 0.511 Q 0.944 0.533 0.963 0.561 L 0.981 0.587 Q 1.000 0.615 1.000 0.681 L 1.000 0.800 Q 1.000 0.867 0.990 0.889 L 0.982 0.911 Q 0.972 0.933 0.958 0.946 L 0.949 0.958 Q 0.937 0.970 0.918 0.980 L 0.900 0.990 Q 0.881 1.000 0.818 1.000 L 0.699 1.000 Q 0.636 1.000 0.610 0.980 L 0.586 0.961 Q 0.559 0.941 0.519 0.941 L 0.481 0.941 Q 0.441 0.941 0.414 0.961 L 0.390 0.980 Q 0.364 1.000 0.301 1.000 L 0.182 1.000 Q 0.119 1.000 0.100 0.990 L 0.082 0.980 Q 0.063 0.970 0.051 0.958 L 0.040 0.946 Q 0.028 0.933 0.018 0.911 L 0.010 0.889 Q 0.000 0.867 0.000 0.800 L 0.000 0.681 Q 0.000 0.615 0.019 0.587 L 0.037 0.561 Q 0.056 0.533 0.056 0.511 Z"
-                />
-              </clipPath>
-            </defs>
-          </svg>
-          {/* Create button SVG — 2x size (80×80), centered, visible stroke + plus */}
-          <svg
-            viewBox="0 0 143 135"
-            xmlns="http://www.w3.org/2000/svg"
+          <img
+            src="/icons/create-button.svg"
+            alt=""
             className="relative z-10"
             style={{
               width: 'calc(var(--size-main-btn-width) * 2)',
               height: 'calc(var(--size-main-btn-width) * 2)',
             }}
-          >
-            <defs>
-              <linearGradient id="create-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#e6c721"/>
-                <stop offset="100%" stopColor="#2ea98c"/>
-              </linearGradient>
-            </defs>
-            <path
-              d="M 8.00 66.06 L 8.00 66.06 Q 8.00 63.00 5.28 59.26 L 2.72 55.74 Q 0.00 52.00 0.00 43.00 L 0.00 27.00 Q 0.00 18.00 1.36 14.94 L 2.64 12.06 Q 4.00 9.00 5.70 7.30 L 7.30 5.70 Q 9.00 4.00 11.72 2.64 L 14.28 1.36 Q 17.00 0.00 26.00 0.00 L 43.00 0.00 Q 52.00 0.00 55.74 2.72 L 59.26 5.28 Q 63.00 8.00 68.78 8.00 L 74.22 8.00 Q 80.00 8.00 83.74 5.28 L 87.26 2.72 Q 91.00 0.00 100.00 0.00 L 117.00 0.00 Q 126.00 0.00 128.72 1.36 L 131.28 2.64 Q 134.00 4.00 135.70 5.70 L 137.30 7.30 Q 139.00 9.00 140.36 12.06 L 141.64 14.94 Q 143.00 18.00 143.00 27.00 L 143.00 43.00 Q 143.00 52.00 140.28 55.74 L 137.72 59.26 Q 135.00 63.00 135.00 66.06 L 135.00 68.94 Q 135.00 72.00 137.72 75.74 L 140.28 79.26 Q 143.00 83.00 143.00 92.00 L 143.00 108.00 Q 143.00 117.00 141.64 120.06 L 140.36 122.94 Q 139.00 126.00 137.30 127.70 L 135.70 129.30 Q 134.00 131.00 131.28 132.36 L 128.72 133.64 Q 126.00 135.00 117.00 135.00 L 100.00 135.00 Q 91.00 135.00 87.26 132.28 L 83.74 129.72 Q 80.00 127.00 74.22 127.00 L 68.78 127.00 Q 63.00 127.00 59.26 129.72 L 55.74 132.28 Q 52.00 135.00 43.00 135.00 L 26.00 135.00 Q 17.00 135.00 14.28 133.64 L 11.72 132.36 Q 9.00 131.00 7.30 129.30 L 5.70 127.70 Q 4.00 126.00 2.64 122.94 L 1.36 120.06 Q 0.00 117.00 0.00 108.00 L 0.00 92.00 Q 0.00 83.00 2.72 79.26 L 5.28 75.74 Q 8.00 72.00 8.00 68.94 Z"
-              fill="none"
-              stroke="url(#create-gradient)"
-              strokeWidth="2.5"
-            />
-            <line x1="71.5" y1="47" x2="71.5" y2="88" stroke="white" strokeWidth="6" strokeLinecap="round"/>
-            <line x1="51" y1="67.5" x2="92" y2="67.5" stroke="white" strokeWidth="6" strokeLinecap="round"/>
-          </svg>
+          />
         </Link>
 
         {/* Right items */}
