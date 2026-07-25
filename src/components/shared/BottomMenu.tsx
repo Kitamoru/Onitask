@@ -13,14 +13,17 @@ import {
 /**
  * BottomMenu — Fixed bottom navigation bar.
  *
- * Layout structure (from reference BottomNav.tsx):
- *   - Container: flex items-center justify-between, full-bleed
- *   - 4 NavButton items (flex-1) — 2 left, 2 right
- *   - Center "create" button: absolute positioned, elevated ~5px above the
- *     gradient border line, vertically centered on the same centerline as
- *     the icon+label blocks
- *   - Top border: gradient (amber → teal → transparent → teal → amber)
- *   - Backdrop blur: 30px
+ * Figma specs (node 1:433):
+ *   - Container: row, padding 5px, gap 4px, justify-content center, 358×88px
+ *   - 4 menu items: column, padding 8px, gap 2px, height 54px, border-radius 9999px
+ *     - Icon: 20×20px
+ *     - Text: Inter Semi Bold 600, 8px, letterSpacing -0.0625em, color #8B8B8B
+ *   - Center button: 80×54px, column, padding 8px, gap 2px
+ *     - Icon: 40×40px
+ *     - Glow frame: 72×72px, position absolute (4, -9)
+ *     - Box shadow: inset amber/teal/white
+ *   - Background: #0A0A0A, backdrop blur 30px
+ *   - Top border: gradient amber → teal → transparent → teal → amber
  *
  * Design tokens from src/styles/tokens.css and src/app/globals.css
  */
@@ -73,12 +76,9 @@ export function BottomMenu() {
     >
       <div
         className="
-          relative flex items-center justify-between
+          relative flex items-center justify-center
           bg-primary-dark
           backdrop-blur-[var(--blur-bottom-menu)]
-          px-[var(--spacing-bottom-menu-padding)]
-          pt-[var(--spacing-bottom-menu-padding)]
-          pb-[var(--spacing-1)]
           before:absolute before:inset-x-0 before:top-0 before:h-px
           before:bg-gradient-to-r
           before:from-[var(--gradient-bottom-menu-start)]
@@ -91,49 +91,73 @@ export function BottomMenu() {
         "
         style={{
           minHeight: 'var(--size-bottom-menu-height)',
+          padding: 'var(--spacing-bottom-menu-padding)',
+          gap: 'var(--spacing-bottom-menu-gap)',
         }}
       >
         {/* Left items */}
         <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
         <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
 
-        {/* Center "create" button — in flex flow, elevated above gradient line */}
+        {/* Center "create" button — 80×54px, elevated above gradient line */}
         <Link
           href="/board/create"
           className="
             flex flex-col items-center justify-center
-            relative
+            relative shrink-0
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
-            shrink-0
           "
           style={{
             width: 'var(--size-main-btn-width)',
-            aspectRatio: '143 / 135',
+            height: 'var(--size-main-btn-height)',
+            padding: '8px',
+            gap: '2px',
             top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
+            boxShadow: `
+              inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
+              inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
+              inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
+              inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
+            `,
           }}
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Create button SVG — glow merged from removed box-shadow */}
+          {/* Glow frame — 72×72px, absolute at (4, -9) */}
+          <div
+            className="
+              absolute rounded-full
+              bg-gradient-to-br
+              from-[var(--gradient-bottom-menu-start)]/30
+              to-[var(--gradient-bottom-menu-mid-1)]/20
+              blur-sm
+              pointer-events-none
+            "
+            style={{
+              width: '72px',
+              height: '72px',
+              left: '4px',
+              top: '-9px',
+            }}
+            aria-hidden="true"
+          />
+          {/* Create button SVG — 40×40px */}
           <svg
             viewBox="0 0 143 135"
             xmlns="http://www.w3.org/2000/svg"
-            className="relative z-10 w-full h-full"
+            className="relative z-10"
+            style={{
+              width: 'var(--size-bottom-menu-icon-main)',
+              height: 'var(--size-bottom-menu-icon-main)',
+            }}
           >
             <defs>
               <linearGradient id="create-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#e6c721"/>
                 <stop offset="100%" stopColor="#2ea98c"/>
               </linearGradient>
-              {/* Glow filter — matches the removed box-shadow colors:
-                  amber rgba(230,199,33,0.2) + teal rgba(46,169,140,0.2) */}
-              <filter id="create-glow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#e6c721" floodOpacity="0.25"/>
-                <feDropShadow dx="0" dy="0" stdDeviation="12" floodColor="#2ea98c" floodOpacity="0.2"/>
-                <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#ffffff" floodOpacity="0.08"/>
-              </filter>
             </defs>
             <path
               d="M 8.00 66.06 L 8.00 66.06 Q 8.00 63.00 5.28 59.26 L 2.72 55.74 Q 0.00 52.00 0.00 43.00 L 0.00 27.00 Q 0.00 18.00 1.36 14.94 L 2.64 12.06 Q 4.00 9.00 5.70 7.30 L 7.30 5.70 Q 9.00 4.00 11.72 2.64 L 14.28 1.36 Q 17.00 0.00 26.00 0.00 L 43.00 0.00 Q 52.00 0.00 55.74 2.72 L 59.26 5.28 Q 63.00 8.00 68.78 8.00 L 74.22 8.00 Q 80.00 8.00 83.74 5.28 L 87.26 2.72 Q 91.00 0.00 100.00 0.00 L 117.00 0.00 Q 126.00 0.00 128.72 1.36 L 131.28 2.64 Q 134.00 4.00 135.70 5.70 L 137.30 7.30 Q 139.00 9.00 140.36 12.06 L 141.64 14.94 Q 143.00 18.00 143.00 27.00 L 143.00 43.00 Q 143.00 52.00 140.28 55.74 L 137.72 59.26 Q 135.00 63.00 135.00 66.06 L 135.00 68.94 Q 135.00 72.00 137.72 75.74 L 140.28 79.26 Q 143.00 83.00 143.00 92.00 L 143.00 108.00 Q 143.00 117.00 141.64 120.06 L 140.36 122.94 Q 139.00 126.00 137.30 127.70 L 135.70 129.30 Q 134.00 131.00 131.28 132.36 L 128.72 133.64 Q 126.00 135.00 117.00 135.00 L 100.00 135.00 Q 91.00 135.00 87.26 132.28 L 83.74 129.72 Q 80.00 127.00 74.22 127.00 L 68.78 127.00 Q 63.00 127.00 59.26 129.72 L 55.74 132.28 Q 52.00 135.00 43.00 135.00 L 26.00 135.00 Q 17.00 135.00 14.28 133.64 L 11.72 132.36 Q 9.00 131.00 7.30 129.30 L 5.70 127.70 Q 4.00 126.00 2.64 122.94 L 1.36 120.06 Q 0.00 117.00 0.00 108.00 L 0.00 92.00 Q 0.00 83.00 2.72 79.26 L 5.28 75.74 Q 8.00 72.00 8.00 68.94 Z"
@@ -141,7 +165,6 @@ export function BottomMenu() {
               fillOpacity="0.92"
               stroke="url(#create-gradient)"
               strokeWidth="2.5"
-              filter="url(#create-glow)"
             />
             <line x1="71.5" y1="47" x2="71.5" y2="88" stroke="white" strokeWidth="6" strokeLinecap="round"/>
             <line x1="51" y1="67.5" x2="92" y2="67.5" stroke="white" strokeWidth="6" strokeLinecap="round"/>
@@ -158,11 +181,8 @@ export function BottomMenu() {
 
 /**
  * Individual nav button — icon + label, flex-1, centered.
- * Active state logic:
- *   - /boards → only "Стол" (kanban) is active
- *   - /flowboard → only "Доска" (flowboard) is active
- *   - /calendar → only "Календарь" is active
- *   - /settings → only "Настройки" is active
+ * Figma: column, padding 8px, gap 2px, height 54px, border-radius 9999px
+ * Icon: 20×20px, Text: 8px Semi Bold, letterSpacing -0.0625em
  */
 function NavButton({ item, currentPath }: { item: MenuItem; currentPath: string }) {
   const isActive = currentPath === item.href;
@@ -172,13 +192,16 @@ function NavButton({ item, currentPath }: { item: MenuItem; currentPath: string 
     <Link
       href={item.href}
       className="
-        flex flex-1 flex-col items-center gap-[var(--spacing-0\.5)]
-        py-[var(--spacing-1\.5)]
+        flex flex-1 flex-col items-center justify-center
+        rounded-full
         transition-colors duration-fast
         hover:opacity-80 active:opacity-60
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
       "
       style={{
+        height: 'var(--size-main-btn-height)',
+        padding: '8px',
+        gap: '2px',
         color: isActive
           ? 'var(--color-bottom-menu-text-active)'
           : 'var(--color-bottom-menu-text-inactive)',
@@ -187,7 +210,7 @@ function NavButton({ item, currentPath }: { item: MenuItem; currentPath: string 
       aria-current={isActive ? 'page' : undefined}
     >
       <IconComponent
-        size={24}
+        size={20}
         stroke={isActive ? 2 : 1.5}
         style={{
           width: 'var(--size-bottom-menu-icon)',
@@ -196,12 +219,13 @@ function NavButton({ item, currentPath }: { item: MenuItem; currentPath: string 
         }}
       />
       <span
-        className={isActive ? 'font-medium' : ''}
+        className={isActive ? 'font-semibold' : ''}
         style={{
           fontFamily: 'var(--font-family-display)',
           fontSize: 'var(--text-bottom-menu-label)',
           lineHeight: 'var(--text-bottom-menu-label-line)',
-          letterSpacing: 'var(--letter-spacing-tighter)',
+          fontWeight: 'var(--font-weight-semibold)',
+          letterSpacing: '-0.0625em',
         }}
       >
         {item.label}

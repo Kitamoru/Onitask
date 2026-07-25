@@ -148,16 +148,16 @@
   --size-toggle-track-height: 1.5rem;
   --size-counter-btn: 2.25rem;
 
-  /* Bottom Menu */
-  --size-bottom-menu-height: clamp(3.375rem, 6vh, 5.5rem);
-  --size-bottom-menu-icon: clamp(1.25rem, 3vw, 1.5rem);
-  --size-bottom-menu-icon-main: clamp(2.5rem, 6vw, 3rem);
+  /* Bottom Menu — Figma specs (node 1:433) */
+  --size-bottom-menu-height: 88px;
+  --size-bottom-menu-icon: 20px;
+  --size-bottom-menu-icon-main: 40px;
   --size-main-btn-width: 80px;
   --size-main-btn-height: 54px;
-  --text-bottom-menu-label: clamp(0.5rem, 1.2vw, 0.625rem);
-  --text-bottom-menu-label-line: 1.25;
-  --spacing-bottom-menu-gap: var(--spacing-1);
-  --spacing-bottom-menu-padding: var(--spacing-1.5);
+  --text-bottom-menu-label: 8px;
+  --text-bottom-menu-label-line: 1;
+  --spacing-bottom-menu-gap: 4px;
+  --spacing-bottom-menu-padding: 5px;
   --color-bottom-menu-text-inactive: var(--color-text-muted);
   --color-bottom-menu-text-active: var(--color-text-white);
   --color-bottom-menu-bg: var(--color-bg-primary-dark);
