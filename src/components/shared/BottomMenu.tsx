@@ -99,12 +99,12 @@ export function BottomMenu() {
         <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
         <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
 
-        {/* Center "create" button — 80×54px, SVG 2x (80×80) centered, inset glow inside SVG */}
+        {/* Center "create" button — 80×54px, SVG 2x (80×80) centered, box-shadow on Link (clipped to Link bounds) */}
         <Link
           href="/board/create"
           className="
             flex items-center justify-center
-            relative shrink-0 overflow-visible
+            relative shrink-0 overflow-hidden
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -113,11 +113,18 @@ export function BottomMenu() {
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
             top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
+            borderRadius: '9999px',
+            boxShadow: `
+              inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
+              inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
+              inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
+              inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
+            `,
           }}
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Create button SVG — 2x size (80×80), centered, inset glow inside SVG bounds */}
+          {/* Create button SVG — 2x size (80×80), centered, no box-shadow (on parent Link) */}
           <svg
             viewBox="0 0 143 135"
             xmlns="http://www.w3.org/2000/svg"
@@ -125,13 +132,6 @@ export function BottomMenu() {
             style={{
               width: 'calc(var(--size-main-btn-width) * 2)',
               height: 'calc(var(--size-main-btn-width) * 2)',
-              /* Inset glow — inside SVG bounds only, colors match box-shadow */
-              boxShadow: `
-                inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
-                inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
-                inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
-                inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
-              `,
             }}
           >
             <defs>
