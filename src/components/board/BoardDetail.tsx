@@ -110,17 +110,21 @@ export function BoardDetail({
         gap: 'var(--spacing-section-gap)',
       }}
     >
-      {/* Header section: icon + board name + slug */}
-      <div className="flex flex-col items-center gap-1">
+      {/* Header: icon + board name + slug — left-aligned, above "Основное" block */}
+      <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <img
-            src="/icons/desk.svg"
-            alt=""
-            width={20}
-            height={20}
-            className="h-5 w-5 flex-none"
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
-          />
+          >
+            <rect x="2" y="3" width="16" height="11" rx="1.5" stroke="var(--color-accent-amber)" strokeWidth="1.5" />
+            <rect x="7" y="14" width="6" height="2" rx="0.5" fill="var(--color-accent-amber)" />
+            <rect x="5" y="16" width="10" height="1" rx="0.5" fill="var(--color-accent-amber)" />
+          </svg>
           <h1
             style={{
               fontFamily: 'var(--font-family-display)',
