@@ -99,12 +99,12 @@ export function BottomMenu() {
         <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
         <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
 
-        {/* Center "create" button — 80×54px, elevated above gradient line */}
+        {/* Center "create" button — 80×54px, SVG 2x (80×80) centered, inset glow inside SVG */}
         <Link
           href="/board/create"
           className="
-            flex flex-col items-center justify-center
-            relative shrink-0
+            flex items-center justify-center
+            relative shrink-0 overflow-visible
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -112,43 +112,27 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            padding: '8px',
-            gap: '2px',
             top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
-            boxShadow: `
-              inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
-              inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
-              inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
-              inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
-            `,
           }}
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Glow frame — 72×72px, absolute at (4, -9) */}
-          <div
-            className="
-              absolute rounded-full
-              bg-gradient-to-br
-              from-[var(--gradient-bottom-menu-start)]/30
-              to-[var(--gradient-bottom-menu-mid-1)]/20
-              blur-sm
-              pointer-events-none
-            "
-            style={{
-              width: '72px',
-              height: '72px',
-              left: '4px',
-              top: '-9px',
-            }}
-            aria-hidden="true"
-          />
-          {/* Create button SVG — fills entire Link (80×54), transparent fill so box-shadow shows through */}
+          {/* Create button SVG — 2x size (80×80), centered, inset glow inside SVG bounds */}
           <svg
             viewBox="0 0 143 135"
             xmlns="http://www.w3.org/2000/svg"
-            className="absolute inset-0 z-10 w-full h-full"
-            preserveAspectRatio="xMidYMid meet"
+            className="relative z-10"
+            style={{
+              width: 'calc(var(--size-main-btn-width) * 2)',
+              height: 'calc(var(--size-main-btn-width) * 2)',
+              /* Inset glow — inside SVG bounds only, colors match box-shadow */
+              boxShadow: `
+                inset -1px -1px 4px 0px rgba(230, 199, 33, 0.2),
+                inset 1px 1px 4px 0px rgba(46, 169, 140, 0.2),
+                inset 0px 1px 10px 0px rgba(255, 255, 255, 0.05),
+                inset 0px 1px 1px 0px rgba(255, 255, 255, 0.1)
+              `,
+            }}
           >
             <defs>
               <linearGradient id="create-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
