@@ -2,22 +2,25 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import { Button, SectionHeader, Stepper } from '@/components/ui/desk-ui';
 
 /**
  * BoardDetail component — displays the content of a single board/workspace.
  * 
  * Figma spec (node 1:836 "desk / [desk_UUID] / edit"):
  *   - Main frame: column, gap=24px, maxWidth=390px, bg=#0A0A0A
- *   - Header section: desk icon + "Доска" title + board count line
+ *   - Header section: desk icon (20x20) + "Доска" title + board count line
  *   - Center container (flex-col, gap=16px):
- *     - Sprints section: sprint title + task cards grid (3 columns) + "К спринту" button
+ *     - Sprints section: section header + task cards grid (3 columns) + "К спринту" button
  *     - Colleagues section: section header + worker cards list + "Добавить коллегу" button
  *     - External links section: section header + link items
  *     - Documents section: section header + file items
  *     - Work logic section: section header + counter controls
- *   - Trailing bar: "Редактировать доску" primary button
+ *   - Trailing bar: "Редактировать доску" primary button (full width)
+ *   - Bottom filler: 80px
  * 
- * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
+ * Uses UI components from desk-ui (Button, SectionHeader, Stepper).
+ * All styling via design tokens from src/styles/tokens.css.
  */
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ export interface WorkerCardData {
   roleLabel: string;
   activeTasks: number;
   overloaded: boolean;
-  tasks: string[]; // task titles or descriptions
+  tasks: string[];
 }
 
 export interface ExternalLinkData {
@@ -64,83 +67,23 @@ export interface DocumentData {
 }
 
 export interface BoardDetailProps {
-  /** Workspace/board name */
   boardName: string;
-  /** Slug for routing */
   slug: string;
-  /** Active sprint info */
   sprint?: SprintInfo;
-  /** Task cards in current sprint */
   sprintTasks: TaskCardData[];
-  /** Team members */
   colleagues: WorkerCardData[];
-  /** External links */
   externalLinks: ExternalLinkData[];
-  /** Attached documents */
   documents: DocumentData[];
-  /** Deadline warning days (for counter) */
   deadlineWarningDays: number;
-  /** Board settings */
   boardSettings?: {
     spCostEnabled: boolean;
     cognitiveWeightEnabled: boolean;
     context: string;
   };
-  /** Loading state */
   loading?: boolean;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
-
-function SectionHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="flex flex-col w-full gap-1">
-      <div className="flex items-center gap-2">
-        {/* Amber accent bar */}
-        <div
-          className="shrink-0 rounded-sm"
-          style={{
-            width: 'var(--size-accent-line-width)',
-            height: 'var(--size-accent-line-height)',
-            backgroundColor: 'var(--color-accent-amber)',
-          }}
-          aria-hidden="true"
-        />
-        <h2
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
-          }}
-        >
-          {title}
-        </h2>
-      </div>
-      {subtitle && (
-        <p
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-sm)',
-            lineHeight: 'var(--text-body-sm-line)',
-            fontWeight: 'var(--font-weight-regular)',
-            letterSpacing: 'var(--letter-spacing-tightest)',
-            color: 'var(--color-accent-amber)',
-          }}
-        >
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function SprintSection({
   sprint,
@@ -154,100 +97,109 @@ function SprintSection({
   if (!sprint) return null;
 
   const columns = [
-    { label: 'Люди', count: tasks.filter((t) => t.column === 'people').length },
-    { label: 'Процессы', count: tasks.filter((t) => t.column === 'process').length },
-    { label: 'Эскалации', count: tasks.filter((t) => t.column === 'escalation').length },
+    { label: 'Люди', count: tasks.filter((t) => t.column === 'people').length, taskList: tasks.filter((t) => t.column === 'people') },
+    { label: 'Процессы', count: tasks.filter((t) => t.column === 'process').length, taskList: tasks.filter((t) => t.column === 'process') },
+    { label: 'Эскалации', count: tasks.filter((t) => t.column === 'escalation').length, taskList: tasks.filter((t) => t.column === 'escalation') },
   ];
 
   return (
-    <div className="flex flex-col w-full gap-4">
-      {/* Sprint header */}
-      <div
-        className="flex flex-col w-full p-3 rounded-card"
+    <div className="flex flex-col w-full gap-3">
+      <SectionHeader title="Спринты" />
+
+      {/* Sprint info line */}
+      <p
+        className="text-center text-accent-amber"
         style={{
-          backgroundColor: 'var(--color-bg-surface)',
-          border: `1px solid var(--color-border-default)`,
-          gap: 'var(--spacing-2)',
+          fontFamily: 'var(--font-family-display)',
+          fontSize: 'var(--text-body-sm)',
+          lineHeight: 'var(--text-body-sm-line)',
+          fontWeight: 'var(--font-weight-medium)',
         }}
       >
-        <p
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            textAlign: 'center' as const,
-            color: 'var(--color-accent-amber)',
-          }}
-        >
-          {sprint.name} • {sprint.topic} • {sprint.startDate}–{sprint.endDate}
-        </p>
+        {sprint.name} • {sprint.topic} • {sprint.startDate}–{sprint.endDate}
+      </p>
 
-        {/* Task cards grid */}
-        <div
-          className="grid w-full grid-responsive"
-          style={{
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          }}
-        >
-          {columns.map(({ label, count }) => (
-            <div
-              key={label}
-              className="flex flex-col rounded-sm"
+      {/* 3-column task grid */}
+      <div
+        className="grid w-full"
+        style={{
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 'var(--spacing-3)',
+        }}
+      >
+        {columns.map(({ label, count, taskList }) => (
+          <div
+            key={label}
+            className="flex flex-col rounded-sm"
+            style={{
+              padding: 'var(--spacing-3)',
+              gap: 'var(--spacing-2)',
+              backgroundColor: 'var(--color-bg-surface)',
+              border: `1px solid var(--color-border-default)`,
+            }}
+          >
+            <p
+              className="text-center text-muted"
               style={{
-                padding: 'var(--spacing-3)',
-                gap: 'var(--spacing-2)',
-                backgroundColor: 'var(--color-bg-surface)',
-                border: `1px solid var(--color-border-default)`,
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                lineHeight: 'var(--text-body-sm-line)',
+                fontWeight: 'var(--font-weight-medium)',
               }}
             >
-              <p
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-body-md)',
-                  lineHeight: 'var(--text-body-md-line)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  textAlign: 'center' as const,
-                  color: 'var(--color-text-muted)',
-                }}
-              >
-                {label}
-              </p>
-              <p
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-heading-md)',
-                  lineHeight: 'var(--text-heading-md-line)',
-                  fontWeight: 'var(--font-weight-semibold)',
-                  textAlign: 'center' as const,
-                  color: count > 10 ? 'var(--color-error)' : 'var(--color-text-white)',
-                }}
-              >
-                {count}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* "К спринту" button */}
-        <button
-          onClick={onSprintClick}
-          className="flex items-center justify-center h-10 w-full rounded transition-colors hover:bg-surface/50"
-          style={{
-            fontFamily: 'var(--font-family-base)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-semibold)',
-            letterSpacing: 'var(--letter-spacing-tighter)',
-            color: 'var(--color-text-primary)',
-            backgroundColor: 'var(--color-bg-surface-hover)',
-            border: `1px solid var(--color-border-default)`,
-          }}
-          aria-label="К спринту"
-        >
-          К спринту
-        </button>
+              {label}
+            </p>
+            <p
+              className="text-center"
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-heading-md)',
+                lineHeight: 'var(--text-heading-md-line)',
+                fontWeight: 'var(--font-weight-semibold)',
+                color: count > 10 ? 'var(--color-error)' : 'var(--color-text-white)',
+              }}
+            >
+              {count}
+            </p>
+            {taskList.length > 0 && (
+              <div className="flex flex-col gap-1 mt-1">
+                {taskList.slice(0, 2).map((task) => (
+                  <p
+                    key={task.id}
+                    className="text-center truncate text-accent-amber"
+                    style={{
+                      fontFamily: 'var(--font-family-display)',
+                      fontSize: 'var(--text-body-xs)',
+                      lineHeight: 'var(--text-body-xs-line)',
+                      fontWeight: 'var(--font-weight-regular)',
+                    }}
+                  >
+                    {task.title}
+                  </p>
+                ))}
+                {taskList.length > 2 && (
+                  <p
+                    className="text-center text-muted"
+                    style={{
+                      fontFamily: 'var(--font-family-display)',
+                      fontSize: 'var(--text-body-xs)',
+                      lineHeight: 'var(--text-body-xs-line)',
+                      fontWeight: 'var(--font-weight-regular)',
+                    }}
+                  >
+                    +{taskList.length - 2}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
+
+      {/* "К спринту" button */}
+      <Button variant="solid" onClick={onSprintClick}>
+        К спринту
+      </Button>
     </div>
   );
 }
@@ -269,7 +221,7 @@ function WorkerCard({ worker }: { worker: WorkerCardData }) {
         <div className="flex flex-col items-center gap-1">
           {/* User avatar */}
           <div
-            className="relative shrink-0 overflow-hidden rounded"
+            className="relative shrink-0 overflow-hidden"
             style={{
               width: 'var(--size-avatar)',
               height: 'var(--size-avatar)',
@@ -411,7 +363,7 @@ function WorkerCard({ worker }: { worker: WorkerCardData }) {
       <div
         style={{
           height: '1px',
-          backgroundColor: 'var(--color-text-muted)',
+          backgroundColor: 'var(--color-border-default)',
         }}
         aria-hidden="true"
       />
@@ -440,7 +392,7 @@ function WorkerCard({ worker }: { worker: WorkerCardData }) {
               fontSize: 'var(--text-body-sm)',
               lineHeight: 'var(--text-body-sm-line)',
               fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-accent-amber)',
+              color: 'var(--color-text-muted)',
             }}
           >
             Нет активных задач · уточни статус
@@ -452,7 +404,6 @@ function WorkerCard({ worker }: { worker: WorkerCardData }) {
 }
 
 function CognitiveWeightIndicator({ weight }: { weight: number }) {
-  // Render filled circles for weight, empty for remaining (max 3)
   const maxWeight = 3;
   return (
     <div className="flex items-center gap-0.5" aria-label={`Вес когнитивной нагрузки: ${weight}`}>
@@ -481,7 +432,7 @@ function ColleaguesSection({
   onAddClick?: () => void;
 }) {
   return (
-    <div className="flex flex-col w-full gap-4">
+    <div className="flex flex-col w-full gap-3">
       <SectionHeader title="Коллеги" />
 
       <div className="flex flex-col gap-3">
@@ -490,24 +441,9 @@ function ColleaguesSection({
         ))}
       </div>
 
-      {/* "Добавить коллегу" button */}
-      <button
-        onClick={onAddClick}
-        className="flex items-center justify-center h-10 w-full rounded transition-colors hover:bg-surface/50"
-        style={{
-          fontFamily: 'var(--font-family-base)',
-          fontSize: 'var(--text-body-md)',
-          lineHeight: 'var(--text-body-md-line)',
-          fontWeight: 'var(--font-weight-semibold)',
-          letterSpacing: 'var(--letter-spacing-tighter)',
-          color: 'var(--color-text-primary)',
-          backgroundColor: 'var(--color-bg-surface-hover)',
-          border: `1px solid var(--color-border-default)`,
-        }}
-        aria-label="Добавить коллегу"
-      >
+      <Button variant="solid" onClick={onAddClick}>
         Добавить коллегу
-      </button>
+      </Button>
     </div>
   );
 }
@@ -518,7 +454,7 @@ function LinkItem({ link }: { link: ExternalLinkData }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-1.5 px-2.5 py-2 rounded transition-colors hover:bg-surface/50"
+      className="flex items-center gap-1.5 px-2.5 py-2 rounded transition-colors hover:opacity-80"
       style={{
         backgroundColor: 'var(--color-bg-surface)',
         border: `1px solid var(--color-border-default)`,
@@ -543,14 +479,13 @@ function LinkItem({ link }: { link: ExternalLinkData }) {
         />
       </svg>
       <span
+        className="flex-1 min-w-0"
         style={{
           fontFamily: 'var(--font-family-display)',
           fontSize: 'var(--text-body-sm)',
           lineHeight: 'var(--text-body-sm-line)',
           fontWeight: 'var(--font-weight-medium)',
           color: 'var(--color-text-primary)',
-          flex: 1,
-          minWidth: 0,
         }}
       >
         {link.label}
@@ -582,11 +517,8 @@ function ExternalLinksSection({
   links: ExternalLinkData[];
 }) {
   return (
-    <div className="flex flex-col w-full gap-4">
-      <SectionHeader
-        title="Внешние ссылки"
-        subtitle="Важные ссылки для поддержания контекста вашей доски"
-      />
+    <div className="flex flex-col w-full gap-3">
+      <SectionHeader title="Внешние ссылки" />
 
       <div className="flex flex-col gap-3">
         {links.map((link) => (
@@ -600,7 +532,7 @@ function ExternalLinksSection({
 function DocumentItem({ doc }: { doc: DocumentData }) {
   return (
     <div
-      className="flex items-center gap-1.5 px-2.5 py-2 rounded transition-colors hover:bg-surface/50"
+      className="flex items-center gap-1.5 px-2.5 py-2 rounded transition-colors hover:opacity-80"
       style={{
         backgroundColor: 'var(--color-bg-surface)',
         border: `1px solid var(--color-border-default)`,
@@ -632,14 +564,13 @@ function DocumentItem({ doc }: { doc: DocumentData }) {
         />
       </svg>
       <span
+        className="flex-1 min-w-0"
         style={{
           fontFamily: 'var(--font-family-display)',
           fontSize: 'var(--text-body-sm)',
           lineHeight: 'var(--text-body-sm-line)',
           fontWeight: 'var(--font-weight-medium)',
           color: 'var(--color-text-primary)',
-          flex: 1,
-          minWidth: 0,
         }}
       >
         {doc.filename}
@@ -671,116 +602,13 @@ function DocumentsSection({
   documents: DocumentData[];
 }) {
   return (
-    <div className="flex flex-col w-full gap-4">
-      <SectionHeader
-        title="Документы"
-        subtitle="Важные документы для поддержания контекста вашей доски"
-      />
+    <div className="flex flex-col w-full gap-3">
+      <SectionHeader title="Документы" />
 
       <div className="flex flex-col gap-3">
         {documents.map((doc) => (
           <DocumentItem key={doc.id} doc={doc} />
         ))}
-      </div>
-    </div>
-  );
-}
-
-function CounterControl({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between w-full rounded overflow-hidden relative"
-      style={{
-        backgroundColor: 'var(--color-bg-surface)',
-        border: `1px solid var(--color-border-default)`,
-      }}
-    >
-      {/* Label */}
-      <span
-        style={{
-          fontFamily: 'var(--font-family-base)',
-          fontSize: 'var(--text-body-md)',
-          lineHeight: 'var(--text-body-md-line)',
-          fontWeight: 'var(--font-weight-semibold)',
-          letterSpacing: 'var(--letter-spacing-tighter)',
-          color: 'var(--color-text-primary)',
-          paddingLeft: 'var(--spacing-3)',
-        }}
-      >
-        {label}
-      </span>
-
-      {/* Counter buttons */}
-      <div className="flex items-center gap-1 pr-2">
-        {/* Minus button */}
-        <button
-          onClick={() => onChange(Math.max(0, value - 1))}
-          className="flex items-center justify-center w-7 h-7 rounded transition-colors hover:bg-surface/50"
-          aria-label="Уменьшить"
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M3 6H9"
-              stroke="var(--color-text-primary)"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-
-        {/* Value */}
-        <span
-          style={{
-            fontFamily: 'var(--font-family-base)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-semibold)',
-            letterSpacing: 'var(--letter-spacing-tighter)',
-            color: 'var(--color-text-primary)',
-            minWidth: '20px',
-            textAlign: 'center' as const,
-          }}
-        >
-          {value}
-        </span>
-
-        {/* Plus button */}
-        <button
-          onClick={() => onChange(value + 1)}
-          className="flex items-center justify-center w-7 h-7 rounded transition-colors hover:bg-surface/50"
-          aria-label="Увеличить"
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M6 3V9M3 6H9"
-              stroke="var(--color-text-primary)"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
       </div>
     </div>
   );
@@ -794,22 +622,25 @@ function WorkLogicSection({
   onChangeWarningDays: (v: number) => void;
 }) {
   return (
-    <div className="flex flex-col w-full gap-4">
-      <SectionHeader
-        title="Логика работы"
-        subtitle="Обозначьте срок, при котором коллегам будет приходить дополнительное уведомление о скором дедлайне задачи"
-      />
+    <div className="flex flex-col w-full gap-3">
+      <SectionHeader title="Логика работы" />
 
       <div className="flex flex-col gap-3">
-        <CounterControl
-          label="1 день"
+        <Stepper
           value={warningDays >= 1 ? 1 : 0}
+          min={0}
+          max={1}
           onChange={(v) => onChangeWarningDays(v)}
+          unitLabel={() => "1 день"}
+          borderGradient={["var(--color-grad-add-from)", "var(--color-grad-add-to)"]}
         />
-        <CounterControl
-          label="3 дня"
+        <Stepper
           value={warningDays >= 3 ? 1 : 0}
+          min={0}
+          max={1}
           onChange={(v) => onChangeWarningDays(v)}
+          unitLabel={() => "3 дня"}
+          borderGradient={["var(--color-grad-add-from)", "var(--color-grad-add-to)"]}
         />
       </div>
     </div>
@@ -827,7 +658,6 @@ export function BoardDetail({
   externalLinks,
   documents,
   deadlineWarningDays,
-  boardSettings,
   loading = false,
 }: BoardDetailProps) {
   const router = useRouter();
@@ -856,7 +686,7 @@ export function BoardDetail({
       <div className="flex flex-col items-center gap-1">
         {/* Desk icon + title */}
         <div className="flex items-center gap-2">
-          {/* Desktop device icon */}
+          {/* Desktop device icon (20x20) */}
           <svg
             width="20"
             height="20"
@@ -883,7 +713,7 @@ export function BoardDetail({
           </h1>
         </div>
 
-        {/* Board count + active */}
+        {/* Board count + active slug */}
         <div className="flex items-center gap-1">
           <span
             style={{
@@ -912,46 +742,6 @@ export function BoardDetail({
 
       {/* Center container */}
       <div className="flex flex-col gap-4">
-        {/* Board settings summary */}
-        {boardSettings && (
-          <div
-            className="flex flex-col gap-2 p-3 rounded-card"
-            style={{
-              backgroundColor: 'var(--color-bg-surface)',
-              border: `1px solid var(--color-border-default)`,
-            }}
-          >
-            <p
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                lineHeight: 'var(--text-body-sm-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              Настройки доски
-            </p>
-            <div className="flex flex-col gap-1">
-              {boardSettings.spCostEnabled && (
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
-                  • Story Points: включено
-                </p>
-              )}
-              {boardSettings.cognitiveWeightEnabled && (
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
-                  • Когнитивный вес: включено
-                </p>
-              )}
-              {boardSettings.context && (
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
-                  • Контекст: {boardSettings.context.slice(0, 50)}{boardSettings.context.length > 50 ? '...' : ''}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Sprints section */}
         <SprintSection
           sprint={sprint}
@@ -978,38 +768,15 @@ export function BoardDetail({
         />
       </div>
 
-      {/* Trailing bar: Edit button */}
-      <div
-        className="flex items-center justify-end"
-        style={{
-          alignSelf: 'stretch',
-          alignItems: 'center',
-          gap: 'var(--spacing-2)',
-        }}
-      >
-        <button
-          onClick={() => router.push(`/board/${slug}/edit`)}
-          className="flex items-center justify-center h-10 px-4 rounded transition-colors hover:opacity-80"
-          style={{
-            fontFamily: 'var(--font-family-base)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-semibold)',
-            letterSpacing: 'var(--letter-spacing-tighter)',
-            color: 'var(--color-bg-primary-dark)',
-            backgroundColor: 'var(--color-bg-light)',
-          }}
-          aria-label="Редактировать доску"
-        >
-          Редактировать доску
-        </button>
-      </div>
+      {/* Trailing bar: Edit button (full width) */}
+      <Button variant="solid" onClick={() => router.push(`/board/${slug}/edit`)}>
+        Редактировать доску
+      </Button>
 
-      {/* Bottom filler */}
+      {/* Bottom filler: 80px */}
       <div
         style={{
           height: '80px',
-          backgroundColor: 'var(--color-bg-primary-dark)',
         }}
         aria-hidden="true"
       />

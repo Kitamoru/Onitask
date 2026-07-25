@@ -31,7 +31,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
-| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view |
+| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view. Uses Button, SectionHeader, Stepper from desk-ui |
 | RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
 | WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
 
