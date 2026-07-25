@@ -16,10 +16,10 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Card | Card.tsx | children, className | Basic container |
 | NotchedPanel | NotchedPanel.tsx | corner, radius, notch, borderWidth, borderGradient, border, fill, contentClassName | Panel with chamfered corners |
 | SectionHeader | SectionHeader.tsx | title | Section title with amber accent bar |
-| Stepper | Stepper.tsx | value, min, max, onChange, unitLabel, borderGradient | Number stepper with gradient border |
+| Stepper | Stepper.tsx | value, min, max, onChange, unitLabel, borderGradient, disabled | Number stepper with gradient border |
 | TextInput | TextInput.tsx | value, onChange, placeholder, disabled | Text input field |
 | TextArea | TextArea.tsx | value, onChange, placeholder, disabled | Multiline text input |
-| ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label | On/off toggle |
+| ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label, disabled | On/off toggle |
 | CountBadge | CountBadge.tsx | count | Number badge |
 
 ---
@@ -31,7 +31,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
-| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view. Uses Button, SectionHeader, Stepper from desk-ui |
+| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view (read-only). Uses desk-create sections in disabled mode |
 | RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
 | WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
 
@@ -46,13 +46,13 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | CreateDeskForm | CreateDeskForm.tsx | onSubmit, onAddColleague | Board creation form |
 | EditDeskForm | EditDeskForm.tsx | workspaceId, initialData, onAddColleague | Board editing form |
 | BasicInfoSection | BasicInfoSection.tsx | name, slug, onNameChange, onSlugChange, disabled | Name + @desk input |
-| StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange | SP cost config |
-| CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange | Cognitive weight toggle |
-| CoworkingSection | CoworkingSection.tsx | colleagueCount, onAddColleague | Colleagues section |
-| ContextSection | ContextSection.tsx | value, onChange | Context textarea |
-| DocumentsCard | DocumentsCard.tsx | enabled, onEnabledChange, files, onFilesChange | File upload |
-| ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange | External links |
-| TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange | Deadline signals |
+| StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange, disabled | SP cost config |
+| CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange, disabled | Cognitive weight toggle |
+| CoworkingSection | CoworkingSection.tsx | colleagueCount, onAddColleague, disabled | Colleagues section |
+| ContextSection | ContextSection.tsx | value, onChange, disabled | Context textarea |
+| DocumentsCard | DocumentsCard.tsx | enabled, onEnabledChange, files, onFilesChange, disabled | File upload |
+| ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange, disabled | External links |
+| TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange, disabled | Deadline signals |
 
 **Types**: `CreateDeskFormValue`, `EditDeskFormValue`, `ExternalLink`
 

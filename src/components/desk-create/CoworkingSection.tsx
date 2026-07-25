@@ -8,9 +8,11 @@ import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 export function CoworkingSection({
   colleagueCount,
   onAddColleague,
+  disabled = false,
 }: {
   colleagueCount: number;
   onAddColleague: () => void;
+  disabled?: boolean;
 }) {
   return (
     <section>
@@ -22,7 +24,7 @@ export function CoworkingSection({
           </span>
           <CountBadge>{colleagueCount} коллег</CountBadge>
         </div>
-        <Button variant="outline" onClick={onAddColleague}>
+        <Button variant="outline" onClick={onAddColleague} disabled={disabled}>
           Добавить коллегу
         </Button>
       </Card>

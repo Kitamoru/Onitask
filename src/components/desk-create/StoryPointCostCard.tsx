@@ -11,11 +11,13 @@ export function StoryPointCostCard({
   onEnabledChange,
   hoursBySp,
   onHoursChange,
+  disabled = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
   hoursBySp: Record<(typeof SP_VALUES)[number], string>;
   onHoursChange: (sp: (typeof SP_VALUES)[number], value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <Card>
@@ -27,6 +29,7 @@ export function StoryPointCostCard({
           checked={enabled}
           onChange={onEnabledChange}
           label="Стоимость сторипоинта"
+          disabled={disabled}
         />
       </div>
 
@@ -47,7 +50,7 @@ export function StoryPointCostCard({
                 value={hoursBySp[sp]}
                 onChange={(e) => onHoursChange(sp, e.target.value)}
                 placeholder="1 час"
-                disabled={!enabled}
+                disabled={disabled || !enabled}
                 inputMode="text"
               />
             </div>

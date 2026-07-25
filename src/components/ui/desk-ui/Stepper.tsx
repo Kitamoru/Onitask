@@ -11,6 +11,7 @@ export function Stepper({
   max = 30,
   onChange,
   borderGradient,
+  disabled = false,
 }: {
   value: number;
   unitLabel: (n: number) => string;
@@ -18,6 +19,7 @@ export function Stepper({
   max?: number;
   onChange: (next: number) => void;
   borderGradient: [string, string];
+  disabled?: boolean;
 }) {
   const dec = () => onChange(Math.max(min, value - 1));
   const inc = () => onChange(Math.min(max, value + 1));
@@ -31,7 +33,7 @@ export function Stepper({
       fill="var(--color-surface)"
       contentClassName="flex h-10 items-center justify-between px-2"
     >
-      <StepperButton onClick={dec} disabled={value <= min} label="Уменьшить">
+      <StepperButton onClick={dec} disabled={disabled || value <= min} label="Уменьшить">
         <Minus className="h-4 w-4" />
       </StepperButton>
 
@@ -39,7 +41,7 @@ export function Stepper({
         {unitLabel(value)}
       </span>
 
-      <StepperButton onClick={inc} disabled={value >= max} label="Увеличить">
+      <StepperButton onClick={inc} disabled={disabled || value >= max} label="Увеличить">
         <Plus className="h-4 w-4" />
       </StepperButton>
     </NotchedPanel>

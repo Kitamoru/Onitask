@@ -6,9 +6,11 @@ import { ToggleSwitch } from "@/components/ui/desk-ui/ToggleSwitch";
 export function CognitiveWeightCard({
   enabled,
   onEnabledChange,
+  disabled = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <Card>
@@ -20,6 +22,7 @@ export function CognitiveWeightCard({
           checked={enabled}
           onChange={onEnabledChange}
           label="Когнитивный вес"
+          disabled={disabled}
         />
       </div>
       <p className="text-[13px] leading-[1.45] text-text-muted">

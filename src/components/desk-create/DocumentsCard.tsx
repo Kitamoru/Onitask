@@ -16,11 +16,13 @@ export function DocumentsCard({
   onEnabledChange,
   files,
   onFilesChange,
+  disabled = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
   files: File[];
   onFilesChange: (files: File[]) => void;
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const atLimit = files.length >= MAX_DOCUMENTS;
@@ -53,6 +55,7 @@ export function DocumentsCard({
           checked={enabled}
           onChange={onEnabledChange}
           label="Документы"
+          disabled={disabled}
         />
       </div>
 
@@ -91,11 +94,11 @@ export function DocumentsCard({
 
         <button
           type="button"
-          disabled={!enabled || atLimit}
+          disabled={disabled || !enabled || atLimit}
           onClick={openPicker}
           className={cn(
             "block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left",
-            (!enabled || atLimit) && "opacity-40"
+            (disabled || !enabled || atLimit) && "opacity-40"
           )}
         >
           <NotchedPanel
@@ -104,10 +107,10 @@ export function DocumentsCard({
             className="h-full"
             contentClassName="flex h-full w-full items-center justify-between px-4"
           >
-            <span className="truncate text-base text-text-faint">
-              Выберите файл
-            </span>
-            <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
+          <span className="truncate text-base text-text-faint">
+            {disabled ? "Загрузка отключена" : "Выберите файл"}
+          </span>
+          <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
           </NotchedPanel>
         </button>
         <input
@@ -128,7 +131,7 @@ export function DocumentsCard({
 
         <Button
           variant="outline"
-          disabled={!enabled || atLimit}
+          disabled={disabled || !enabled || atLimit}
           onClick={openPicker}
         >
           Добавить .md файл

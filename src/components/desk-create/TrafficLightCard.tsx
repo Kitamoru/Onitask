@@ -22,6 +22,7 @@ export function TrafficLightCard({
   onWarningDaysChange,
   urgentDays,
   onUrgentDaysChange,
+  disabled = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
@@ -29,6 +30,7 @@ export function TrafficLightCard({
   onWarningDaysChange: (v: number) => void;
   urgentDays: number;
   onUrgentDaysChange: (v: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <Card>
@@ -40,6 +42,7 @@ export function TrafficLightCard({
           checked={enabled}
           onChange={onEnabledChange}
           label="Сигналы светофора"
+          disabled={disabled}
         />
       </div>
       <p className="mb-4 text-[13px] leading-[1.45] text-text-muted">
@@ -63,6 +66,7 @@ export function TrafficLightCard({
             max={30}
             onChange={onWarningDaysChange}
             borderGradient={["var(--color-grad-warning-from)", "var(--color-grad-warning-to)"]}
+            disabled={disabled}
           />
           {/* urgentDays — красный, меньшее число (ближе к дедлайну): min=1, max=warningDays-1 */}
           <Stepper
@@ -72,6 +76,7 @@ export function TrafficLightCard({
             max={warningDays - 1}
             onChange={onUrgentDaysChange}
             borderGradient={["var(--color-grad-urgent-from)", "var(--color-grad-urgent-to)"]}
+            disabled={disabled}
           />
         </div>
       </div>

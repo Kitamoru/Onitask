@@ -8,18 +8,20 @@ import { TextInput } from "@/components/ui/desk-ui/TextInput";
 import { Button } from "@/components/ui/desk-ui/Button";
 import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
 
-export type ExternalLink = { title: string; url: string };
+export type ExternalLink = { label: string; url: string };
 
 export function ExternalLinksCard({
   enabled,
   onEnabledChange,
   links,
   onLinksChange,
+  disabled = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
   links: ExternalLink[];
   onLinksChange: (links: ExternalLink[]) => void;
+  disabled?: boolean;
 }) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -28,7 +30,7 @@ export function ExternalLinksCard({
 
   const addLink = () => {
     if (!canAdd) return;
-    onLinksChange([...links, { title: title.trim(), url: url.trim() }]);
+    onLinksChange([...links, { label: title.trim(), url: url.trim() }]);
     setTitle("");
     setUrl("");
   };
@@ -47,6 +49,7 @@ export function ExternalLinksCard({
           checked={enabled}
           onChange={onEnabledChange}
           label="Внешние ссылки"
+          disabled={disabled}
         />
       </div>
 
@@ -67,7 +70,7 @@ export function ExternalLinksCard({
                   contentClassName="flex items-center justify-between px-4 py-3"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-[14px] text-text">{link.title}</p>
+                    <p className="truncate text-[14px] text-text">{link.label}</p>
                     <p className="truncate text-[12px] text-text-faint">
                       {link.url}
                     </p>
@@ -91,19 +94,19 @@ export function ExternalLinksCard({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Название ресурса"
-            disabled={!enabled}
+            disabled={disabled || !enabled}
           />
           <TextInput
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Ссылка"
-            disabled={!enabled}
+            disabled={disabled || !enabled}
             inputMode="url"
             autoCapitalize="none"
           />
         </div>
 
-        <Button variant="outline" disabled={!canAdd} onClick={addLink}>
+        <Button variant="outline" disabled={disabled || !canAdd} onClick={addLink}>
           Добавить ссылку
         </Button>
       </div>

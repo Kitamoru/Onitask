@@ -66,7 +66,7 @@ export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
 
         external_links: value.linksEnabled && value.links.length > 0
           ? value.links.map(link => ({
-              name: link.title.trim().slice(0, 100),
+              name: link.label.trim().slice(0, 100),
               url: link.url.trim().slice(0, 2048),
             }))
           : undefined,

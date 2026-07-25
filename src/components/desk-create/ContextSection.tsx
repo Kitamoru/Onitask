@@ -8,9 +8,11 @@ const MAX_LENGTH = 1200;
 export function ContextSection({
   value,
   onChange,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <section>
@@ -21,6 +23,7 @@ export function ContextSection({
         onChange={onChange}
         placeholder="Краткое описание"
         maxLength={MAX_LENGTH}
+        disabled={disabled}
       />
       {/* Subtle, not a copied-from-Documents pill badge on purpose — this
           field has no existing hint line in the reference mockup, so a
