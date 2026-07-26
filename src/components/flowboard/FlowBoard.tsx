@@ -115,7 +115,7 @@ function KanbanIcon() {
   );
 }
 
-function PriorityBadge({ label, color = 'green' }: { label: string; color?: 'green' | 'amber' | 'red' | 'cyan' }) {
+export function PriorityBadge({ label, color = 'green' }: { label: string; color?: 'green' | 'amber' | 'red' | 'cyan' }) {
   const colorMap = {
     green: { bg: 'rgba(74, 222, 128, 0.2)', text: '#4ADE80', border: '#4ADE80' },
     amber: { bg: 'rgba(245, 158, 11, 0.2)', text: '#F59E0B', border: '#F59E0B' },
@@ -377,7 +377,7 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
   );
 }
 
-function CognitiveWeightIndicator({ weight }: { weight: number }) {
+export function CognitiveWeightIndicator({ weight }: { weight: number }) {
   const maxWeight = 3;
   return (
     <div className="flex items-center gap-0.5" aria-label={`Вес когнитивной нагрузки: ${weight}`}>
@@ -398,7 +398,7 @@ function CognitiveWeightIndicator({ weight }: { weight: number }) {
   );
 }
 
-function UserAvatar({ displayName, avatarUrl, size = 'md' }: { displayName: string; avatarUrl?: string; size?: 'sm' | 'md' }) {
+export function UserAvatar({ displayName, avatarUrl, size = 'md' }: { displayName: string; avatarUrl?: string; size?: 'sm' | 'md' }) {
   const sizeMap = { sm: '24px', md: '36px' };
   const sizePx = sizeMap[size];
   return (
@@ -423,7 +423,7 @@ function UserAvatar({ displayName, avatarUrl, size = 'md' }: { displayName: stri
   );
 }
 
-function PersonCard({ person, type = 'worker' }: { person: WorkerCardData | AgentCardData; type?: 'worker' | 'agent' }) {
+export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData | AgentCardData; type?: 'worker' | 'agent' }) {
   const displayName = 'displayName' in person ? person.displayName : person.name;
   const avatarUrl = 'avatarUrl' in person ? person.avatarUrl : undefined;
   const cognitiveWeight = person.cognitiveWeight;

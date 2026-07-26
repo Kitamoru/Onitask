@@ -10,8 +10,6 @@ export type { BoardCardProps, BoardCardData, BoardStats, SprintInfo } from './Bo
 export { BoardDetail } from './BoardDetail';
 export type {
   BoardDetailProps,
-  SprintInfo as BoardSprintInfo,
-  TaskCardData,
   WorkerCardData,
   ExternalLinkData,
   DocumentData,

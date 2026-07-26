@@ -1,4 +1,4 @@
-export { FlowBoard } from './FlowBoard';
+export { FlowBoard, PersonCard, UserAvatar, CognitiveWeightIndicator, PriorityBadge } from './FlowBoard';
 export { OnboardingModal } from './OnboardingModal';
 export type {
   FlowBoardProps,

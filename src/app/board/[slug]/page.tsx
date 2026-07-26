@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
-import type { ExternalLinkData, DocumentData, TaskCardData, WorkerCardData } from '@/components/board';
+import type { ExternalLinkData, DocumentData, WorkerCardData } from '@/components/board';
 
 /**
  * Board Detail Page — displays the content of a single board/workspace.
@@ -142,14 +142,7 @@ export default function BoardDetailPage() {
   const memberWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'human');
   const agentWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'agent');
 
-  // Build task cards
-  const taskCards: TaskCardData[] = tasks.map((t: any) => ({
-    id: t.id,
-    title: t.title,
-    column: t.column || 'backlog',
-  }));
-
-  // Build colleagues (human workers)
+  // Build colleagues (human workers) — maps to FlowBoard's WorkerCardData
   const colleagues: WorkerCardData[] = memberWorkers.map((w: any) => ({
     id: w.id,
     displayName: w.display_name || w.source_id.slice(0, 8),
@@ -158,7 +151,7 @@ export default function BoardDetailPage() {
     spPerDay: w.sp_per_day ?? 8,
     trendUp: false,
     roleLabel: w.role || 'member',
-    activeTasks: 0,
+    activeDays: 0,
     overloaded: false,
     tasks: [],
   }));
@@ -188,11 +181,9 @@ export default function BoardDetailPage() {
       <BoardDetail
         boardName={workspace.name}
         slug={workspace.slug}
-        sprintTasks={taskCards}
         colleagues={colleagues}
         externalLinks={externalLinks}
         documents={boardDocuments}
-        deadlineWarningDays={2}
         boardSettings={boardSettings}
       />
     </main>

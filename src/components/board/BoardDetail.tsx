@@ -2,46 +2,15 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, SectionHeader } from '@/components/ui/desk-ui';
-import { BasicInfoSection } from '@/components/desk-create/BasicInfoSection';
-import { StoryPointCostCard } from '@/components/desk-create/StoryPointCostCard';
-import { CognitiveWeightCard } from '@/components/desk-create/CognitiveWeightCard';
-import { CoworkingSection } from '@/components/desk-create/CoworkingSection';
-import { ContextSection } from '@/components/desk-create/ContextSection';
-import { DocumentsCard } from '@/components/desk-create/DocumentsCard';
-import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
-import { TrafficLightCard } from '@/components/desk-create/TrafficLightCard';
+import { Button } from '@/components/ui/desk-ui';
+import { PersonCard } from '@/components/flowboard';
+import type { WorkerCardData as FlowWorkerCardData } from '@/components/flowboard';
 
-const DEFAULT_SP_HOURS = { 1: "1 час", 3: "1 час", 5: "1 час", 7: "1 час", 13: "1 час" };
-
-export interface SprintInfo {
-  id: string;
-  name: string;
-  topic: string;
-  startDate: string;
-  endDate: string;
-  daysElapsed: number;
-  totalDays: number;
-}
-
-export interface TaskCardData {
-  id: string;
-  title: string;
-  column: string;
-}
-
-export interface WorkerCardData {
-  id: string;
-  displayName: string;
-  avatarUrl?: string;
-  cognitiveWeight: number;
-  spPerDay: number;
-  trendUp: boolean;
-  roleLabel: string;
-  activeTasks: number;
-  overloaded: boolean;
-  tasks: string[];
-}
+/**
+ * Extend FlowBoard's WorkerCardData for BoardDetail usage.
+ * We reuse the same fields — `activeDays` maps from `activeTasks`.
+ */
+export type WorkerCardData = FlowWorkerCardData;
 
 export interface ExternalLinkData {
   id: string;
@@ -58,12 +27,9 @@ export interface DocumentData {
 export interface BoardDetailProps {
   boardName: string;
   slug: string;
-  sprint?: any;
-  sprintTasks: any[];
-  colleagues: any[];
-  externalLinks: ExternalLink[];
-  documents: any[];
-  deadlineWarningDays: number;
+  colleagues: WorkerCardData[];
+  externalLinks: ExternalLinkData[];
+  documents: DocumentData[];
   boardSettings?: {
     spCostEnabled: boolean;
     cognitiveWeightEnabled: boolean;
@@ -72,15 +38,34 @@ export interface BoardDetailProps {
   loading?: boolean;
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 rounded" style={{ backgroundColor: 'var(--color-bg-surface)' }}>
+      <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>
+        {label}
+      </span>
+      <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="shrink-0" style={{ width: '2px', height: '18px', backgroundColor: 'var(--color-accent-amber)', borderRadius: '2px' }} aria-hidden="true" />
+      <h2 style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-md)', fontWeight: 'var(--font-weight-medium)', color: 'var(--color-text-primary)' }}>
+        {title}
+      </h2>
+    </div>
+  );
+}
+
 export function BoardDetail({
   boardName,
   slug,
-  sprint,
-  sprintTasks,
   colleagues,
-  externalLinks,
-  documents,
-  deadlineWarningDays,
   boardSettings,
   loading = false,
 }: BoardDetailProps) {
@@ -88,29 +73,24 @@ export function BoardDetail({
 
   if (loading) {
     return (
-      <div
-        className="flex items-center justify-center h-full min-h-dvh"
-        style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
-      >
+      <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
         <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
       </div>
     );
   }
 
-  const spCostEnabled = boardSettings?.spCostEnabled ?? false;
-  const cognitiveWeightEnabled = boardSettings?.cognitiveWeightEnabled ?? false;
   const context = boardSettings?.context ?? '';
 
   return (
     <div
-      className="flex flex-col min-h-screen p-4 form-container"
+      className="flex flex-col min-h-screen p-4"
       style={{
         backgroundColor: 'var(--color-bg-primary-dark)',
         margin: '0 auto',
         gap: 'var(--spacing-section-gap)',
       }}
     >
-      {/* Header: icon + board name — left-aligned, above "Основное" block */}
+      {/* Header: icon + board name */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <svg
@@ -140,88 +120,37 @@ export function BoardDetail({
         </div>
       </div>
 
-      {/* Center container: read-only desk-create sections */}
+      {/* Center content */}
       <div className="flex flex-col gap-4">
-        <BasicInfoSection
-          name={boardName}
-          onNameChange={() => {}}
-          slug={slug}
-          onSlugChange={() => {}}
-          disabled
-        />
-
-        <section>
-          <SectionHeader title="Функциональное" />
-          <div className="flex flex-col gap-4">
-            <StoryPointCostCard
-              enabled={spCostEnabled}
-              onEnabledChange={() => {}}
-              hoursBySp={DEFAULT_SP_HOURS}
-              onHoursChange={() => {}}
-              disabled
-            />
-            <CognitiveWeightCard
-              enabled={cognitiveWeightEnabled}
-              onEnabledChange={() => {}}
-              disabled
-            />
+        {/* Basic info — read-only */}
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="Основное" />
+          <div className="flex flex-col gap-2">
+            <InfoRow label="ID доски" value={`@${slug}`} />
+            {context && <InfoRow label="Контекст" value={context.length > 50 ? context.slice(0, 50) + '…' : context} />}
           </div>
         </section>
 
-        <CoworkingSection
-          colleagueCount={colleagues.length}
-          onAddColleague={() => {}}
-          disabled
-        />
-
-        <ContextSection value={context} onChange={() => {}} disabled />
-
-        <section>
-          <SectionHeader title="Дополнительные материалы" />
-          <div className="flex flex-col gap-4">
-            <DocumentsCard
-              enabled={documents.length > 0}
-              onEnabledChange={() => {}}
-              files={[]}
-              onFilesChange={() => {}}
-              disabled
-            />
-            <ExternalLinksCard
-              enabled={externalLinks.length > 0}
-              onEnabledChange={() => {}}
-              links={externalLinks}
-              onLinksChange={() => {}}
-              disabled
-            />
-          </div>
-        </section>
-
-        <section>
-          <SectionHeader title="Модификации" />
-          <TrafficLightCard
-            enabled={false}
-            onEnabledChange={() => {}}
-            warningDays={deadlineWarningDays}
-            onUrgentDaysChange={() => {}}
-            urgentDays={1}
-            onWarningDaysChange={() => {}}
-            disabled
-          />
-        </section>
+        {/* Colleagues section using PersonCard from flowboard */}
+        {colleagues.length > 0 && (
+          <section className="flex flex-col gap-3">
+            <SectionHeader title="Участники" />
+            <div className="flex flex-col gap-3">
+              {colleagues.map((colleague) => (
+                <PersonCard key={colleague.id} person={colleague} type="worker" />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
 
-      {/* Trailing bar: Edit button (full width) */}
+      {/* Edit button */}
       <Button variant="solid" onClick={() => router.push(`/board/${slug}/edit`)}>
         Редактировать
       </Button>
 
-      {/* Bottom filler: 80px */}
-      <div
-        style={{
-          height: '80px',
-        }}
-        aria-hidden="true"
-      />
+      {/* Bottom filler */}
+      <div style={{ height: '80px' }} aria-hidden="true" />
     </div>
   );
 }
