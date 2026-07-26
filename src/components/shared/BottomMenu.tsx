@@ -69,14 +69,13 @@ export function BottomMenu() {
     <nav
       className="
         fixed inset-x-0 bottom-0 z-50 mx-auto w-full
-        pb-[env(safe-area-inset-bottom)]
       "
       aria-label="Основная навигация"
       role="navigation"
     >
       <div
         className="
-          relative flex items-center justify-center
+          relative flex items-start justify-center
           bg-primary-dark
           backdrop-blur-[var(--blur-bottom-menu)]
           before:absolute before:inset-x-0 before:top-0 before:h-px
@@ -92,12 +91,15 @@ export function BottomMenu() {
         style={{
           minHeight: 'var(--size-bottom-menu-height)',
           padding: 'var(--spacing-bottom-menu-padding)',
+          paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom))',
           gap: 'var(--spacing-bottom-menu-gap)',
         }}
       >
-        {/* Left items */}
-        <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
-        <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
+        {/* Left group — symmetric width */}
+        <div className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)] pt-2">
+          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
+          <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
+        </div>
 
         {/* Center "create" button */}
         <Link
@@ -112,7 +114,7 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            top: 'calc(var(--spacing-bottom-menu-padding) * -1)',
+            top: 'calc(var(--spacing-bottom-menu-padding) * -3)',
           }}
           aria-label="Создать новую задачу"
           role="button"
@@ -128,9 +130,11 @@ export function BottomMenu() {
           />
         </Link>
 
-        {/* Right items */}
-        <NavButton item={MENU_ITEMS[2]} currentPath={pathname} />
-        <NavButton item={MENU_ITEMS[3]} currentPath={pathname} />
+        {/* Right group — symmetric width */}
+        <div className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)] pt-2">
+          <NavButton item={MENU_ITEMS[2]} currentPath={pathname} />
+          <NavButton item={MENU_ITEMS[3]} currentPath={pathname} />
+        </div>
       </div>
     </nav>
   );
