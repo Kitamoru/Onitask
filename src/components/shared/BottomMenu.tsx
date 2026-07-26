@@ -95,13 +95,19 @@ export function BottomMenu() {
           gap: 'var(--spacing-bottom-menu-gap)',
         }}
       >
-        {/* Left group — symmetric width */}
-        <div className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)] pt-2">
+        {/* Left group — symmetric width, icons aligned with center plus */}
+        <div
+          className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)]"
+          style={{
+            paddingTop: 'calc(var(--size-bottom-menu-height) * 0.5)',
+            marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
+          }}
+        >
           <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
-        {/* Center "create" button */}
+        {/* Center "create" button — notch bottom touches gradient line */}
         <Link
           href="/board/create"
           className="
@@ -114,7 +120,7 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            top: 'calc(var(--spacing-bottom-menu-padding) * -3)',
+            top: 'calc(var(--spacing-bottom-menu-padding) * -2.8)',
           }}
           aria-label="Создать новую задачу"
           role="button"
@@ -130,8 +136,14 @@ export function BottomMenu() {
           />
         </Link>
 
-        {/* Right group — symmetric width */}
-        <div className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)] pt-2">
+        {/* Right group — symmetric width, icons aligned with center plus */}
+        <div
+          className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)]"
+          style={{
+            paddingTop: 'calc(var(--size-bottom-menu-height) * 0.5)',
+            marginLeft: 'calc(var(--spacing-bottom-menu-gap) * 4)',
+          }}
+        >
           <NavButton item={MENU_ITEMS[2]} currentPath={pathname} />
           <NavButton item={MENU_ITEMS[3]} currentPath={pathname} />
         </div>
