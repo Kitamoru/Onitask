@@ -120,7 +120,8 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            paddingTop: 'var(--spacing-bottom-menu-padding)',
+            top: '0',
+            backgroundColor: 'var(--color-bottom-menu-bg)',
           }}
           aria-label="Создать новую задачу"
           role="button"
