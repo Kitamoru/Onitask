@@ -7,11 +7,11 @@
  * or is_inbox=true when no column is specified.
  *
  * Based on: Master §5, TASKS.md Stage 4 FLOW-06
+ * Design system: TextInput, TextArea, Button from desk-ui
  */
 
-'use client';
-
 import { useState, useCallback } from 'react';
+import { TextInput, TextArea, Button } from '@/components/ui/desk-ui';
 import { createTask } from '@/lib/api/flow';
 import type { TaskEntity } from '@/types/flowboard';
 
@@ -34,6 +34,8 @@ const PRIORITIES = [
   { value: 'high', label: 'Высокий' },
   { value: 'critical', label: 'Критический' },
 ];
+
+const WEIGHTS = [0, 1, 2, 3];
 
 export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', className }: TaskFormProps) {
   const [title, setTitle] = useState('');
@@ -94,21 +96,14 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
         >
           Название *
         </label>
-        <input
+        <TextInput
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Введите название задачи..."
           required
           maxLength={500}
-          className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-          style={{
-            borderColor: 'var(--color-border-default)',
-            color: 'var(--color-text-primary)',
-            fontFamily: 'var(--font-family-base)',
-            fontSize: 'var(--text-body-sm)',
-            borderRadius: '4px',
-          }}
+          corner="field"
           aria-required="true"
         />
       </div>
@@ -125,20 +120,12 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
         >
           Описание
         </label>
-        <textarea
+        <TextArea
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={setDescription}
           placeholder="Описание задачи..."
-          rows={3}
           maxLength={5000}
-          className="w-full px-3 py-2 rounded border bg-transparent text-sm resize-none"
-          style={{
-            borderColor: 'var(--color-border-default)',
-            color: 'var(--color-text-primary)',
-            fontFamily: 'var(--font-family-base)',
-            fontSize: 'var(--text-body-sm)',
-            borderRadius: '4px',
-          }}
+          corner="field"
         />
       </div>
 
@@ -163,7 +150,7 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
             color: 'var(--color-text-primary)',
             fontFamily: 'var(--font-family-base)',
             fontSize: 'var(--text-body-sm)',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-flowboard-section)',
           }}
         >
           {COLUMNS.map((col) => (
@@ -195,7 +182,7 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
             color: 'var(--color-text-primary)',
             fontFamily: 'var(--font-family-base)',
             fontSize: 'var(--text-body-sm)',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-flowboard-section)',
           }}
         >
           {PRIORITIES.map((p) => (
@@ -219,7 +206,7 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
           Когнитивный вес
         </label>
         <div className="flex items-center gap-2">
-          {[0, 1, 2, 3].map((w) => (
+          {WEIGHTS.map((w) => (
             <button
               key={w}
               type="button"
@@ -227,7 +214,7 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
               className="flex items-center justify-center w-8 h-8 rounded border transition-colors"
               style={{
                 borderColor: cognitiveWeight === w ? 'var(--color-accent-amber)' : 'var(--color-border-default)',
-                backgroundColor: cognitiveWeight === w ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                backgroundColor: cognitiveWeight === w ? 'var(--color-accent-amber-subtle)' : 'transparent',
                 color: 'var(--color-text-primary)',
                 fontFamily: 'var(--font-family-display)',
                 fontSize: 'var(--text-body-sm)',
@@ -264,7 +251,7 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
             color: 'var(--color-text-primary)',
             fontFamily: 'var(--font-family-base)',
             fontSize: 'var(--text-body-sm)',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-flowboard-section)',
           }}
         />
       </div>
@@ -275,9 +262,9 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
           className="px-3 py-2 rounded text-sm"
           style={{
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            color: '#FCA5A5',
-            border: '1px solid #EF4444',
-            borderRadius: '4px',
+            color: 'var(--color-priority-red-text)',
+            border: `1px solid var(--color-priority-red-border)`,
+            borderRadius: 'var(--radius-flowboard-section)',
           }}
           role="alert"
         >
@@ -287,40 +274,23 @@ export function TaskForm({ onSubmit, onCancel, defaultColumn = 'backlog', classN
 
       {/* Actions */}
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="submit"
+          variant="solid"
           disabled={loading || !title.trim()}
-          className="flex items-center justify-center h-10 px-6 rounded transition-colors"
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'white',
-            backgroundColor: loading || !title.trim() ? 'var(--color-text-muted)' : 'var(--color-accent-amber)',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading || !title.trim() ? 'not-allowed' : 'pointer',
-          }}
+          className="flex-1"
         >
           {loading ? 'Создание...' : 'Создать'}
-        </button>
+        </Button>
         {onCancel && (
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={onCancel}
-            className="flex items-center justify-center h-10 px-6 rounded transition-colors hover:bg-surface/50"
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-md)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-              backgroundColor: 'var(--color-bg-surface-hover)',
-              border: `1px solid var(--color-border-default)`,
-              borderRadius: '4px',
-            }}
+            className="flex-1"
           >
             Отмена
-          </button>
+          </Button>
         )}
       </div>
     </form>

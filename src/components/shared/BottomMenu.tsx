@@ -132,6 +132,7 @@ export function BottomMenu() {
             style={{
               width: 'calc(var(--size-main-btn-width) * 2)',
               height: 'calc(var(--size-main-btn-width) * 2)',
+              backgroundColor: 'var(--color-bottom-menu-bg)',
             }}
           />
         </Link>

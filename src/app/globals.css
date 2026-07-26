@@ -299,6 +299,28 @@ body {
   padding-bottom: max(var(--size-bottom-menu-height), env(safe-area-inset-bottom, 0px));
 }
 
+/* ============================================================================
+   Page Layout — единый шаблон для всех страниц
+   ============================================================================ */
+
+/* Стандартный отступ сверху = 96px (или Telegram safe area, если больше) */
+.page-padding-top {
+  padding-top: max(96px, var(--tg-content-safe-top, 0px));
+}
+
+/* Нижний отступ = дно меню (96px) + 16px зазор, плюс safe area */
+.page-padding-bottom {
+  padding-bottom: calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Универсальный page‑wrapper — применяет оба отступа */
+.page-container {
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+  background-color: var(--color-bg-primary-dark);
+  padding-top: max(96px, var(--tg-content-safe-top, 0px));
+  padding-bottom: calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
 .card-stretch {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }

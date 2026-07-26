@@ -44,17 +44,17 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
   }
 
   const sizeMap = {
-    sm: { dot: 6, paddingX: 6, fontSize: 10 },
-    md: { dot: 8, paddingX: 8, fontSize: 11 },
-    lg: { dot: 10, paddingX: 10, fontSize: 12 },
+    sm: { dot: 'var(--spacing-1\\.5)', paddingX: 'var(--spacing-1\\.5)', fontSize: 'var(--text-body-xs)' },
+    md: { dot: 'var(--spacing-2)', paddingX: 'var(--spacing-2)', fontSize: 'var(--text-body-xs)' },
+    lg: { dot: 'var(--spacing-2\\.5)', paddingX: 'var(--spacing-2\\.5)', fontSize: 'var(--text-body-sm)' },
   };
 
   const s = sizeMap[size];
 
   const colorMap = {
-    red: { bg: 'rgba(239, 68, 68, 0.15)', border: '#EF4444', text: '#FCA5A5', dot: '#EF4444' },
-    amber: { bg: 'rgba(245, 158, 11, 0.15)', border: '#F59E0B', text: '#FCD34D', dot: '#F59E0B' },
-    green: { bg: 'rgba(74, 222, 128, 0.15)', border: '#4ADE80', text: '#86EFAC', dot: '#4ADE80' },
+    red: { bg: 'var(--color-priority-red-bg)', border: 'var(--color-signal-red)', text: 'var(--color-signal-red)', dot: 'var(--color-signal-red)' },
+    amber: { bg: 'var(--color-priority-amber-bg)', border: 'var(--color-signal-yellow)', text: 'var(--color-signal-yellow)', dot: 'var(--color-signal-yellow)' },
+    green: { bg: 'var(--color-priority-green-bg)', border: 'var(--color-signal-green)', text: 'var(--color-signal-green)', dot: 'var(--color-signal-green)' },
   };
 
   const c = colorMap[color];
@@ -67,8 +67,8 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
         borderColor: c.border,
         paddingLeft: s.paddingX,
         paddingRight: s.paddingX,
-        paddingTop: 2,
-        paddingBottom: 2,
+        paddingTop: 'var(--spacing-0\\.5)',
+        paddingBottom: 'var(--spacing-0\\.5)',
       }}
       aria-label={`Срочность: ${label}`}
       role="status"
@@ -86,7 +86,7 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
         style={{
           fontFamily: 'var(--font-family-display)',
           fontSize: s.fontSize,
-          lineHeight: '12px',
+          lineHeight: 'var(--text-body-sm-line)',
           fontWeight: 'var(--font-weight-medium)',
           color: c.text,
           whiteSpace: 'nowrap',

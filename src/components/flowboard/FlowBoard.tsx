@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
+import { SectionHeader as DeskSectionHeader, Button } from '@/components/ui/desk-ui';
 
 /**
  * FlowBoard component — displays the flow task overview page.
- * 
+ *
  * Figma spec (node 1:445 "desk-flow"):
  *   - Main frame: column, gap=24px, padding=16px, bg=#0A0A0A, maxWidth=390px
  *   - Header: kanban icon + "Флоу задач" + date subtitle
@@ -14,8 +15,9 @@ import React from 'react';
  *   - Team members section: worker cards with cognitive weight + "Добавить коллегу" button
  *   - Agents section: agent cards + "Добавить Агента" button
  *   - Bottom filler: 80px
- * 
+ *
  * Design tokens: all colors, spacing, typography use CSS variables from src/styles/tokens.css
+ * Design system: SectionHeader and Button from desk-ui
  */
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -117,16 +119,16 @@ function KanbanIcon() {
 
 export function PriorityBadge({ label, color = 'green' }: { label: string; color?: 'green' | 'amber' | 'red' | 'cyan' }) {
   const colorMap = {
-    green: { bg: 'rgba(74, 222, 128, 0.2)', text: '#4ADE80', border: '#4ADE80' },
-    amber: { bg: 'rgba(245, 158, 11, 0.2)', text: '#F59E0B', border: '#F59E0B' },
-    red: { bg: 'rgba(239, 68, 68, 0.2)', text: '#EF4444', border: '#EF4444' },
-    cyan: { bg: 'rgba(34, 211, 238, 0.2)', text: '#22D3EE', border: '#22D3EE' },
+    green: { bg: 'var(--color-priority-green-bg)', text: 'var(--color-priority-green-text)', border: 'var(--color-priority-green-border)' },
+    amber: { bg: 'var(--color-priority-amber-bg)', text: 'var(--color-priority-amber-text)', border: 'var(--color-priority-amber-border)' },
+    red: { bg: 'var(--color-priority-red-bg)', text: 'var(--color-priority-red-text)', border: 'var(--color-priority-red-border)' },
+    cyan: { bg: 'var(--color-priority-cyan-bg)', text: 'var(--color-priority-cyan-text)', border: 'var(--color-priority-cyan-border)' },
   };
   const c = colorMap[color];
   return (
     <div
       className="flex items-center gap-1 px-1 py-0.5 rounded"
-      style={{ backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: '4px' }}
+      style={{ backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: 'var(--radius-flowboard-section)' }}
       aria-label={`Приоритет: ${label}`}
     >
       <span
@@ -148,7 +150,7 @@ function ProgressBar({ progress }: { progress: number }) {
   return (
     <div
       className="w-full relative overflow-hidden"
-      style={{ height: '8px', borderRadius: '4px' }}
+      style={{ height: '8px', borderRadius: 'var(--radius-flowboard-section)' }}
       role="progressbar"
       aria-valuenow={progress}
       aria-valuemin={0}
@@ -156,11 +158,11 @@ function ProgressBar({ progress }: { progress: number }) {
       aria-label={`Прогресс спринта: ${progress}%`}
     >
       <svg viewBox="0 0 334 8" preserveAspectRatio="none" className="w-full h-full" aria-hidden="true">
-        <rect width="334" height="8" rx="4" fill="#F59E0B" opacity="0.2" />
+        <rect width="334" height="8" rx="4" fill="var(--color-accent-amber)" opacity="0.2" />
       </svg>
       <div
         className="absolute top-0 left-0 h-full"
-        style={{ width: `${progress}%`, backgroundColor: '#F59E0B', borderRadius: '4px' }}
+        style={{ width: `${progress}%`, backgroundColor: 'var(--color-accent-amber)', borderRadius: 'var(--radius-flowboard-section)' }}
       />
     </div>
   );
@@ -171,7 +173,7 @@ function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
   return (
     <div
       className="flex flex-col w-full p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', gap: 'var(--spacing-4)' }}
+      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-4)' }}
       aria-label="Информация о спринте"
     >
       <div className="flex flex-col w-full gap-1">
@@ -249,36 +251,11 @@ function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
   );
 }
 
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col w-full gap-2">
-      <div className="flex items-center gap-2">
-        <div
-          className="shrink-0"
-          style={{ width: '2px', height: '18px', backgroundColor: 'var(--color-accent-amber)', borderRadius: '2px' }}
-          aria-hidden="true"
-        />
-        <h2
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
-          }}
-        >
-          {title}
-        </h2>
-      </div>
-    </div>
-  );
-}
-
 function SignalCard({ signal }: { signal: SignalData }) {
   return (
     <div
       className="flex flex-col p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', gap: 'var(--spacing-2)' }}
+      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-2)' }}
       aria-label={`Сигнал: ${signal.label}`}
     >
       <span
@@ -288,7 +265,7 @@ function SignalCard({ signal }: { signal: SignalData }) {
           lineHeight: 'var(--text-body-xl-line)',
           fontWeight: 'var(--font-weight-medium)',
           textAlign: 'center' as const,
-          color: signal.count <= 3 ? '#4ADE80' : 'var(--color-text-primary)',
+          color: signal.count <= 3 ? 'var(--color-signal-green)' : 'var(--color-text-primary)',
         }}
       >
         {signal.count}
@@ -308,8 +285,8 @@ function SignalCard({ signal }: { signal: SignalData }) {
         <span
           style={{
             fontFamily: 'var(--font-family-display)',
-            fontSize: '12px',
-            lineHeight: '12px',
+            fontSize: 'var(--text-body-sm)',
+            lineHeight: 'var(--text-body-sm-line)',
             fontWeight: 'var(--font-weight-medium)',
             color: 'var(--color-text-muted)',
           }}
@@ -325,7 +302,7 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
   return (
     <div
       className="flex flex-col p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', gap: 'var(--spacing-3)' }}
+      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-3)' }}
       aria-label={`Статус: ${status.label}, ${status.count} задач`}
     >
       <div className="flex items-center gap-1">
@@ -367,7 +344,7 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
               width: '10px',
               height: '7px',
               borderRadius: '2px',
-              backgroundColor: idx < status.shapes ? status.color : 'rgba(255, 255, 255, 0.2)',
+              backgroundColor: idx < status.shapes ? status.color : 'var(--color-border-white-subtle)',
             }}
             aria-hidden="true"
           />
@@ -437,7 +414,7 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
   return (
     <div
       className="flex flex-col w-full rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', gap: 'var(--spacing-3)', padding: 'var(--spacing-3)' }}
+      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-3)', padding: 'var(--spacing-3)' }}
       aria-label={`${displayName}${roleLabel ? `, ${roleLabel}` : ''}`}
     >
       <div className="flex items-start gap-3">
@@ -450,8 +427,8 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
             <span
               style={{
                 fontFamily: 'var(--font-family-display)',
-                fontSize: '16px',
-                lineHeight: '20px',
+                fontSize: 'var(--text-body-md)',
+                lineHeight: 'var(--text-body-md-line)',
                 fontWeight: 'var(--font-weight-medium)',
                 color: 'var(--color-text-primary)',
               }}
@@ -463,8 +440,8 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
           <p
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: '12px',
-              lineHeight: '14px',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
             }}
@@ -472,52 +449,30 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
             {roleLabel}
           </p>
           <div className="flex items-center gap-1">
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', color: 'var(--color-text-primary)' }}>{spPerDay}</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', color: 'var(--color-text-muted)' }}>SP/д</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', color: 'var(--color-text-muted)' }}>•</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', color: trendUp ? '#EF4444' : 'var(--color-text-primary)' }}>{activeDays}д ↑</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{spPerDay}</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>SP/д</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>•</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: trendUp ? 'var(--color-error)' : 'var(--color-text-primary)' }}>{activeDays}д ↑</span>
           </div>
         </div>
       </div>
       <svg viewBox="0 0 358 1" className="w-full h-[1px]" preserveAspectRatio="none" aria-hidden="true">
-        <rect width="358" height="1" fill="#8B8B8B" />
+        <rect width="358" height="1" fill="var(--color-text-muted)" />
       </svg>
       <div className="flex flex-col gap-1">
         {tasks.length > 0 ? (
           tasks.map((task, idx) => (
-            <p key={idx} style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', lineHeight: '14px', color: 'var(--color-text-muted)' }}>
+            <p key={idx} style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', lineHeight: 'var(--text-body-sm-line)', color: 'var(--color-text-muted)' }}>
               {task}
             </p>
           ))
         ) : (
-          <p style={{ fontFamily: 'var(--font-family-display)', fontSize: '12px', lineHeight: '14px', color: 'var(--color-text-muted)' }}>
+          <p style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', lineHeight: 'var(--text-body-sm-line)', color: 'var(--color-text-muted)' }}>
             Нет активных задач · уточни статус
           </p>
         )}
       </div>
     </div>
-  );
-}
-
-function SecondaryButton({ label, onClick, ariaLabel }: { label: string; onClick?: () => void; ariaLabel?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-center h-10 w-full rounded relative overflow-hidden transition-colors hover:bg-surface/50"
-      style={{
-        fontFamily: 'var(--font-family-base)',
-        fontSize: 'var(--text-body-md)',
-        lineHeight: 'var(--text-body-md-line)',
-        fontWeight: 'var(--font-weight-semibold)',
-        letterSpacing: 'var(--letter-spacing-tighter)',
-        color: 'var(--color-text-primary)',
-        backgroundColor: 'var(--color-bg-surface-hover)',
-        border: `1px solid var(--color-border-default)`,
-      }}
-      aria-label={ariaLabel || label}
-    >
-      <span>{label}</span>
-    </button>
   );
 }
 
@@ -550,7 +505,7 @@ export function FlowBoard({
       <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
         <div
           className="flex flex-col items-center gap-4 p-6 rounded max-w-md w-full"
-          style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px' }}
+          style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)' }}
           role="alert"
         >
           <span style={{ fontSize: 'var(--text-body-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--color-error)' }}>⚠️</span>
@@ -590,7 +545,7 @@ export function FlowBoard({
         bg-primary-dark
         h-full
       "
-      style={{ 
+      style={{
         backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
         maxWidth: '100%',
         margin: '0 auto',
@@ -602,7 +557,7 @@ export function FlowBoard({
       aria-label="Флоу задач"
     >
        {/* Header row — icon + title + date */}
-       <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
+       <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--spacing-2)' }}>
         <div className="flex items-center gap-2">
           <KanbanIcon />
           <h1
@@ -622,8 +577,8 @@ export function FlowBoard({
         <p
           style={{
             fontFamily: 'var(--font-family-display)',
-            fontSize: '14px',
-            lineHeight: '18px',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
             fontWeight: 'var(--font-weight-medium)',
             color: 'var(--color-text-muted)',
             margin: 0,
@@ -638,15 +593,15 @@ export function FlowBoard({
        {/* Signals section — 3-column grid on mobile, responsive on larger screens */}
        {signals.length > 0 && (
          <div className="flex flex-col gap-4">
-           <SectionHeader title="Сигналы" />
-           <div 
-             className="grid w-full" 
-             style={{ 
+           <DeskSectionHeader title="Сигналы" />
+           <div
+             className="grid w-full"
+             style={{
                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-               gap: '8px',
+               gap: 'var(--spacing-2)',
                // Ensure cards don't overflow on small screens
                minWidth: 0,
-             }} 
+             }}
              aria-label="Сигналы команды"
            >
             {signals.map((signal) => (
@@ -659,14 +614,14 @@ export function FlowBoard({
        {/* Task statuses section — 2-column grid */}
        {taskStatuses.length > 0 && (
          <div className="flex flex-col gap-4">
-           <SectionHeader title="Статусы задач" />
-           <div 
-             className="grid w-full" 
-             style={{ 
+           <DeskSectionHeader title="Статусы задач" />
+           <div
+             className="grid w-full"
+             style={{
                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-               gap: '8px',
+               gap: 'var(--spacing-2)',
                minWidth: 0,
-             }} 
+             }}
              aria-label="Статусы задач"
            >
             {taskStatuses.map((status) => (
@@ -678,33 +633,37 @@ export function FlowBoard({
 
       {workers.length > 0 && (
         <div className="flex flex-col gap-4">
-          <SectionHeader title="Участники" />
+          <DeskSectionHeader title="Участники" />
           <div className="flex flex-col gap-3">
             {workers.map((worker) => (
               <PersonCard key={worker.id} person={worker} type="worker" />
             ))}
           </div>
-          <SecondaryButton label="Добавить коллегу" onClick={onAddWorker} ariaLabel="Добавить коллегу" />
+          <Button variant="outline" onClick={onAddWorker} aria-label="Добавить коллегу" type="button">
+            Добавить коллегу
+          </Button>
         </div>
       )}
 
       {agents.length > 0 && (
         <div className="flex flex-col gap-4">
-          <SectionHeader title="Агенты" />
+          <DeskSectionHeader title="Агенты" />
           <div className="flex flex-col gap-3">
             {agents.map((agent) => (
               <PersonCard key={agent.id} person={agent} type="agent" />
             ))}
           </div>
-          <SecondaryButton label="Добавить Агента" onClick={onAddAgent} ariaLabel="Добавить Агента" />
+          <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
+            Добавить Агента
+          </Button>
         </div>
       )}
 
        {/* Bottom spacer — accounts for safe area + breathing room */}
-       <div 
-         className="h-16 xs:h-20 w-full shrink-0" 
-         style={{ backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))' }} 
-         aria-hidden="true" 
+       <div
+         className="h-16 xs:h-20 w-full shrink-0"
+         style={{ backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))' }}
+         aria-hidden="true"
        />
     </div>
   );

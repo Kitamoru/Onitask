@@ -12,15 +12,15 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| Button | Button.tsx | variant, corner, disabled, className | Solid/outline button |
-| Card | Card.tsx | children, className | Basic container |
-| NotchedPanel | NotchedPanel.tsx | corner, radius, notch, borderWidth, borderGradient, border, fill, contentClassName | Panel with chamfered corners |
-| SectionHeader | SectionHeader.tsx | title | Section title with amber accent bar |
-| Stepper | Stepper.tsx | value, min, max, onChange, unitLabel, borderGradient, disabled | Number stepper with gradient border |
-| TextInput | TextInput.tsx | value, onChange, placeholder, disabled | Text input field |
-| TextArea | TextArea.tsx | value, onChange, placeholder, disabled | Multiline text input |
-| ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label, disabled | On/off toggle |
-| CountBadge | CountBadge.tsx | count | Number badge |
+| | Button | Button.tsx | variant, corner, disabled, className | Solid/outline button |
+| | Card | Card.tsx | children, className | Basic container |
+| | NotchedPanel | NotchedPanel.tsx | corner, radius, notch, borderWidth, borderGradient, border, fill, contentClassName | Panel with chamfered corners |
+| | SectionHeader | SectionHeader.tsx | title | Section title with amber accent bar |
+| | Stepper | Stepper.tsx | value, min, max, onChange, unitLabel, borderGradient, disabled | Number stepper with gradient border |
+| | TextInput | TextInput.tsx | value, onChange, placeholder, disabled | Text input field |
+| | TextArea | TextArea.tsx | value, onChange, placeholder, disabled | Multiline text input |
+| | ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label, disabled | On/off toggle |
+| | CountBadge | CountBadge.tsx | count | Number badge |
 
 ---
 
@@ -30,10 +30,10 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
-| BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view (read-only). Uses desk-create sections in disabled mode |
-| RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
-| WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
+| | BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
+| | BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view (read-only). Uses desk-create sections in disabled mode |
+| | RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
+| | WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
 
 **Types**: `BoardCardData`, `BoardStats`, `SprintInfo`, `BoardDetailProps`, `WorkerCardData`, `ExternalLinkData`, `DocumentData`
 
@@ -43,16 +43,16 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| CreateDeskForm | CreateDeskForm.tsx | onSubmit, onAddColleague | Board creation form |
-| EditDeskForm | EditDeskForm.tsx | workspaceId, initialData, onAddColleague | Board editing form |
-| BasicInfoSection | BasicInfoSection.tsx | name, slug, onNameChange, onSlugChange, disabled | Name + @desk input |
-| StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange, disabled | SP cost config |
-| CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange, disabled | Cognitive weight toggle |
-| CoworkingSection | CoworkingSection.tsx | colleagueCount, onAddColleague, disabled | Colleagues section |
-| ContextSection | ContextSection.tsx | value, onChange, disabled | Context textarea |
-| DocumentsCard | DocumentsCard.tsx | enabled, onEnabledChange, files, onFilesChange, disabled | File upload |
-| ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange, disabled | External links |
-| TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange, disabled | Deadline signals |
+| | CreateDeskForm | CreateDeskForm.tsx | onSubmit, onAddColleague | Board creation form |
+| | EditDeskForm | EditDeskForm.tsx | workspaceId, initialData, onAddColleague | Board editing form |
+| | BasicInfoSection | BasicInfoSection.tsx | name, slug, onNameChange, onSlugChange, disabled | Name + @desk input |
+| | StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange, disabled | SP cost config |
+| | CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange, disabled | Cognitive weight toggle |
+| | CoworkingSection | CoworkingSection.tsx | colleagueCount, onAddColleague, disabled | Colleagues section |
+| | ContextSection | ContextSection.tsx | value, onChange, disabled | Context textarea |
+| | DocumentsCard | DocumentsCard.tsx | enabled, onEnabledChange, files, onFilesChange, disabled | File upload |
+| | ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange, disabled | External links |
+| | TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange, disabled | Deadline signals |
 
 **Types**: `CreateDeskFormValue`, `EditDeskFormValue`, `ExternalLink`
 
@@ -62,12 +62,12 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| CalendarView | CalendarView.tsx | — | Main calendar view |
-| CalendarTabs | CalendarTabs.tsx | — | Calendar tab navigation |
-| DayView | DayView.tsx | — | Day view |
-| ThreeDaysView | ThreeDaysView.tsx | — | 3-day view |
-| MonthListView | MonthListView.tsx | — | Month list view |
-| ListView | ListView.tsx | — | List view |
+| | CalendarView | CalendarView.tsx | — | Main calendar view |
+| | CalendarTabs | CalendarTabs.tsx | — | Calendar tab navigation |
+| | DayView | DayView.tsx | — | Day view |
+| | ThreeDaysView | ThreeDaysView.tsx | — | 3-day view |
+| | MonthListView | MonthListView.tsx | — | Month list view |
+| | ListView | ListView.tsx | — | List view |
 
 ---
 
@@ -75,10 +75,17 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| FlowBoard | FlowBoard.tsx | — | Main flow board |
-| TaskForm | TaskForm.tsx | — | Task creation/edit form |
-| UrgencyBadge | UrgencyBadge.tsx | — | Urgency indicator |
-| OnboardingModal | OnboardingModal.tsx | — | Onboarding modal |
+| | FlowBoard | FlowBoard.tsx | title, currentDate, sprint, signals, taskStatuses, workers, agents, loading, error, onAddWorker, onAddAgent, onRefresh, isNewUser, onBoardCreate | Main flow board. Uses desk-ui `SectionHeader` and `Button` |
+| | TaskForm | TaskForm.tsx | onSubmit, onCancel, defaultColumn, className | Task creation form. Uses desk-ui `TextInput`, `TextArea`, `Button` |
+| | UrgencyBadge | UrgencyBadge.tsx | deadline, size | Urgency indicator. Uses design tokens for colors and spacing |
+| | OnboardingModal | OnboardingModal.tsx | onSuccess, onClose | Onboarding modal. Uses CSS variables instead of hardcoded colors |
+| | PersonCard | FlowBoard.tsx | person, type | Worker/agent card. Exported from index |
+| | UserAvatar | FlowBoard.tsx | displayName, avatarUrl, size | Avatar component. Exported from index |
+| | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
+| | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors |
+
+**Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`
+**Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`
 
 ---
 
@@ -86,13 +93,13 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| BottomMenu | BottomMenu.tsx | — | Bottom navigation bar |
-| TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
-| TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
-| TelegramTheme | TelegramTheme.tsx | children | Theme provider |
-| TelegramViewportBridge | TelegramViewportBridge.tsx | — | Viewport height bridge |
-| AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
-| GlobalLoader | GlobalLoader.tsx | — | Global loading spinner |
+| | BottomMenu | BottomMenu.tsx | — | Bottom navigation bar |
+| | TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
+| | TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
+| | TelegramTheme | TelegramTheme.tsx | children | Theme provider |
+| | TelegramViewportBridge | TelegramViewportBridge.tsx | — | Viewport height bridge |
+| | AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
+| | GlobalLoader | GlobalLoader.tsx | — | Global loading spinner |
 
 ---
 
@@ -109,4 +116,4 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
-*Last updated: 2026-07-24*
+*Last updated: 2026-07-26*
