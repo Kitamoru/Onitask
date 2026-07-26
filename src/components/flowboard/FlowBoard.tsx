@@ -596,8 +596,8 @@ export function FlowBoard({
         margin: '0 auto',
         gap: 'var(--spacing-6)',
         minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
-        paddingTop: 'max(48px, var(--tg-content-safe-top, 0px))',
-        paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))',
+        paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
+        paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px)',
       }}
       aria-label="Флоу задач"
     >

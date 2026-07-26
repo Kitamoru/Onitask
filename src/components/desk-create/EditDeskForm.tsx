@@ -126,7 +126,7 @@ export function EditDeskForm({
     <div className="flex flex-col">
       {/* Scrollable form body */}
       <div
-        className="flex flex-col gap-6 px-4 pt-5"
+        className="flex flex-col gap-6 px-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {error && (

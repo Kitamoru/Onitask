@@ -10,7 +10,7 @@ function useScrollReset() {
 }
 
 // Единый отступ сверху для всех страниц
-const PAGE_TOP_PADDING = 'max(48px, var(--tg-content-safe-top, 0px))';
+const PAGE_TOP_PADDING = 'max(64px, var(--tg-content-safe-top, 0px))';
 
 /**
  * Root page — Telegram Web App entry point.

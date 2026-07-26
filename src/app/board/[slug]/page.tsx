@@ -179,9 +179,8 @@ export default function BoardDetailPage() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
       style={{
-        paddingTop: "max(48px, var(--tg-content-safe-top, 0px))",
-        paddingBottom:
-          "calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))",
+        paddingTop: "max(64px, var(--tg-content-safe-top, 0px))",
+        paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}
     >
       <BoardDetail

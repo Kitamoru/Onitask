@@ -83,7 +83,7 @@ export function CreateDeskForm({
       {/* Scrollable form body – компактный нижний отступ, как раньше,
           но с учётом safe-area для iPhone с вырезом */}
       <div
-        className="flex flex-col gap-6 px-4 pt-5"
+        className="flex flex-col gap-6 px-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <BasicInfoSection
