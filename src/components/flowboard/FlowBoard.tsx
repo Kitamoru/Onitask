@@ -420,9 +420,14 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
   const tasks = person.tasks;
 
   return (
-    <div
-      className="flex flex-col w-full rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-3)', padding: 'var(--spacing-3)' }}
+    <NotchedPanel
+      corner="action"
+      radius={4}
+      notch={8}
+      borderWidth={1}
+      border="var(--color-line)"
+      fill="var(--color-surface)"
+      contentClassName="flex flex-col gap-2 p-3"
       aria-label={`${displayName}${roleLabel ? `, ${roleLabel}` : ''}`}
     >
       <div className="flex items-start gap-3">
@@ -480,7 +485,7 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
           </p>
         )}
       </div>
-    </div>
+    </NotchedPanel>
   );
 }
 
