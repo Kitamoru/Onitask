@@ -99,7 +99,7 @@ export function BottomMenu() {
         <div
           className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)]"
           style={{
-            paddingTop: 'calc(var(--size-bottom-menu-height) * 0.5)',
+            paddingTop: 'var(--spacing-bottom-menu-padding)',
             marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
@@ -140,7 +140,7 @@ export function BottomMenu() {
         <div
           className="flex flex-1 items-start justify-center gap-[var(--spacing-bottom-menu-gap)]"
           style={{
-            paddingTop: 'calc(var(--size-bottom-menu-height) * 0.5)',
+            paddingTop: 'var(--spacing-bottom-menu-padding)',
             marginLeft: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
