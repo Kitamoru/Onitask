@@ -541,7 +541,7 @@ export function FlowBoard({
     <div
       className="
         flex flex-col w-full mx-auto
-        xs:p-3 sm:p-4
+        px-4
         bg-primary-dark
         h-full
       "
