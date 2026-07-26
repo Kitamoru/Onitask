@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { FlowBoard, OnboardingModal } from '@/components/flowboard';
 import type {
   SprintInfo,
@@ -14,6 +14,11 @@ import { getFlowMetrics } from '@/lib/api/flow';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
+
 function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
   return tasks.slice(0, 3).map((t) => {
     const fullId = t.task_number ? `TASK-${t.task_number}` : t.id.slice(0, 8);
@@ -22,6 +27,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 }
 
 export default function FlowBoardPage() {
+  useScrollReset();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useTelegramAuth();
   const { state, dispatch } = useData();
 

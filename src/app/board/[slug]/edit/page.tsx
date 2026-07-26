@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { EditDeskForm } from '@/components/desk-create/EditDeskForm';
+
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
 function getTelegramInitData(): string {
@@ -14,6 +19,7 @@ function getTelegramInitData(): string {
 }
 
 export default function BoardEditPage() {
+  useScrollReset();
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
@@ -149,8 +155,8 @@ export default function BoardEditPage() {
     <main
       className="min-h-[var(--tg-viewport-stable-height)] bg-bg"
       style={{
-        paddingTop: "max(48px, var(--tg-content-safe-top))",
-        paddingBottom: "calc(var(--tg-content-safe-bottom) + var(--tg-safe-area-bottom))",
+        paddingTop: "max(96px, var(--tg-content-safe-top, 0px))",
+        paddingBottom: "calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))",
       }}
     >
       <EditDeskForm

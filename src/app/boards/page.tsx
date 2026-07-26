@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
+
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
 import type { RiskPulseData, BoardCardData } from "@/components/board";
 
 /**
@@ -29,6 +34,7 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
  */
 
 export default function BoardsPage() {
+  useScrollReset();
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
   const { state } = useData();
@@ -95,8 +101,8 @@ export default function BoardsPage() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
       style={{
-        paddingTop: "max(48px, var(--tg-content-safe-top, 0px))",
-        paddingBottom: "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
+        paddingTop: "max(96px, var(--tg-content-safe-top, 0px))",
+        paddingBottom: "calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))",
       }}
     >
       <div className="w-full px-4 pb-8">

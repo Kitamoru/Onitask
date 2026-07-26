@@ -3,6 +3,11 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CalendarView } from '@/components/calendar/CalendarView';
+
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
 import { getCalendarEvents, getCalendarConnections } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
@@ -10,6 +15,7 @@ import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 function CalendarContent() {
+  useScrollReset();
   const searchParams = useSearchParams();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
@@ -86,7 +92,11 @@ function CalendarContent() {
   return (
     <div
       className="flex flex-col h-full min-h-dvh bg-primary-dark"
-      style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
+      style={{ 
+        backgroundColor: 'var(--color-bg-primary-dark)',
+        paddingTop: 'max(96px, var(--tg-content-safe-top, 0px))',
+        paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))',
+      }}
     >
       <header
         className="flex items-center justify-between px-4 py-3 border-b"

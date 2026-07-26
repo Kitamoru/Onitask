@@ -589,15 +589,15 @@ export function FlowBoard({
         xs:p-3 sm:p-4
         bg-primary-dark
         h-full
-        /* Safe area for bottom menu + Telegram header */
-        pt-safe-top pb-safe-bottom
       "
       style={{ 
         backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
         maxWidth: '100%',
         margin: '0 auto',
         gap: 'var(--spacing-6)',
-        minHeight: 'calc(100dvh - var(--size-bottom-menu-height))',
+        minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
+        paddingTop: 'max(96px, var(--tg-content-safe-top, 0px))',
+        paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))',
       }}
       aria-label="Флоу задач"
     >

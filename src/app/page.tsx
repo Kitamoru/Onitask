@@ -4,6 +4,11 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
+
 /**
  * Root page — Telegram Web App entry point.
  *
@@ -16,6 +21,7 @@ import { useTelegramAuth } from '@/hooks/useTelegramAuth';
  */
 
 export default function HomePage() {
+  useScrollReset();
   const router = useRouter();
   const { isLoading, error, data } = useTelegramAuth();
 

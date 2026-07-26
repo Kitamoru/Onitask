@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
+
+// Сброс скролла при переходе на страницу
+function useScrollReset() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+}
 import type { ExternalLinkData, DocumentData, WorkerCardData } from '@/components/board';
 
 /**
@@ -24,6 +29,7 @@ function getTelegramInitData(): string {
 }
 
 export default function BoardDetailPage() {
+  useScrollReset();
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
@@ -173,9 +179,9 @@ export default function BoardDetailPage() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
       style={{
-        paddingTop: "max(48px, var(--tg-content-safe-top, 0px))",
+        paddingTop: "max(96px, var(--tg-content-safe-top, 0px))",
         paddingBottom:
-          "calc(var(--tg-content-safe-bottom, 0px) + var(--tg-safe-area-bottom, 0px))",
+          "calc(var(--size-bottom-menu-height) + 16px + env(safe-area-inset-bottom, 0px))",
       }}
     >
       <BoardDetail
