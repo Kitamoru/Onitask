@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { SectionHeader as DeskSectionHeader, Button } from '@/components/ui/desk-ui';
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 
 /**
  * FlowBoard component — displays the flow task overview page.
@@ -253,19 +254,22 @@ function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
 
 function SignalCard({ signal }: { signal: SignalData }) {
   return (
-    <div
-      className="flex flex-col p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-2)' }}
-      aria-label={`Сигнал: ${signal.label}`}
+    <NotchedPanel
+      corner="action"
+      radius={4}
+      notch={8}
+      borderWidth={1}
+      border="var(--color-line)"
+      fill="var(--color-surface)"
+      contentClassName="flex flex-col gap-2 p-3"
     >
       <span
         style={{
-          fontFamily: 'var(--font-family-display)',
-          fontSize: 'var(--text-body-xl)',
-          lineHeight: 'var(--text-body-xl-line)',
-          fontWeight: 'var(--font-weight-medium)',
-          textAlign: 'center' as const,
-          color: signal.count <= 3 ? 'var(--color-signal-green)' : 'var(--color-text-primary)',
+          fontFamily: 'Inter Display, system-ui, sans-serif',
+          fontSize: '16px',
+          lineHeight: '20px',
+          fontWeight: 500,
+          color: signal.count <= 3 ? 'var(--color-signal-green)' : '#FAFAFA',
         }}
       >
         {signal.count}
@@ -273,37 +277,41 @@ function SignalCard({ signal }: { signal: SignalData }) {
       <div className="flex flex-col gap-0.5">
         <span
           style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
+            fontFamily: 'Inter Display, system-ui, sans-serif',
+            fontSize: '12px',
+            lineHeight: '14px',
+            fontWeight: 500,
+            color: '#8B8B8B',
           }}
         >
           {signal.label}
         </span>
         <span
           style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-sm)',
-            lineHeight: 'var(--text-body-sm-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-muted)',
+            fontFamily: 'Inter Display, system-ui, sans-serif',
+            fontSize: '12px',
+            lineHeight: '14px',
+            fontWeight: 500,
+            color: '#8B8B8B',
           }}
         >
           {signal.description}
         </span>
       </div>
-    </div>
+    </NotchedPanel>
   );
 }
 
 function TaskStatusCard({ status }: { status: TaskStatusData }) {
   return (
-    <div
-      className="flex flex-col p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-3)' }}
-      aria-label={`Статус: ${status.label}, ${status.count} задач`}
+    <NotchedPanel
+      corner="action"
+      radius={4}
+      notch={8}
+      borderWidth={1}
+      border="var(--color-line)"
+      fill="var(--color-surface)"
+      contentClassName="flex flex-col gap-2 p-3"
     >
       <div className="flex items-center gap-1">
         <div
@@ -313,11 +321,11 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
         />
         <span
           style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
+            fontFamily: 'Inter Display, system-ui, sans-serif',
+            fontSize: '12px',
+            lineHeight: '14px',
+            fontWeight: 500,
+            color: '#8B8B8B',
             flex: 1,
           }}
         >
@@ -325,11 +333,11 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
         </span>
         <span
           style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
+            fontFamily: 'Inter Display, system-ui, sans-serif',
+            fontSize: '16px',
+            lineHeight: '20px',
+            fontWeight: 500,
+            color: '#FAFAFA',
           }}
         >
           {status.count}
@@ -350,7 +358,7 @@ function TaskStatusCard({ status }: { status: TaskStatusData }) {
           />
         ))}
       </div>
-    </div>
+    </NotchedPanel>
   );
 }
 
