@@ -112,7 +112,7 @@ export function BottomMenu() {
           href="/board/create"
           className="
             flex items-center justify-center
-            relative shrink-0
+            relative shrink-0 overflow-hidden
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
@@ -120,7 +120,7 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            top: '0',
+            paddingTop: 'var(--spacing-bottom-menu-padding)',
           }}
           aria-label="Создать новую задачу"
           role="button"
@@ -132,7 +132,6 @@ export function BottomMenu() {
             style={{
               width: 'calc(var(--size-main-btn-width) * 2)',
               height: 'calc(var(--size-main-btn-width) * 2)',
-              backgroundColor: 'var(--color-bottom-menu-bg)',
             }}
           />
         </Link>
