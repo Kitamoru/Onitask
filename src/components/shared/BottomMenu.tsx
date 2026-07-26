@@ -112,7 +112,7 @@ export function BottomMenu() {
           href="/board/create"
           className="
             flex items-center justify-center
-            relative shrink-0 overflow-hidden
+            relative shrink-0
             transition-transform duration-150
             hover:opacity-90 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
