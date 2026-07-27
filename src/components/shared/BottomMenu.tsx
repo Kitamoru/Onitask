@@ -111,7 +111,6 @@ export function BottomMenu() {
         <Link
           href="/board/create"
           className="
-            bottom-menu-center-btn
             flex items-center justify-center
             relative shrink-0
             transition-transform duration-150
