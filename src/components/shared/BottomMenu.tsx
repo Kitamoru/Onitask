@@ -107,7 +107,7 @@ export function BottomMenu() {
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
-        {/* Center "create" button — notch positioned to overlap gradient strip */}
+        {/* Center "create" button — notch bottom touches gradient line */}
         <Link
           href="/board/create"
           className="
@@ -120,17 +120,21 @@ export function BottomMenu() {
           style={{
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
-            marginTop: '-18px',
+            top: '0',
           }}
           aria-label="Создать новую задачу"
           role="button"
         >
-          {/* Background shape — fills entire button container */}
+          {/* Background shape — 160×160px, auto-clipped to 80×54px container */}
           <img
             src="/icons/central-button-shape.svg"
             alt=""
-            className="absolute inset-0 z-10 w-full h-full"
-            style={{ objectFit: 'contain' }}
+            className="relative z-10"
+            style={{
+              width: 'calc(var(--size-main-btn-width) * 2)',
+              height: 'calc(var(--size-main-btn-width) * 2)',
+              opacity: 1,
+            }}
           />
           {/* Plus icon — centered, 40×40px */}
           <img
