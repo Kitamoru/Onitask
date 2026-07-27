@@ -83,15 +83,18 @@ export function BoardDetail({
 
   return (
     <div
-      className="flex flex-col min-h-screen p-4"
+      className="flex flex-col min-h-screen"
       style={{
+        /* Page layout – same as create‑board page */
         backgroundColor: 'var(--color-bg-primary-dark)',
+        padding: 'var(--spacing-page-vertical, 1rem) var(--spacing-page-horizontal, 1rem)',
+        maxWidth: 'var(--max-width-page, 640px)',
         margin: '0 auto',
-        gap: 'var(--spacing-section-gap)',
+        gap: 'var(--spacing-section-gap, 1rem)',
       }}
     >
-      {/* Header: icon + board name */}
-      <div className="flex flex-col gap-4">
+       {/* Header – styled like other page headers */}
+       <div className="flex flex-col gap-4" style={{ marginBottom: 'var(--spacing-section-gap, 1rem)' }}>
         <div className="flex items-center gap-2">
           <svg
             width="20"
@@ -120,8 +123,8 @@ export function BoardDetail({
         </div>
       </div>
 
-      {/* Center content */}
-      <div className="flex flex-col gap-4">
+       {/* Main content – read‑only fields */}
+       <div className="flex flex-col gap-4">
         {/* Basic info — read-only */}
         <section className="flex flex-col gap-3">
           <SectionHeader title="Основное" />
@@ -144,10 +147,20 @@ export function BoardDetail({
         )}
       </div>
 
-      {/* Edit button */}
-      <Button variant="solid" onClick={() => router.push(`/board/${slug}/edit`)}>
-        Редактировать
-      </Button>
+       {/* Edit button – full width, placed at the bottom */}
+       <Button
+         variant="solid"
+         onClick={() => router.push(`/board/${slug}/edit`)}
+         className="w-full mt-4"
+         style={{
+           padding: 'var(--size-button-vertical, 0.75rem) var(--size-button-horizontal, 1rem)',
+           fontFamily: 'var(--font-family-display)',
+           fontSize: 'var(--text-body-md)',
+           fontWeight: 'var(--font-weight-medium)',
+         }}
+       >
+         Редактировать
+       </Button>
 
       {/* Bottom filler */}
       <div style={{ height: '80px' }} aria-hidden="true" />

@@ -658,19 +658,18 @@ export function FlowBoard({
         </div>
       )}
 
-      {agents.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <DeskSectionHeader title="Агенты" />
-          <div className="flex flex-col gap-3">
-            {agents.map((agent) => (
-              <PersonCard key={agent.id} person={agent} type="agent" />
-            ))}
-          </div>
-          <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
-            Добавить Агента
-          </Button>
+      {/* Agents section — always visible */}
+      <div className="flex flex-col gap-4">
+        <DeskSectionHeader title="Агенты" />
+        <div className="flex flex-col gap-3">
+          {agents.map((agent) => (
+            <PersonCard key={agent.id} person={agent} type="agent" />
+          ))}
         </div>
-      )}
+        <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
+          Добавить Агента
+        </Button>
+      </div>
 
        {/* Bottom spacer — accounts for safe area + breathing room */}
        <div

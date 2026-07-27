@@ -19,4 +19,7 @@
 
   /* Input field small border radius */
   --radius-input-sm: 0.25rem;
+
+  /* Bottom menu main button background */
+  --color-bottom-menu-main-btn-bg: #101010;
 }
