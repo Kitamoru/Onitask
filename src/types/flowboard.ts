@@ -125,6 +125,8 @@ export interface FlowBoardProps {
   title?: string;
   /** Current date display */
   currentDate?: string;
+  /** Whether sprints are enabled for this workspace */
+  sprintEnabled?: boolean;
   /** Active sprint info */
   sprint?: SprintInfo;
   /** Risk pulse signals */

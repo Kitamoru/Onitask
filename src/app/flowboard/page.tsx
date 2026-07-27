@@ -141,8 +141,8 @@ export default function FlowBoardPage() {
     return () => clearInterval(interval);
   }, [refreshMetrics]);
 
-  // Auth loading state
-  if (authLoading) {
+  // Loading state — wait for both auth AND metrics
+  if (authLoading || !metrics) {
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"
@@ -183,6 +183,7 @@ export default function FlowBoardPage() {
       <FlowBoard
         title="Флоу задач"
         currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
+        sprintEnabled={sprintEnabled}
         sprint={sprint}
         signals={signals}
         taskStatuses={taskStatuses}

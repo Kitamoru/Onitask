@@ -82,6 +82,8 @@ export interface AgentCardData {
 export interface FlowBoardProps {
   title?: string;
   currentDate?: string;
+  /** Whether sprints are enabled for this workspace */
+  sprintEnabled?: boolean;
   sprint?: SprintInfo;
   signals: SignalData[];
   taskStatuses: TaskStatusData[];
@@ -539,6 +541,7 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
 export function FlowBoard({
   title = 'Флоу задач',
   currentDate = 'Четверг, 20 мая',
+  sprintEnabled = false,
   sprint,
   signals = [],
   taskStatuses = [],
@@ -646,7 +649,7 @@ export function FlowBoard({
         </p>
       </div>
 
-       <SprintCompressedInfo sprint={sprint} />
+       {sprintEnabled && sprint && <SprintCompressedInfo sprint={sprint} />}
 
        {/* Signals section — 3-column grid on mobile, responsive on larger screens */}
        {signals.length > 0 && (
@@ -703,18 +706,20 @@ export function FlowBoard({
         </div>
       )}
 
-      {/* Agents section — always visible */}
-      <div className="flex flex-col gap-4">
-        <DeskSectionHeader title="Агенты" />
-        <div className="flex flex-col gap-3">
-          {agents.map((agent) => (
-            <PersonCard key={agent.id} person={agent} type="agent" />
-          ))}
+      {/* Agents section — always visible for add agent CTA */}
+      {agents.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <DeskSectionHeader title="Агенты" />
+          <div className="flex flex-col gap-3">
+            {agents.map((agent) => (
+              <PersonCard key={agent.id} person={agent} type="agent" />
+            ))}
+          </div>
+          <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
+            Добавить Агента
+          </Button>
         </div>
-        <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
-          Добавить Агента
-        </Button>
-      </div>
+      )}
 
        {/* Bottom spacer — accounts for safe area + breathing room */}
        <div
