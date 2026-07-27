@@ -121,7 +121,6 @@ export function BottomMenu() {
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
             top: '0',
-            backgroundColor: '#101010',
           }}
           aria-label="Создать новую задачу"
           role="button"
@@ -133,7 +132,6 @@ export function BottomMenu() {
             style={{
               width: 'calc(var(--size-main-btn-width) * 2)',
               height: 'calc(var(--size-main-btn-width) * 2)',
-              backgroundColor: '#0A0A0A',
               opacity: 1,
             }}
           />
