@@ -210,7 +210,7 @@ function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
             textAlign: 'center' as const,
           }}
         >
-          Добавьте первый спринт в настройках рабочего пространства
+          Нажмите на карточку, чтобы создать первый спринт
         </span>
       </NotchedPanel>
     );
