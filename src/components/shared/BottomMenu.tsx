@@ -111,6 +111,7 @@ export function BottomMenu() {
         <Link
           href="/board/create"
           className="
+            bottom-menu-center-btn
             flex items-center justify-center
             relative shrink-0
             transition-transform duration-150
@@ -130,8 +131,8 @@ export function BottomMenu() {
             alt=""
             className="relative z-10"
             style={{
-              width: 'calc(var(--size-main-btn-width) * 2)',
-              height: 'calc(var(--size-main-btn-width) * 2)',
+              width: 'var(--size-main-btn-width)',
+              height: 'var(--size-main-btn-height)',
               opacity: 1,
             }}
           />

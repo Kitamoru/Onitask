@@ -42,7 +42,7 @@ export interface SignalData {
   id: string;
   label: string;
   count: number;
-  description: string;
+  description?: string;
 }
 
 export interface TaskStatusData {

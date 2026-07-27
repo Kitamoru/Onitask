@@ -344,6 +344,28 @@ body {
   animation: slide-up 0.25s ease-out;
 }
 
+/* ============================================================================
+   Bottom Menu — Center Button Overrides
+   Переопределение фона для Telegram Web App (мобильные)
+   ============================================================================ */
+.bottom-menu-center-btn {
+  background-color: var(--color-bg-primary-dark) !important;
+  overflow: hidden;
+  border-radius: 9999px;
+}
+
+/* Фоллбек для Telegram-WebApp — гарантируем, что фон не переопределяется */
+.tg-webapp .bottom-menu-center-btn {
+  background-color: var(--color-bg-primary-dark) !important;
+}
+
+/* Медиазапрос для мобильных (max‑width: 768px) */
+@media (max-width: 768px) {
+  .bottom-menu-center-btn {
+    background-color: #0A0A0A !important;
+  }
+}
+
 /* react-day-picker overrides */
 .rdp {
   --rdp-cell-size: 36px;

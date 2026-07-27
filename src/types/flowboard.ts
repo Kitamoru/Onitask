@@ -47,8 +47,8 @@ export interface SignalData {
   label: string;
   /** Count of issues for this signal */
   count: number;
-  /** Human-readable description */
-  description: string;
+  /** Human-readable description (optional — hidden when absent) */
+  description?: string;
 }
 
 // ─── Task Status Cards ───────────────────────────────────────────────────────

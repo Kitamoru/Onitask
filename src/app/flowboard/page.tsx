@@ -44,22 +44,22 @@ export default function FlowBoardPage() {
         .filter(w => w.status === 'overloaded')
         .map(w => w.display_name)
         .join(', ');
-      newSignals.push({ id: 'people', label: 'Люди', count: overloadedCount, description: overloadedNames });
+      newSignals.push({ id: 'people', label: 'Люди', count: overloadedCount });
     } else {
-      newSignals.push({ id: 'people', label: 'Люди', count: 0, description: 'Все в норме' });
+      newSignals.push({ id: 'people', label: 'Люди', count: 0 });
     }
     const bottleneckCount = metrics.columns.filter(c => c.health === 'red').length;
     const stuckCount = 0;
     if (bottleneckCount + stuckCount > 0) {
-      newSignals.push({ id: 'processes', label: 'Процессы', count: bottleneckCount + stuckCount, description: `Ревью ${bottleneckCount}, Блокеры ${stuckCount}` });
+      newSignals.push({ id: 'processes', label: 'Процессы', count: bottleneckCount + stuckCount });
     } else {
-      newSignals.push({ id: 'processes', label: 'Процессы', count: 0, description: 'Нет проблем' });
+      newSignals.push({ id: 'processes', label: 'Процессы', count: 0 });
     }
     const escalationCount = metrics.alerts.filter(a => a.type === 'overloaded_member').length;
     if (escalationCount > 0) {
-      newSignals.push({ id: 'escalations', label: 'Эскалации', count: escalationCount, description: 'Нужен менеджер' });
+      newSignals.push({ id: 'escalations', label: 'Эскалации', count: escalationCount });
     } else {
-      newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0, description: 'Нет эскалаций' });
+      newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0 });
     }
     return newSignals;
   }, [metrics]);
