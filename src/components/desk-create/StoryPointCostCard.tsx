@@ -21,7 +21,7 @@ export function StoryPointCostCard({
 }) {
   return (
     <Card>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between">
         <span className="text-[15px] font-medium text-text">
           Стоимость сторипоинта
         </span>
@@ -32,6 +32,9 @@ export function StoryPointCostCard({
           disabled={disabled}
         />
       </div>
+      <p className="mb-4 text-[13px] leading-[1.45] text-text-muted">
+        По умолчанию сложность задачи считается в часах. Если ваша команда считает задачи в SP, активируйте переключатель. В появившейся форме укажите приблизительные значения SP в часах.
+      </p>
 
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${

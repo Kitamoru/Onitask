@@ -104,14 +104,16 @@ export function CreateDeskForm({
                enabled={spSprintEnabled}
                onEnabledChange={setSpSprintEnabled}
              />
-             <StoryPointCostCard
-               enabled={spCostEnabled}
-               onEnabledChange={setSpCostEnabled}
-               hoursBySp={spHours}
-               onHoursChange={(sp, value) =>
-                 setSpHours((prev) => ({ ...prev, [sp]: value }))
-               }
-             />
+              {spSprintEnabled && (
+                <StoryPointCostCard
+                  enabled={spCostEnabled}
+                  onEnabledChange={setSpCostEnabled}
+                  hoursBySp={spHours}
+                  onHoursChange={(sp, value) =>
+                    setSpHours((prev) => ({ ...prev, [sp]: value }))
+                  }
+                />
+              )}
              <CognitiveWeightCard
               enabled={cognitiveWeightEnabled}
               onEnabledChange={setCognitiveWeightEnabled}
