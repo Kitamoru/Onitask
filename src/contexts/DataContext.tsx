@@ -11,6 +11,7 @@ type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Worker = Database['public']['Tables']['workers']['Row'];
 
 export interface FlowMetrics {
+  sprintEnabled: boolean;
   sprint: {
     id: string;
     name: string;

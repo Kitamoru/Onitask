@@ -4,12 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { EditDeskForm } from '@/components/desk-create/EditDeskForm';
+import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 }
-import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
 function getTelegramInitData(): string {
   if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
@@ -32,6 +32,7 @@ export default function BoardEditPage() {
     name: string;
     slug: string;
     spCostEnabled: boolean;
+    spSprintEnabled: boolean;
     cognitiveWeightEnabled: boolean;
     context: string;
     documentsEnabled: boolean;
@@ -85,6 +86,7 @@ export default function BoardEditPage() {
           name: ws.name || '',
           slug: ws.slug || '',
           spCostEnabled: ws.story_points_config?.enabled || false,
+          spSprintEnabled: ws.story_points_config?.sprint_enabled || false,
           cognitiveWeightEnabled: ws.enable_cognitive_budget || false,
           context: ws.workspace_context || '',
           documentsEnabled: false,

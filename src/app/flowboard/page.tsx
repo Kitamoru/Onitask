@@ -34,6 +34,7 @@ export default function FlowBoardPage() {
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
 
+  const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];

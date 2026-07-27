@@ -149,6 +149,8 @@ export interface FlowBoardProps {
 
 /** Response from GET /api/flow/metrics Edge Function */
 export interface FlowMetricsResponse {
+  /** Whether sprint is enabled for this workspace */
+  sprintEnabled: boolean;
   /** Sprint information */
   sprint: SprintInfo | null;
   /** Column health WIP data */

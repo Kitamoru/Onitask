@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 import { Button } from "@/components/ui/desk-ui/Button";
 import { BasicInfoSection } from "@/components/desk-create/BasicInfoSection";
+import { SprintActivationCard } from "@/components/desk-create/SprintActivationCard";
 import { StoryPointCostCard } from "@/components/desk-create/StoryPointCostCard";
 import { CognitiveWeightCard } from "@/components/desk-create/CognitiveWeightCard";
 import { CoworkingSection } from "@/components/desk-create/CoworkingSection";
@@ -22,6 +23,7 @@ export type CreateDeskFormValue = {
   slug: string;
   spCostEnabled: boolean;
   spHours: typeof DEFAULT_SP_HOURS;
+  spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
   colleagueCount: number;
   context: string;
@@ -45,6 +47,7 @@ export function CreateDeskForm({
   const [slug, setSlug] = useState("");
   const [spCostEnabled, setSpCostEnabled] = useState(false);
   const [spHours, setSpHours] = useState(DEFAULT_SP_HOURS);
+  const [spSprintEnabled, setSpSprintEnabled] = useState(false);
   const [cognitiveWeightEnabled, setCognitiveWeightEnabled] = useState(false);
   const [colleagueCount] = useState(0);
   const [context, setContext] = useState("");
@@ -65,6 +68,7 @@ export function CreateDeskForm({
       slug,
       spCostEnabled,
       spHours,
+      spSprintEnabled,
       cognitiveWeightEnabled,
       colleagueCount,
       context,
@@ -93,18 +97,22 @@ export function CreateDeskForm({
           onSlugChange={setSlug}
         />
 
-        <section>
-          <SectionHeader title="Функциональное" />
-          <div className="flex flex-col gap-4">
-            <StoryPointCostCard
-              enabled={spCostEnabled}
-              onEnabledChange={setSpCostEnabled}
-              hoursBySp={spHours}
-              onHoursChange={(sp, value) =>
-                setSpHours((prev) => ({ ...prev, [sp]: value }))
-              }
-            />
-            <CognitiveWeightCard
+         <section>
+           <SectionHeader title="Функциональное" />
+           <div className="flex flex-col gap-4">
+             <SprintActivationCard
+               enabled={spSprintEnabled}
+               onEnabledChange={setSpSprintEnabled}
+             />
+             <StoryPointCostCard
+               enabled={spCostEnabled}
+               onEnabledChange={setSpCostEnabled}
+               hoursBySp={spHours}
+               onHoursChange={(sp, value) =>
+                 setSpHours((prev) => ({ ...prev, [sp]: value }))
+               }
+             />
+             <CognitiveWeightCard
               enabled={cognitiveWeightEnabled}
               onEnabledChange={setCognitiveWeightEnabled}
             />

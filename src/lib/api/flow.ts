@@ -180,6 +180,7 @@ export async function getFlowMetrics(): Promise<{
     if (!initData) {
       return {
         metrics: {
+          sprintEnabled: false,
           sprint: null,
           columns: [],
           workers: [],
@@ -201,6 +202,7 @@ export async function getFlowMetrics(): Promise<{
       const errData = await res.json().catch(() => ({ error: res.statusText }));
       return {
         metrics: {
+          sprintEnabled: false,
           sprint: null,
           columns: [],
           workers: [],
@@ -216,6 +218,7 @@ export async function getFlowMetrics(): Promise<{
     if (!json.success) {
       return {
         metrics: {
+          sprintEnabled: false,
           sprint: null,
           columns: [],
           workers: [],
@@ -231,6 +234,7 @@ export async function getFlowMetrics(): Promise<{
   } catch (err) {
     return {
       metrics: {
+        sprintEnabled: false,
         sprint: null,
         columns: [],
         workers: [],

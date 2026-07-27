@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    // 1. Find workspace from user's workers
+    // 1. Find workspace from user's workers + get workspace_settings
     const { data: workers, error: workersErr } = await supabase
       .from('workers')
       .select('workspace_id')
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
+          sprintEnabled: false,
           sprint: null,
           columns: [],
           workers: [],
@@ -62,6 +63,15 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+
+    // Get workspace settings for sprint_enabled
+    const { data: settingsData } = await supabase
+      .from('workspace_settings')
+      .select('story_points_config')
+      .eq('workspace_id', workspaceId)
+      .single();
+
+    const sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
 
     // 2. Sprint info
     const { data: sprintData } = await supabase
@@ -169,6 +179,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
+        sprintEnabled,
         sprint,
         columns,
         workers: workersMetrics,
