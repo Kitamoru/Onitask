@@ -130,8 +130,8 @@ export function BottomMenu() {
             alt=""
             className="relative z-10"
             style={{
-              width: 'var(--size-main-btn-width)',
-              height: 'var(--size-main-btn-height)',
+              width: 'calc(var(--size-main-btn-width) * 2)',
+              height: 'calc(var(--size-main-btn-width) * 2)',
               opacity: 1,
             }}
           />
