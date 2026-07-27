@@ -169,8 +169,53 @@ function ProgressBar({ progress }: { progress: number }) {
   );
 }
 
+/**
+ * SprintCompressedInfo — displays sprint progress bar and statistics.
+ * When no sprint data is available, renders a placeholder inviting the user
+ * to create their first sprint.
+ */
 function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
-  if (!sprint) return null;
+  // Placeholder shown when sprint data is missing (first launch scenario)
+  if (!sprint) {
+    return (
+      <NotchedPanel
+        corner="action"
+        radius={4}
+        notch={8}
+        borderWidth={1}
+        border="var(--color-line)"
+        fill="var(--color-bg-surface)"
+        contentClassName="flex flex-col items-center justify-center gap-2 p-6"
+        aria-label="Спринт не создан"
+      >
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
+            textAlign: 'center' as const,
+          }}
+        >
+          Спринт не создан
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-family-base)',
+            fontSize: 'var(--text-body-sm)',
+            lineHeight: 'var(--text-body-sm-line)',
+            fontWeight: 'var(--font-weight-normal)',
+            color: 'var(--color-text-muted)',
+            textAlign: 'center' as const,
+          }}
+        >
+          Добавьте первый спринт в настройках рабочего пространства
+        </span>
+      </NotchedPanel>
+    );
+  }
+
   return (
     <div
       className="flex flex-col w-full p-3 rounded relative overflow-hidden"
