@@ -771,6 +771,7 @@ export interface Database {
           quota_config: Json
           data_sharing_level: string
           mcp_api_keys: Json
+          last_active_board_id: string | null
           updated_at: string
         }
         Insert: {
@@ -789,6 +790,7 @@ export interface Database {
           quota_config?: Json
           data_sharing_level?: string
           mcp_api_keys?: Json
+          last_active_board_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -807,6 +809,7 @@ export interface Database {
           quota_config?: Json
           data_sharing_level?: string
           mcp_api_keys?: Json
+          last_active_board_id?: string | null
           updated_at?: string
         }
         Relationships: []

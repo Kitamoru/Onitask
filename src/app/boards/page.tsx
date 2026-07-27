@@ -33,12 +33,41 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
  * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
  */
 
+// Key for storing the last active board in localStorage
+const ACTIVE_BOARD_STORAGE_KEY = 'onitask:last_active_board';
+
+/** Load saved active board from localStorage */
+function getSavedActiveBoard(): { id: string; slug: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(ACTIVE_BOARD_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Save active board to localStorage */
+function saveActiveBoard(boardId: string, boardSlug: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVE_BOARD_STORAGE_KEY, JSON.stringify({ id: boardId, slug: boardSlug }));
+  } catch {
+    // localStorage full or unavailable — silently ignore
+  }
+}
+
 export default function BoardsPage() {
   useScrollReset();
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
   const { state } = useData();
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  
+  // Initialize from localStorage if available
+  const savedBoard = getSavedActiveBoard();
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(
+    savedBoard?.id ?? null
+  );
 
   const workspaces = state.workspaces.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {
@@ -161,7 +190,10 @@ export default function BoardsPage() {
                 data={card as BoardCardData}
                 isActive={selectedBoardId === null && card.slug === defaultActiveSlug}
                 isSelected={selectedBoardId === card.id}
-                onSelect={(id) => setSelectedBoardId(id)}
+                onSelect={(id) => {
+                  setSelectedBoardId(id);
+                  saveActiveBoard(card.id, card.slug);
+                }}
                 onClick={() => router.push(`/board/${card.slug}`)}
               />
             ))}
