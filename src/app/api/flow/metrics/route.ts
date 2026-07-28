@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const initData = body.init_data as string | undefined;
+    // Optional workspace_id override — allows FlowBoard to query a specific board's workspace
+    const requestedWorkspaceId = body.workspace_id as string | undefined;
 
     const auth = await authenticateRequest(initData);
     if (!auth.authenticated) {
@@ -34,22 +36,45 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    // 1. Find workspace from user's workers + get workspace_settings
-    const { data: workers, error: workersErr } = await supabase
-      .from('workers')
-      .select('workspace_id')
-      .eq('source_id', profileId)
-      .eq('is_active', true)
-      .limit(1);
+    // 1. Determine workspace_id: prefer explicit override, fallback to user's primary workspace
+    let workspaceId: string | null = null;
 
-    if (workersErr) {
-      console.error('metrics: workers error', workersErr);
-      return NextResponse.json({ error: 'database_error' }, { status: 500 });
+    if (requestedWorkspaceId) {
+      // Verify the user has access to this workspace (is owner or member)
+      const { data: accessWorker } = await supabase
+        .from('workers')
+        .select('workspace_id')
+        .eq('source_id', profileId)
+        .eq('workspace_id', requestedWorkspaceId)
+        .eq('is_active', true)
+        .limit(1);
+      
+      if (accessWorker && accessWorker.length > 0) {
+        workspaceId = requestedWorkspaceId;
+      } else {
+        console.warn('metrics: user does not have access to requested workspace');
+      }
     }
 
-    const workspaceId = workers?.[0]?.workspace_id;
+    // Fallback: find primary workspace from user's workers
+    if (!workspaceId) {
+      const { data: workers, error: workersErr } = await supabase
+        .from('workers')
+        .select('workspace_id')
+        .eq('source_id', profileId)
+        .eq('is_active', true)
+        .limit(1);
+
+      if (workersErr) {
+        console.error('metrics: workers error', workersErr);
+        return NextResponse.json({ error: 'database_error' }, { status: 500 });
+      }
+
+      workspaceId = workers?.[0]?.workspace_id ?? null;
+    }
     if (!workspaceId) {
       // Return empty metrics — user has no workspace yet
+      console.log('metrics: no workspace found for profile', profileId);
       return NextResponse.json({
         success: true,
         data: {

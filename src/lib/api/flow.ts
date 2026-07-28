@@ -1,4 +1,4 @@
-/**
+и/**
  * Flow Board API client.
  * 
  * Provides functions to fetch tasks, flow metrics, and update tasks.
@@ -170,8 +170,11 @@ export async function createTask(payload: {
 /**
  * POST /api/flow/metrics — Aggregate flow metrics.
  * Uses server-side API with Telegram initData auth.
+ * 
+ * @param workspaceId - Optional override for which workspace's metrics to fetch.
+ *   If not provided, uses the user's primary workspace from auth context.
  */
-export async function getFlowMetrics(): Promise<{
+export async function getFlowMetrics(workspaceId?: string): Promise<{
   metrics: FlowMetricsResponse;
   error: string | null;
 }> {
@@ -195,7 +198,10 @@ export async function getFlowMetrics(): Promise<{
     const res = await fetch('/api/flow/metrics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ init_data: initData }),
+      body: JSON.stringify({ 
+        init_data: initData,
+        ...(workspaceId && { workspace_id: workspaceId }),
+      }),
     });
 
     if (!res.ok) {

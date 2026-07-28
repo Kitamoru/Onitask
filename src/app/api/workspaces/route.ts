@@ -34,6 +34,7 @@ export async function PUT(req: NextRequest) {
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean } | undefined;
 
     if (!init_data) {
       return NextResponse.json(
@@ -151,6 +152,56 @@ export async function PUT(req: NextRequest) {
         { success: false, error: 'workspace_update_failed' },
         { status: 500 },
       );
+    }
+
+    // 5. Update workspace_settings.story_points_config if provided
+    if (story_points_config) {
+      const { data: existingSettings } = await supabase
+        .from('workspace_settings')
+        .select('workspace_id')
+        .eq('workspace_id', workspace_id)
+        .maybeSingle();
+
+      if (existingSettings) {
+        // Update existing settings — merge with existing story_points_config
+        const { error: settingsError } = await supabase
+          .from('workspace_settings')
+          .update({
+            story_points_config: {
+              ...(existingSettings as any).story_points_config,
+              ...story_points_config,
+            },
+          })
+          .eq('workspace_id', workspace_id);
+
+        if (settingsError) {
+          console.error('workspaces: workspace_settings update error', settingsError);
+          // Don't fail the whole request — settings update is secondary
+        }
+      } else {
+        // Create new settings record with story_points_config
+        const { error: settingsError } = await supabase
+          .from('workspace_settings')
+          .insert({
+            workspace_id,
+            story_points_config,
+            enable_cognitive_budget: false,
+            velocity_window_days: 7,
+            flow_config: {},
+            realtime_subscription_level: 'full',
+            data_sharing_level: 'none',
+            mcp_api_keys: {},
+            quota_config: {},
+            standup_config: {},
+            doc_kb_config: {},
+            f04_config: {},
+          });
+
+        if (settingsError) {
+          console.error('workspaces: workspace_settings insert error', settingsError);
+          // Don't fail the whole request — settings update is secondary
+        }
+      }
     }
 
     return NextResponse.json({

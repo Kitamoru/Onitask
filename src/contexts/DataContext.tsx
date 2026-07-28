@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
@@ -397,17 +397,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authData?.worker?.workspace_id, loadBoardsData]);
 
-  // Load flow metrics when workspace is available
+  // Load last_active_board_id from workspace_settings when workspaces are available
+  const [lastActiveBoardId, setLastActiveBoardId] = useState<string | null>(null);
+
   useEffect(() => {
-    const workspaceId = authData?.worker?.workspace_id;
-    if (!workspaceId) return;
+    const wsId = authData?.worker?.workspace_id;
+    if (!wsId) return;
+
+    let cancelled = false;
+
+    async function loadLastActiveBoard() {
+      try {
+        const supabase = getClient();
+        const { data, error } = await supabase
+          .from('workspace_settings')
+          .select('last_active_board_id')
+          .eq('workspace_id', wsId)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) {
+          console.error('[DataContext] Failed to load last_active_board_id:', error);
+          return;
+        }
+
+        const boardId = (data as any)?.last_active_board_id ?? null;
+        setLastActiveBoardId(boardId);
+      } catch (err) {
+        if (!cancelled) console.error('[DataContext] Load last_active_board_id error:', err);
+      }
+    }
+
+    loadLastActiveBoard();
+    return () => { cancelled = true; };
+  }, [authData?.worker?.workspace_id]);
+
+  // Load flow metrics — use lastActiveBoardId if available, fallback to primary workspace
+  useEffect(() => {
+    const primaryWorkspaceId = authData?.worker?.workspace_id;
+    if (!primaryWorkspaceId) return;
 
     let cancelled = false;
 
     async function loadMetrics() {
       try {
         const { getFlowMetrics } = await import('@/lib/api/flow');
-        const { metrics, error: metricsError } = await getFlowMetrics();
+        // Prefer lastActiveBoardId, fallback to primary workspace
+        const targetWorkspaceId = lastActiveBoardId || primaryWorkspaceId;
+        const { metrics, error: metricsError } = await getFlowMetrics(targetWorkspaceId);
         if (cancelled) return;
         if (metricsError) {
           console.error('[DataContext] Failed to load flow metrics:', metricsError);
@@ -421,7 +458,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     loadMetrics();
     return () => { cancelled = true; };
-  }, [authData?.worker?.workspace_id]);
+  }, [authData?.worker?.workspace_id, lastActiveBoardId]);
 
   // Load tasks when workspace is available
   useEffect(() => {

@@ -106,6 +106,11 @@ export function EditDeskForm({
             { value: 1, label: '1 день' },
             { value: 3, label: '3 дня' },
           ],
+          // Update workspace_settings.story_points_config for sprint settings
+          story_points_config: {
+            enabled: spCostEnabled,
+            sprint_enabled: spSprintEnabled,
+          },
         }),
       });
 

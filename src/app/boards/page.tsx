@@ -33,27 +33,27 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
  * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
  */
 
-// Key for storing the last active board in localStorage
-const ACTIVE_BOARD_STORAGE_KEY = 'onitask:last_active_board';
+// Key for storing the last active board in sessionStorage (not localStorage)
+const ACTIVE_BOARD_SESSION_KEY = 'onitask:last_active_board_session';
 
-/** Load saved active board from localStorage */
+/** Load saved active board from sessionStorage */
 function getSavedActiveBoard(): { id: string; slug: string } | null {
   if (typeof window === 'undefined') return null;
   try {
-    const stored = localStorage.getItem(ACTIVE_BOARD_STORAGE_KEY);
+    const stored = sessionStorage.getItem(ACTIVE_BOARD_SESSION_KEY);
     return stored ? JSON.parse(stored) : null;
   } catch {
     return null;
   }
 }
 
-/** Save active board to localStorage */
+/** Save active board to sessionStorage */
 function saveActiveBoard(boardId: string, boardSlug: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(ACTIVE_BOARD_STORAGE_KEY, JSON.stringify({ id: boardId, slug: boardSlug }));
+    sessionStorage.setItem(ACTIVE_BOARD_SESSION_KEY, JSON.stringify({ id: boardId, slug: boardSlug }));
   } catch {
-    // localStorage full or unavailable — silently ignore
+    // sessionStorage full or unavailable — silently ignore
   }
 }
 
@@ -190,9 +190,27 @@ export default function BoardsPage() {
                 data={card as BoardCardData}
                 isActive={selectedBoardId === null && card.slug === defaultActiveSlug}
                 isSelected={selectedBoardId === card.id}
-                onSelect={(id) => {
+                onSelect={async (id) => {
                   setSelectedBoardId(id);
+                  // Save to sessionStorage for immediate UI update
                   saveActiveBoard(card.id, card.slug);
+                  // Persist to workspace_settings via API
+                  try {
+                    const initData = typeof window !== 'undefined' 
+                      ? (window as any).Telegram?.WebApp?.initData || ''
+                      : '';
+                    await fetch('/api/workspaces/active-board', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                        init_data: initData,
+                        workspace_id: card.id,
+                        board_id: card.id,
+                      }),
+                    });
+                  } catch (err) {
+                    console.error('Failed to save active board:', err);
+                  }
                 }}
                 onClick={() => router.push(`/board/${card.slug}`)}
               />
