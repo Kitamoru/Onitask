@@ -7,14 +7,18 @@ import { createServerClient } from '../../../../lib/supabase';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 /**
- * POST /api/workspaces — Create a new workspace
+ * PUT /api/workspaces — Update workspace settings
  * 
  * Algorithm:
  * 1. Verify Telegram initData (timingSafeEqual, A-2)
- * 2. Find or create profile
- * 3. Create workspace with provided settings
- * 4. Create owner worker record
- * 5. Return success
+ * 2. Find profile by telegram_id
+ * 3. Verify user has access to this workspace
+ * 4. Update workspaces.name (only mutable column on workspaces table)
+ * 5. Route additional fields to correct tables:
+ *    - workspace_context → workspace_settings.workspace_context
+ *    - deadline_signals → workspace_settings.deadline_signals
+ *    - external_links → workspace_links (CRUD full refresh)
+ *    - story_points_config → workspace_settings.story_points_config
  */
 export async function PUT(req: NextRequest) {
   // Guard: require TELEGRAM_BOT_TOKEN to be set
@@ -69,6 +73,7 @@ export async function PUT(req: NextRequest) {
 
     const telegramUser = validation.user;
     const supabase = createServerClient();
+    const anySupabase = supabase as any;
 
     // 2. Find profile by telegram_id
     const { data: profileData, error: profileError } = await supabase
@@ -117,33 +122,27 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // 4. Update workspace
-    const updateData: any = { name };
-    
-    if (workspace_context !== undefined) {
-      updateData.workspace_context = workspace_context;
-    }
-    
-    if (external_links !== undefined) {
-      updateData.external_links = external_links;
-    }
-    
-    if (deadline_signals !== undefined) {
-      updateData.deadline_signals = deadline_signals;
-    }
-
+    // 4. Update workspace name (only mutable column on workspaces table)
+    // workspaces table has: id, name, slug, plan, task_prefix, created_at
+    // slug and task_prefix are immutable, plan is rarely changed
     const { data: updatedWorkspace, error: updateError } = await supabase
       .from('workspaces')
-      .update(updateData)
+      .update({ name })
       .eq('id', workspace_id)
       .select('id, name, slug, task_prefix')
       .single();
 
     if (updateError) {
-      console.error('workspaces: update error', updateError);
+      console.error('workspaces: update error', {
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+        code: updateError.code,
+        workspace_id,
+      });
       return NextResponse.json(
-        { success: false, error: 'workspace_update_failed', details: updateError.message },
-        { status: 500 },
+        { success: false, error: 'workspace_update_failed', details: updateError.message, code: updateError.code },
+        { status: 400 },
       );
     }
 
@@ -154,50 +153,109 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    // Helper: ensure workspace_settings exists, create if not
+    async function ensureSettings() {
+      const { data: existing } = await anySupabase
+        .from('workspace_settings')
+        .select('workspace_id')
+        .eq('workspace_id', workspace_id)
+        .maybeSingle();
+
+      if (!existing) {
+        await anySupabase.from('workspace_settings').insert({
+          workspace_id,
+          story_points_config: { enabled: false },
+          enable_cognitive_budget: false,
+          velocity_window_days: 7,
+          flow_config: {},
+          realtime_subscription_level: 'own_tasks',
+          data_sharing_level: 'standard',
+          mcp_api_keys: {},
+          quota_config: {},
+          standup_config: {},
+          doc_kb_config: {},
+          f04_config: {},
+        });
+      }
+    }
+
+    // 4b. Update workspace_settings.workspace_context if provided
+    if (workspace_context !== undefined) {
+      await ensureSettings();
+      const { error: contextError } = await anySupabase
+        .from('workspace_settings')
+        .update({ workspace_context })
+        .eq('workspace_id', workspace_id);
+      if (contextError) console.error('workspaces: workspace_context update error', contextError);
+    }
+
+    // 4c. Update workspace_settings.deadline_signals if provided
+    if (deadline_signals && deadline_signals.length > 0) {
+      await ensureSettings();
+      const { error: signalsError } = await anySupabase
+        .from('workspace_settings')
+        .update({ deadline_signals })
+        .eq('workspace_id', workspace_id);
+      if (signalsError) console.error('workspaces: deadline_signals update error', signalsError);
+    }
+
+    // 4d. Manage workspace_links for external_links (full refresh)
+    if (external_links !== undefined) {
+      // Delete existing links for this workspace
+      await anySupabase
+        .from('workspace_links')
+        .delete()
+        .eq('workspace_id', workspace_id);
+
+      // Insert new links
+      if (external_links.length > 0) {
+        const linksToInsert = external_links.map((link) => ({
+          workspace_id,
+          name: link.name,
+          url: link.url,
+        }));
+
+        const { error: linksError } = await anySupabase
+          .from('workspace_links')
+          .insert(linksToInsert);
+
+        if (linksError) {
+          console.error('workspaces: external_links insert error', linksError);
+        }
+      }
+    }
+
     // 5. Update workspace_settings.story_points_config if provided
     if (story_points_config) {
-      const { data: existingSettings } = await supabase
+      await ensureSettings();
+      
+      const { data: existingSettings } = await anySupabase
         .from('workspace_settings')
         .select('story_points_config')
         .eq('workspace_id', workspace_id)
         .maybeSingle();
 
       if (existingSettings) {
-        // Merge with existing story_points_config using jsonb_set
+        // Merge with existing story_points_config
         const existingConfig = (existingSettings as any).story_points_config || {};
         const mergedConfig = { ...existingConfig, ...story_points_config };
         
-        const { error: settingsError } = await supabase
+        const { error: settingsError } = await anySupabase
           .from('workspace_settings')
           .update({ story_points_config: mergedConfig })
           .eq('workspace_id', workspace_id);
 
         if (settingsError) {
-          console.error('workspaces: workspace_settings update error', settingsError);
-          // Don't fail the whole request — settings update is secondary
+          console.error('workspaces: story_points_config update error', settingsError);
         }
       } else {
-        // Create new settings record with story_points_config
-        const { error: settingsError } = await supabase
+        const { error: settingsError } = await anySupabase
           .from('workspace_settings')
-          .insert({
-            workspace_id,
-            story_points_config,
-            enable_cognitive_budget: false,
-            velocity_window_days: 7,
-            flow_config: {},
-            realtime_subscription_level: 'own_tasks',
-            data_sharing_level: 'standard',
-            mcp_api_keys: {},
-            quota_config: {},
-            standup_config: {},
-            doc_kb_config: {},
-            f04_config: {},
-          });
+          .update({ story_points_config })
+          .eq('workspace_id', workspace_id);
 
         if (settingsError) {
-          console.error('workspaces: workspace_settings insert error', settingsError);
-          // Don't fail the whole request — settings update is secondary
+          console.error('workspaces: story_points_config update error', settingsError);
         }
       }
     }
@@ -318,7 +376,6 @@ export async function POST(req: NextRequest) {
     }
 
      // 3. Create workspace (pass owner_id explicitly since service role bypasses auth.uid())
-     // Note: owner_id must be set explicitly because service_role bypasses RLS and auth.uid() returns NULL
      const { data: workspaceData, error: workspaceError } = await supabase
        .from('workspaces')
        .insert({
@@ -371,7 +428,6 @@ export async function POST(req: NextRequest) {
 
     if (workerError) {
       console.error('workspaces: worker creation error', workerError);
-      // Note: we don't fail here - workspace is already created
     }
 
     // 5. Return success
