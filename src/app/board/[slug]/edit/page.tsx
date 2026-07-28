@@ -54,6 +54,7 @@ export default function BoardEditPage() {
 
     async function loadData() {
       try {
+        // 1. Load workspace list to find by slug
         const res = await fetch('/api/workspaces/my-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -81,24 +82,49 @@ export default function BoardEditPage() {
 
         setWorkspace(ws);
 
-        // Transform workspace data into form initial data
+        // 2. Load workspace settings and links via new dedicated endpoint
+        const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: getTelegramInitData() }),
+        });
+
+        let settingsData: any = null;
+        let linksData: any[] = [];
+
+        if (settingsRes.ok) {
+          const settingsJson = await settingsRes.json();
+          if (settingsJson.success) {
+            settingsData = settingsJson.data?.workspace_settings;
+            linksData = settingsJson.data?.workspace_links ?? [];
+          }
+        }
+
+        // Parse deadline_signals with level field
+        const signals = (settingsData?.deadline_signals ?? []) as any[];
+        const hasSignals = signals.length > 0;
+
+        // Extract warning/urgent days from signals
+        const amberSignal = signals.find((s: any) => s.level === 'amber' || s.value >= 2);
+        const redSignal = signals.find((s: any) => s.level === 'red' || s.value <= 1);
+
+        // Transform into form initial data
         setInitialData({
           name: ws.name || '',
           slug: ws.slug || '',
-          spCostEnabled: ws.story_points_config?.enabled || false,
-          spSprintEnabled: ws.story_points_config?.sprint_enabled || false,
-          cognitiveWeightEnabled: ws.enable_cognitive_budget || false,
-          context: ws.workspace_context || '',
+          spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
+          spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
+          cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
+          context: settingsData?.workspace_context || '',
           documentsEnabled: false,
-          linksEnabled: (ws.external_links?.length ?? 0) > 0,
-          links: (ws.external_links || []).map((link: any) => ({
-            id: link.id || crypto.randomUUID(),
-            name: link.name || link.label || '',
+          linksEnabled: linksData.length > 0,
+          links: linksData.map((link: any) => ({
+            label: link.name || link.label || '',
             url: link.url || '',
           })),
-          trafficLightEnabled: (ws.deadline_signals?.length ?? 0) > 0,
-          warningDays: ws.deadline_signals?.find((s: any) => s.value === 1) ? 1 : 0,
-          urgentDays: ws.deadline_signals?.find((s: any) => s.value === 3) ? 3 : 0,
+          trafficLightEnabled: hasSignals,
+          warningDays: amberSignal?.value ?? 3,
+          urgentDays: redSignal?.value ?? 1,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';

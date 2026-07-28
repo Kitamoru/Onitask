@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
     const init_data = body.init_data as string | undefined;
     const name = body.name as string | undefined;
     const slug = body.slug as string | undefined;
-    const story_points_config = body.story_points_config as { enabled: boolean; values?: number[] } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; values?: number[]; sprint_enabled?: boolean } | undefined;
     const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
@@ -406,16 +406,16 @@ export async function POST(req: NextRequest) {
      }
 
      if (!workspaceData) {
-       console.error('workspaces: workspace creation returned no data');
-       return NextResponse.json(
-         { success: false, error: 'workspace_creation_failed', details: 'No data returned' },
-         { status: 500 },
-       );
-     }
+        console.error('workspaces: workspace creation returned no data');
+        return NextResponse.json(
+          { success: false, error: 'workspace_creation_failed', details: 'No data returned' },
+          { status: 500 },
+        );
+      }
 
-    const workspaceId = workspaceData.id as string;
+      const workspaceId = workspaceData.id as string;
 
-    // 4. Create owner worker record
+      // 4. Create owner worker record
     const { error: workerError } = await supabase
       .from('workers')
       .insert({
@@ -426,22 +426,78 @@ export async function POST(req: NextRequest) {
         display_name: displayName,
       });
 
-    if (workerError) {
-      console.error('workspaces: worker creation error', workerError);
-    }
+      if (workerError) {
+        console.error('workspaces: worker creation error', workerError);
+      }
 
-    // 5. Return success
-    return NextResponse.json({
-      success: true,
-      data: {
-        workspace: {
-          id: workspaceId,
-          name,
-          slug,
-          task_prefix: workspaceData.task_prefix,
+      // 5. Create workspace_settings with form-provided configuration
+      const spConfig = story_points_config || { enabled: false };
+      const defaultDeadlineSignals = [
+        { value: 3, label: '3 дня', level: 'amber' as const },
+        { value: 1, label: '1 день', level: 'red' as const },
+      ];
+
+      const { error: settingsError } = await supabase.from('workspace_settings').insert({
+        workspace_id: workspaceId,
+        story_points_config: {
+          enabled: spConfig.enabled ?? false,
+          sprint_enabled: spConfig.sprint_enabled ?? false,
+          values: spConfig.values,
         },
-      },
-    });
+        enable_cognitive_budget: enable_cognitive_budget ?? false,
+        workspace_context: workspace_context ?? null,
+        deadline_signals: deadline_signals && deadline_signals.length > 0
+          ? deadline_signals.map((s) => ({ ...s, level: (s as any).level || 'amber' }))
+          : defaultDeadlineSignals,
+        velocity_window_days: 14,
+        flow_config: {},
+        realtime_subscription_level: 'own_tasks',
+        data_sharing_level: 'standard',
+        mcp_api_keys: {},
+        quota_config: { agent_reserved_pct: 60, human_min_pct: 40 },
+        standup_config: { enabled: false, time_utc: '07:00', chat_id: null },
+        doc_kb_config: { enabled: true, max_file_bytes: 524288, max_total_bytes: 5242880, max_files: 20 },
+        f04_config: {
+          skip_min_clarity: 0.85,
+          skip_max_complexity: 1,
+          correction_sheet_clarity_threshold: 0.70,
+          low_clarity_tag_threshold: 0.55,
+        },
+      });
+
+      if (settingsError) {
+        console.error('workspaces: workspace_settings creation error', settingsError);
+      }
+
+      // 6. Insert external_links if provided
+      if (external_links && external_links.length > 0) {
+        const linksToInsert = external_links.map((link) => ({
+          workspace_id: workspaceId,
+          name: link.name,
+          url: link.url,
+        }));
+
+        const { error: linksError } = await supabase
+          .from('workspace_links')
+          .insert(linksToInsert);
+
+        if (linksError) {
+          console.error('workspaces: external_links insert error', linksError);
+        }
+      }
+
+      // 7. Return success
+      return NextResponse.json({
+        success: true,
+        data: {
+          workspace: {
+            id: workspaceId,
+            name,
+            slug,
+            task_prefix: workspaceData.task_prefix,
+          },
+        },
+      });
   } catch (err) {
     console.error('workspaces: unexpected error', err);
     return NextResponse.json(

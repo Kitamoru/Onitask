@@ -84,12 +84,12 @@ export function EditDeskForm({
 
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
-    
+
     setSaving(true);
     setError(null);
 
     try {
-      const initData = typeof window !== 'undefined' 
+      const initData = typeof window !== 'undefined'
         ? (window as any).Telegram?.WebApp?.initData || ''
         : '';
 
@@ -100,13 +100,15 @@ export function EditDeskForm({
           init_data: initData,
           workspace_id: workspaceId,
           name,
-          workspace_context: context,
+          enable_cognitive_budget: cognitiveWeightEnabled,
+          workspace_context: context || undefined,
           external_links: linksEnabled ? links : [],
-          deadline_signals: [
-            { value: 1, label: '1 день' },
-            { value: 3, label: '3 дня' },
-          ],
-          // Update workspace_settings.story_points_config for sprint settings
+          deadline_signals: trafficLightEnabled
+            ? [
+                { value: warningDays, label: `${warningDays} ${labelDays(warningDays)}` },
+                { value: urgentDays, label: `${urgentDays} ${labelDays(urgentDays)}` },
+              ]
+            : [{ value: 3, label: '3 дня' }, { value: 1, label: '1 день' }],
           story_points_config: {
             enabled: spCostEnabled,
             sprint_enabled: spSprintEnabled,
@@ -160,24 +162,24 @@ export function EditDeskForm({
           disabled
         />
 
-         <section>
-           <SectionHeader title="Функциональное" />
-           <div className="flex flex-col gap-4">
-             <SprintActivationCard
-               enabled={spSprintEnabled}
-               onEnabledChange={setSpSprintEnabled}
-             />
-             {spSprintEnabled && (
-               <StoryPointCostCard
-                 enabled={spCostEnabled}
-                 onEnabledChange={setSpCostEnabled}
-                 hoursBySp={spHours}
-                 onHoursChange={(sp, value) =>
-                   setSpHours((prev) => ({ ...prev, [sp]: value }))
-                 }
-               />
-             )}
-             <CognitiveWeightCard
+        <section>
+          <SectionHeader title="Функциональное" />
+          <div className="flex flex-col gap-4">
+            <SprintActivationCard
+              enabled={spSprintEnabled}
+              onEnabledChange={setSpSprintEnabled}
+            />
+            {spSprintEnabled && (
+              <StoryPointCostCard
+                enabled={spCostEnabled}
+                onEnabledChange={setSpCostEnabled}
+                hoursBySp={spHours}
+                onHoursChange={(sp, value) =>
+                  setSpHours((prev) => ({ ...prev, [sp]: value }))
+                }
+              />
+            )}
+            <CognitiveWeightCard
               enabled={cognitiveWeightEnabled}
               onEnabledChange={setCognitiveWeightEnabled}
             />
@@ -227,9 +229,9 @@ export function EditDeskForm({
         className="px-4 pt-2 lg:hidden"
         style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <Button 
-          variant="solid" 
-          disabled={!canSubmit || saving} 
+        <Button
+          variant="solid"
+          disabled={!canSubmit || saving}
           onClick={handleSubmit}
         >
           {saving ? 'Сохранение...' : 'Сохранить'}
@@ -237,4 +239,12 @@ export function EditDeskForm({
       </div>
     </div>
   );
+}
+
+function labelDays(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'дня';
+  return 'дней';
 }
