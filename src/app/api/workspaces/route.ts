@@ -158,20 +158,18 @@ export async function PUT(req: NextRequest) {
     if (story_points_config) {
       const { data: existingSettings } = await supabase
         .from('workspace_settings')
-        .select('workspace_id')
+        .select('story_points_config')
         .eq('workspace_id', workspace_id)
         .maybeSingle();
 
       if (existingSettings) {
-        // Update existing settings — merge with existing story_points_config
+        // Merge with existing story_points_config using jsonb_set
+        const existingConfig = (existingSettings as any).story_points_config || {};
+        const mergedConfig = { ...existingConfig, ...story_points_config };
+        
         const { error: settingsError } = await supabase
           .from('workspace_settings')
-          .update({
-            story_points_config: {
-              ...(existingSettings as any).story_points_config,
-              ...story_points_config,
-            },
-          })
+          .update({ story_points_config: mergedConfig })
           .eq('workspace_id', workspace_id);
 
         if (settingsError) {
