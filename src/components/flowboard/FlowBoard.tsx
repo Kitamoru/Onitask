@@ -649,7 +649,7 @@ export function FlowBoard({
         </p>
       </div>
 
-       {sprintEnabled && sprint && <SprintCompressedInfo sprint={sprint} />}
+      {sprintEnabled && <SprintCompressedInfo sprint={sprint} />}
 
        {/* Signals section — 3-column grid on mobile, responsive on larger screens */}
        {signals.length > 0 && (

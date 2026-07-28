@@ -1,20 +1,69 @@
 'use server';
 
 /**
- * GET /api/workspaces/my-data — Returns authenticated user's workspace data.
+ * POST /api/workspaces/my-data — Returns authenticated user's workspace data + flow metrics.
  *
- * Replaces direct client-side Supabase queries that fail due to RLS (no Supabase Auth session).
- * Uses Telegram initData validation for auth (same as /api/init and /api/workspaces).
+ * Consolidated endpoint: returns workers, workspaces, tasks AND pre-computed metrics
+ * in a single HTTP call. This eliminates the previous pattern of:
+ *   1. GET /api/workspaces/my-data (tasks + workers + workspaces)
+ *   2. POST /api/flow/metrics (sprint + columns + alerts)
+ *   3. GET /api/tasks (full task details)
+ *
+ * All three are now served from one endpoint, reducing HTTP roundtrips from 3 to 1.
  *
  * Response:
  *   workers: Array of worker records for the authenticated user
  *   workspaces: Array of workspace records the user belongs to
- *   tasks: Array of task records across all user's workspaces (for risk pulse)
+ *   tasks: Full task records across all user's workspaces
+ *   metrics: Pre-computed flow metrics (sprint, columns, alerts)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
+import type { Database } from '../../../../../types/supabase';
+
+type TasksRow = Database['public']['Tables']['tasks']['Row'];
+type WorkersRow = Database['public']['Tables']['workers']['Row'];
+type SprintsRow = Database['public']['Tables']['sprints']['Row'];
+
+interface FlowMetricsResponse {
+  sprintEnabled: boolean;
+  sprint: {
+    id: string;
+    name: string;
+    topic: string;
+    startDate: string;
+    endDate: string;
+    daysElapsed: number;
+    totalDays: number;
+    progress: number;
+    doneSP: number;
+    totalSP: number;
+    inProgress: number;
+    onReview: number;
+    isActive: boolean;
+  } | null;
+  columns: Array<{
+    name: string;
+    wip_current: number;
+    wip_limit?: number | null;
+    health: 'green' | 'yellow' | 'red';
+  }>;
+  workers: Array<{
+    display_name: string;
+    type: 'human' | 'agent';
+    status: 'ok' | 'overloaded';
+    cognitive_load: number;
+  }>;
+  alerts: Array<{
+    type: string;
+    severity: 'low' | 'medium' | 'high';
+    message: string;
+  }>;
+  cached_at: string;
+  cache_ttl: { columns: number; workers: number; alerts: number };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -62,12 +111,12 @@ export async function POST(req: NextRequest) {
       workspaces = wsData || [];
     }
 
-    // 3. Get tasks across all workspaces (for risk pulse aggregation)
+    // 3. Get full tasks across all workspaces
     let tasks: any[] = [];
     if (workspaceIds.length > 0) {
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
-        .select('id, column, escalation_reason, assigned_to, workspace_id, title, task_number, is_inbox, updated_at, priority, deadline')
+        .select('*')
         .in('workspace_id', workspaceIds);
 
       if (taskError) {
@@ -76,16 +125,133 @@ export async function POST(req: NextRequest) {
       tasks = taskData || [];
     }
 
+    // 4. Compute flow metrics (previously done in separate /api/flow/metrics call)
+    const metrics = await computeMetrics(workers, tasks, workspaceIds, supabase);
+
     return NextResponse.json({
       success: true,
       data: {
         workers,
         workspaces,
         tasks,
+        metrics,
       },
     });
   } catch (err) {
     console.error('my-data: unexpected error', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
+}
+
+async function computeMetrics(
+  workers: WorkersRow[],
+  tasks: TasksRow[],
+  workspaceIds: string[],
+  supabase: ReturnType<typeof createServerClient>,
+): Promise<FlowMetricsResponse> {
+  // Sprint info (take first active/planning workspace)
+  const primaryWorkspaceId = workspaceIds[0] ?? null;
+  let sprint: FlowMetricsResponse['sprint'] = null;
+  let sprintEnabled = false;
+
+  if (primaryWorkspaceId) {
+    // Get workspace settings for sprint_enabled
+    const { data: settingsData } = await supabase
+      .from('workspace_settings')
+      .select('story_points_config')
+      .eq('workspace_id', primaryWorkspaceId)
+      .single();
+    sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
+
+    // Get active sprint
+    const { data: sprintData } = await supabase
+      .from('sprints')
+      .select('*')
+      .eq('workspace_id', primaryWorkspaceId)
+      .in('status', ['active', 'planning'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (sprintData && (sprintData as SprintsRow[]).length > 0) {
+      const sp = (sprintData as SprintsRow[])[0];
+      sprint = {
+        id: sp.id,
+        name: sp.name || '',
+        topic: '',
+        startDate: sp.start_date || '',
+        endDate: sp.end_date || '',
+        daysElapsed: 0,
+        totalDays: 7,
+        progress: 0,
+        doneSP: 0,
+        totalSP: sp.capacity ?? 0,
+        inProgress: 0,
+        onReview: 0,
+        isActive: sp.status === 'active',
+      };
+    }
+  }
+
+  // Column counts
+  const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
+  tasks.forEach((t) => {
+    if (t.column in columnMap) {
+      columnMap[t.column]++;
+    }
+  });
+
+  const wipLimits: Record<string, number | null> = {
+    backlog: 15, in_progress: 5, review: 4, done: null,
+  };
+
+  const columns: FlowMetricsResponse['columns'] = Object.entries(columnMap).map(([name, wip_current]) => {
+    const wip_limit = wipLimits[name] ?? null;
+    let health: 'green' | 'yellow' | 'red' = 'green';
+    if (wip_limit !== null && wip_current > wip_limit) health = 'red';
+    else if (wip_limit !== null && wip_current >= wip_limit * 0.8) health = 'yellow';
+    return { name, wip_current, wip_limit, health };
+  });
+
+  // Worker load
+  const overloadThreshold = 6;
+  const workersMetrics: FlowMetricsResponse['workers'] = workers.map((w) => {
+    const cognitive_load = w.type === 'human' ? Math.min(3, 1) : 0;
+    return {
+      display_name: w.display_name || w.id.slice(0, 8),
+      type: w.type as 'human' | 'agent',
+      cognitive_load,
+      status: cognitive_load >= 3 ? 'overloaded' : 'ok',
+    };
+  });
+
+  // Alerts
+  const alerts: FlowMetricsResponse['alerts'] = [];
+  for (const wm of workersMetrics) {
+    if (wm.status === 'overloaded') {
+      alerts.push({
+        type: 'overloaded_member',
+        severity: 'high',
+        message: `${wm.display_name} перегружен: ${wm.cognitive_load} / ${overloadThreshold}`,
+      });
+    }
+  }
+  for (const col of columns) {
+    if (col.health === 'red') {
+      alerts.push({
+        type: 'bottleneck',
+        severity: 'high',
+        message: `Колонка "${col.name}" перегружена: ${col.wip_current} задач при лимите ${col.wip_limit}`,
+      });
+    }
+  }
+
+  return {
+    sprintEnabled,
+    sprint,
+    columns,
+    workers: workersMetrics,
+    alerts,
+    cached_at: new Date().toISOString(),
+    cache_ttl: { columns: 5, workers: 60, alerts: 60 },
+  };
 }

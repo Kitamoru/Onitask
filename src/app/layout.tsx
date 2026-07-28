@@ -2,7 +2,6 @@ import type { Viewport, Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomMenu } from "@/components/shared/BottomMenu";
-import { TelegramInit } from "@/components/shared/TelegramInit";
 import { TelegramThemeProvider } from "@/components/shared/TelegramThemeProvider";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
@@ -56,16 +55,15 @@ export default function RootLayout({
         <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
           <TelegramProvider>
             <TelegramThemeProvider>
-              <TelegramInit />
-            <DataProvider>
-              <AuthLoader>
-                {children}
-              </AuthLoader>
-            </DataProvider>
-            <BottomMenu />
-          </TelegramThemeProvider>
-        </TelegramProvider>
-      </body>
+              <DataProvider>
+                <AuthLoader>
+                  {children}
+                </AuthLoader>
+              </DataProvider>
+              <BottomMenu />
+            </TelegramThemeProvider>
+          </TelegramProvider>
+        </body>
     </html>
   );
 }

@@ -1,10 +1,34 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+
+// ── sessionStorage cache key for /api/workspaces/my-data ──────────────────────
+const MY_DATA_CACHE_KEY = 'onitask_my_data';
+
+/** Load cached my-data from sessionStorage (returns null on miss or parse error) */
+function loadMyDataCache(): DataStore | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(MY_DATA_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Save my-data to sessionStorage with timestamp */
+function saveMyDataCache(store: DataStore): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(MY_DATA_CACHE_KEY, JSON.stringify(store));
+  } catch {
+    // sessionStorage full — silently ignore
+  }
+}
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
@@ -87,6 +111,8 @@ interface DataStore {
     }>;
     lastUpdated: number | null;
   };
+  /** Whether boards data has been loaded at least once (for dedup guard) */
+  _boardsLoaded: boolean;
 }
 
 type Action =
@@ -98,6 +124,7 @@ type Action =
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
   | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
+  | { type: 'SET_BOARDS_LOADED'; payload: true }
   | { type: 'CLEAR_ALL'; payload: null };
 
 const initialState: DataStore = {
@@ -123,6 +150,7 @@ const initialState: DataStore = {
     cards: [],
     lastUpdated: null,
   },
+  _boardsLoaded: false,
 };
 
 function dataReducer(state: DataStore, action: Action): DataStore {
@@ -209,8 +237,11 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
+    case 'SET_BOARDS_LOADED':
+      return { ...state, _boardsLoaded: true };
+
     case 'CLEAR_ALL':
-      return initialState;
+      return { ...initialState, _boardsLoaded: state._boardsLoaded };
 
     default:
       return state;
@@ -233,6 +264,9 @@ const DataContext = createContext<DataContextValue | null>(null);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
   const { data: authData, isLoading: isLoadingAuth } = useTelegramAuth();
+
+  // Ref to track if initial load happened (dedup guard)
+  const boardsLoadedRef = useRef(false);
 
   // Sync workspace and worker data from auth response
   useEffect(() => {
@@ -310,12 +344,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(json.error || 'Failed to load board data');
       }
 
-      const { workers: workersData, workspaces: wsData, tasks } = json.data;
+      const { workers: workersData, workspaces: wsData, tasks, metrics } = json.data;
+
+      // Map full task rows to TaskEntity
+      const tasksList = tasks ?? [];
+      const taskEntities: TaskEntity[] = tasksList.map((task: any) => {
+        const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
+        return {
+          ...task,
+          full_id: fullId,
+          workspace_prefix: 'TASK',
+          ai_hint: null,
+          story_points: null,
+        } as TaskEntity;
+      });
 
       dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
       dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+      dispatch({ type: 'SET_TASKS', payload: taskEntities });
 
-      const tasksList = tasks ?? [];
+      // Dispatch metrics if present (consolidated endpoint)
+      if (metrics) {
+        dispatch({ type: 'SET_METRICS', payload: metrics });
+      }
+
+      // Compute boards risk data
       const peopleSet = new Set<string>();
       let processCount = 0;
       let escalationCount = 0;
@@ -362,6 +415,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           cards,
         },
       });
+
+      // Mark as loaded + save to sessionStorage cache
+      dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
+      boardsLoadedRef.current = true;
+      saveMyDataCache(state);
     } catch (err) {
       clearTimeout(timeoutId);
       console.error('[DataContext] failed to load boards data:', err);
@@ -388,21 +446,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.error('[DataContext] Failed to save active workspace:', err);
     }
 
-    // Reload boards data for the new workspace
+    // Reload ALL data (boards + tasks + metrics) from consolidated endpoint
     await loadBoardsData();
-
-    // Reload flow metrics for the new workspace
-    try {
-      const { getFlowMetrics } = await import('@/lib/api/flow');
-      const { metrics, error: metricsError } = await getFlowMetrics(workspaceId);
-      if (metricsError) {
-        console.error('[DataContext] Failed to load flow metrics:', metricsError);
-        return;
-      }
-      dispatch({ type: 'SET_METRICS', payload: metrics });
-    } catch (err) {
-      console.error('[DataContext] Load metrics error:', err);
-    }
   }, [loadBoardsData]);
 
   // Subscribe to realtime task changes
@@ -446,74 +491,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.activeWorkspaceId]);
 
-  // Load boards data when active workspace is available
+  // Load boards data when active workspace is available AND not already loaded
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
-    if (workspaceId) {
+    if (workspaceId && !boardsLoadedRef.current) {
+      // Try cache first
+      const cached = loadMyDataCache();
+      if (cached) {
+        dispatch({ type: 'SET_TASKS', payload: cached.tasks.items });
+        dispatch({ type: 'SET_METRICS', payload: cached.metrics.data! });
+        dispatch({ type: 'SET_WORKSPACES', payload: cached.workspaces.items });
+        dispatch({ type: 'SET_WORKERS', payload: cached.workers.items });
+        dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
+        boardsLoadedRef.current = true;
+      }
+      // Always refresh from server in background
       loadBoardsData();
     }
-  }, [state.activeWorkspaceId, loadBoardsData]);
-
-  // Load flow metrics when active workspace changes
-  useEffect(() => {
-    const workspaceId = state.activeWorkspaceId;
-    if (!workspaceId) return;
-
-    let cancelled = false;
-
-    async function loadMetrics() {
-      try {
-        const { getFlowMetrics } = await import('@/lib/api/flow');
-        const { metrics, error: metricsError } = await getFlowMetrics(workspaceId as string);
-        if (cancelled) return;
-        if (metricsError) {
-          console.error('[DataContext] Failed to load flow metrics:', metricsError);
-          return;
-        }
-        dispatch({ type: 'SET_METRICS', payload: metrics });
-      } catch (err) {
-        if (!cancelled) console.error('[DataContext] Load metrics error:', err);
-      }
-    }
-
-    loadMetrics();
-    return () => { cancelled = true; };
-  }, [state.activeWorkspaceId]);
-
-  // Load tasks when active workspace is available
-  useEffect(() => {
-    const workspaceId = state.activeWorkspaceId;
-    if (!workspaceId) return;
-
-    let cancelled = false;
-
-    async function loadTasks() {
-      try {
-        const flowApi = await import('@/lib/api/flow');
-        const result = await flowApi.getTasks();
-        if (cancelled) return;
-        if (result.error) {
-          console.error('[DataContext] Failed to load tasks:', result.error);
-          return;
-        }
-        const tasks: TaskEntity[] = result.tasks.map((task: any) => {
-          const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
-          return {
-            ...task,
-            full_id: fullId,
-            workspace_prefix: 'TASK',
-            ai_hint: null,
-            story_points: null,
-          } as TaskEntity;
-        });
-        dispatch({ type: 'SET_TASKS', payload: tasks });
-      } catch (err) {
-        if (!cancelled) console.error('[DataContext] Load tasks error:', err);
-      }
-    }
-
-    loadTasks();
-    return () => { cancelled = true; };
   }, [state.activeWorkspaceId]);
 
   return (
