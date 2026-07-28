@@ -1,4 +1,4 @@
-и/**
+/**
  * Flow Board API client.
  * 
  * Provides functions to fetch tasks, flow metrics, and update tasks.
