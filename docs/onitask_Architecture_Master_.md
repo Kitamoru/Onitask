@@ -1,7 +1,7 @@
 # onitask · Architecture Master Specification
 
-**Версия:** 0.14.0 (Master)
-**Дата:** июнь 2026
+**Версия:** 0.15.0 (Master)
+**Дата:** июль 2026
 **Статус:** Утверждённый источник истины — заменяет Arch V4.3, Flow Concept V3.2 (Schema), Team Tab V1.0 (Schema), Bot V0.1 (Schema)
 
 > **Правило для агентов:** Перед написанием любой миграции, Route Handler или Edge Function — прочитай раздел «Инварианты» и «Полная схема БД». Отклонение от этих определений — архитектурная ошибка.
@@ -1897,6 +1897,36 @@ FOR EACH ROW EXECUTE FUNCTION validate_calendar_times();
 -- Соответствует A-2 (Timing Safe & DB Isolation).
 ```
 
+### 6.20 Активная доска пользователя (Active Workspace)
+
+```sql
+-- profiles.last_active_workspace_id (migration 016)
+-- Хранит UUID последней выбранной пользователем доски/workspace.
+-- Позволяет восстанавливать контекст flowboard при повторном входе.
+-- Перенесено из workspace_settings.last_active_board_id (migration 013 → 016).
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS last_active_workspace_id uuid REFERENCES public.workspaces(id);
+
+CREATE INDEX IF NOT EXISTS idx_profiles_last_active_workspace
+  ON public.profiles (last_active_workspace_id)
+  WHERE last_active_workspace_id IS NOT NULL;
+```
+
+**API контракты:**
+- `POST /api/init` — возвращает `last_active_workspace_id` в `InitResponse`
+- `POST /api/workspaces/active-workspace` — сохраняет выбранную доску в `profiles.last_active_workspace_id`
+- **Удалён:** `POST /api/workspaces/active-board` (старый endpoint, писал в workspace_settings)
+
+**Frontend паттерн:**
+- DataContext хранит `activeWorkspaceId` как единый источник истины
+- При смене доски: `setActiveWorkspace(workspaceId)` → оптимистичное обновление → API call → перегрузка метрик
+- При повторном входе: `authData.last_active_workspace_id` → инициализация `activeWorkspaceId`
+
+**INV:** Нет новых инвариантов. Изменение существующих:
+- `/api/init` теперь возвращает дополнительное поле `last_active_workspace_id`
+
+---
+
 #### Типы событий в enrichment_queue
 
 | type | alert_type | payload ключи | Описание |
@@ -2042,6 +2072,15 @@ onitask_Architecture_Master_.md       ← этот документ (единс�
 - §6.15 (новый): cross-reference на VIEW `attention_risk_pulse`
 - §9: `assignment_history` — бессрочное хранение, CASCADE при удалении workspace
 
+**v0.15.0 — июль 2026**
+
+*Active Workspace (персистентный выбор доски):*
+- §6.20 (новый): `profiles.last_active_workspace_id` — DDL, индекс, API контракты,
+  frontend паттерн DataContext. Перенесено из `workspace_settings.last_active_board_id`
+  (migration 013 → 016). Удалён старый endpoint `/api/workspaces/active-board`.
+- §1: `/api/init` теперь возвращает `last_active_workspace_id` в `InitResponse`
+- §8: `InitResponse` расширен полем `last_active_workspace_id`
+
 **v0.14.0 — июль 2026**
 
 *Модуль «Календарь»:*
@@ -2054,4 +2093,4 @@ onitask_Architecture_Master_.md       ← этот документ (единс�
 
 ---
 
-*onitask · Architecture Master Specification · v0.14.0 · июль 2026*
+*onitask · Architecture Master Specification · v0.15.0 · июль 2026*

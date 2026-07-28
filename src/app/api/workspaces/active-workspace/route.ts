@@ -1,12 +1,13 @@
 'use server';
 
 /**
- * POST /api/workspaces/active-board — Save last_active_board_id to workspace_settings
+ * POST /api/workspaces/active-workspace — Save last_active_workspace_id to profiles
  * 
  * Algorithm:
  * 1. Verify Telegram initData
- * 2. Find workspace_settings for user's workspace
- * 3. Update last_active_board_id
+ * 2. Find profile by telegram_id
+ * 3. Verify user has access to this workspace
+ * 4. Update profiles.last_active_workspace_id
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,7 +18,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 export async function POST(req: NextRequest) {
   if (!process.env.TELEGRAM_BOT_TOKEN) {
-    console.error('active-board: TELEGRAM_BOT_TOKEN is not set');
+    console.error('active-workspace: TELEGRAM_BOT_TOKEN is not set');
     return NextResponse.json(
       { success: false, error: 'server_configuration_error' },
       { status: 500 },
@@ -28,7 +29,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const init_data = body.init_data as string | undefined;
     const workspace_id = body.workspace_id as string | undefined;
-    const board_id = body.board_id as string | undefined;
 
     if (!init_data) {
       return NextResponse.json(
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!workspace_id || !board_id) {
+    if (!workspace_id) {
       return NextResponse.json(
-        { success: false, error: 'missing_workspace_id_or_board_id' },
+        { success: false, error: 'missing_workspace_id' },
         { status: 400 },
       );
     }
@@ -88,59 +88,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Upsert workspace_settings with last_active_board_id
-    const { data: existingSettings } = await supabase
-      .from('workspace_settings')
-      .select('workspace_id')
-      .eq('workspace_id', workspace_id)
-      .maybeSingle();
+    // 4. Update profiles.last_active_workspace_id (migration 016)
+    // Use as any to bypass type check until migration is applied locally
+    const { error: updateError } = await (supabase as any)
+      .from('profiles')
+      .update({ last_active_workspace_id: workspace_id })
+      .eq('id', profileId);
 
-    if (existingSettings) {
-      // Update existing settings
-      const { error: updateError } = await supabase
-        .from('workspace_settings')
-        .update({ last_active_board_id: board_id })
-        .eq('workspace_id', workspace_id);
-
-      if (updateError) {
-        console.error('active-board: update error', updateError);
-        return NextResponse.json(
-          { success: false, error: 'update_failed' },
-          { status: 500 },
-        );
-      }
-    } else {
-      // Create new settings record
-      const { error: insertError } = await supabase
-        .from('workspace_settings')
-        .insert({
-          workspace_id,
-          last_active_board_id: board_id,
-          enable_cognitive_budget: false,
-          story_points_config: { enabled: false, sprint_enabled: false },
-          velocity_window_days: 7,
-          flow_config: {},
-          realtime_subscription_level: 'own_tasks',
-          data_sharing_level: 'standard',
-          mcp_api_keys: {},
-          quota_config: {},
-          standup_config: {},
-          doc_kb_config: {},
-          f04_config: {},
-        });
-
-      if (insertError) {
-        console.error('active-board: insert error', insertError);
-        return NextResponse.json(
-          { success: false, error: 'insert_failed' },
-          { status: 500 },
-        );
-      }
+    if (updateError) {
+      console.error('active-workspace: update error', updateError);
+      return NextResponse.json(
+        { success: false, error: 'update_failed' },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('active-board: unexpected error', err);
+    console.error('active-workspace: unexpected error', err);
     return NextResponse.json(
       { success: false, error: 'internal_error' },
       { status: 500 },

@@ -63,6 +63,8 @@ interface DataStore {
     items: Worker[];
     lastUpdated: number | null;
   };
+  /** UUID of the user's currently selected workspace/board (from profiles.last_active_workspace_id) */
+  activeWorkspaceId: string | null;
   boards: {
     riskData: {
       people: number;
@@ -94,6 +96,7 @@ type Action =
   | { type: 'SET_METRICS'; payload: FlowMetrics }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
   | { type: 'SET_WORKERS'; payload: Worker[] }
+  | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
   | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
   | { type: 'CLEAR_ALL'; payload: null };
 
@@ -114,6 +117,7 @@ const initialState: DataStore = {
     items: [],
     lastUpdated: null,
   },
+  activeWorkspaceId: null,
   boards: {
     riskData: null,
     cards: [],
@@ -190,6 +194,12 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
+    case 'SET_ACTIVE_WORKSPACE':
+      return {
+        ...state,
+        activeWorkspaceId: action.payload,
+      };
+
     case 'SET_BOARDS':
       return {
         ...state,
@@ -211,6 +221,8 @@ interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
   loadBoardsData: () => Promise<void>;
+  /** Set the active workspace — persists to server and reloads flow data */
+  setActiveWorkspace: (workspaceId: string) => Promise<void>;
   /** Whether auth data is available from useAuth */
   authData: import('../../types/api').InitResponse | null;
   isLoadingAuth: boolean;
@@ -222,7 +234,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
   const { data: authData, isLoading: isLoadingAuth } = useTelegramAuth();
 
-  // Sync workspace and worker data from auth response (Step B: uses useAuth directly)
+  // Sync workspace and worker data from auth response
   useEffect(() => {
     if (!authData?.worker) return;
 
@@ -258,10 +270,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
       dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
     }
+
+    // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
+    const activeWsId = (authData as any).last_active_workspace_id ?? null;
+    if (activeWsId) {
+      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: activeWsId });
+    } else if (authData.worker.workspace_id) {
+      // Fallback: use primary workspace if no saved active board
+      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: authData.worker.workspace_id });
+    }
   }, [authData?.worker?.id, authData?.workspaces]);
 
   const loadBoardsData = useCallback(async () => {
-    // Step C: Timeout protection — abort after 10 seconds
+    // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -343,14 +364,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (err) {
       clearTimeout(timeoutId);
-      // Step C: Log errors clearly for debugging
       console.error('[DataContext] failed to load boards data:', err);
     }
   }, []);
 
-  // Subscribe to realtime task changes — uses authData directly (Step B)
+  /** Set the active workspace — persists to server and reloads flow data */
+  const setActiveWorkspace = useCallback(async (workspaceId: string) => {
+    // Optimistic update
+    dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
+
+    // Persist to server (migration 016: profiles.last_active_workspace_id)
+    try {
+      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
+      const telegramWebApp = globalWindow?.Telegram?.WebApp;
+      const initData = telegramWebApp?.initData || '';
+
+      await fetch('/api/workspaces/active-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: initData, workspace_id: workspaceId }),
+      });
+    } catch (err) {
+      console.error('[DataContext] Failed to save active workspace:', err);
+    }
+
+    // Reload boards data for the new workspace
+    await loadBoardsData();
+
+    // Reload flow metrics for the new workspace
+    try {
+      const { getFlowMetrics } = await import('@/lib/api/flow');
+      const { metrics, error: metricsError } = await getFlowMetrics(workspaceId);
+      if (metricsError) {
+        console.error('[DataContext] Failed to load flow metrics:', metricsError);
+        return;
+      }
+      dispatch({ type: 'SET_METRICS', payload: metrics });
+    } catch (err) {
+      console.error('[DataContext] Load metrics error:', err);
+    }
+  }, [loadBoardsData]);
+
+  // Subscribe to realtime task changes
   useEffect(() => {
-    const workspaceId = authData?.worker?.workspace_id;
+    const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
 
     const supabase = getClient();
@@ -387,64 +444,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [authData?.worker?.workspace_id]);
+  }, [state.activeWorkspaceId]);
 
-  // Load boards data when workspace_id is available from useAuth (Step B)
+  // Load boards data when active workspace is available
   useEffect(() => {
-    const workspaceId = authData?.worker?.workspace_id;
+    const workspaceId = state.activeWorkspaceId;
     if (workspaceId) {
       loadBoardsData();
     }
-  }, [authData?.worker?.workspace_id, loadBoardsData]);
+  }, [state.activeWorkspaceId, loadBoardsData]);
 
-  // Load last_active_board_id from workspace_settings when workspaces are available
-  const [lastActiveBoardId, setLastActiveBoardId] = useState<string | null>(null);
-
+  // Load flow metrics when active workspace changes
   useEffect(() => {
-    const wsId = authData?.worker?.workspace_id;
-    if (!wsId) return;
-
-    let cancelled = false;
-
-    async function loadLastActiveBoard() {
-      try {
-        const supabase = getClient();
-        const { data, error } = await supabase
-          .from('workspace_settings')
-          .select('last_active_board_id')
-          .eq('workspace_id', wsId)
-          .maybeSingle();
-
-        if (cancelled) return;
-        if (error) {
-          console.error('[DataContext] Failed to load last_active_board_id:', error);
-          return;
-        }
-
-        const boardId = (data as any)?.last_active_board_id ?? null;
-        setLastActiveBoardId(boardId);
-      } catch (err) {
-        if (!cancelled) console.error('[DataContext] Load last_active_board_id error:', err);
-      }
-    }
-
-    loadLastActiveBoard();
-    return () => { cancelled = true; };
-  }, [authData?.worker?.workspace_id]);
-
-  // Load flow metrics — use lastActiveBoardId if available, fallback to primary workspace
-  useEffect(() => {
-    const primaryWorkspaceId = authData?.worker?.workspace_id;
-    if (!primaryWorkspaceId) return;
+    const workspaceId = state.activeWorkspaceId;
+    if (!workspaceId) return;
 
     let cancelled = false;
 
     async function loadMetrics() {
       try {
         const { getFlowMetrics } = await import('@/lib/api/flow');
-        // Prefer lastActiveBoardId, fallback to primary workspace
-        const targetWorkspaceId = lastActiveBoardId || primaryWorkspaceId;
-        const { metrics, error: metricsError } = await getFlowMetrics(targetWorkspaceId);
+        const { metrics, error: metricsError } = await getFlowMetrics(workspaceId as string);
         if (cancelled) return;
         if (metricsError) {
           console.error('[DataContext] Failed to load flow metrics:', metricsError);
@@ -458,11 +478,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     loadMetrics();
     return () => { cancelled = true; };
-  }, [authData?.worker?.workspace_id, lastActiveBoardId]);
+  }, [state.activeWorkspaceId]);
 
-  // Load tasks when workspace is available
+  // Load tasks when active workspace is available
   useEffect(() => {
-    const workspaceId = authData?.worker?.workspace_id;
+    const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
 
     let cancelled = false;
@@ -494,10 +514,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     loadTasks();
     return () => { cancelled = true; };
-  }, [authData?.worker?.workspace_id]);
+  }, [state.activeWorkspaceId]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch, loadBoardsData, authData, isLoadingAuth }}>
+    <DataContext.Provider value={{ state, dispatch, loadBoardsData, setActiveWorkspace, authData, isLoadingAuth }}>
       {children}
     </DataContext.Provider>
   );

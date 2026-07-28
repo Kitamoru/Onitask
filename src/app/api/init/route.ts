@@ -31,6 +31,14 @@ interface WorkspaceInfo {
   role: string | null;
 }
 
+interface ProfileWithActiveBoard {
+  id: string;
+  telegram_id: number;
+  display_name: string;
+  avatar_url: string | null;
+  last_active_workspace_id: string | null;
+}
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 export async function POST(req: NextRequest) {
@@ -72,11 +80,13 @@ export async function POST(req: NextRequest) {
     // 2. Find profile by telegram_id (SEC-06: convert to number for bigint column)
     // Note: workers.source_id is text, profiles.id is uuid — no FK relationship exists.
     // We query profiles first, then fetch workers separately.
+    // last_active_workspace_id added in migration 016 (applied before deploy).
+    // Use as any to bypass type check until migration is applied locally.
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('id, telegram_id, display_name, avatar_url')
+      .select('id, telegram_id, display_name, avatar_url, last_active_workspace_id')
       .eq('telegram_id', Number(telegramUser.id))
-      .maybeSingle();
+      .maybeSingle() as { data: (ProfileWithActiveBoard & { last_active_workspace_id?: string | null }) | null; error: unknown };
 
     if (profileError) {
       console.error('init: profile query error', profileError);
@@ -86,10 +96,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3a. Profile exists — find their workers
+    // 3a. Profile exists — find their workers + last_active_workspace_id
     if (profileData) {
-      const profileId = profileData.id as string;
-      const displayName = profileData.display_name as string;
+      const profile = profileData as ProfileWithActiveBoard & { last_active_workspace_id?: string | null };
+      const profileId = profile.id;
+      const displayName = profile.display_name;
+      const lastActiveWorkspaceId = (profile as any).last_active_workspace_id ?? null;
 
       // Get all active workers for this profile (source_id matches profile id as text)
       const { data: workersData, error: workersError } = await supabase
@@ -136,6 +148,7 @@ export async function POST(req: NextRequest) {
         },
         workspaces,
         is_new_user: false,
+        last_active_workspace_id: lastActiveWorkspaceId,
       };
 
       return NextResponse.json({ success: true, data: response });
@@ -168,7 +181,8 @@ export async function POST(req: NextRequest) {
       `User_${telegramUser.id}`;
 
     // Create profile (SEC-06: convert string id to number for bigint column)
-    const { data: newProfileData, error: insertError } = await supabase
+    // Note: last_active_workspace_id defaults to NULL for new users
+    const { data: newProfileDataRaw, error: insertError } = await supabase
       .from('profiles')
       .insert({
         id: userId,
@@ -179,7 +193,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (insertError || !newProfileData) {
+    if (insertError || !newProfileDataRaw) {
       console.error('init: profile creation error', insertError);
       return NextResponse.json(
         { success: false, error: 'profile_creation_failed' },
@@ -187,13 +201,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newProfile = newProfileData as Record<string, unknown>;
+    const newProfileData = newProfileDataRaw as Record<string, unknown>;
 
     // Build response
     let workspaces: WorkspaceInfo[] = [];
     let workspaceId = '';
     let role: string | null = null;
-    let isNewUser = true;
+    let isNewUserFlag = true;
 
     // If there's a valid invite link, try to create worker
     if (invitedWorkspaceId) {
@@ -228,11 +242,11 @@ export async function POST(req: NextRequest) {
             task_prefix: '',
             role: 'member',
           }];
-          isNewUser = false;
+          isNewUserFlag = false;
         }
       } else {
         // Worker already exists (edge case)
-        isNewUser = false;
+        isNewUserFlag = false;
         workspaceId = (existingWorker as Record<string, unknown>).workspace_id as string;
         role = (existingWorker as Record<string, unknown>).role as string;
         workspaces = [{
@@ -253,7 +267,8 @@ export async function POST(req: NextRequest) {
         role,
       },
       workspaces,
-      is_new_user: isNewUser,
+      is_new_user: isNewUserFlag,
+      last_active_workspace_id: (newProfileData as any)?.last_active_workspace_id ?? null,
     };
 
     return NextResponse.json({ success: true, data: response });

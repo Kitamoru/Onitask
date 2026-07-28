@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
@@ -31,43 +31,25 @@ import type { RiskPulseData, BoardCardData } from "@/components/board";
  *
  * Telegram viewport safe areas via --tg-viewport-stable-height,
  * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
+ *
+ * Active workspace persistence:
+ *   - Loaded from profiles.last_active_workspace_id via /api/init → authData
+ *   - Stored in DataContext.activeWorkspaceId (single source of truth)
+ *   - On board selection: DataContext.setActiveWorkspace() persists to server + reloads flow data
  */
-
-// Key for storing the last active board in sessionStorage (not localStorage)
-const ACTIVE_BOARD_SESSION_KEY = 'onitask:last_active_board_session';
-
-/** Load saved active board from sessionStorage */
-function getSavedActiveBoard(): { id: string; slug: string } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const stored = sessionStorage.getItem(ACTIVE_BOARD_SESSION_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Save active board to sessionStorage */
-function saveActiveBoard(boardId: string, boardSlug: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(ACTIVE_BOARD_SESSION_KEY, JSON.stringify({ id: boardId, slug: boardSlug }));
-  } catch {
-    // sessionStorage full or unavailable — silently ignore
-  }
-}
 
 export default function BoardsPage() {
   useScrollReset();
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
-  const { state } = useData();
-  
-  // Initialize from localStorage if available
-  const savedBoard = getSavedActiveBoard();
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(
-    savedBoard?.id ?? null
-  );
+  const { state, setActiveWorkspace, loadBoardsData } = useData();
+
+  // Load boards data on mount (in case it wasn't loaded yet)
+  useEffect(() => {
+    if (!authLoading) {
+      loadBoardsData();
+    }
+  }, [authLoading, loadBoardsData]);
 
   const workspaces = state.workspaces.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {
@@ -117,12 +99,12 @@ export default function BoardsPage() {
     );
   }
 
-  // The first workspace is considered "active" by default.
-  // When user taps another card, selectedBoardId takes over.
+  // The active workspace from DataContext (single source of truth)
+  // null = first workspace is active by default
+  const activeWorkspaceId = state.activeWorkspaceId;
   const defaultActiveSlug = workspaces[0]?.slug || "";
-  // Show slug of selected board, or the default active one
-  const selectedBoard = selectedBoardId
-    ? boardCards.find(c => c.id === selectedBoardId)
+  const selectedBoard = activeWorkspaceId
+    ? boardCards.find(c => c.id === activeWorkspaceId)
     : null;
   const displaySlug = selectedBoard?.slug ?? defaultActiveSlug;
 
@@ -188,37 +170,15 @@ export default function BoardsPage() {
               <BoardCard
                 key={card.id}
                 data={card as BoardCardData}
-                isActive={selectedBoardId === null && card.slug === defaultActiveSlug}
-                isSelected={selectedBoardId === card.id}
-                onSelect={async (id) => {
-                  setSelectedBoardId(id);
-                  // Save to sessionStorage for immediate UI update
-                  saveActiveBoard(card.id, card.slug);
-                  // Persist to workspace_settings via API
-                  try {
-                    const initData = typeof window !== 'undefined' 
-                      ? (window as any).Telegram?.WebApp?.initData || ''
-                      : '';
-                    await fetch('/api/workspaces/active-board', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ 
-                        init_data: initData,
-                        workspace_id: card.id,
-                        board_id: card.id,
-                      }),
-                    });
-                  } catch (err) {
-                    console.error('Failed to save active board:', err);
-                  }
-                }}
+                isActive={activeWorkspaceId === null && card.slug === defaultActiveSlug}
+                isSelected={activeWorkspaceId === card.id}
+                onSelect={() => setActiveWorkspace(card.id)}
                 onClick={() => router.push(`/board/${card.slug}`)}
               />
             ))}
           </div>
 
           {/* "Добавить доску" button — button-sec-s, height=40 */}
-          {/* Same width as BoardCard — no px-4 to avoid extra inner padding */}
           <Button
             corner="action"
             variant="outline"

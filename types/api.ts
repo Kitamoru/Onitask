@@ -81,6 +81,8 @@ export interface InitResponse {
   worker: InitWorkerResponse;
   workspaces: WorkspacePreview[];
   is_new_user: boolean;
+  /** UUID of the user's most recently selected workspace/board (null = never selected) */
+  last_active_workspace_id: string | null;
 }
 
 export interface InitRequest {
