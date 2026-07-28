@@ -119,7 +119,7 @@ type Action =
   | { type: 'SET_TASKS'; payload: TaskEntity[] }
   | { type: 'PATCH_TASK'; payload: TaskEntity }
   | { type: 'REMOVE_TASK'; payload: string }
-  | { type: 'SET_METRICS'; payload: FlowMetrics }
+  | { type: 'SET_METRICS'; payload: FlowMetrics | null }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
@@ -431,6 +431,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Optimistic update
     dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
 
+    // Reset stale metrics immediately so FlowBoard shows loading state
+    dispatch({ type: 'SET_METRICS', payload: null });
+
     // Persist to server (migration 016: profiles.last_active_workspace_id)
     try {
       const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
@@ -505,8 +508,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
         boardsLoadedRef.current = true;
       }
-      // Always refresh from server in background
-      loadBoardsData();
     }
   }, [state.activeWorkspaceId]);
 
