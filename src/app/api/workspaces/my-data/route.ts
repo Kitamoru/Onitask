@@ -69,6 +69,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const initData = body.init_data as string | undefined;
+    // Optional workspace_id override — when provided, metrics are computed for this workspace
+    const requestedWorkspaceId = body.workspace_id as string | undefined;
 
     // Authenticate via Telegram initData
     const auth = await authenticateRequest(initData);
@@ -125,8 +127,9 @@ export async function POST(req: NextRequest) {
       tasks = taskData || [];
     }
 
-    // 4. Compute flow metrics (previously done in separate /api/flow/metrics call)
-    const metrics = await computeMetrics(workers, tasks, workspaceIds, supabase);
+    // 4. Compute flow metrics — use requestedWorkspaceId if provided, else fallback to first workspace
+    const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
+    const metrics = await computeMetrics(workers, tasks, metricsWorkspaceId, supabase);
 
     return NextResponse.json({
       success: true,
@@ -146,20 +149,18 @@ export async function POST(req: NextRequest) {
 async function computeMetrics(
   workers: WorkersRow[],
   tasks: TasksRow[],
-  workspaceIds: string[],
+  workspaceId: string | null,
   supabase: ReturnType<typeof createServerClient>,
 ): Promise<FlowMetricsResponse> {
-  // Sprint info (take first active/planning workspace)
-  const primaryWorkspaceId = workspaceIds[0] ?? null;
   let sprint: FlowMetricsResponse['sprint'] = null;
   let sprintEnabled = false;
 
-  if (primaryWorkspaceId) {
+  if (workspaceId) {
     // Get workspace settings for sprint_enabled
     const { data: settingsData } = await supabase
       .from('workspace_settings')
       .select('story_points_config')
-      .eq('workspace_id', primaryWorkspaceId)
+      .eq('workspace_id', workspaceId)
       .single();
     sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
 
@@ -167,7 +168,7 @@ async function computeMetrics(
     const { data: sprintData } = await supabase
       .from('sprints')
       .select('*')
-      .eq('workspace_id', primaryWorkspaceId)
+      .eq('workspace_id', workspaceId)
       .in('status', ['active', 'planning'])
       .order('created_at', { ascending: false })
       .limit(1);
@@ -192,9 +193,10 @@ async function computeMetrics(
     }
   }
 
-  // Column counts
+  // Column counts — filter tasks for this workspace if specified
+  const relevantTasks = workspaceId ? tasks.filter((t) => t.workspace_id === workspaceId) : tasks;
   const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
-  tasks.forEach((t) => {
+  relevantTasks.forEach((t) => {
     if (t.column in columnMap) {
       columnMap[t.column]++;
     }
@@ -212,9 +214,10 @@ async function computeMetrics(
     return { name, wip_current, wip_limit, health };
   });
 
-  // Worker load
+  // Worker load — filter workers for this workspace
+  const relevantWorkers = workspaceId ? workers.filter((w) => w.workspace_id === workspaceId) : workers;
   const overloadThreshold = 6;
-  const workersMetrics: FlowMetricsResponse['workers'] = workers.map((w) => {
+  const workersMetrics: FlowMetricsResponse['workers'] = relevantWorkers.map((w) => {
     const cognitive_load = w.type === 'human' ? Math.min(3, 1) : 0;
     return {
       display_name: w.display_name || w.id.slice(0, 8),

@@ -251,7 +251,7 @@ function dataReducer(state: DataStore, action: Action): DataStore {
 interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
-  loadBoardsData: () => Promise<void>;
+  loadBoardsData: (workspaceId?: string) => Promise<void>;
   /** Set the active workspace — persists to server and reloads flow data */
   setActiveWorkspace: (workspaceId: string) => Promise<void>;
   /** Whether auth data is available from useAuth */
@@ -315,7 +315,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authData?.worker?.id, authData?.workspaces]);
 
-  const loadBoardsData = useCallback(async () => {
+  const loadBoardsData = useCallback(async (workspaceId?: string) => {
     // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -328,7 +328,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/workspaces/my-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: initData }),
+        body: JSON.stringify({ 
+          init_data: initData,
+          ...(workspaceId && { workspace_id: workspaceId }),
+        }),
         signal: controller.signal,
       });
 
@@ -450,7 +453,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Reload ALL data (boards + tasks + metrics) from consolidated endpoint
-    await loadBoardsData();
+    await loadBoardsData(workspaceId);
   }, [loadBoardsData]);
 
   // Subscribe to realtime task changes
@@ -509,7 +512,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         boardsLoadedRef.current = true;
       }
       // Always refresh from server in background
-      loadBoardsData();
+      loadBoardsData(workspaceId);
     }
   }, [state.activeWorkspaceId]);
 
