@@ -508,6 +508,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
         boardsLoadedRef.current = true;
       }
+      // Always refresh from server in background
+      loadBoardsData();
     }
   }, [state.activeWorkspaceId]);
 
