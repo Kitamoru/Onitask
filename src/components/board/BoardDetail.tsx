@@ -33,8 +33,10 @@ export interface BoardDetailProps {
   documents: DocumentData[];
   boardSettings?: {
     spCostEnabled: boolean;
+    spSprintEnabled?: boolean;
     cognitiveWeightEnabled: boolean;
     context: string;
+    documentsEnabled?: boolean;
   };
   loading?: boolean;
 }
@@ -55,6 +57,8 @@ export function BoardDetail({
   boardName,
   slug,
   colleagues,
+  externalLinks,
+  documents,
   boardSettings,
   loading = false,
 }: BoardDetailProps) {
@@ -69,6 +73,10 @@ export function BoardDetail({
   }
 
   const context = boardSettings?.context ?? '';
+  const spCostEnabled = boardSettings?.spCostEnabled ?? false;
+  const spSprintEnabled = boardSettings?.spSprintEnabled ?? false;
+  const cognitiveWeightEnabled = boardSettings?.cognitiveWeightEnabled ?? false;
+  const documentsEnabled = boardSettings?.documentsEnabled ?? false;
 
   return (
     <div className="flex flex-col gap-6 px-4">
@@ -90,6 +98,10 @@ export function BoardDetail({
               value={context.length > 50 ? context.slice(0, 50) + '…' : context}
             />
           )}
+          <InfoRow label="Story points" value={spCostEnabled ? 'Вкл' : 'Выкл'} />
+          <InfoRow label="Спринты" value={spSprintEnabled ? 'Вкл' : 'Выкл'} />
+          <InfoRow label="Когнитивный вес" value={cognitiveWeightEnabled ? 'Вкл' : 'Выкл'} />
+          <InfoRow label="Документы" value={documentsEnabled ? 'Вкл' : 'Выкл'} />
         </div>
       </section>
 
@@ -100,6 +112,46 @@ export function BoardDetail({
           <div className="flex flex-col gap-3">
             {colleagues.map((colleague) => (
               <PersonCard key={colleague.id} person={colleague} type="worker" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* External links section */}
+      {externalLinks.length > 0 && (
+        <section>
+          <SectionHeader title="Внешние ссылки" />
+          <div className="flex flex-col gap-3">
+            {externalLinks.map((link) => (
+              <a
+                key={link.id}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-[10px] px-4 py-3"
+                style={{ backgroundColor: 'var(--color-surface)' }}
+              >
+                <span className="text-[15px] font-medium text-text">{link.label}</span>
+                <span className="mt-1 block text-[13px] text-text-muted break-all">{link.url}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Documents section */}
+      {documents.length > 0 && (
+        <section>
+          <SectionHeader title="Документы" />
+          <div className="flex flex-col gap-3">
+            {documents.map((doc) => (
+              <div
+                key={doc.id}
+                className="rounded-[10px] px-4 py-3"
+                style={{ backgroundColor: 'var(--color-surface)' }}
+              >
+                <span className="text-[15px] font-medium text-text">{doc.filename}</span>
+              </div>
             ))}
           </div>
         </section>

@@ -67,8 +67,8 @@ export default function CreateBoardPage() {
         slug: value.slug.toLowerCase().replace(/[^a-z0-9_-]/g, ''),
 
         story_points_config: value.spCostEnabled
-          ? { enabled: true, values: spValues, hours_per_sp: value.spHours }
-          : { enabled: false },
+          ? { enabled: true, values: spValues, hours_per_sp: value.spHours, sprint_enabled: value.spSprintEnabled }
+          : { enabled: false, sprint_enabled: value.spSprintEnabled },
 
         enable_cognitive_budget: value.cognitiveWeightEnabled,
 

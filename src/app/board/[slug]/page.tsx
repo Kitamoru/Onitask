@@ -40,6 +40,8 @@ export default function BoardDetailPage() {
   const [workspace, setWorkspace] = useState<any>(null);
   const [workers, setWorkers] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+  const [links, setLinks] = useState<any[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -91,6 +93,25 @@ export default function BoardDetailPage() {
         // Get tasks for this workspace
         const wsTasks = (tasksData ?? []).filter((t: any) => t.workspace_id === ws.id);
         setTasks(wsTasks ?? []);
+
+        // Load workspace settings + links via dedicated endpoint
+        try {
+          const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ init_data: getTelegramInitData() }),
+          });
+
+          if (settingsRes.ok) {
+            const settingsJson = await settingsRes.json();
+            if (settingsJson.success) {
+              setSettings(settingsJson.data?.workspace_settings ?? null);
+              setLinks(settingsJson.data?.workspace_links ?? []);
+            }
+          }
+        } catch (settingsErr) {
+          console.error('Board detail: settings load error', settingsErr);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
@@ -162,17 +183,24 @@ export default function BoardDetailPage() {
     tasks: [],
   }));
 
-  // Build external links placeholder
-  const externalLinks: ExternalLinkData[] = [];
+  // Build external links from loaded settings data
+  const externalLinks: ExternalLinkData[] = links.map((link: any) => ({
+    id: link.id,
+    label: link.name || link.label || '',
+    url: link.url || '',
+  }));
 
-  // Build documents placeholder
+  // Build documents placeholder (doc storage not yet implemented)
   const boardDocuments: DocumentData[] = [];
 
-  // Build board settings for display
+  // Build board settings from loaded workspace_settings
+  const spConfig = settings?.story_points_config || {};
   const boardSettings = {
-    spCostEnabled: workspace.story_points_config?.enabled || false,
-    cognitiveWeightEnabled: workspace.enable_cognitive_budget || false,
-    context: workspace.workspace_context || '',
+    spCostEnabled: spConfig.enabled || false,
+    spSprintEnabled: spConfig.sprint_enabled || false,
+    cognitiveWeightEnabled: settings?.enable_cognitive_budget || false,
+    context: settings?.workspace_context || '',
+    documentsEnabled: settings?.doc_kb_config?.enabled ?? false,
   };
 
   return (
