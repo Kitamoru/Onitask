@@ -33,6 +33,7 @@ export default function BoardEditPage() {
     slug: string;
     spCostEnabled: boolean;
     spSprintEnabled: boolean;
+    spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
     cognitiveWeightEnabled: boolean;
     context: string;
     documentsEnabled: boolean;
@@ -114,9 +115,10 @@ export default function BoardEditPage() {
           slug: ws.slug || '',
           spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
           spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
+          spHours: (settingsData?.story_points_config?.hours_per_sp) as { 1: string; 3: string; 5: string; 7: string; 13: string } | undefined,
           cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
           context: settingsData?.workspace_context || '',
-          documentsEnabled: false,
+          documentsEnabled: settingsData?.doc_kb_config?.enabled ?? false,
           linksEnabled: linksData.length > 0,
           links: linksData.map((link: any) => ({
             label: link.name || link.label || '',

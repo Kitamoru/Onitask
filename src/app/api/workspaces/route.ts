@@ -38,7 +38,9 @@ export async function PUT(req: NextRequest) {
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
-    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean; hours_per_sp?: Record<string, string> } | undefined;
+    const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
+    const doc_kb_enabled = body.doc_kb_enabled as boolean | undefined;
 
     if (!init_data) {
       return NextResponse.json(
@@ -190,11 +192,16 @@ export async function PUT(req: NextRequest) {
     }
 
     // 4c. Update workspace_settings.deadline_signals if provided
+    //     Always include `level` field (amber/red) per migration 007 spec
     if (deadline_signals && deadline_signals.length > 0) {
       await ensureSettings();
+      const signalsWithLevel = deadline_signals.map((s, idx) => ({
+        ...s,
+        level: (s as any).level || (idx === 0 ? 'amber' : 'red'),
+      }));
       const { error: signalsError } = await anySupabase
         .from('workspace_settings')
-        .update({ deadline_signals })
+        .update({ deadline_signals: signalsWithLevel })
         .eq('workspace_id', workspace_id);
       if (signalsError) console.error('workspaces: deadline_signals update error', signalsError);
     }
@@ -236,7 +243,7 @@ export async function PUT(req: NextRequest) {
         .maybeSingle();
 
       if (existingSettings) {
-        // Merge with existing story_points_config
+        // Merge with existing story_points_config (preserves hours_per_sp etc.)
         const existingConfig = (existingSettings as any).story_points_config || {};
         const mergedConfig = { ...existingConfig, ...story_points_config };
         
@@ -258,6 +265,36 @@ export async function PUT(req: NextRequest) {
           console.error('workspaces: story_points_config update error', settingsError);
         }
       }
+    }
+
+    // 5b. Update workspace_settings.enable_cognitive_budget if provided
+    if (enable_cognitive_budget !== undefined) {
+      await ensureSettings();
+      const { error: cogError } = await anySupabase
+        .from('workspace_settings')
+        .update({ enable_cognitive_budget })
+        .eq('workspace_id', workspace_id);
+      if (cogError) console.error('workspaces: enable_cognitive_budget update error', cogError);
+    }
+
+    // 5c. Update workspace_settings.doc_kb_config.enabled if provided
+    if (doc_kb_enabled !== undefined) {
+      await ensureSettings();
+      // Merge with existing doc_kb_config to preserve other fields (max_files, etc.)
+      const { data: existingSettings } = await anySupabase
+        .from('workspace_settings')
+        .select('doc_kb_config')
+        .eq('workspace_id', workspace_id)
+        .maybeSingle();
+
+      const existingDocConfig = (existingSettings as any)?.doc_kb_config || {};
+      const mergedDocConfig = { ...existingDocConfig, enabled: doc_kb_enabled };
+
+      const { error: docError } = await anySupabase
+        .from('workspace_settings')
+        .update({ doc_kb_config: mergedDocConfig })
+        .eq('workspace_id', workspace_id);
+      if (docError) console.error('workspaces: doc_kb_config update error', docError);
     }
 
     return NextResponse.json({
@@ -295,11 +332,12 @@ export async function POST(req: NextRequest) {
     const init_data = body.init_data as string | undefined;
     const name = body.name as string | undefined;
     const slug = body.slug as string | undefined;
-    const story_points_config = body.story_points_config as { enabled?: boolean; values?: number[]; sprint_enabled?: boolean } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; values?: number[]; sprint_enabled?: boolean; hours_per_sp?: Record<string, string> } | undefined;
     const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
+    const doc_kb_enabled = body.doc_kb_enabled as boolean | undefined;
 
     if (!init_data) {
       return NextResponse.json(
@@ -443,11 +481,12 @@ export async function POST(req: NextRequest) {
           enabled: spConfig.enabled ?? false,
           sprint_enabled: spConfig.sprint_enabled ?? false,
           values: spConfig.values,
+          hours_per_sp: spConfig.hours_per_sp,
         },
         enable_cognitive_budget: enable_cognitive_budget ?? false,
         workspace_context: workspace_context ?? null,
         deadline_signals: deadline_signals && deadline_signals.length > 0
-          ? deadline_signals.map((s) => ({ ...s, level: (s as any).level || 'amber' }))
+          ? deadline_signals.map((s, idx) => ({ ...s, level: (s as any).level || (idx === 0 ? 'amber' : 'red') }))
           : defaultDeadlineSignals,
         velocity_window_days: 14,
         flow_config: {},
@@ -456,7 +495,7 @@ export async function POST(req: NextRequest) {
         mcp_api_keys: {},
         quota_config: { agent_reserved_pct: 60, human_min_pct: 40 },
         standup_config: { enabled: false, time_utc: '07:00', chat_id: null },
-        doc_kb_config: { enabled: true, max_file_bytes: 524288, max_total_bytes: 5242880, max_files: 20 },
+        doc_kb_config: { enabled: doc_kb_enabled ?? true, max_file_bytes: 524288, max_total_bytes: 5242880, max_files: 20 },
         f04_config: {
           skip_min_clarity: 0.85,
           skip_max_complexity: 1,

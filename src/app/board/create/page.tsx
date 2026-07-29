@@ -67,7 +67,7 @@ export default function CreateBoardPage() {
         slug: value.slug.toLowerCase().replace(/[^a-z0-9_-]/g, ''),
 
         story_points_config: value.spCostEnabled
-          ? { enabled: true, values: spValues }
+          ? { enabled: true, values: spValues, hours_per_sp: value.spHours }
           : { enabled: false },
 
         enable_cognitive_budget: value.cognitiveWeightEnabled,
@@ -87,6 +87,8 @@ export default function CreateBoardPage() {
               { value: value.urgentDays, label: `${value.urgentDays} ${labelDays(value.urgentDays)}` },
             ]
           : undefined,
+
+        doc_kb_enabled: value.documentsEnabled,
       };
 
       const res = await fetch('/api/workspaces', {

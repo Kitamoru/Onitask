@@ -10,7 +10,6 @@ import type {
   AgentCardData,
   TaskEntity,
 } from '@/types/flowboard';
-import { getFlowMetrics } from '@/lib/api/flow';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
@@ -29,7 +28,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 export default function FlowBoardPage() {
   useScrollReset();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useTelegramAuth();
-  const { state, dispatch } = useData();
+  const { state, loadBoardsData } = useData();
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -121,17 +120,13 @@ export default function FlowBoardPage() {
   }, [metrics, tasks]);
 
   const refreshMetrics = useCallback(async () => {
+    if (!state.activeWorkspaceId) return;
     try {
-      const { metrics, error: metricsError } = await getFlowMetrics();
-      if (metricsError) {
-        console.error('Failed to refresh metrics:', metricsError);
-        return;
-      }
-      dispatch({ type: 'SET_METRICS', payload: metrics });
+      await loadBoardsData(state.activeWorkspaceId);
     } catch (err) {
       console.error('Refresh metrics error:', err);
     }
-  }, [dispatch]);
+  }, [loadBoardsData, state.activeWorkspaceId]);
 
   // Refresh metrics periodically
   React.useEffect(() => {

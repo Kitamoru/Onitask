@@ -112,7 +112,9 @@ export function EditDeskForm({
           story_points_config: {
             enabled: spCostEnabled,
             sprint_enabled: spSprintEnabled,
+            hours_per_sp: spHours,
           },
+          doc_kb_enabled: documentsEnabled,
         }),
       });
 
