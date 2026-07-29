@@ -214,20 +214,28 @@ export async function PUT(req: NextRequest) {
         .delete()
         .eq('workspace_id', workspace_id);
 
-      // Insert new links
+      // Insert new links — support both { name, url } and { label, url } shapes
       if (external_links.length > 0) {
-        const linksToInsert = external_links.map((link) => ({
-          workspace_id,
-          name: link.name,
-          url: link.url,
-        }));
+        const linksToInsert = external_links
+          .map((link) => ({
+            workspace_id,
+            name: (link as any).name || (link as any).label || '',
+            url: link.url,
+          }))
+          .filter((link) => link.name && link.url);
 
-        const { error: linksError } = await anySupabase
-          .from('workspace_links')
-          .insert(linksToInsert);
+        if (linksToInsert.length > 0) {
+          const { error: linksError } = await anySupabase
+            .from('workspace_links')
+            .insert(linksToInsert);
 
-        if (linksError) {
-          console.error('workspaces: external_links insert error', linksError);
+          if (linksError) {
+            console.error('workspaces: external_links insert error', linksError);
+            return NextResponse.json(
+              { success: false, error: 'links_save_failed', details: linksError.message },
+              { status: 400 },
+            );
+          }
         }
       }
     }
