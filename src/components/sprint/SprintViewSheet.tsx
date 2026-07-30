@@ -15,16 +15,21 @@ export function SprintViewSheet({
   sprint,
   stats,
   isActive,
+  status,
   onEdit,
   onComplete,
+  onActivate,
 }: {
   open: boolean;
   onClose: () => void;
   sprint: Omit<SprintFormValue, 'capacity'>;
   stats: SprintStats;
   isActive: boolean;
+  /** Sprint status: 'planning' | 'active' | 'completed' */
+  status?: string;
   onEdit: () => void;
   onComplete: () => void;
+  onActivate?: () => void;
 }) {
   const progressPercent =
     stats.totalTasks > 0
@@ -48,9 +53,14 @@ export function SprintViewSheet({
               {sprint.name}
             </h2>
           </div>
-          {isActive && (
+          {status === 'active' && (
             <span className="rounded-[10px] border border-line bg-success/15 px-3 py-1.5 text-[13px] text-success">
               Активный
+            </span>
+          )}
+          {status === 'planning' && (
+            <span className="rounded-[10px] border border-line bg-amber/15 px-3 py-1.5 text-[13px] text-amber">
+              Запланирован
             </span>
           )}
         </div>
@@ -111,17 +121,34 @@ export function SprintViewSheet({
         </div>
 
         <div className="flex flex-col gap-3 border-t border-line pt-4">
-          <Button variant="solid" onClick={onComplete}>
-            Завершить спринт
-          </Button>
-          <Button variant="outline" onClick={onEdit}>
-            Редактировать спринт
-          </Button>
-          <p className="text-center text-[12px] leading-[1.5] text-text-faint">
-            Завершение архивирует текущий спринт
-            <br />
-            Спринт можно отредактировать в любой момент
-          </p>
+          {status === 'planning' && onActivate && (
+            <>
+              <Button variant="solid" onClick={onActivate}>
+                Активировать спринт
+              </Button>
+              <Button variant="outline" onClick={onEdit}>
+                Редактировать спринт
+              </Button>
+              <p className="text-center text-[12px] leading-[1.5] text-text-faint">
+                После активации спринт можно будет завершить или отредактировать
+              </p>
+            </>
+          )}
+          {status === 'active' && (
+            <>
+              <Button variant="solid" onClick={onComplete}>
+                Удалить спринт
+              </Button>
+              <Button variant="outline" onClick={onEdit}>
+                Редактировать спринт
+              </Button>
+              <p className="text-center text-[12px] leading-[1.5] text-text-faint">
+                Удаление удалит спринт безвозвратно
+                <br />
+                Спринт можно отредактировать в любой момент
+              </p>
+            </>
+          )}
         </div>
       </div>
     </BottomSheet>

@@ -43,6 +43,8 @@ export interface SprintInfo {
   inProgress: number;
   onReview: number;
   isActive: boolean;
+  /** Sprint status: 'planning' | 'active' | 'completed' */
+  status?: string;
 }
 
 export interface SignalData {
@@ -567,6 +569,7 @@ export function FlowBoard({
   const [createOpen, setCreateOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSprintClick = useCallback(() => {
     if (sprint) {
@@ -586,6 +589,8 @@ export function FlowBoard({
 
   const handleCreateSubmit = useCallback(
     async (value: SprintFormValue) => {
+      if (isSubmitting) return; // Prevent double submission
+      setIsSubmitting(true);
       try {
         const res = await fetch('/api/sprints', {
           method: 'POST',
@@ -605,9 +610,11 @@ export function FlowBoard({
       } catch (err) {
         console.error('Failed to create sprint:', err);
         alert(err instanceof Error ? err.message : 'Не удалось создать спринт');
+      } finally {
+        setIsSubmitting(false);
       }
     },
-    [onRefresh, authBody],
+    [onRefresh, authBody, isSubmitting],
   );
 
   const handleEditSubmit = useCallback(
@@ -636,9 +643,27 @@ export function FlowBoard({
     [sprint, onRefresh, authBody],
   );
 
+  const handleActivate = useCallback(async () => {
+    if (!sprint) return;
+    try {
+      const res = await fetch(`/api/sprints/${sprint.id}/activate`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: authBody({}),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      await onRefresh?.();
+      setViewOpen(false);
+    } catch (err) {
+      console.error('Failed to activate sprint:', err);
+      alert(err instanceof Error ? err.message : 'Не удалось активировать спринт');
+    }
+  }, [sprint, onRefresh, authBody]);
+
   const handleComplete = useCallback(async () => {
     if (!sprint) return;
-    if (!confirm('Завершить текущий спринт? Текущий спринт будет архивирован.')) return;
+    if (!confirm('Удалить спринт? Это действие нельзя отменить.')) return;
     try {
       const res = await fetch(`/api/sprints/${sprint.id}`, {
         method: 'DELETE',
@@ -650,8 +675,8 @@ export function FlowBoard({
       await onRefresh?.();
       setViewOpen(false);
     } catch (err) {
-      console.error('Failed to complete sprint:', err);
-      alert(err instanceof Error ? err.message : 'Не удалось завершить спринт');
+      console.error('Failed to delete sprint:', err);
+      alert(err instanceof Error ? err.message : 'Не удалось удалить спринт');
     }
   }, [sprint, onRefresh, authBody]);
 
@@ -865,11 +890,13 @@ export function FlowBoard({
                 sprint={sprintFormData}
                 stats={stats}
                 isActive={sprint.isActive}
+                status={sprint.status}
                 onEdit={() => {
                   setViewOpen(false);
                   setEditOpen(true);
                 }}
                 onComplete={handleComplete}
+                onActivate={handleActivate}
               />
 
               <SprintEditSheet

@@ -1,12 +1,16 @@
 'use server';
 
 /**
- * Sprint API — Update and Complete endpoints.
+ * Sprint API — Update, Activate, and Delete endpoints.
  *
- * PATCH  /api/sprints/:id   — update sprint (name, dates, goal, status)
- * DELETE /api/sprints/:id   — complete sprint (set status to 'completed')
+ * PATCH  /api/sprints/:id          — update sprint (name, dates, goal, status)
+ * PATCH  /api/sprints/:id/activate — transition planning → active
+ * DELETE /api/sprints/:id          — physically remove sprint from DB
  *
  * Uses Telegram initData auth (same pattern as /api/tasks).
+ *
+ * Sprint lifecycle:
+ *   [created] → planning → [activate] → active → [complete/delete] → removed
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,6 +51,7 @@ async function getAuthenticatedWorker(req: NextRequest) {
 }
 
 // ─── PATCH /api/sprints/:id — Update sprint ──────────────────────────────────
+// Note: PATCH /:id/activate is handled by src/app/api/sprints/[id]/activate/route.ts
 
 export async function PATCH(
   request: NextRequest,
@@ -120,7 +125,7 @@ export async function PATCH(
   }
 }
 
-// ─── DELETE /api/sprints/:id — Complete sprint ───────────────────────────────
+// ─── DELETE /api/sprints/:id — Physically remove sprint ──────────────────────
 
 export async function DELETE(
   request: NextRequest,
@@ -135,27 +140,18 @@ export async function DELETE(
 
     const supabase = createServerClient();
 
-    // Set sprint status to 'completed'
-    const { data: sprint, error } = await supabase
+    // Physically delete the sprint row
+    const { error } = await supabase
       .from('sprints')
-      .update({ status: 'completed' })
+      .delete()
       .eq('id', sprintId)
-      .eq('workspace_id', worker.workspace_id)
-      .select()
-      .single();
+      .eq('workspace_id', worker.workspace_id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    if (!sprint) {
-      return NextResponse.json(
-        { error: 'Спринт не найден' },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.json({ sprint });
+    return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
