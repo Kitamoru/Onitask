@@ -50,9 +50,10 @@ async function getAuthenticatedWorker(req: NextRequest) {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id: sprintId } = await params;
     const worker = await getAuthenticatedWorker(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
@@ -74,7 +75,7 @@ export async function PATCH(
     const { data: sprint, error: sprintError } = await supabase
       .from('sprints')
       .update(updatePayload)
-      .eq('id', params.id)
+      .eq('id', sprintId)
       .eq('workspace_id', worker.workspace_id)
       .select()
       .single();
@@ -96,7 +97,7 @@ export async function PATCH(
       await supabase
         .from('tasks')
         .update({ sprint_id: null })
-        .eq('sprint_id', params.id)
+        .eq('sprint_id', sprintId)
         .eq('workspace_id', worker.workspace_id)
         .not('id', 'in', `(${task_ids.join(',')})`);
 
@@ -104,7 +105,7 @@ export async function PATCH(
       if (task_ids.length > 0) {
         await supabase
           .from('tasks')
-          .update({ sprint_id: params.id })
+          .update({ sprint_id: sprintId })
           .in('id', task_ids)
           .eq('workspace_id', worker.workspace_id);
       }
@@ -123,9 +124,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id: sprintId } = await params;
     const worker = await getAuthenticatedWorker(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
@@ -137,7 +139,7 @@ export async function DELETE(
     const { data: sprint, error } = await supabase
       .from('sprints')
       .update({ status: 'completed' })
-      .eq('id', params.id)
+      .eq('id', sprintId)
       .eq('workspace_id', worker.workspace_id)
       .select()
       .single();
