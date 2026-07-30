@@ -8,9 +8,4 @@ export { BoardCard } from './BoardCard';
 export type { BoardCardProps, BoardCardData, BoardStats, SprintInfo } from './BoardCard';
 
 export { BoardDetail } from './BoardDetail';
-export type {
-  BoardDetailProps,
-  WorkerCardData,
-  ExternalLinkData,
-  DocumentData,
-} from './BoardDetail';
+export type { BoardDetailProps } from './BoardDetail';

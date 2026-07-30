@@ -4,62 +4,54 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { SectionHeader } from '@/components/ui/desk-ui/SectionHeader';
 import { Button } from '@/components/ui/desk-ui/Button';
-import { PersonCard } from '@/components/flowboard';
-import type { WorkerCardData as FlowWorkerCardData } from '@/components/flowboard';
+import { BasicInfoSection } from '@/components/desk-create/BasicInfoSection';
+import { SprintActivationCard } from '@/components/desk-create/SprintActivationCard';
+import { StoryPointCostCard } from '@/components/desk-create/StoryPointCostCard';
+import { CognitiveWeightCard } from '@/components/desk-create/CognitiveWeightCard';
+import { CoworkingSection } from '@/components/desk-create/CoworkingSection';
+import { ContextSection } from '@/components/desk-create/ContextSection';
+import { DocumentsCard } from '@/components/desk-create/DocumentsCard';
+import {
+  ExternalLinksCard,
+  type ExternalLink,
+} from '@/components/desk-create/ExternalLinksCard';
+import { TrafficLightCard } from '@/components/desk-create/TrafficLightCard';
 
-/**
- * Extend FlowBoard's WorkerCardData for BoardDetail usage.
- * We reuse the same fields — `activeDays` maps from `activeTasks`.
- */
-export type WorkerCardData = FlowWorkerCardData;
-
-export interface ExternalLinkData {
-  id: string;
-  label: string;
-  url: string;
-}
-
-export interface DocumentData {
-  id: string;
-  filename: string;
-  fileType: 'markdown' | 'text';
-}
+const DEFAULT_SP_HOURS = { 1: '1 час', 3: '1 час', 5: '1 час', 7: '1 час', 13: '1 час' };
 
 export interface BoardDetailProps {
   boardName: string;
   slug: string;
-  colleagues: WorkerCardData[];
-  externalLinks: ExternalLinkData[];
-  documents: DocumentData[];
-  boardSettings?: {
-    spCostEnabled: boolean;
-    spSprintEnabled?: boolean;
-    cognitiveWeightEnabled: boolean;
-    context: string;
-    documentsEnabled?: boolean;
-  };
+  spCostEnabled: boolean;
+  spHours?: typeof DEFAULT_SP_HOURS;
+  spSprintEnabled: boolean;
+  cognitiveWeightEnabled: boolean;
+  colleagueCount: number;
+  context: string;
+  documentsEnabled: boolean;
+  linksEnabled: boolean;
+  links: ExternalLink[];
+  trafficLightEnabled: boolean;
+  warningDays: number;
+  urgentDays: number;
   loading?: boolean;
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      className="flex items-center justify-between rounded-[10px] px-4 py-3"
-      style={{ backgroundColor: 'var(--color-surface)' }}
-    >
-      <span className="text-[15px] text-text-muted">{label}</span>
-      <span className="text-[15px] text-text">{value}</span>
-    </div>
-  );
 }
 
 export function BoardDetail({
   boardName,
   slug,
-  colleagues,
-  externalLinks,
-  documents,
-  boardSettings,
+  spCostEnabled,
+  spHours = DEFAULT_SP_HOURS,
+  spSprintEnabled,
+  cognitiveWeightEnabled,
+  colleagueCount,
+  context,
+  documentsEnabled,
+  linksEnabled,
+  links,
+  trafficLightEnabled,
+  warningDays,
+  urgentDays,
   loading = false,
 }: BoardDetailProps) {
   const router = useRouter();
@@ -72,102 +64,101 @@ export function BoardDetail({
     );
   }
 
-  const context = boardSettings?.context ?? '';
-  const spCostEnabled = boardSettings?.spCostEnabled ?? false;
-  const spSprintEnabled = boardSettings?.spSprintEnabled ?? false;
-  const cognitiveWeightEnabled = boardSettings?.cognitiveWeightEnabled ?? false;
-  const documentsEnabled = boardSettings?.documentsEnabled ?? false;
-
   return (
-    <div className="flex flex-col gap-6 px-4">
-      {/* Header — board name */}
-      <div className="pt-1">
-        <h1 className="text-[21px] font-medium leading-tight tracking-tight text-text">
-          {boardName}
-        </h1>
+    <div className="flex flex-col">
+      {/* Scrollable body — same layout as EditDeskForm, all fields disabled */}
+      <div
+        className="flex flex-col gap-6 px-4"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <BasicInfoSection
+          name={boardName}
+          onNameChange={() => {}}
+          slug={slug}
+          onSlugChange={() => {}}
+          disabled
+        />
+
+        <section>
+          <SectionHeader title="Функциональное" />
+          <div className="flex flex-col gap-4">
+            <SprintActivationCard
+              enabled={spSprintEnabled}
+              onEnabledChange={() => {}}
+              disabled
+            />
+            {spSprintEnabled && (
+              <StoryPointCostCard
+                enabled={spCostEnabled}
+                onEnabledChange={() => {}}
+                hoursBySp={spHours}
+                onHoursChange={() => {}}
+                disabled
+              />
+            )}
+            <CognitiveWeightCard
+              enabled={cognitiveWeightEnabled}
+              onEnabledChange={() => {}}
+              disabled
+            />
+          </div>
+        </section>
+
+        <CoworkingSection
+          colleagueCount={colleagueCount}
+          onAddColleague={() => {}}
+          disabled
+        />
+
+        <ContextSection value={context} onChange={() => {}} disabled />
+
+        <section>
+          <SectionHeader title="Дополнительные материалы" />
+          <div className="flex flex-col gap-4">
+            <DocumentsCard
+              enabled={documentsEnabled}
+              onEnabledChange={() => {}}
+              files={[]}
+              onFilesChange={() => {}}
+              disabled
+            />
+            <ExternalLinksCard
+              enabled={linksEnabled}
+              onEnabledChange={() => {}}
+              links={links}
+              onLinksChange={() => {}}
+              disabled
+            />
+          </div>
+        </section>
+
+        <section>
+          <SectionHeader title="Модификации" />
+          <TrafficLightCard
+            enabled={trafficLightEnabled}
+            onEnabledChange={() => {}}
+            warningDays={warningDays}
+            onUrgentDaysChange={() => {}}
+            urgentDays={urgentDays}
+            onWarningDaysChange={() => {}}
+            disabled
+          />
+        </section>
       </div>
 
-      {/* Basic info — read-only */}
-      <section>
-        <SectionHeader title="Основное" />
-        <div className="flex flex-col gap-3">
-          <InfoRow label="ID доски" value={`@${slug}`} />
-          {context && (
-            <InfoRow
-              label="Контекст"
-              value={context.length > 50 ? context.slice(0, 50) + '…' : context}
-            />
-          )}
-          <InfoRow label="Story points" value={spCostEnabled ? 'Вкл' : 'Выкл'} />
-          <InfoRow label="Спринты" value={spSprintEnabled ? 'Вкл' : 'Выкл'} />
-          <InfoRow label="Когнитивный вес" value={cognitiveWeightEnabled ? 'Вкл' : 'Выкл'} />
-          <InfoRow label="Документы" value={documentsEnabled ? 'Вкл' : 'Выкл'} />
-        </div>
-      </section>
-
-      {/* Colleagues section */}
-      {colleagues.length > 0 && (
-        <section>
-          <SectionHeader title="Участники" />
-          <div className="flex flex-col gap-3">
-            {colleagues.map((colleague) => (
-              <PersonCard key={colleague.id} person={colleague} type="worker" />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* External links section */}
-      {externalLinks.length > 0 && (
-        <section>
-          <SectionHeader title="Внешние ссылки" />
-          <div className="flex flex-col gap-3">
-            {externalLinks.map((link) => (
-              <a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block rounded-[10px] px-4 py-3"
-                style={{ backgroundColor: 'var(--color-surface)' }}
-              >
-                <span className="text-[15px] font-medium text-text">{link.label}</span>
-                <span className="mt-1 block text-[13px] text-text-muted break-all">{link.url}</span>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Documents section */}
-      {documents.length > 0 && (
-        <section>
-          <SectionHeader title="Документы" />
-          <div className="flex flex-col gap-3">
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="rounded-[10px] px-4 py-3"
-                style={{ backgroundColor: 'var(--color-surface)' }}
-              >
-                <span className="text-[15px] font-medium text-text">{doc.filename}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* Edit button — full width */}
-      <Button
-        variant="solid"
-        onClick={() => router.push(`/board/${slug}/edit`)}
-        className="w-full"
+      <div
+        className="px-4 pt-2 lg:hidden"
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        Редактировать
-      </Button>
-
-      {/* Bottom filler */}
-      <div style={{ height: '80px' }} aria-hidden="true" />
+        <Button
+          variant="solid"
+          onClick={() => router.push(`/board/${slug}/edit`)}
+          className="w-full"
+        >
+          Редактировать
+        </Button>
+      </div>
     </div>
   );
 }

@@ -4,21 +4,18 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
+import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 }
-import type { ExternalLinkData, DocumentData, WorkerCardData } from '@/components/board';
 
 /**
  * Board Detail Page — displays the content of a single board/workspace.
- * 
+ *
  * Route: /board/[slug]
- * Matches Figma node: 1:836 (desk / [desk_UUID] / edit)
- * 
- * Now uses /api/workspaces/my-data (server-side, service_role key) 
- * instead of direct Supabase client queries.
+ * Uses the same desk-ui layout as the edit page, but all fields are disabled.
  */
 
 function getTelegramInitData(): string {
@@ -37,11 +34,22 @@ export default function BoardDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState<any>(null);
-  const [workers, setWorkers] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>(null);
-  const [links, setLinks] = useState<any[]>([]);
+  const [detailProps, setDetailProps] = useState<{
+    boardName: string;
+    slug: string;
+    spCostEnabled: boolean;
+    spSprintEnabled: boolean;
+    spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
+    cognitiveWeightEnabled: boolean;
+    colleagueCount: number;
+    context: string;
+    documentsEnabled: boolean;
+    linksEnabled: boolean;
+    links: ExternalLink[];
+    trafficLightEnabled: boolean;
+    warningDays: number;
+    urgentDays: number;
+  } | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -54,6 +62,7 @@ export default function BoardDetailPage() {
 
     async function loadData() {
       try {
+        // 1. Load workspace list to find by slug
         const res = await fetch('/api/workspaces/my-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -70,16 +79,7 @@ export default function BoardDetailPage() {
           throw new Error(json.error || 'Failed to load board data');
         }
 
-        const { workers: workersData, workspaces: wsData, tasks: tasksData } = json.data;
-
-        setWorkers(workersData ?? []);
-
-        const workspaceIds = (workersData ?? []).map((w: any) => w.workspace_id).filter(Boolean);
-
-        if (workspaceIds.length === 0) {
-          setLoading(false);
-          return;
-        }
+        const { workers: workersData, workspaces: wsData } = json.data;
 
         // Find workspace by slug
         const ws = (wsData ?? []).find((w: any) => w.slug === slug);
@@ -88,30 +88,57 @@ export default function BoardDetailPage() {
           return;
         }
 
-        setWorkspace(ws);
+        // 2. Load workspace settings and links
+        const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: getTelegramInitData() }),
+        });
 
-        // Get tasks for this workspace
-        const wsTasks = (tasksData ?? []).filter((t: any) => t.workspace_id === ws.id);
-        setTasks(wsTasks ?? []);
+        let settingsData: any = null;
+        let linksData: any[] = [];
 
-        // Load workspace settings + links via dedicated endpoint
-        try {
-          const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ init_data: getTelegramInitData() }),
-          });
-
-          if (settingsRes.ok) {
-            const settingsJson = await settingsRes.json();
-            if (settingsJson.success) {
-              setSettings(settingsJson.data?.workspace_settings ?? null);
-              setLinks(settingsJson.data?.workspace_links ?? []);
-            }
+        if (settingsRes.ok) {
+          const settingsJson = await settingsRes.json();
+          if (settingsJson.success) {
+            settingsData = settingsJson.data?.workspace_settings;
+            linksData = settingsJson.data?.workspace_links ?? [];
           }
-        } catch (settingsErr) {
-          console.error('Board detail: settings load error', settingsErr);
         }
+
+        // Parse deadline_signals with level field
+        const signals = (settingsData?.deadline_signals ?? []) as any[];
+        const hasSignals = signals.length > 0;
+
+        const amberSignal = signals.find((s: any) => s.level === 'amber' || s.value >= 2);
+        const redSignal = signals.find((s: any) => s.level === 'red' || s.value <= 1);
+
+        // Count colleagues (human workers in this workspace)
+        const memberWorkers = (workersData ?? []).filter(
+          (w: any) => w.workspace_id === ws.id && w.type === 'human',
+        );
+
+        setDetailProps({
+          boardName: ws.name || '',
+          slug: ws.slug || '',
+          spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
+          spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
+          spHours: (settingsData?.story_points_config?.hours_per_sp) as
+            | { 1: string; 3: string; 5: string; 7: string; 13: string }
+            | undefined,
+          cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
+          colleagueCount: memberWorkers.length,
+          context: settingsData?.workspace_context || '',
+          documentsEnabled: settingsData?.doc_kb_config?.enabled ?? false,
+          linksEnabled: linksData.length > 0,
+          links: linksData.map((link: any) => ({
+            label: link.name || link.label || '',
+            url: link.url || '',
+          })),
+          trafficLightEnabled: hasSignals,
+          warningDays: amberSignal?.value ?? 3,
+          urgentDays: redSignal?.value ?? 1,
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
@@ -161,47 +188,9 @@ export default function BoardDetailPage() {
     );
   }
 
-  if (!workspace) {
+  if (!detailProps) {
     return null;
   }
-
-  // Transform data into BoardDetail props
-  const memberWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'human');
-  const agentWorkers = workers.filter((w: any) => w.workspace_id === workspace.id && w.type === 'agent');
-
-  // Build colleagues (human workers) — maps to FlowBoard's WorkerCardData
-  const colleagues: WorkerCardData[] = memberWorkers.map((w: any) => ({
-    id: w.id,
-    displayName: w.display_name || w.source_id.slice(0, 8),
-    avatarUrl: w.avatar_url,
-    cognitiveWeight: w.cognitive_weight ?? 1,
-    spPerDay: w.sp_per_day ?? 8,
-    trendUp: false,
-    roleLabel: w.role || 'member',
-    activeDays: 0,
-    overloaded: false,
-    tasks: [],
-  }));
-
-  // Build external links from loaded settings data
-  const externalLinks: ExternalLinkData[] = links.map((link: any) => ({
-    id: link.id,
-    label: link.name || link.label || '',
-    url: link.url || '',
-  }));
-
-  // Build documents placeholder (doc storage not yet implemented)
-  const boardDocuments: DocumentData[] = [];
-
-  // Build board settings from loaded workspace_settings
-  const spConfig = settings?.story_points_config || {};
-  const boardSettings = {
-    spCostEnabled: spConfig.enabled || false,
-    spSprintEnabled: spConfig.sprint_enabled || false,
-    cognitiveWeightEnabled: settings?.enable_cognitive_budget || false,
-    context: settings?.workspace_context || '',
-    documentsEnabled: settings?.doc_kb_config?.enabled ?? false,
-  };
 
   return (
     <main
@@ -211,14 +200,7 @@ export default function BoardDetailPage() {
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}
     >
-      <BoardDetail
-        boardName={workspace.name}
-        slug={workspace.slug}
-        colleagues={colleagues}
-        externalLinks={externalLinks}
-        documents={boardDocuments}
-        boardSettings={boardSettings}
-      />
+      <BoardDetail {...detailProps} />
     </main>
   );
 }

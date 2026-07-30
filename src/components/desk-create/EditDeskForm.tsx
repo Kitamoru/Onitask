@@ -124,8 +124,8 @@ export function EditDeskForm({
         throw new Error(data.error || 'Failed to update workspace');
       }
 
-      // Success - navigate back to board
-      router.push(`/board/${slug}`);
+      // Success - navigate to boards list
+      router.push('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
