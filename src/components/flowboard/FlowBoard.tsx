@@ -30,6 +30,7 @@ import { formatDateRange, computeDaysLeft, toISODate } from '@/lib/date';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface SprintInfo {
+  id: string;
   name: string;
   topic: string;
   startDate: string;
@@ -573,30 +574,73 @@ export function FlowBoard({
   }, [sprint]);
 
   const handleCreateSubmit = useCallback(
-    (value: SprintFormValue) => {
-      console.log('Create sprint:', value);
-      // TODO: call API to create sprint
-      setCreateOpen(false);
+    async (value: SprintFormValue) => {
+      try {
+        const res = await fetch('/api/sprints', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: value.name,
+            start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
+            end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
+            goal: value.goal || null,
+            capacity: value.capacity || undefined,
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
+        await onRefresh?.();
+        setCreateOpen(false);
+      } catch (err) {
+        console.error('Failed to create sprint:', err);
+        alert(err instanceof Error ? err.message : 'Не удалось создать спринт');
+      }
     },
-    [],
+    [onRefresh],
   );
 
   const handleEditSubmit = useCallback(
-    (value: Omit<SprintFormValue, 'capacity'>) => {
-      console.log('Edit sprint:', value);
-      // TODO: call API to update sprint
-      setEditOpen(false);
+    async (value: Omit<SprintFormValue, 'capacity'>) => {
+      if (!sprint) return;
+      try {
+        const res = await fetch(`/api/sprints/${sprint.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: value.name,
+            start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
+            end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
+            goal: value.goal || null,
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
+        await onRefresh?.();
+        setEditOpen(false);
+      } catch (err) {
+        console.error('Failed to update sprint:', err);
+        alert(err instanceof Error ? err.message : 'Не удалось обновить спринт');
+      }
     },
-    [],
+    [sprint, onRefresh],
   );
 
-  const handleComplete = useCallback(() => {
-    if (confirm('Завершить текущий спринт? Текущий спринт будет архивирован.')) {
-      console.log('Complete sprint');
-      // TODO: call API to complete sprint
+  const handleComplete = useCallback(async () => {
+    if (!sprint) return;
+    if (!confirm('Завершить текущий спринт? Текущий спринт будет архивирован.')) return;
+    try {
+      const res = await fetch(`/api/sprints/${sprint.id}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      await onRefresh?.();
       setViewOpen(false);
+    } catch (err) {
+      console.error('Failed to complete sprint:', err);
+      alert(err instanceof Error ? err.message : 'Не удалось завершить спринт');
     }
-  }, []);
+  }, [sprint, onRefresh]);
 
   const handleCreateNew = useCallback(() => {
     setViewOpen(false);

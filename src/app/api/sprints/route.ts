@@ -85,7 +85,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, start_date, end_date, goal, capacity, task_ids } = body;
+    // Accept both snake_case (DB convention) and camelCase (frontend convention)
+    const {
+      name,
+      start_date: sd,
+      startDate,
+      end_date: ed,
+      endDate,
+      goal,
+      capacity,
+      task_ids,
+    } = body as Record<string, unknown>;
+    const start_date = (sd ?? startDate) as string | undefined;
+    const end_date = (ed ?? endDate) as string | undefined;
 
     // Validation: name + dates are required
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -111,8 +123,8 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         start_date,
         end_date,
-        goal: goal ?? null,
-        capacity: capacity ? parseInt(capacity, 10) : null,
+        goal: (goal ?? null) as string | null,
+        capacity: capacity ? parseInt(String(capacity), 10) : null,
         status: 'planning',
       })
       .select()
