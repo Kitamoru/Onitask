@@ -17,12 +17,14 @@ export function DocumentsCard({
   files,
   onFilesChange,
   disabled = false,
+  readOnly = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
   files: File[];
   onFilesChange: (files: File[]) => void;
   disabled?: boolean;
+  readOnly?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const atLimit = files.length >= MAX_DOCUMENTS;
@@ -78,64 +80,70 @@ export function DocumentsCard({
                   <span className="truncate text-[14px] text-text">
                     {file.name}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(i)}
-                    aria-label={`Удалить ${file.name}`}
-                    className="ml-3 shrink-0 text-text-muted"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      aria-label={`Удалить ${file.name}`}
+                      className="ml-3 shrink-0 text-text-muted"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </NotchedPanel>
               </li>
             ))}
           </ul>
         )}
 
-        <button
-          type="button"
-          disabled={disabled || !enabled || atLimit}
-          onClick={openPicker}
-          className={cn(
-            "block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left",
-            (disabled || !enabled || atLimit) && "opacity-40"
-          )}
-        >
-          <NotchedPanel
-            corner="field"
-            fill="var(--color-surface)"
-            className="h-full"
-            contentClassName="flex h-full w-full items-center justify-between px-4"
-          >
-          <span className="truncate text-base text-text-faint">
-            {disabled ? "Загрузка отключена" : "Выберите файл"}
-          </span>
-          <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
-          </NotchedPanel>
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".md"
-          multiple
-          hidden
-          onChange={handlePicked}
-        />
+        {!readOnly && (
+          <>
+            <button
+              type="button"
+              disabled={disabled || !enabled || atLimit}
+              onClick={openPicker}
+              className={cn(
+                "block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left",
+                (disabled || !enabled || atLimit) && "opacity-40"
+              )}
+            >
+              <NotchedPanel
+                corner="field"
+                fill="var(--color-surface)"
+                className="h-full"
+                contentClassName="flex h-full w-full items-center justify-between px-4"
+              >
+              <span className="truncate text-base text-text-faint">
+                {disabled ? "Загрузка отключена" : "Выберите файл"}
+              </span>
+              <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
+              </NotchedPanel>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".md"
+              multiple
+              hidden
+              onChange={handlePicked}
+            />
 
-        <div className="mb-4 mt-3 flex items-start justify-between gap-3">
-          <p className="flex-1 text-[13px] leading-[1.4] text-text-muted">
-            до 10 документов, до 5 мегабайт в сумме, формат .md
-          </p>
-          <CountBadge>{files.length}/{MAX_DOCUMENTS}</CountBadge>
-        </div>
+            <div className="mb-4 mt-3 flex items-start justify-between gap-3">
+              <p className="flex-1 text-[13px] leading-[1.4] text-text-muted">
+                до 10 документов, до 5 мегабайт в сумме, формат .md
+              </p>
+              <CountBadge>{files.length}/{MAX_DOCUMENTS}</CountBadge>
+            </div>
 
-        <Button
-          variant="outline"
-          disabled={disabled || !enabled || atLimit}
-          onClick={openPicker}
-        >
-          Добавить .md файл
-        </Button>
+            <Button
+              variant="outline"
+              disabled={disabled || !enabled || atLimit}
+              onClick={openPicker}
+            >
+              Добавить .md файл
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );

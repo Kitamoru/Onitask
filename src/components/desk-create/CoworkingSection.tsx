@@ -9,10 +9,12 @@ export function CoworkingSection({
   colleagueCount,
   onAddColleague,
   disabled = false,
+  readOnly = false,
 }: {
   colleagueCount: number;
   onAddColleague: () => void;
   disabled?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <section>
@@ -24,9 +26,11 @@ export function CoworkingSection({
           </span>
           <CountBadge>{colleagueCount} коллег</CountBadge>
         </div>
-        <Button variant="outline" onClick={onAddColleague} disabled={disabled}>
-          Добавить коллегу
-        </Button>
+        {!readOnly && (
+          <Button variant="outline" onClick={onAddColleague} disabled={disabled}>
+            Добавить коллегу
+          </Button>
+        )}
       </Card>
     </section>
   );

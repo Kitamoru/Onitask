@@ -16,12 +16,14 @@ export function ExternalLinksCard({
   links,
   onLinksChange,
   disabled = false,
+  readOnly = false,
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
   links: ExternalLink[];
   onLinksChange: (links: ExternalLink[]) => void;
   disabled?: boolean;
+  readOnly?: boolean;
 }) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -75,40 +77,46 @@ export function ExternalLinksCard({
                       {link.url}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeLink(i)}
-                    aria-label="Удалить ссылку"
-                    className="ml-3 shrink-0 text-text-muted"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => removeLink(i)}
+                      aria-label="Удалить ссылку"
+                      className="ml-3 shrink-0 text-text-muted"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </NotchedPanel>
               </li>
             ))}
           </ul>
         )}
 
-        <div className="mb-3 flex flex-col gap-3">
-          <TextInput
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Название ресурса"
-            disabled={disabled || !enabled}
-          />
-          <TextInput
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Ссылка"
-            disabled={disabled || !enabled}
-            inputMode="url"
-            autoCapitalize="none"
-          />
-        </div>
+        {!readOnly && (
+          <>
+            <div className="mb-3 flex flex-col gap-3">
+              <TextInput
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Название ресурса"
+                disabled={disabled || !enabled}
+              />
+              <TextInput
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Ссылка"
+                disabled={disabled || !enabled}
+                inputMode="url"
+                autoCapitalize="none"
+              />
+            </div>
 
-        <Button variant="outline" disabled={disabled || !canAdd} onClick={addLink}>
-          Добавить ссылку
-        </Button>
+            <Button variant="outline" disabled={disabled || !canAdd} onClick={addLink}>
+              Добавить ссылку
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );

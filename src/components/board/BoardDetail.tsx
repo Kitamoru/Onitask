@@ -108,6 +108,7 @@ export function BoardDetail({
           colleagueCount={colleagueCount}
           onAddColleague={() => {}}
           disabled
+          readOnly
         />
 
         <ContextSection value={context} onChange={() => {}} disabled />
@@ -121,6 +122,7 @@ export function BoardDetail({
               files={[]}
               onFilesChange={() => {}}
               disabled
+              readOnly
             />
             <ExternalLinksCard
               enabled={linksEnabled}
@@ -128,6 +130,7 @@ export function BoardDetail({
               links={links}
               onLinksChange={() => {}}
               disabled
+              readOnly
             />
           </div>
         </section>
