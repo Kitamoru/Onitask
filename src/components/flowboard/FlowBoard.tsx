@@ -105,6 +105,8 @@ export interface FlowBoardProps {
   isNewUser?: boolean;
   /** Callback when board is created successfully */
   onBoardCreate?: () => void;
+  /** Telegram WebApp initData string for API authentication */
+  initData?: string;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -559,6 +561,7 @@ export function FlowBoard({
   onAddWorker,
   onAddAgent,
   onRefresh,
+  initData,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -573,13 +576,21 @@ export function FlowBoard({
     }
   }, [sprint]);
 
+  // Helper to build auth-aware fetch options
+  const authBody = useCallback((body: Record<string, unknown>) => {
+    if (initData) {
+      return JSON.stringify({ ...body, init_data: initData });
+    }
+    return JSON.stringify(body);
+  }, [initData]);
+
   const handleCreateSubmit = useCallback(
     async (value: SprintFormValue) => {
       try {
         const res = await fetch('/api/sprints', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: authBody({
             name: value.name,
             start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
@@ -596,7 +607,7 @@ export function FlowBoard({
         alert(err instanceof Error ? err.message : 'Не удалось создать спринт');
       }
     },
-    [onRefresh],
+    [onRefresh, authBody],
   );
 
   const handleEditSubmit = useCallback(
@@ -606,7 +617,7 @@ export function FlowBoard({
         const res = await fetch(`/api/sprints/${sprint.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: authBody({
             name: value.name,
             start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
@@ -622,7 +633,7 @@ export function FlowBoard({
         alert(err instanceof Error ? err.message : 'Не удалось обновить спринт');
       }
     },
-    [sprint, onRefresh],
+    [sprint, onRefresh, authBody],
   );
 
   const handleComplete = useCallback(async () => {
@@ -631,6 +642,8 @@ export function FlowBoard({
     try {
       const res = await fetch(`/api/sprints/${sprint.id}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: authBody({}),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
@@ -640,7 +653,7 @@ export function FlowBoard({
       console.error('Failed to complete sprint:', err);
       alert(err instanceof Error ? err.message : 'Не удалось завершить спринт');
     }
-  }, [sprint, onRefresh]);
+  }, [sprint, onRefresh, authBody]);
 
   const handleCreateNew = useCallback(() => {
     setViewOpen(false);

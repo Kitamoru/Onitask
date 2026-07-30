@@ -27,7 +27,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 
 export default function FlowBoardPage() {
   useScrollReset();
-  const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth } = useTelegramAuth();
+  const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, loadBoardsData } = useData();
 
   const metrics = state.metrics.data;
@@ -190,6 +190,7 @@ export default function FlowBoardPage() {
         onAddAgent={() => console.log('Add agent clicked')}
         onRefresh={refreshMetrics}
         isNewUser={isNewUser}
+        initData={tgInitData}
       />
       
       {/* Onboarding modal for new users */}
