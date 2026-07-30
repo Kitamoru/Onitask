@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
         inProgress: 0,
         onReview: 0,
         isActive: sp.status === 'active',
+        status: sp.status,
       };
     }
 

@@ -121,7 +121,7 @@ export function SprintViewSheet({
         </div>
 
         <div className="flex flex-col gap-3 border-t border-line pt-4">
-          {status === 'planning' && onActivate && (
+          {(status === 'planning' || (!status && !isActive)) && onActivate && (
             <>
               <Button variant="solid" onClick={onActivate}>
                 Активировать спринт
@@ -134,16 +134,16 @@ export function SprintViewSheet({
               </p>
             </>
           )}
-          {status === 'active' && (
+          {(status === 'active' || isActive) && (
             <>
               <Button variant="solid" onClick={onComplete}>
-                Удалить спринт
+                Завершить спринт
               </Button>
               <Button variant="outline" onClick={onEdit}>
                 Редактировать спринт
               </Button>
               <p className="text-center text-[12px] leading-[1.5] text-text-faint">
-                Удаление удалит спринт безвозвратно
+                Завершение архивирует текущий спринт
                 <br />
                 Спринт можно отредактировать в любой момент
               </p>

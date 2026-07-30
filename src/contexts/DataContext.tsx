@@ -50,6 +50,7 @@ export interface FlowMetrics {
     inProgress: number;
     onReview: number;
     isActive: boolean;
+    status?: string;
   } | null;
   columns: Array<{
     name: string;

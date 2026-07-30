@@ -43,6 +43,7 @@ interface FlowMetricsResponse {
     inProgress: number;
     onReview: number;
     isActive: boolean;
+    status?: string;
   } | null;
   columns: Array<{
     name: string;
@@ -189,6 +190,7 @@ async function computeMetrics(
         inProgress: 0,
         onReview: 0,
         isActive: sp.status === 'active',
+        status: sp.status,
       };
     }
   }
