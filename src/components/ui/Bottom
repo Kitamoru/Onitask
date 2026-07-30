@@ -1,0 +1,94 @@
+'use client';
+
+import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+
+/**
+ * BottomSheet — reusable slide-up modal panel.
+ *
+ * Renders a backdrop + bottom sheet that slides up from the bottom of the screen.
+ * Uses CSS transitions for animation. Closes on backdrop click or Escape key.
+ *
+ * Design tokens: uses --color-bg-primary-dark for backdrop, --color-bg-surface
+ * for sheet background, --color-line for top border.
+ */
+export function BottomSheet({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  // Lock body scroll when open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50"
+      style={{ visibility: open ? 'visible' : 'hidden' }}
+      aria-hidden={!open}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          opacity: open ? 1 : 0,
+        }}
+      />
+
+      {/* Sheet */}
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        className="absolute bottom-0 left-0 right-0 w-full transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: 'var(--color-bg-surface, #101010)',
+          borderTop: '1px solid var(--color-line, rgba(255,255,255,0.2))',
+          borderRadius: '16px 16px 0 0',
+          maxHeight: '85dvh',
+          overflowY: 'auto',
+          transform: open ? 'translateY(0)' : 'translateY(100%)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div
+            className="h-1 w-10 rounded-full"
+            style={{ backgroundColor: 'var(--color-text-muted, #8B8B8B)' }}
+          />
+        </div>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}

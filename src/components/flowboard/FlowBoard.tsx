@@ -1,8 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { SectionHeader as DeskSectionHeader, Button } from '@/components/ui/desk-ui';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
+import { SprintCard } from '@/components/sprint/SprintCard';
+import { SprintCreateSheet } from '@/components/sprint/SprintCreateSheet';
+import { SprintEditSheet } from '@/components/sprint/SprintEditSheet';
+import { SprintViewSheet } from '@/components/sprint/SprintViewSheet';
+import type { SprintFormValue, SprintStats } from '@/components/sprint/types';
+import { formatDateRange, computeDaysLeft, toISODate } from '@/lib/date';
 
 /**
  * FlowBoard component — displays the flow task overview page.
@@ -176,7 +182,7 @@ function ProgressBar({ progress }: { progress: number }) {
  * When no sprint data is available, renders a placeholder inviting the user
  * to create their first sprint.
  */
-function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
+export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
   // Placeholder shown when sprint data is missing (first launch scenario)
   if (!sprint) {
     return (
@@ -553,6 +559,66 @@ export function FlowBoard({
   onAddAgent,
   onRefresh,
 }: FlowBoardProps) {
+  // ─── Sprint sheet state ──────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const handleSprintClick = useCallback(() => {
+    if (sprint) {
+      setViewOpen(true);
+    } else {
+      setCreateOpen(true);
+    }
+  }, [sprint]);
+
+  const handleCreateSubmit = useCallback(
+    (value: SprintFormValue) => {
+      console.log('Create sprint:', value);
+      // TODO: call API to create sprint
+      setCreateOpen(false);
+    },
+    [],
+  );
+
+  const handleEditSubmit = useCallback(
+    (value: Omit<SprintFormValue, 'capacity'>) => {
+      console.log('Edit sprint:', value);
+      // TODO: call API to update sprint
+      setEditOpen(false);
+    },
+    [],
+  );
+
+  const handleComplete = useCallback(() => {
+    if (confirm('Завершить текущий спринт? Текущий спринт будет архивирован.')) {
+      console.log('Complete sprint');
+      // TODO: call API to complete sprint
+      setViewOpen(false);
+    }
+  }, []);
+
+  const handleCreateNew = useCallback(() => {
+    setViewOpen(false);
+    setCreateOpen(true);
+  }, []);
+
+  const stats: SprintStats | undefined = sprint
+    ? {
+        completedTasks: Math.round((sprint.progress / 100) * (sprint.doneSP || 1)),
+        totalTasks: sprint.doneSP || 1,
+        daysLeft: computeDaysLeft(sprint.endDate),
+      }
+    : undefined;
+
+  const sprintFormData = sprint
+    ? {
+        name: sprint.name,
+        startDate: new Date(sprint.startDate),
+        endDate: new Date(sprint.endDate),
+        goal: '',
+      }
+    : undefined;
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
@@ -649,7 +715,11 @@ export function FlowBoard({
         </p>
       </div>
 
-      {sprintEnabled && <SprintCompressedInfo sprint={sprint} />}
+      {sprintEnabled && (
+        <div onClick={handleSprintClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSprintClick(); } }} role="button" tabIndex={0} aria-label={sprint ? `Открыть спринт ${sprint.name}` : 'Создать спринт'}>
+          <SprintCompressedInfo sprint={sprint} />
+        </div>
+      )}
 
        {/* Signals section — 3-column grid on mobile, responsive on larger screens */}
        {signals.length > 0 && (
@@ -719,6 +789,42 @@ export function FlowBoard({
             Добавить Агента
           </Button>
         </div>
+      )}
+
+      {/* ─── Sprint Sheets ─────────────────────────────────────── */}
+      {sprintEnabled && (
+        <>
+          <SprintCreateSheet
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onSubmit={handleCreateSubmit}
+          />
+
+          {sprint && stats && sprintFormData && (
+            <>
+              <SprintViewSheet
+                open={viewOpen}
+                onClose={() => setViewOpen(false)}
+                sprint={sprintFormData}
+                stats={stats}
+                isActive={sprint.isActive}
+                onEdit={() => {
+                  setViewOpen(false);
+                  setEditOpen(true);
+                }}
+                onComplete={handleComplete}
+              />
+
+              <SprintEditSheet
+                open={editOpen}
+                onClose={() => setEditOpen(false)}
+                initialValue={sprintFormData}
+                stats={stats}
+                onSubmit={handleEditSubmit}
+              />
+            </>
+          )}
+        </>
       )}
 
        {/* Bottom spacer — accounts for safe area + breathing room */}

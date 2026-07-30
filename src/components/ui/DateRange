@@ -1,0 +1,85 @@
+'use client';
+
+import { useState } from 'react';
+import { DayPicker, type DateRange } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
+import { BottomSheet } from '@/components/ui/BottomSheet';
+import { Button } from '@/components/ui/desk-ui/Button';
+import { formatDateRange } from '@/lib/date';
+
+/**
+ * DateRangeSheet — bottom sheet with a calendar for selecting a date range.
+ *
+ * Uses react-day-picker (already in the project via CalendarView) with
+ * mode="range" for start/end date selection.
+ */
+export function DateRangeSheet({
+  open,
+  onClose,
+  startDate,
+  endDate,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  startDate: Date | null;
+  endDate: Date | null;
+  onConfirm: (start: Date, end: Date) => void;
+}) {
+  const [range, setRange] = useState<DateRange | undefined>(
+    startDate && endDate ? { from: startDate, to: endDate } : undefined,
+  );
+
+  const canConfirm = range?.from && range?.to;
+
+  const handleConfirm = () => {
+    if (range?.from && range?.to) {
+      onConfirm(range.from, range.to);
+    }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose}>
+      <div className="flex flex-col gap-4 px-4 pb-6 pt-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[19px] font-medium text-text">Выберите даты</h2>
+          {range?.from && range?.to && (
+            <span className="text-[14px] text-text-muted">
+              {formatDateRange(range.from, range.to)}
+            </span>
+          )}
+        </div>
+
+        <div className="rdp-dark">
+          <DayPicker
+            mode="range"
+            selected={range}
+            onSelect={setRange}
+            numberOfMonths={1}
+            locale={undefined}
+            styles={{
+              caption: { color: 'var(--color-text-primary, #FAFAFA)' },
+              day: { color: 'var(--color-text-primary, #FAFAFA)' },
+              head_cell: { color: 'var(--color-text-muted, #8B8B8B)' },
+            }}
+            classNames={{
+              today: 'rdp-today',
+              selected: 'rdp-selected',
+              range_start: 'rdp-range-start',
+              range_end: 'rdp-range-end',
+              range_middle: 'rdp-range-middle',
+            }}
+          />
+        </div>
+
+        <Button
+          variant="solid"
+          disabled={!canConfirm}
+          onClick={handleConfirm}
+        >
+          Подтвердить
+        </Button>
+      </div>
+    </BottomSheet>
+  );
+}

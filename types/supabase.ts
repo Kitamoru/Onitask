@@ -661,6 +661,7 @@ export type Database = {
           capacity: number | null
           created_at: string
           end_date: string
+          goal: string | null
           id: string
           name: string | null
           start_date: string
@@ -671,6 +672,7 @@ export type Database = {
           capacity?: number | null
           created_at?: string
           end_date: string
+          goal?: string | null
           id?: string
           name?: string | null
           start_date: string
@@ -681,6 +683,7 @@ export type Database = {
           capacity?: number | null
           created_at?: string
           end_date?: string
+          goal?: string | null
           id?: string
           name?: string | null
           start_date?: string

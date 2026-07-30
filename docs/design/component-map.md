@@ -75,7 +75,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | FlowBoard | FlowBoard.tsx | title, currentDate, sprint, signals, taskStatuses, workers, agents, loading, error, onAddWorker, onAddAgent, onRefresh, isNewUser, onBoardCreate | Main flow board. Uses desk-ui `SectionHeader` and `Button` |
+| | FlowBoard | FlowBoard.tsx | title, currentDate, sprint, signals, taskStatuses, workers, agents, loading, error, onAddWorker, onAddAgent, onRefresh, isNewUser, onBoardCreate | Main flow board. Uses desk-ui `SectionHeader` and `Button`. Manages sprint sheet state internally. |
 | | TaskForm | TaskForm.tsx | onSubmit, onCancel, defaultColumn, className | Task creation form. Uses desk-ui `TextInput`, `TextArea`, `Button` |
 | | UrgencyBadge | UrgencyBadge.tsx | deadline, size | Urgency indicator. Uses design tokens for colors and spacing |
 | | OnboardingModal | OnboardingModal.tsx | onSuccess, onClose | Onboarding modal. Uses CSS variables instead of hardcoded colors |
@@ -83,9 +83,39 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | UserAvatar | FlowBoard.tsx | displayName, avatarUrl, size | Avatar component. Exported from index |
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors |
+| | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Clickable → opens SprintViewSheet or SprintCreateSheet |
 
-**Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`
+**Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`
+
+---
+
+### sprint/ — Sprint Management
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| | SprintCreateSheet | SprintCreateSheet.tsx | open, onClose, onSubmit | BottomSheet for creating a new sprint (name, dates, goal, capacity, task picker) |
+| | SprintEditSheet | SprintEditSheet.tsx | open, onClose, initialValue, stats, onSubmit | BottomSheet for editing sprint details with stats display |
+| | SprintViewSheet | SprintViewSheet.tsx | open, onClose, sprint, stats, isActive, onEdit, onComplete | BottomSheet for viewing sprint details, progress bar, edit/complete actions |
+| | SprintCard | SprintCard.tsx | sprint, onClick | Clickable wrapper around SprintCompressedInfo |
+| | Field | Field.tsx | label, children | Label wrapper for form fields |
+| | StatBox | StatBox.tsx | label, value, valueTone | Stat display block using NotchedPanel |
+| | TasksAccordionRow | TasksAccordionRow.tsx | taskCount, tasks | Accordion for selecting tasks to add to sprint |
+| | types | types.ts | — | SprintFormValue, SprintStats type definitions |
+
+**Re-exports** (`index.ts`): `SprintCreateSheet`, `SprintEditSheet`, `SprintViewSheet`, `StatBox`, `Field`, `TasksAccordionRow`, `SprintFormValue`, `SprintStats`
+
+---
+
+### ui/ — Shared UI Primitives
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| | BottomSheet | BottomSheet.tsx | open, onClose, children | Slide-up panel with backdrop overlay (portal-based) |
+| | DateRangeField | DateRangeField.tsx | startDate, endDate, onOpen, placeholder | Date range display field |
+| | DateRangeSheet | DateRangeSheet.tsx | open, onClose, startDate, endDate, onConfirm | BottomSheet with react-day-picker for date range selection |
+
+**Types**: `SprintFormValue` ({ name, startDate, endDate, goal, capacity }), `SprintStats` ({ completedTasks, totalTasks, daysLeft })
 
 ---
 
@@ -116,4 +146,4 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-30*

@@ -1,0 +1,93 @@
+'use client';
+
+import { formatDateRange } from '@/lib/date';
+
+/**
+ * DateRangeField — displays a selected date range or a placeholder.
+ *
+ * Tappable field that opens a DateRangeSheet for selection.
+ * Uses desk-ui NotchedPanel styling.
+ */
+export function DateRangeField({
+  startDate,
+  endDate,
+  onOpen,
+  placeholder = 'Выберите даты',
+}: {
+  startDate: Date | null;
+  endDate: Date | null;
+  onOpen: () => void;
+  placeholder?: string;
+}) {
+  const hasDates = startDate !== null && endDate !== null;
+  const display = hasDates ? formatDateRange(startDate, endDate) : placeholder;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors"
+      style={{
+        backgroundColor: 'var(--color-surface, #161616)',
+        border: '1px solid var(--color-line, rgba(255,255,255,0.2))',
+        borderRadius: '4px',
+        minHeight: '44px',
+      }}
+      aria-label="Выбрать даты спринта"
+    >
+      <span
+        className="text-[15px]"
+        style={{
+          color: hasDates
+            ? 'var(--color-text-primary, #FAFAFA)'
+            : 'var(--color-text-muted, #8B8B8B)',
+        }}
+      >
+        {display}
+      </span>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        aria-hidden="true"
+      >
+        <rect
+          x="2"
+          y="3"
+          width="12"
+          height="11"
+          rx="1.5"
+          stroke="var(--color-text-muted, #8B8B8B)"
+          strokeWidth="1.2"
+        />
+        <line
+          x1="2"
+          y1="6"
+          x2="14"
+          y2="6"
+          stroke="var(--color-text-muted, #8B8B8B)"
+          strokeWidth="1.2"
+        />
+        <line
+          x1="5"
+          y1="1.5"
+          x2="5"
+          y2="4"
+          stroke="var(--color-text-muted, #8B8B8B)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+        <line
+          x1="11"
+          y1="1.5"
+          x2="11"
+          y2="4"
+          stroke="var(--color-text-muted, #8B8B8B)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
+  );
+}
