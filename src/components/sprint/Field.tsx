@@ -13,7 +13,7 @@ export function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[13px] text-text-muted">
+      <label className="mb-1.5 block text-sm leading-[1.125rem] tracking-tighter text-text-muted">
         {label}
       </label>
       {children}

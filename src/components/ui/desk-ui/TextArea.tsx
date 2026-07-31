@@ -36,12 +36,10 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           rows={1}
           {...props}
           className={cn(
-            // py-3 (12px) + text-base's 24px line-height = 48px for an
-            // empty single line — matches the old single-line input's
-            // height exactly, so the empty state looks identical to
-            // before. From there it grows with content instead of
-            // scrolling sideways.
-            "block min-h-[48px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3",
+            // py-2.5 (10px) + text-base's 24px line-height = 44px for an
+            // empty single line — close to the input's 40px. From there it
+            // grows with content instead of scrolling sideways.
+            "block min-h-[44px] w-full resize-none overflow-y-auto bg-transparent px-3 py-2.5",
             // Caps visible growth at 40% of viewport height, then
             // scrolls internally — a deliberate judgment call, not
             // something explicitly asked for: 1200 characters can run
@@ -55,7 +53,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
             // anything smaller triggers iOS Safari/Telegram's
             // auto-zoom-on-focus, which then fights the TWA
             // keyboard-resize layout.
-            "text-base leading-6 text-text placeholder:text-text-faint",
+            "text-base leading-5 text-text tracking-tighter placeholder:text-text-muted/50",
             "outline-none",
             className
           )}

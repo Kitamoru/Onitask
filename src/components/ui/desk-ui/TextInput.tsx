@@ -43,12 +43,12 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
             {...props}
             className={cn(
               "h-full w-full bg-transparent",
-              prefix ? "pl-1 pr-4" : "px-4",
+              prefix ? "pl-1 pr-3" : "px-3",
               // 16px (text-base) is deliberate, not a scale choice —
               // anything smaller triggers iOS Safari/Telegram's
               // auto-zoom-on-focus, which then fights the TWA
               // keyboard-resize layout.
-              "text-base text-text placeholder:text-text-faint",
+              "text-base text-text tracking-tighter placeholder:text-text-muted/50",
               "outline-none",
               className
             )}

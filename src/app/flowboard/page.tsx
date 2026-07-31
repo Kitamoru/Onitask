@@ -120,12 +120,14 @@ export default function FlowBoardPage() {
       });
   }, [metrics, tasks]);
 
-  const refreshMetrics = useCallback(async () => {
+  const refreshMetrics = useCallback(async (force = false) => {
     if (!state.activeWorkspaceId) return;
-    // TTL check: only refetch if data is older than 60 seconds
+    // TTL check: only refetch if data is older than 60 seconds.
+    // force=true bypasses the TTL — used after sprint mutations (create/edit/activate/delete)
+    // so the UI reflects the new state immediately instead of waiting for the next interval.
     const lastUpdated = state.metrics.lastUpdated ?? 0;
     const ageMs = Date.now() - lastUpdated;
-    if (ageMs < 60000) return; // Data is still fresh
+    if (!force && ageMs < 60000) return; // Data is still fresh
     try {
       await loadBoardsData(state.activeWorkspaceId, { partial: true });
     } catch (err) {
@@ -182,7 +184,7 @@ export default function FlowBoardPage() {
             Ошибка загрузки данных доски
           </p>
           <button
-            onClick={() => refreshMetrics()}
+            onClick={() => refreshMetrics(true)}
             style={{
               fontFamily: 'system-ui',
               fontSize: '14px',
@@ -227,7 +229,7 @@ export default function FlowBoardPage() {
         error={dataError}
         onAddWorker={() => console.log('Add worker clicked')}
         onAddAgent={() => console.log('Add agent clicked')}
-        onRefresh={refreshMetrics}
+        onRefresh={() => refreshMetrics(true)}
         isNewUser={isNewUser}
         initData={tgInitData}
       />

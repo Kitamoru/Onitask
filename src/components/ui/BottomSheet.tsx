@@ -53,7 +53,7 @@ export function BottomSheet({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-black/80"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -63,7 +63,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto bg-[var(--color-bg-surface,#1A1A1A)] rounded-t-2xl transition-transform duration-300 ${
+        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto bg-surface rounded-t-2xl transition-transform duration-300 ${
           open ? 'translate-y-0' : 'translate-y-full'
         } ${stacked ? 'mt-0' : ''}`}
         style={{

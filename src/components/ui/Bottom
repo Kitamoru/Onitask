@@ -4,26 +4,33 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * BottomSheet — reusable slide-up modal panel.
- *
- * Renders a backdrop + bottom sheet that slides up from the bottom of the screen.
- * Uses CSS transitions for animation. Closes on backdrop click or Escape key.
- *
- * Design tokens: uses --color-bg-primary-dark for backdrop, --color-bg-surface
- * for sheet background, --color-line for top border.
+ * BottomSheet — slide-up panel with backdrop overlay.
+ * Uses a portal to render at the document body level.
+ * Animates in/out with CSS transitions.
  */
 export function BottomSheet({
   open,
   onClose,
   children,
+  stacked,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  stacked?: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
-  // Lock body scroll when open
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  // Prevent body scroll when sheet is open
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -35,57 +42,36 @@ export function BottomSheet({
     };
   }, [open]);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
-
-  if (typeof document === 'undefined') return null;
+  if (typeof window === 'undefined') return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50"
-      style={{ visibility: open ? 'visible' : 'hidden' }}
+      className={`fixed inset-0 z-50 flex items-end transition-opacity duration-300 ${
+        open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
       aria-hidden={!open}
     >
       {/* Backdrop */}
       <div
+        className="absolute inset-0 bg-black/80"
         onClick={onClose}
-        className="absolute inset-0 transition-opacity duration-300"
-        style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.6)',
-          opacity: open ? 1 : 0,
-        }}
+        aria-hidden="true"
       />
 
-      {/* Sheet */}
+      {/* Sheet panel */}
       <div
         ref={sheetRef}
         role="dialog"
-        aria-modal="true"
-        className="absolute bottom-0 left-0 right-0 w-full transition-transform duration-300 ease-out"
-        style={{
-          backgroundColor: 'var(--color-bg-surface, #101010)',
-          borderTop: '1px solid var(--color-line, rgba(255,255,255,0.2))',
-          borderRadius: '16px 16px 0 0',
-          maxHeight: '85dvh',
-          overflowY: 'auto',
-          transform: open ? 'translateY(0)' : 'translateY(100%)',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
+        aria-modal={open}
+        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto rounded-t-2xl bg-surface transition-transform duration-300 ${
+          open ? 'translate-y-0' : 'translate-y-full'
+        } ${stacked ? 'mt-0' : ''}`}
       >
         {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div
-            className="h-1 w-10 rounded-full"
-            style={{ backgroundColor: 'var(--color-text-muted, #8B8B8B)' }}
-          />
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="h-1 w-10 rounded-full bg-text-muted/40" />
         </div>
+
         {children}
       </div>
     </div>,
