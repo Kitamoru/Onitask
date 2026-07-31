@@ -511,9 +511,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Load boards data when active workspace is available AND not already loaded
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
-    if (workspaceId && !boardsLoadedRef.current) {
-      // NO cache-first shortcut on initial load — always wait for server data
-      // This prevents stale/empty metrics from being displayed before the real data arrives
+    if (workspaceId) {
+      // Reset dedup guard when workspace changes so data reloads on navigation
+      if (boardsLoadedRef.current) {
+        boardsLoadedRef.current = false;
+      }
       loadBoardsData(workspaceId);
     }
   }, [state.activeWorkspaceId]);

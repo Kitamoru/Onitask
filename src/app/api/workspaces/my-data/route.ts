@@ -128,9 +128,13 @@ export async function POST(req: NextRequest) {
       tasks = taskData || [];
     }
 
-    // 4. Compute flow metrics — use requestedWorkspaceId if provided, else fallback to first workspace
-    const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
-    const metrics = await computeMetrics(workers, tasks, metricsWorkspaceId, supabase);
+  // 4. Compute flow metrics — use requestedWorkspaceId if provided, else fallback to first workspace
+  const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
+  
+  // Pre-filter tasks by workspace for sprint metrics calculation
+  const relevantTasks = metricsWorkspaceId ? tasks.filter((t) => t.workspace_id === metricsWorkspaceId) : tasks;
+  
+  const metrics = await computeMetrics(workers, tasks, metricsWorkspaceId, supabase, relevantTasks);
 
     return NextResponse.json({
       success: true,
@@ -152,7 +156,9 @@ async function computeMetrics(
   tasks: TasksRow[],
   workspaceId: string | null,
   supabase: ReturnType<typeof createServerClient>,
+  relevantTasksParam?: TasksRow[],
 ): Promise<FlowMetricsResponse> {
+  const relevantTasks = relevantTasksParam || (workspaceId ? tasks.filter((t) => t.workspace_id === workspaceId) : tasks);
   let sprint: FlowMetricsResponse['sprint'] = null;
   let sprintEnabled = false;
 
@@ -176,27 +182,63 @@ async function computeMetrics(
 
     if (sprintData && (sprintData as SprintsRow[]).length > 0) {
       const sp = (sprintData as SprintsRow[])[0];
+      
+      // Calculate sprint metrics from actual data
+      const startDate = sp.start_date ? new Date(sp.start_date) : null;
+      const endDate = sp.end_date ? new Date(sp.end_date) : null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      let daysElapsed = 0;
+      let totalDays = 7;
+      let progress = 0;
+      
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        
+        totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+        
+        if (today >= start) {
+          daysElapsed = Math.min(totalDays, Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+        } else {
+          daysElapsed = 0;
+        }
+        
+        progress = totalDays > 0 ? Math.round((daysElapsed / totalDays) * 100) : 0;
+        progress = Math.min(100, Math.max(0, progress));
+      }
+      
+      // Count tasks by status for this sprint
+      const sprintTasks = (relevantTasks || tasks).filter((t: any) => t.sprint_id === sp.id);
+      const doneSP = sprintTasks
+        .filter((t: any) => t.column === 'done' && t.story_points)
+        .reduce((sum: number, t: any) => sum + (t.story_points as number), 0);
+      const inProgress = sprintTasks.filter((t: any) => t.column === 'in_progress').length;
+      const onReview = sprintTasks.filter((t: any) => t.column === 'review').length;
+      
       sprint = {
         id: sp.id,
         name: sp.name || '',
-        topic: '',
+        topic: sp.goal || '',
         startDate: sp.start_date || '',
         endDate: sp.end_date || '',
-        daysElapsed: 0,
-        totalDays: 7,
-        progress: 0,
-        doneSP: 0,
+        daysElapsed,
+        totalDays,
+        progress,
+        doneSP,
         totalSP: sp.capacity ?? 0,
-        inProgress: 0,
-        onReview: 0,
+        inProgress,
+        onReview,
         isActive: sp.status === 'active',
         status: sp.status,
       };
     }
   }
 
-  // Column counts — filter tasks for this workspace if specified
-  const relevantTasks = workspaceId ? tasks.filter((t) => t.workspace_id === workspaceId) : tasks;
+  // Column counts
   const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
   relevantTasks.forEach((t) => {
     if (t.column in columnMap) {
