@@ -33,19 +33,18 @@ export default function FlowBoardPage() {
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
 
-  // DEBUG: Log what page.tsx sees
-  console.log('[FlowBoardPage] Render:', {
-    firstLoadDone,
-    authLoading,
-    hasMetrics: !!metrics,
-    sprintEnabled: metrics?.sprintEnabled,
-    sprint: metrics?.sprint,
-    sprintName: metrics?.sprint?.name,
-    sprintProgress: metrics?.sprint?.progress,
-  });
-
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
+  
+  // DEBUG: Log what's being passed to FlowBoard
+  console.log('[FlowBoardPage] Props to FlowBoard:', { 
+    sprintEnabled, 
+    hasSprint: !!sprint, 
+    sprintName: sprint?.name,
+    firstLoadDone,
+    activeWorkspaceId: state.activeWorkspaceId 
+  });
+  
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];
     const newSignals: SignalData[] = [];
@@ -150,7 +149,6 @@ export default function FlowBoardPage() {
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
   if (authLoading || !firstLoadDone) {
-    console.log('[FlowBoardPage] Showing loading:', { authLoading, firstLoadDone });
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"
@@ -189,6 +187,7 @@ export default function FlowBoardPage() {
   return (
     <>
       <FlowBoard
+        key={state.activeWorkspaceId || 'default'}
         title="Флоу задач"
         currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
         sprintEnabled={sprintEnabled}
