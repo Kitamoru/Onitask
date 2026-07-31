@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { BottomSheet } from '@/components/ui/BottomSheet';
-import { Button } from '@/components/ui/desk-ui/Button';
-import { Calendar } from '@/components/ui/Calendar';
-import { addMonths, formatDateRange, monthLabel, stripTime } from '@/lib/date';
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Button } from "@/components/ui/Button";
+import { Calendar } from "@/components/ui/Calendar";
+import { addMonths, formatDateRange, monthLabel, stripTime } from "@/lib/date";
 
 /**
  * Why a custom calendar sheet instead of native <input type="date">:
@@ -78,7 +78,7 @@ export function DateRangeSheet({
           <p className="text-[14px] text-text-muted">
             {draftStart
               ? formatDateRange(draftStart, draftEnd)
-              : 'Выберите начало и конец спринта'}
+              : "Выберите начало и конец спринта"}
           </p>
         </div>
 

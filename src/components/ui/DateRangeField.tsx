@@ -1,6 +1,6 @@
 'use client';
 
-import { formatDate } from '@/lib/date';
+import { formatDateRange } from '@/lib/date';
 
 /**
  * DateRangeField — displays a selected date range or a placeholder.
@@ -17,10 +17,7 @@ export function DateRangeField({
   onOpen: () => void;
   placeholder?: string;
 }) {
-  const displayValue =
-    startDate && endDate
-      ? `${formatDate(startDate)} – ${formatDate(endDate)}`
-      : '';
+  const displayValue = formatDateRange(startDate, endDate);
 
   return (
     <button

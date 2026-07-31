@@ -28,7 +28,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 export default function FlowBoardPage() {
   useScrollReset();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
-  const { state, loadBoardsData } = useData();
+  const { state, loadBoardsData, firstLoadDone } = useData();
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -136,8 +136,9 @@ export default function FlowBoardPage() {
     return () => clearInterval(interval);
   }, [refreshMetrics]);
 
-  // Loading state — wait for both auth AND metrics
-  if (authLoading || !metrics) {
+  // Loading state — wait for auth + first server load to complete
+  // This ensures sprint data from DB is available before rendering FlowBoard
+  if (authLoading || !firstLoadDone) {
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"

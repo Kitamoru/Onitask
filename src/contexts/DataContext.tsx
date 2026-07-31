@@ -114,6 +114,8 @@ interface DataStore {
   };
   /** Whether boards data has been loaded at least once (for dedup guard) */
   _boardsLoaded: boolean;
+  /** Whether the very first load from server has completed */
+  _firstLoadDone: boolean;
 }
 
 type Action =
@@ -126,6 +128,7 @@ type Action =
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
   | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
   | { type: 'SET_BOARDS_LOADED'; payload: true }
+  | { type: 'SET_FIRST_LOAD_DONE'; payload: true }
   | { type: 'CLEAR_ALL'; payload: null };
 
 const initialState: DataStore = {
@@ -152,6 +155,7 @@ const initialState: DataStore = {
     lastUpdated: null,
   },
   _boardsLoaded: false,
+  _firstLoadDone: false,
 };
 
 function dataReducer(state: DataStore, action: Action): DataStore {
@@ -241,8 +245,11 @@ function dataReducer(state: DataStore, action: Action): DataStore {
     case 'SET_BOARDS_LOADED':
       return { ...state, _boardsLoaded: true };
 
+    case 'SET_FIRST_LOAD_DONE':
+      return { ...state, _firstLoadDone: true };
+
     case 'CLEAR_ALL':
-      return { ...initialState, _boardsLoaded: state._boardsLoaded };
+      return { ...initialState, _boardsLoaded: state._boardsLoaded, _firstLoadDone: state._firstLoadDone };
 
     default:
       return state;
@@ -258,6 +265,8 @@ interface DataContextValue {
   /** Whether auth data is available from useAuth */
   authData: import('../../types/api').InitResponse | null;
   isLoadingAuth: boolean;
+  /** Whether the very first server load has completed */
+  firstLoadDone: boolean;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -422,6 +431,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Mark as loaded + save to sessionStorage cache
       dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
+      dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
       boardsLoadedRef.current = true;
       saveMyDataCache(state);
     } catch (err) {
@@ -502,23 +512,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
     if (workspaceId && !boardsLoadedRef.current) {
-      // Try cache first
-      const cached = loadMyDataCache();
-      if (cached) {
-        dispatch({ type: 'SET_TASKS', payload: cached.tasks.items });
-        dispatch({ type: 'SET_METRICS', payload: cached.metrics.data! });
-        dispatch({ type: 'SET_WORKSPACES', payload: cached.workspaces.items });
-        dispatch({ type: 'SET_WORKERS', payload: cached.workers.items });
-        dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
-        boardsLoadedRef.current = true;
-      }
-      // Always refresh from server in background
+      // NO cache-first shortcut on initial load — always wait for server data
+      // This prevents stale/empty metrics from being displayed before the real data arrives
       loadBoardsData(workspaceId);
     }
   }, [state.activeWorkspaceId]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch, loadBoardsData, setActiveWorkspace, authData, isLoadingAuth }}>
+    <DataContext.Provider value={{ state, dispatch, loadBoardsData, setActiveWorkspace, authData, isLoadingAuth, firstLoadDone: state._firstLoadDone }}>
       {children}
     </DataContext.Provider>
   );

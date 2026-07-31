@@ -61,3 +61,92 @@ export function computeDaysLeft(endDate: Date | string | null): number {
   const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   return Math.max(0, diff);
 }
+
+/**
+ * Returns true if two dates represent the same calendar day.
+ */
+export function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/**
+ * Returns true if `day` falls strictly between `start` and `end`
+ * (not inclusive of either endpoint).
+ */
+export function isBetween(day: Date, start: Date, end: Date): boolean {
+  const t = stripTime(day).getTime();
+  return t > stripTime(start).getTime() && t < stripTime(end).getTime();
+}
+
+/**
+ * Strips the time portion from a Date, leaving only year/month/day.
+ */
+export function stripTime(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/**
+ * Returns a new Date shifted by `delta` months.
+ */
+export function addMonths(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
+}
+
+/**
+ * Returns a new Date shifted by `delta` days.
+ */
+export function addDays(date: Date, delta: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + delta);
+  return d;
+}
+
+const MONTH_NAMES_RU = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+];
+
+/**
+ * Formats a Date as "Month YYYY" in Russian, e.g. "Май 2026".
+ */
+export function monthLabel(date: Date): string {
+  return `${MONTH_NAMES_RU[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+// Monday-first weekday labels matching Russian calendar convention.
+export const WEEKDAY_LABELS_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+/**
+ * Builds a 7-column grid for `monthDate`, Monday-first, padded with
+ * trailing days from the previous month and leading days from the next
+ * month so every row has exactly 7 cells.
+ */
+export function getMonthGrid(monthDate: Date): { date: Date; inMonth: boolean }[] {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const lastOfMonth = new Date(year, month + 1, 0);
+
+  // JS getDay(): 0=Sunday..6=Saturday. Convert to Monday-first offset.
+  const firstWeekday = (firstOfMonth.getDay() + 6) % 7;
+  const daysInMonth = lastOfMonth.getDate();
+
+  const cells: { date: Date; inMonth: boolean }[] = [];
+
+  for (let i = firstWeekday; i > 0; i--) {
+    cells.push({ date: new Date(year, month, 1 - i), inMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: new Date(year, month, d), inMonth: true });
+  }
+  while (cells.length % 7 !== 0) {
+    const last = cells[cells.length - 1].date;
+    cells.push({ date: addDays(last, 1), inMonth: false });
+  }
+
+  return cells;
+}

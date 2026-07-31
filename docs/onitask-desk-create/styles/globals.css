@@ -1,0 +1,134 @@
+/* ==========================================================================
+   onitask — Desk Create screen
+   Tailwind v3.4 — classic PostCSS pipeline (tailwind.config.js + this file).
+
+   v3 nuance vs the v4 approach this was originally built with: there is
+   no @theme block and no automatic content detection. Color/radius/font
+   tokens are defined once below as plain CSS custom properties, then
+   *mapped* into Tailwind's utility generator via tailwind.config.js
+   (theme.extend.colors etc. pointing at var(--color-x)) — so `bg-accent`,
+   `text-text-muted`, `border-line` compile to the exact same utilities
+   as before. Every file that should be scanned for class names must be
+   listed in tailwind.config.js's `content` array explicitly.
+
+   Why v3.4 instead of v4 here: v4's compiled output emits real runtime
+   `@property` at-rules (used to type-register --tw-translate-x and
+   friends for correct transform composition/interpolation). That's a
+   genuinely modern CSS feature with inconsistent support across the
+   older Android WebView builds Telegram's in-app browser can be running
+   on — v3.4's classic utility output has no such dependency.
+   ========================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ---- color: dark / amber system --------------------------------------
+     Sampled directly from the reference screenshot (not eyeballed):
+     page bg #0a0a0a, card/input fill #101010, hairline #3a3a3a,
+     accent #ff9900 — a notably more saturated orange than a typical
+     "amber" design-token guess. */
+  --color-bg: #0a0a0a;             /* page background */
+  --color-surface: #101010;        /* card + input fill (same tone) */
+  --color-surface-raised: #101010; /* kept as an alias — no tonal step
+                                       between card and input in the ref */
+  --color-line: #3a3a3a;           /* default 1px hairline -> border-line */
+  --color-line-strong: #4a4a4a;    /* focus / hover hairline -> border-line-strong */
+  --color-accent: #ff9900;         /* section marker, primary cta, badges */
+  --color-accent-strong: #ffad33;
+  --color-accent-ink: #1a1200;     /* text on amber */
+
+  --color-text: #f2f2f0;
+  --color-text-muted: #9a9a97;
+  --color-text-faint: #6b6b68;     /* placeholders */
+
+  --color-toggle-track-off: #101010;
+  --color-toggle-track-on: var(--color-accent);
+  --color-toggle-knob: #fafafa;
+
+  /* Success/status green — sampled from the sprint bottom-sheet mockups
+     (IMG_6732/6733/6734): the "Активный" badge, the "выполнено" stat
+     number, and the progress-bar fill all use this. Distinct from
+     --color-accent (orange): orange stays reserved for primary CTAs and
+     section markers, this green is purely a semantic "positive/active
+     status" signal. Two very close shades were present in the source
+     (#00E275 for badge/text, #00F297 for the bar fill) — collapsed to
+     one token since the difference reads as anti-aliasing noise more
+     than an intentional two-tone choice. */
+  --color-success: #00e275;
+  --color-progress-track: #3b3b3b;   /* unfilled portion of a progress bar */
+
+  /* Bottom-sheet backdrop scrim — measured alpha ≈0.8 over the page bg. */
+  --color-scrim: rgba(10, 10, 10, 0.8);
+
+  /* semantic accent-border gradients used by the "action" notch corner
+     (Добавить-style buttons, and the two светофор steppers) */
+  --color-grad-add-from: #6a8a72;   /* muted teal-green */
+  --color-grad-add-to: #a9915a;     /* muted gold */
+  --color-grad-warning-from: #ffb547;
+  --color-grad-warning-to: #6e3f00;
+  --color-grad-urgent-from: #d9636b;
+  --color-grad-urgent-to: #55151a;
+
+  /* ---- radius / notch ------------------------------------------------
+     Rounded corners: 6px radius (measured off the reference). Chamfered
+     corners: 16px cut in each direction. Read directly by NotchedPanel's
+     defaults (components/ui/NotchedPanel.tsx, radius=6, notch=16) — keep
+     both in sync if you tune further. */
+  --radius-card: 6px;
+  --radius-field: 6px;
+  --radius-pill: 999px;
+  --notch-size: 16px;
+
+  /* ---- spacing scale used across the form --------------------------------
+     Page gutter measured at 16px both edges; section gap 24px — both
+     cross-checked against the reference twice (direct pixel measurement
+     + Figma export). */
+  --spacing-section-gap: 24px;
+  --spacing-page-gutter: 16px;
+}
+
+/* ==========================================================================
+   Telegram WebApp viewport plumbing
+   ----------------------------------------------------------------------
+   Telegram's in-app browser does not report a reliable 100vh: on Android
+   it includes the space behind the Telegram header/bottom nav, on iOS it
+   fights with the keyboard. We keep two escape hatches, both written by
+   hooks/useTelegramViewport.ts at runtime, and fall back to 100dvh when
+   the Telegram JS bridge hasn't run yet (e.g. first paint, or plain
+   browser preview during development).
+   ========================================================================== */
+:root {
+  --tg-viewport-height: 100dvh;
+  --tg-viewport-stable-height: 100dvh;
+  --tg-safe-area-top: env(safe-area-inset-top, 0px);
+  --tg-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  /* Telegram's own chrome (header bar / collapsed Main Button slot) on
+     top of the OS safe area — set from WebApp.contentSafeAreaInset. */
+  --tg-content-safe-top: 0px;
+  --tg-content-safe-bottom: 0px;
+}
+
+@layer base {
+  html, body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: theme("fontFamily.sans");
+    /* prevents the iOS "rubber band" flash of white past the scroll edges */
+    overscroll-behavior-y: none;
+  }
+
+  /* iOS Telegram auto-zooms any input under 16px on focus — every field
+     in this form is pinned to 16px (see TextInput) specifically to avoid
+     that jump, which otherwise breaks the keyboard-open layout. */
+  input, textarea, button {
+    font-family: inherit;
+  }
+
+  /* form fields keep their own long-press menu off — this is a form
+     users fill fast inside a chat app, not a text-selection surface */
+  input, button {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

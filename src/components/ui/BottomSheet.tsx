@@ -12,10 +12,12 @@ export function BottomSheet({
   open,
   onClose,
   children,
+  stacked,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  stacked?: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -63,7 +65,7 @@ export function BottomSheet({
         aria-modal={open}
         className={`relative z-10 w-full max-h-[90vh] overflow-y-auto bg-[var(--color-bg-surface,#1A1A1A)] rounded-t-2xl transition-transform duration-300 ${
           open ? 'translate-y-0' : 'translate-y-full'
-        }`}
+        } ${stacked ? 'mt-0' : ''}`}
         style={{
           borderTopLeftRadius: '16px',
           borderTopRightRadius: '16px',
