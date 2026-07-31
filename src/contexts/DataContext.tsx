@@ -6,30 +6,6 @@ import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
-// ── sessionStorage cache key for /api/workspaces/my-data ──────────────────────
-const MY_DATA_CACHE_KEY = 'onitask_my_data';
-
-/** Load cached my-data from sessionStorage (returns null on miss or parse error) */
-function loadMyDataCache(): DataStore | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = sessionStorage.getItem(MY_DATA_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Save my-data to sessionStorage with timestamp */
-function saveMyDataCache(store: DataStore): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(MY_DATA_CACHE_KEY, JSON.stringify(store));
-  } catch {
-    // sessionStorage full — silently ignore
-  }
-}
-
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Worker = Database['public']['Tables']['workers']['Row'];
@@ -267,32 +243,52 @@ interface DataContextValue {
   isLoadingAuth: boolean;
   /** Whether the very first server load has completed */
   firstLoadDone: boolean;
+  /** Error message if data loading failed, null otherwise */
+  dataError: string | null;
+  /** Whether the user is currently switching workspaces (for loading states) */
+  isSwitchingWorkspace: boolean;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
-  const { data: authData, isLoading: isLoadingAuth } = useTelegramAuth();
+  const { data: authData, isLoading: isLoadingAuth, initData } = useTelegramAuth();
 
   // Ref to track if initial load happened (dedup guard)
   const boardsLoadedRef = useRef(false);
 
+  // Ref for initData (avoids stale closure in loadBoardsData callback)
+  const initDataRef = useRef('');
+  useEffect(() => {
+    initDataRef.current = initData;
+  }, [initData]);
+
+  // Ref to track which workspace was used in the parallel load (for comparison when authData arrives)
+  const firstLoadedWorkspaceIdRef = useRef<string | null>(null);
+
+  // State for data loading error and workspace switching
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
+
   const loadBoardsData = useCallback(async (workspaceId?: string) => {
+    // Guard: require initData before making any API call (fixes race condition #2)
+    const currentInitData = initDataRef.current;
+    if (!currentInitData) {
+      console.warn('[DataContext] loadBoardsData called before initData is available');
+      return;
+    }
+
     // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
-      const telegramWebApp = globalWindow?.Telegram?.WebApp;
-      const initData = telegramWebApp?.initData || '';
-
       const res = await fetch('/api/workspaces/my-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          init_data: initData,
+        body: JSON.stringify({
+          init_data: currentInitData,
           ...(workspaceId && { workspace_id: workspaceId }),
         }),
         signal: controller.signal,
@@ -311,6 +307,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { workers: workersData, workspaces: wsData, tasks, metrics } = json.data;
+
+      // Track which workspace was used for this load (for parallel load comparison)
+      if (!workspaceId && wsData?.length > 0) {
+        firstLoadedWorkspaceIdRef.current = wsData[0].id;
+      } else if (workspaceId) {
+        firstLoadedWorkspaceIdRef.current = workspaceId;
+      }
 
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
@@ -382,16 +385,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      // Mark as loaded + save to sessionStorage cache
+      // Mark as loaded + clear any previous error
       dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
       dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
       boardsLoadedRef.current = true;
-      saveMyDataCache(state);
+      setDataError(null);
     } catch (err) {
       clearTimeout(timeoutId);
+      const message = err instanceof Error ? err.message : 'failed_to_load_boards_data';
       console.error('[DataContext] failed to load boards data:', err);
+      setDataError(message);
     }
   }, []);
+
+  // Parallel load (Option A): start loadBoardsData as soon as initData is available,
+  // without waiting for /api/init to complete. Server uses first workspace.
+  // When authData arrives, if active workspace differs, reload with correct workspaceId.
+  useEffect(() => {
+    if (!initData) return;
+    if (boardsLoadedRef.current) return;
+    if (authData?.worker) return; // Auth already arrived — let the auth effect handle it
+    loadBoardsData();
+  }, [initData, authData?.worker, loadBoardsData]);
 
   // Sync workspace and worker data from auth response + load boards data
   useEffect(() => {
@@ -433,43 +448,60 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
     const activeWsId = (authData as any).last_active_workspace_id ?? null;
     const targetWorkspaceId = activeWsId || authData.worker.workspace_id;
-    
+
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
-      
-      // Load boards data immediately after workers are synced (not in a separate useEffect)
-      // This eliminates the race condition where loadBoardsData runs before workers are ready
+
+      // If parallel load already completed, check if we need to reload for correct workspace.
+      // The parallel load (above effect) uses the first workspace; if the active workspace
+      // differs, reload to get correct metrics.
       if (!boardsLoadedRef.current) {
         loadBoardsData(targetWorkspaceId);
+      } else {
+        // Data already loaded by parallel effect — check if workspace matches
+        const loadedWorkspaceId = firstLoadedWorkspaceIdRef.current;
+        if (loadedWorkspaceId && targetWorkspaceId !== loadedWorkspaceId) {
+          loadBoardsData(targetWorkspaceId);
+        }
       }
     }
   }, [authData?.worker?.id, authData?.workspaces, loadBoardsData]);
 
   /** Set the active workspace — persists to server and reloads flow data */
   const setActiveWorkspace = useCallback(async (workspaceId: string) => {
+    // Guard: require initData before making any API call
+    const currentInitData = initDataRef.current;
+    if (!currentInitData) {
+      console.warn('[DataContext] setActiveWorkspace called before initData is available');
+      return;
+    }
+
     // Optimistic update
     dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
 
     // Reset stale metrics immediately so FlowBoard shows loading state
     dispatch({ type: 'SET_METRICS', payload: null });
 
+    // Show loading state during switch (fixes flash of empty content #4)
+    setIsSwitchingWorkspace(true);
+
     // Persist to server (migration 016: profiles.last_active_workspace_id)
     try {
-      const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
-      const telegramWebApp = globalWindow?.Telegram?.WebApp;
-      const initData = telegramWebApp?.initData || '';
-
       await fetch('/api/workspaces/active-workspace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: initData, workspace_id: workspaceId }),
+        body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
       });
     } catch (err) {
       console.error('[DataContext] Failed to save active workspace:', err);
     }
 
     // Reload ALL data (boards + tasks + metrics) from consolidated endpoint
-    await loadBoardsData(workspaceId);
+    try {
+      await loadBoardsData(workspaceId);
+    } finally {
+      setIsSwitchingWorkspace(false);
+    }
   }, [loadBoardsData]);
 
   // Subscribe to realtime task changes
@@ -524,7 +556,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [state.activeWorkspaceId, loadBoardsData]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch, loadBoardsData, setActiveWorkspace, authData, isLoadingAuth, firstLoadDone: state._firstLoadDone }}>
+    <DataContext.Provider value={{
+      state,
+      dispatch,
+      loadBoardsData,
+      setActiveWorkspace,
+      authData,
+      isLoadingAuth,
+      firstLoadDone: state._firstLoadDone,
+      dataError,
+      isSwitchingWorkspace,
+    }}>
       {children}
     </DataContext.Provider>
   );

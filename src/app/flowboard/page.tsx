@@ -28,23 +28,14 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 export default function FlowBoardPage() {
   useScrollReset();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
-  const { state, loadBoardsData, firstLoadDone } = useData();
+  const { state, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
 
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
-  
-  // DEBUG: Log what's being passed to FlowBoard
-  console.log('[FlowBoardPage] Props to FlowBoard:', { 
-    sprintEnabled, 
-    hasSprint: !!sprint, 
-    sprintName: sprint?.name,
-    firstLoadDone,
-    activeWorkspaceId: state.activeWorkspaceId 
-  });
-  
+
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];
     const newSignals: SignalData[] = [];
@@ -131,24 +122,28 @@ export default function FlowBoardPage() {
 
   const refreshMetrics = useCallback(async () => {
     if (!state.activeWorkspaceId) return;
+    // TTL check: only refetch if data is older than 60 seconds
+    const lastUpdated = state.metrics.lastUpdated ?? 0;
+    const ageMs = Date.now() - lastUpdated;
+    if (ageMs < 60000) return; // Data is still fresh
     try {
       await loadBoardsData(state.activeWorkspaceId);
     } catch (err) {
       console.error('Refresh metrics error:', err);
     }
-  }, [loadBoardsData, state.activeWorkspaceId]);
+  }, [loadBoardsData, state.activeWorkspaceId, state.metrics.lastUpdated]);
 
-  // Refresh metrics periodically
+  // Refresh metrics periodically (60s interval with TTL check)
   React.useEffect(() => {
     const interval = setInterval(() => {
       refreshMetrics();
-    }, 30000); // every 30s
+    }, 60000); // every 60s
     return () => clearInterval(interval);
   }, [refreshMetrics]);
 
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
-  if (authLoading || !firstLoadDone) {
+  if (authLoading || (!firstLoadDone && !dataError)) {
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"
@@ -175,6 +170,38 @@ export default function FlowBoardPage() {
     );
   }
 
+  // Data error state — first load failed, show retry option
+  if (!firstLoadDone && dataError) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-full min-h-dvh px-4"
+        style={{ backgroundColor: '#0A0A0A' }}
+      >
+        <div className="text-center max-w-sm">
+          <p style={{ color: '#EF4444', fontFamily: 'system-ui', marginBottom: '16px' }}>
+            Ошибка загрузки данных доски
+          </p>
+          <button
+            onClick={() => refreshMetrics()}
+            style={{
+              fontFamily: 'system-ui',
+              fontSize: '14px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              backgroundColor: '#F59E0B',
+              color: '#0A0A0A',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: '600',
+            }}
+          >
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentDate = new Date().toLocaleDateString('ru-RU', {
     weekday: 'long',
     day: 'numeric',
@@ -196,8 +223,8 @@ export default function FlowBoardPage() {
         taskStatuses={taskStatuses}
         workers={workers}
         agents={agents}
-        loading={false}
-        error={null}
+        loading={isSwitchingWorkspace}
+        error={dataError}
         onAddWorker={() => console.log('Add worker clicked')}
         onAddAgent={() => console.log('Add agent clicked')}
         onRefresh={refreshMetrics}

@@ -248,7 +248,9 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(errData.error || errData.message || 'init_failed');
+        const errorMsg = errData.error || errData.message || 'init_failed';
+        // Prefix with HTTP status code for client-side error differentiation (fixes #7)
+        throw new Error(`${res.status}:${errorMsg}`);
       }
 
       const json = await res.json();

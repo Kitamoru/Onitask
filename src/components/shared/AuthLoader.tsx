@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { useData } from '@/contexts/DataContext';
 import { GlobalLoader } from './GlobalLoader';
 
 /**
@@ -20,17 +21,19 @@ interface AuthLoaderProps {
 
 export function AuthLoader({ children }: AuthLoaderProps) {
   const { isLoading } = useTelegramAuth();
+  const { firstLoadDone } = useData();
   const [visible, setVisible] = React.useState(true);
   const resolvedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!isLoading && !resolvedRef.current) {
+    // Wait for both auth AND first data load to complete (fixes #5: BottomMenu visible before data ready)
+    if (!isLoading && firstLoadDone && !resolvedRef.current) {
       resolvedRef.current = true;
       // Keep loader visible for minimum display time to prevent flash
       const timer = setTimeout(() => setVisible(false), LOADER_MIN_DISPLAY_MS);
       return () => clearTimeout(timer);
     }
-  }, [isLoading]);
+  }, [isLoading, firstLoadDone]);
 
   return (
     <>

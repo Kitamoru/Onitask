@@ -73,6 +73,19 @@ export default function HomePage() {
   // Error state
   if (error) {
     const isNotInTWA = error === 'not_in_twa';
+    const is401 = error.startsWith('401:');
+    const is500 = error.startsWith('500:');
+
+    let message: string;
+    if (isNotInTWA) {
+      message = 'Откройте приложение через Telegram Web App';
+    } else if (is401) {
+      message = 'Сессия истекла. Откройте приложение заново через Telegram.';
+    } else if (is500) {
+      message = 'Сервер временно недоступен. Попробуйте позже.';
+    } else {
+      message = 'Ошибка инициализации. Попробуйте перезагрузить.';
+    }
 
     return (
       <div
@@ -90,9 +103,7 @@ export default function HomePage() {
               marginBottom: '16px',
             }}
           >
-            {isNotInTWA
-              ? 'Откройте приложение через Telegram Web App'
-              : 'Ошибка инициализации. Попробуйте перезагрузить.'}
+            {message}
           </p>
           {!isNotInTWA && (
             <button
