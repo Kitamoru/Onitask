@@ -472,7 +472,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // Data already loaded by parallel effect — check if workspace matches
         const loadedWorkspaceId = firstLoadedWorkspaceIdRef.current;
         if (loadedWorkspaceId && targetWorkspaceId !== loadedWorkspaceId) {
-          loadBoardsData(targetWorkspaceId);
+          // Clear stale metrics from parallel load (wrong workspace) + show loading state
+          // This prevents flash of board A's data when user's active board is B
+          dispatch({ type: 'SET_METRICS', payload: null });
+          setIsSwitchingWorkspace(true);
+          loadBoardsData(targetWorkspaceId).finally(() => setIsSwitchingWorkspace(false));
         }
       }
     }
