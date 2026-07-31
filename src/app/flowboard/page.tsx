@@ -127,7 +127,7 @@ export default function FlowBoardPage() {
     const ageMs = Date.now() - lastUpdated;
     if (ageMs < 60000) return; // Data is still fresh
     try {
-      await loadBoardsData(state.activeWorkspaceId);
+      await loadBoardsData(state.activeWorkspaceId, { partial: true });
     } catch (err) {
       console.error('Refresh metrics error:', err);
     }

@@ -235,7 +235,7 @@ function dataReducer(state: DataStore, action: Action): DataStore {
 interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
-  loadBoardsData: (workspaceId?: string) => Promise<void>;
+  loadBoardsData: (workspaceId?: string, options?: { partial?: boolean }) => Promise<void>;
   /** Set the active workspace — persists to server and reloads flow data */
   setActiveWorkspace: (workspaceId: string) => Promise<void>;
   /** Whether auth data is available from useAuth */
@@ -271,13 +271,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [dataError, setDataError] = useState<string | null>(null);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
 
-  const loadBoardsData = useCallback(async (workspaceId?: string) => {
+  const loadBoardsData = useCallback(async (workspaceId?: string, options?: { partial?: boolean }) => {
     // Guard: require initData before making any API call (fixes race condition #2)
     const currentInitData = initDataRef.current;
     if (!currentInitData) {
       console.warn('[DataContext] loadBoardsData called before initData is available');
       return;
     }
+
+    const isPartial = options?.partial ?? false;
 
     // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
@@ -290,6 +292,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({
           init_data: currentInitData,
           ...(workspaceId && { workspace_id: workspaceId }),
+          ...(isPartial && { partial: true }),
         }),
         signal: controller.signal,
       });
@@ -328,8 +331,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         } as TaskEntity;
       });
 
-      dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
-      dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+      // On partial load (board switch), only update tasks + metrics — skip board cards
+      // Board cards are only needed on the /boards page, not when switching boards
+      if (!isPartial) {
+        dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
+        dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+      }
+
       dispatch({ type: 'SET_TASKS', payload: taskEntities });
 
       // Dispatch metrics if present (consolidated endpoint)
@@ -337,53 +345,56 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_METRICS', payload: metrics });
       }
 
-      // Compute boards risk data
-      const peopleSet = new Set<string>();
-      let processCount = 0;
-      let escalationCount = 0;
+      // Only compute + dispatch board cards on full load (not partial)
+      if (!isPartial) {
+        // Compute boards risk data
+        const peopleSet = new Set<string>();
+        let processCount = 0;
+        let escalationCount = 0;
 
-      tasksList.forEach((task: any) => {
-        if (task.assigned_to) {
-          peopleSet.add(task.assigned_to);
-        }
-        if (task.column === 'in_progress') {
-          processCount++;
-        }
-        if (task.escalation_reason) {
-          escalationCount++;
-        }
-      });
+        tasksList.forEach((task: any) => {
+          if (task.assigned_to) {
+            peopleSet.add(task.assigned_to);
+          }
+          if (task.column === 'in_progress') {
+            processCount++;
+          }
+          if (task.escalation_reason) {
+            escalationCount++;
+          }
+        });
 
-      const cards = (wsData ?? []).map((ws: any) => {
-        const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
+        const cards = (wsData ?? []).map((ws: any) => {
+          const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
 
-        return {
-          id: ws.id,
-          name: ws.name,
-          slug: ws.slug,
-          memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
-          agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
-          stats: {
-            inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
-            inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
-            onReview: wsTasks.filter((t: any) => t.column === 'review').length,
-            done: wsTasks.filter((t: any) => t.column === 'done').length,
+          return {
+            id: ws.id,
+            name: ws.name,
+            slug: ws.slug,
+            memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
+            agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
+            stats: {
+              inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
+              inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
+              onReview: wsTasks.filter((t: any) => t.column === 'review').length,
+              done: wsTasks.filter((t: any) => t.column === 'done').length,
+            },
+            sprint: undefined,
+          };
+        });
+
+        dispatch({
+          type: 'SET_BOARDS',
+          payload: {
+            riskData: {
+              people: peopleSet.size,
+              processes: processCount,
+              escalations: escalationCount,
+            },
+            cards,
           },
-          sprint: undefined,
-        };
-      });
-
-      dispatch({
-        type: 'SET_BOARDS',
-        payload: {
-          riskData: {
-            people: peopleSet.size,
-            processes: processCount,
-            escalations: escalationCount,
-          },
-          cards,
-        },
-      });
+        });
+      }
 
       // Mark as loaded + clear any previous error
       dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
@@ -485,20 +496,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Show loading state during switch (fixes flash of empty content #4)
     setIsSwitchingWorkspace(true);
 
-    // Persist to server (migration 016: profiles.last_active_workspace_id)
-    try {
-      await fetch('/api/workspaces/active-workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
-      });
-    } catch (err) {
-      console.error('[DataContext] Failed to save active workspace:', err);
-    }
+    // Persist to server (fire and forget — don't block UI on this)
+    // The server save is non-critical for the UI; if it fails, the next load
+    // will just use the previous workspace. This saves 1 HTTP RTT on board switch.
+    fetch('/api/workspaces/active-workspace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
+    }).catch((err) => console.error('[DataContext] Failed to save active workspace:', err));
 
-    // Reload ALL data (boards + tasks + metrics) from consolidated endpoint
+    // Reload data with partial load (only tasks + metrics for this workspace)
+    // This skips fetching all workspaces + board cards, reducing response size
     try {
-      await loadBoardsData(workspaceId);
+      await loadBoardsData(workspaceId, { partial: true });
     } finally {
       setIsSwitchingWorkspace(false);
     }
@@ -559,7 +569,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (workspaceId && boardsLoadedRef.current) {
       // Skip initial set (from null to value) — already handled by auth/parallel effects
       if (prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
-        loadBoardsData(workspaceId);
+        loadBoardsData(workspaceId, { partial: true });
       }
     }
   }, [state.activeWorkspaceId, loadBoardsData]);

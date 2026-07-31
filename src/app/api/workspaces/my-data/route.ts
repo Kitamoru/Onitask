@@ -4,17 +4,19 @@
  * POST /api/workspaces/my-data — Returns authenticated user's workspace data + flow metrics.
  *
  * Consolidated endpoint: returns workers, workspaces, tasks AND pre-computed metrics
- * in a single HTTP call. This eliminates the previous pattern of:
- *   1. GET /api/workspaces/my-data (tasks + workers + workspaces)
- *   2. POST /api/flow/metrics (sprint + columns + alerts)
- *   3. GET /api/tasks (full task details)
+ * in a single HTTP call.
  *
- * All three are now served from one endpoint, reducing HTTP roundtrips from 3 to 1.
+ * Optimization: when `partial: true` + `workspace_id` is provided, only tasks for the
+ * requested workspace are fetched (not all tasks across all workspaces). This significantly
+ * reduces query time and bandwidth when switching boards.
+ *
+ * DB queries are parallelized: workspaces, tasks, settings, and sprints are fetched
+ * concurrently after the workers query (which provides workspaceIds).
  *
  * Response:
  *   workers: Array of worker records for the authenticated user
  *   workspaces: Array of workspace records the user belongs to
- *   tasks: Full task records across all user's workspaces
+ *   tasks: Full task records (filtered to workspace_id when partial=true)
  *   metrics: Pre-computed flow metrics (sprint, columns, alerts)
  */
 
@@ -70,8 +72,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const initData = body.init_data as string | undefined;
-    // Optional workspace_id override — when provided, metrics are computed for this workspace
     const requestedWorkspaceId = body.workspace_id as string | undefined;
+    const isPartial = body.partial as boolean | undefined;
 
     // Authenticate via Telegram initData
     const auth = await authenticateRequest(initData);
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    // 1. Get all active workers for this profile
+    // 1. Get all active workers for this profile (needed for workspaceIds)
     const { data: workersData, error: workersError } = await supabase
       .from('workers')
       .select('*')
@@ -99,42 +101,49 @@ export async function POST(req: NextRequest) {
 
     const workers = workersData || [];
     const workspaceIds = workers.map((w: any) => w.workspace_id).filter(Boolean);
+    const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
 
-    // 2. Get workspaces
-    let workspaces: any[] = [];
-    if (workspaceIds.length > 0) {
-      const { data: wsData, error: wsError } = await supabase
-        .from('workspaces')
-        .select('*')
-        .in('id', workspaceIds);
+    // When partial load with workspace_id, only fetch tasks for that workspace
+    // (full load fetches tasks across all workspaces for board cards)
+    const taskWorkspaceIds = (isPartial && requestedWorkspaceId) ? [requestedWorkspaceId] : workspaceIds;
 
-      if (wsError) {
-        console.error('my-data: workspaces query error', wsError);
-      }
-      workspaces = wsData || [];
-    }
+    // 2. Parallelize: fetch workspaces, tasks, settings, sprints concurrently
+    // This reduces 4 sequential DB roundtrips to 1 parallel roundtrip
+    const [wsResult, taskResult, settingsResult, sprintResult] = await Promise.all([
+      // Workspaces (always fetch all — needed for board cards on full load)
+      workspaceIds.length > 0
+        ? supabase.from('workspaces').select('*').in('id', workspaceIds)
+        : Promise.resolve({ data: [], error: null as any }),
+      // Tasks (filtered to single workspace when partial load)
+      taskWorkspaceIds.length > 0
+        ? supabase.from('tasks').select('*').in('workspace_id', taskWorkspaceIds)
+        : Promise.resolve({ data: [], error: null as any }),
+      // Workspace settings (for sprint_enabled flag)
+      metricsWorkspaceId
+        ? supabase.from('workspace_settings').select('story_points_config').eq('workspace_id', metricsWorkspaceId).single()
+        : Promise.resolve({ data: null, error: null as any }),
+      // Active sprint (for sprint metrics)
+      metricsWorkspaceId
+        ? supabase.from('sprints').select('*').eq('workspace_id', metricsWorkspaceId).in('status', ['active', 'planning']).order('created_at', { ascending: false }).limit(1)
+        : Promise.resolve({ data: null, error: null as any }),
+    ]);
 
-    // 3. Get full tasks across all workspaces
-    let tasks: any[] = [];
-    if (workspaceIds.length > 0) {
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .select('*')
-        .in('workspace_id', workspaceIds);
+    if (wsResult.error) console.error('my-data: workspaces query error', wsResult.error);
+    if (taskResult.error) console.error('my-data: tasks query error', taskResult.error);
 
-      if (taskError) {
-        console.error('my-data: tasks query error', taskError);
-      }
-      tasks = taskData || [];
-    }
+    const workspaces = wsResult.data || [];
+    const tasks = taskResult.data || [];
+    const relevantTasks = metricsWorkspaceId ? tasks.filter((t: any) => t.workspace_id === metricsWorkspaceId) : tasks;
 
-  // 4. Compute flow metrics — use requestedWorkspaceId if provided, else fallback to first workspace
-  const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
-  
-  // Pre-filter tasks by workspace for sprint metrics calculation
-  const relevantTasks = metricsWorkspaceId ? tasks.filter((t) => t.workspace_id === metricsWorkspaceId) : tasks;
-  
-  const metrics = await computeMetrics(workers, tasks, metricsWorkspaceId, supabase, relevantTasks);
+    // 3. Compute metrics from pre-fetched data (no additional DB queries needed)
+    const metrics = computeMetricsFromData(
+      workers,
+      tasks,
+      metricsWorkspaceId,
+      relevantTasks,
+      settingsResult.data as any,
+      sprintResult.data as any,
+    );
 
     return NextResponse.json({
       success: true,
@@ -151,66 +160,57 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function computeMetrics(
+/**
+ * Compute flow metrics from pre-fetched data (no DB queries).
+ * This is separated from the route handler to enable parallel DB queries.
+ */
+function computeMetricsFromData(
   workers: WorkersRow[],
   tasks: TasksRow[],
   workspaceId: string | null,
-  supabase: ReturnType<typeof createServerClient>,
-  relevantTasksParam?: TasksRow[],
-): Promise<FlowMetricsResponse> {
-  const relevantTasks = relevantTasksParam || (workspaceId ? tasks.filter((t) => t.workspace_id === workspaceId) : tasks);
+  relevantTasks: TasksRow[],
+  settingsData: any,
+  sprintData: any,
+): FlowMetricsResponse {
   let sprint: FlowMetricsResponse['sprint'] = null;
   let sprintEnabled = false;
 
   if (workspaceId) {
-    // Get workspace settings for sprint_enabled
-    const { data: settingsData } = await supabase
-      .from('workspace_settings')
-      .select('story_points_config')
-      .eq('workspace_id', workspaceId)
-      .single();
-    sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
+    // Sprint enabled flag from pre-fetched settings
+    sprintEnabled = (settingsData?.story_points_config as any)?.sprint_enabled ?? false;
 
-    // Get active sprint
-    const { data: sprintData } = await supabase
-      .from('sprints')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .in('status', ['active', 'planning'])
-      .order('created_at', { ascending: false })
-      .limit(1);
-
+    // Sprint data from pre-fetched query
     if (sprintData && (sprintData as SprintsRow[]).length > 0) {
       const sp = (sprintData as SprintsRow[])[0];
-      
+
       // Calculate sprint metrics from actual data
       const startDate = sp.start_date ? new Date(sp.start_date) : null;
       const endDate = sp.end_date ? new Date(sp.end_date) : null;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       let daysElapsed = 0;
       let totalDays = 7;
       let progress = 0;
-      
+
       if (startDate && endDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        
+
         totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-        
+
         if (today >= start) {
           daysElapsed = Math.min(totalDays, Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
         } else {
           daysElapsed = 0;
         }
-        
+
         progress = totalDays > 0 ? Math.round((daysElapsed / totalDays) * 100) : 0;
         progress = Math.min(100, Math.max(0, progress));
       }
-      
+
       // Count tasks by status for this sprint
       const sprintTasks = (relevantTasks || tasks).filter((t: any) => t.sprint_id === sp.id);
       const doneSP = sprintTasks
@@ -218,7 +218,7 @@ async function computeMetrics(
         .reduce((sum: number, t: any) => sum + (t.story_points as number), 0);
       const inProgress = sprintTasks.filter((t: any) => t.column === 'in_progress').length;
       const onReview = sprintTasks.filter((t: any) => t.column === 'review').length;
-      
+
       sprint = {
         id: sp.id,
         name: sp.name || '',
