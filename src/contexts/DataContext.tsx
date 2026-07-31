@@ -358,6 +358,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { workers: workersData, workspaces: wsData, tasks, metrics } = json.data;
+      
+      // DEBUG: Log API response
+      console.log('[DataContext] API response:', {
+        workersCount: workersData?.length,
+        workspacesCount: wsData?.length,
+        tasksCount: tasks?.length,
+        metricsSprint: metrics?.sprint,
+        metricsSprintEnabled: metrics?.sprintEnabled,
+      });
 
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
@@ -378,7 +387,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Dispatch metrics if present (consolidated endpoint)
       if (metrics) {
+        console.log('[DataContext] Dispatching SET_METRICS with sprint:', metrics.sprint);
         dispatch({ type: 'SET_METRICS', payload: metrics });
+      } else {
+        console.warn('[DataContext] No metrics in API response');
       }
 
       // Compute boards risk data

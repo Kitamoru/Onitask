@@ -33,6 +33,17 @@ export default function FlowBoardPage() {
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
 
+  // DEBUG: Log what page.tsx sees
+  console.log('[FlowBoardPage] Render:', {
+    firstLoadDone,
+    authLoading,
+    hasMetrics: !!metrics,
+    sprintEnabled: metrics?.sprintEnabled,
+    sprint: metrics?.sprint,
+    sprintName: metrics?.sprint?.name,
+    sprintProgress: metrics?.sprint?.progress,
+  });
+
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
   const signals = useMemo<SignalData[]>(() => {
@@ -139,6 +150,7 @@ export default function FlowBoardPage() {
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
   if (authLoading || !firstLoadDone) {
+    console.log('[FlowBoardPage] Showing loading:', { authLoading, firstLoadDone });
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"
