@@ -546,12 +546,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [state.activeWorkspaceId]);
 
   // Load boards data when active workspace changes (e.g., user selects different board)
-  // Initial load is handled in the auth useEffect above
+  // Initial load is handled in the auth useEffect above or by the parallel load effect.
+  // Skip the first change (from null to value) — it's handled by auth/parallel effects.
+  // Only reload when the user explicitly switches workspaces (from one value to another).
+  const prevActiveWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
+    const prevWorkspaceId = prevActiveWorkspaceIdRef.current;
+    // Update ref regardless of whether we reload
+    prevActiveWorkspaceIdRef.current = workspaceId;
+
     if (workspaceId && boardsLoadedRef.current) {
-      // Only reload if data was already loaded once (user is switching workspaces)
-      loadBoardsData(workspaceId);
+      // Skip initial set (from null to value) — already handled by auth/parallel effects
+      if (prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
+        loadBoardsData(workspaceId);
+      }
     }
   }, [state.activeWorkspaceId, loadBoardsData]);
 
