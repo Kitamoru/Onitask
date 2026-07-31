@@ -278,53 +278,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Ref to track if initial load happened (dedup guard)
   const boardsLoadedRef = useRef(false);
 
-  // Sync workspace and worker data from auth response
-  useEffect(() => {
-    if (!authData?.worker) return;
-
-    const worker: Worker = {
-      id: authData.worker.id,
-      workspace_id: authData.worker.workspace_id,
-      source_id: '',
-      type: 'human',
-      role: authData.worker.role,
-      display_name: authData.worker.display_name,
-      is_active: true,
-      created_at: new Date().toISOString(),
-    };
-
-    dispatch({ type: 'SET_WORKERS', payload: [worker] });
-
-    // Sync all workspaces from auth response
-    if (authData.workspaces.length > 0) {
-      const now = new Date().toISOString();
-      const workspaces: Workspace[] = authData.workspaces.map((ws: any) => ({
-        id: ws.id,
-        name: ws.name,
-        slug: ws.slug,
-        task_prefix: ws.task_prefix,
-        owner_id: '',
-        plan: 'free',
-        story_points_enabled: false,
-        cognitive_budget_enabled: false,
-        telegram_chat_id: null,
-        linked_at: null,
-        created_at: now,
-        updated_at: now,
-      }));
-      dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
-    }
-
-    // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
-    const activeWsId = (authData as any).last_active_workspace_id ?? null;
-    if (activeWsId) {
-      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: activeWsId });
-    } else if (authData.worker.workspace_id) {
-      // Fallback: use primary workspace if no saved active board
-      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: authData.worker.workspace_id });
-    }
-  }, [authData?.worker?.id, authData?.workspaces]);
-
   const loadBoardsData = useCallback(async (workspaceId?: string) => {
     // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
@@ -358,15 +311,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { workers: workersData, workspaces: wsData, tasks, metrics } = json.data;
-      
-      // DEBUG: Log API response
-      console.log('[DataContext] API response:', {
-        workersCount: workersData?.length,
-        workspacesCount: wsData?.length,
-        tasksCount: tasks?.length,
-        metricsSprint: metrics?.sprint,
-        metricsSprintEnabled: metrics?.sprintEnabled,
-      });
 
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
@@ -387,10 +331,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Dispatch metrics if present (consolidated endpoint)
       if (metrics) {
-        console.log('[DataContext] Dispatching SET_METRICS with sprint:', metrics.sprint);
         dispatch({ type: 'SET_METRICS', payload: metrics });
-      } else {
-        console.warn('[DataContext] No metrics in API response');
       }
 
       // Compute boards risk data
@@ -451,6 +392,58 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.error('[DataContext] failed to load boards data:', err);
     }
   }, []);
+
+  // Sync workspace and worker data from auth response + load boards data
+  useEffect(() => {
+    if (!authData?.worker) return;
+
+    const worker: Worker = {
+      id: authData.worker.id,
+      workspace_id: authData.worker.workspace_id,
+      source_id: '',
+      type: 'human',
+      role: authData.worker.role,
+      display_name: authData.worker.display_name,
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
+
+    dispatch({ type: 'SET_WORKERS', payload: [worker] });
+
+    // Sync all workspaces from auth response
+    if (authData.workspaces.length > 0) {
+      const now = new Date().toISOString();
+      const workspaces: Workspace[] = authData.workspaces.map((ws: any) => ({
+        id: ws.id,
+        name: ws.name,
+        slug: ws.slug,
+        task_prefix: ws.task_prefix,
+        owner_id: '',
+        plan: 'free',
+        story_points_enabled: false,
+        cognitive_budget_enabled: false,
+        telegram_chat_id: null,
+        linked_at: null,
+        created_at: now,
+        updated_at: now,
+      }));
+      dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
+    }
+
+    // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
+    const activeWsId = (authData as any).last_active_workspace_id ?? null;
+    const targetWorkspaceId = activeWsId || authData.worker.workspace_id;
+    
+    if (targetWorkspaceId) {
+      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
+      
+      // Load boards data immediately after workers are synced (not in a separate useEffect)
+      // This eliminates the race condition where loadBoardsData runs before workers are ready
+      if (!boardsLoadedRef.current) {
+        loadBoardsData(targetWorkspaceId);
+      }
+    }
+  }, [authData?.worker?.id, authData?.workspaces, loadBoardsData]);
 
   /** Set the active workspace — persists to server and reloads flow data */
   const setActiveWorkspace = useCallback(async (workspaceId: string) => {
@@ -520,17 +513,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.activeWorkspaceId]);
 
-  // Load boards data when active workspace is available AND not already loaded
+  // Load boards data when active workspace changes (e.g., user selects different board)
+  // Initial load is handled in the auth useEffect above
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
-    if (workspaceId) {
-      // Reset dedup guard when workspace changes so data reloads on navigation
-      if (boardsLoadedRef.current) {
-        boardsLoadedRef.current = false;
-      }
+    if (workspaceId && boardsLoadedRef.current) {
+      // Only reload if data was already loaded once (user is switching workspaces)
       loadBoardsData(workspaceId);
     }
-  }, [state.activeWorkspaceId]);
+  }, [state.activeWorkspaceId, loadBoardsData]);
 
   return (
     <DataContext.Provider value={{ state, dispatch, loadBoardsData, setActiveWorkspace, authData, isLoadingAuth, firstLoadDone: state._firstLoadDone }}>
