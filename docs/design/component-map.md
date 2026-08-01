@@ -83,7 +83,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | UserAvatar | FlowBoard.tsx | displayName, avatarUrl, size | Avatar component. Exported from index |
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
-| | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `bg-shape-inner.svg` (amber bg), `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Clickable → opens SprintViewSheet or SprintCreateSheet |
+| | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
 
 **Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`

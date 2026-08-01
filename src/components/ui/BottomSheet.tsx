@@ -58,25 +58,23 @@ export function BottomSheet({
         aria-hidden="true"
       />
 
-      {/* Sheet panel */}
+      {/* Sheet panel — background matches RiskPulse cards (var(--color-surface)) */}
       <div
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto bg-surface rounded-t-2xl transition-transform duration-300 ${
+        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto rounded-t-2xl transition-transform duration-300 ${
           open ? 'translate-y-0' : 'translate-y-full'
         } ${stacked ? 'mt-0' : ''}`}
         style={{
+          backgroundColor: 'var(--color-surface)',
           borderTopLeftRadius: '16px',
           borderTopRightRadius: '16px',
         }}
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-2 pb-1">
-          <div
-            className="w-10 h-1 rounded-full"
-            style={{ backgroundColor: 'var(--color-text-muted, #8B8B8B)', opacity: 0.4 }}
-          />
+          <div className="w-10 h-1 rounded-full bg-text-muted/40" />
         </div>
 
         {children}

@@ -206,7 +206,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         notch={8}
         borderWidth={1}
         border="var(--color-line)"
-        fill="var(--color-bg-surface)"
+        fill="var(--color-surface)"
         contentClassName="flex flex-col items-center justify-center gap-2 p-6"
         aria-label="Спринт не создан"
       >
@@ -245,24 +245,10 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
       notch={8}
       borderWidth={1}
       border="var(--color-line)"
-      fill="var(--color-bg-surface)"
+      fill="var(--color-surface)"
       contentClassName="relative flex flex-col w-full p-3"
       aria-label="Информация о спринте"
     >
-      {/* Amber background shape — matches Figma ref-bg-shape-inner.svg (#F59E0B) */}
-      <svg
-        viewBox="0 0 342 235"
-        preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-0 h-full w-full"
-        aria-hidden="true"
-      >
-        <path
-          d="M332.675 0C333.164 0 333.408 0 333.638 0.0552602C333.843 0.104254 334.038 0.185062 334.217 0.29472C334.418 0.418403 334.591 0.591355 334.937 0.937258L341.063 7.06274C341.409 7.40865 341.582 7.5816 341.705 7.78343C341.815 7.96237 341.896 8.15746 341.945 8.36154C342 8.59171 342 8.8363 342 9.32548V231C342 233.209 340.209 235 338 235H9.32547C8.8363 235 8.59171 235 8.36154 234.945C8.15746 234.896 7.96237 234.815 7.78343 234.705C7.5816 234.582 7.40865 234.409 7.06274 234.063L0.937257 227.937C0.591355 227.591 0.418403 227.418 0.29472 227.217C0.185062 227.038 0.104254 226.843 0.0552602 226.638C0 226.408 0 226.164 0 225.675V4C2.77034e-06 1.79086 1.79086 1.61064e-08 4 0H332.675Z"
-          fill="#F59E0B"
-          fillOpacity="0.12"
-        />
-      </svg>
-
       <div className="relative flex flex-col w-full gap-1">
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
