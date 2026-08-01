@@ -1,0 +1,107 @@
+'use client';
+
+import { useState } from 'react';
+import { BottomSheet } from '@/components/ui/BottomSheet';
+import { TextInput } from '@/components/ui/desk-ui/TextInput';
+import { TextArea } from '@/components/ui/desk-ui/TextArea';
+import { DateRangeField } from '@/components/ui/DateRangeField';
+import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
+import { Button } from '@/components/ui/desk-ui/Button';
+import { Field } from '@/components/sprint/Field';
+import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
+import type { SprintFormValue } from '@/components/sprint/types';
+
+export function SprintCreateSheet({
+  open,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (value: SprintFormValue) => void;
+}) {
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [goal, setGoal] = useState('');
+  const [capacity, setCapacity] = useState('');
+  const [dateSheetOpen, setDateSheetOpen] = useState(false);
+
+  const canSubmit =
+    name.trim().length > 0 && startDate !== null && endDate !== null;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ name, startDate, endDate, goal, capacity });
+  };
+
+  return (
+    <>
+      <BottomSheet open={open} onClose={onClose}>
+        <div className="flex flex-col gap-6 px-4 pb-8 pt-6">
+          <h2 className="font-display text-[1.25rem] font-medium leading-6 tracking-[-0.025em] text-white">
+            Создание спринта
+          </h2>
+
+          <div className="flex flex-col gap-5">
+            <Field label="Название спринта">
+              <TextInput
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Введите название спринта"
+              />
+            </Field>
+
+            <Field label="Даты спринта">
+              <DateRangeField
+                startDate={startDate}
+                endDate={endDate}
+                onOpen={() => setDateSheetOpen(true)}
+                placeholder="Выберите даты"
+              />
+            </Field>
+
+            <Field label="Цель спринта">
+              <TextArea
+                value={goal}
+                onChange={setGoal}
+                placeholder="Текст плейсхолдера"
+              />
+            </Field>
+
+            <Field label="Ёмкость спринта">
+              <TextInput
+                value={capacity}
+                onChange={(e) =>
+                  setCapacity(e.target.value.replace(/[^\d]/g, ''))
+                }
+                placeholder="0"
+                inputMode="numeric"
+              />
+            </Field>
+
+            <TasksAccordionRow taskCount={0} />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
+              Создать спринт
+            </Button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      <DateRangeSheet
+        open={dateSheetOpen}
+        onClose={() => setDateSheetOpen(false)}
+        startDate={startDate}
+        endDate={endDate}
+        onConfirm={(s, e) => {
+          setStartDate(s);
+          setEndDate(e);
+          setDateSheetOpen(false);
+        }}
+      />
+    </>
+  );
+}

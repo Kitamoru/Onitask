@@ -2,10 +2,13 @@
 
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 
 /**
  * TasksAccordionRow — accordion row showing task count and expandable list.
  * Used in SprintCreateSheet to pick tasks for the sprint.
+ * Matches the Figma "sprint-tasks" component: header with chevron + badge,
+ * wrapped in a NotchedPanel (ref-bg-shape-outer equivalent).
  */
 export function TasksAccordionRow({
   taskCount,
@@ -16,28 +19,42 @@ export function TasksAccordionRow({
 }) {
   const [open, setOpen] = useState(false);
 
+  const countLabel = `${taskCount} ${pluralize(taskCount)}`;
+
   return (
-    <div className="border-t border-line pt-4">
+    <NotchedPanel
+      corner="field"
+      notch={8}
+      fill="var(--color-surface)"
+      contentClassName="w-full"
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 text-left"
+        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
         aria-expanded={open}
       >
-        <span className="text-[15px] font-medium text-text">
-          Задачи спринта ({taskCount})
+        <span className="flex items-center gap-3">
+          {open ? (
+            <ChevronUp className="h-6 w-6 shrink-0 text-text-muted" />
+          ) : (
+            <ChevronDown className="h-6 w-6 shrink-0 text-text-muted" />
+          )}
+          <span className="font-display text-base font-medium leading-5 text-text">
+            Задачи спринта
+          </span>
         </span>
-        {open ? (
-          <ChevronUp className="h-4 w-4 text-text-muted" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-text-muted" />
-        )}
+        <span className="flex items-center gap-2 rounded-[4px] border border-text-secondary/60 bg-text-secondary/20 px-1 py-0.5">
+          <span className="text-xs font-medium leading-[0.875rem] text-text-secondary">
+            {countLabel}
+          </span>
+        </span>
       </button>
 
       {open && (
-        <div className="mt-3 flex flex-col gap-2">
+        <div className="flex flex-col gap-2 px-3 pb-3">
           {tasks.length === 0 ? (
-            <p className="py-3 text-center text-[13px] text-text-muted">
+            <p className="py-3 text-center text-sm text-text-muted">
               Нет доступных задач для добавления
             </p>
           ) : (
@@ -47,8 +64,19 @@ export function TasksAccordionRow({
           )}
         </div>
       )}
-    </div>
+    </NotchedPanel>
   );
+}
+
+function pluralize(count: number): string {
+  if (count % 10 === 1 && count % 100 !== 11) return 'задача';
+  if (
+    count % 10 >= 2 &&
+    count % 10 <= 4 &&
+    (count % 100 < 10 || count % 100 >= 20)
+  )
+    return 'задачи';
+  return 'задач';
 }
 
 function TaskCheckboxItem({
@@ -86,8 +114,8 @@ function TaskCheckboxItem({
         )}
       </span>
       <div className="flex flex-col">
-        <span className="text-[14px] font-medium text-text">{task.full_id}</span>
-        <span className="text-[12px] text-text-muted">{task.title}</span>
+        <span className="text-sm font-medium text-text">{task.full_id}</span>
+        <span className="text-xs text-text-muted">{task.title}</span>
       </div>
     </label>
   );

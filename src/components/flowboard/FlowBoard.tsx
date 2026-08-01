@@ -145,6 +145,13 @@ export function PriorityBadge({ label, color = 'green' }: { label: string; color
       style={{ backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: 'var(--radius-flowboard-section)' }}
       aria-label={`Приоритет: ${label}`}
     >
+      {/* Rhombus marker — matches Figma task-shape-rhombus.svg (#F59E0B) */}
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="shrink-0">
+        <path
+          d="M4.58579 2.91421C5.36684 2.13316 6.63316 2.13317 7.41421 2.91421L9.08579 4.58579C9.86684 5.36684 9.86683 6.63316 9.08579 7.41421L7.41421 9.08579C6.63316 9.86684 5.36683 9.86683 4.58579 9.08579L2.91421 7.41421C2.13316 6.63316 2.13317 5.36683 2.91421 4.58579L4.58579 2.91421Z"
+          fill="#F59E0B"
+        />
+      </svg>
       <span
         style={{
           fontFamily: 'var(--font-family-display)',
@@ -171,12 +178,14 @@ function ProgressBar({ progress }: { progress: number }) {
       aria-valuemax={100}
       aria-label={`Прогресс спринта: ${progress}%`}
     >
+      {/* Track — matches Figma progress-bar-track.svg (#8B8B8B @ 20% opacity) */}
       <svg viewBox="0 0 334 8" preserveAspectRatio="none" className="w-full h-full" aria-hidden="true">
-        <rect width="334" height="8" rx="4" fill="var(--color-accent-amber)" opacity="0.2" />
+        <rect y="2" width="334" height="4" rx="1" fill="#8B8B8B" opacity="0.2" />
       </svg>
+      {/* Fill — green #4ADE80 per Figma */}
       <div
         className="absolute top-0 left-0 h-full"
-        style={{ width: `${progress}%`, backgroundColor: 'var(--color-accent-amber)', borderRadius: 'var(--radius-flowboard-section)' }}
+        style={{ width: `${progress}%`, backgroundColor: '#4ADE80', borderRadius: 'var(--radius-flowboard-section)' }}
       />
     </div>
   );
@@ -230,12 +239,31 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
   }
 
   return (
-    <div
-      className="flex flex-col w-full p-3 rounded relative overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg-surface)', borderRadius: 'var(--radius-flowboard-section)', gap: 'var(--spacing-4)' }}
+    <NotchedPanel
+      corner="action"
+      radius={4}
+      notch={8}
+      borderWidth={1}
+      border="var(--color-line)"
+      fill="var(--color-bg-surface)"
+      contentClassName="relative flex flex-col w-full p-3"
       aria-label="Информация о спринте"
     >
-      <div className="flex flex-col w-full gap-1">
+      {/* Amber background shape — matches Figma ref-bg-shape-inner.svg (#F59E0B) */}
+      <svg
+        viewBox="0 0 342 235"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        aria-hidden="true"
+      >
+        <path
+          d="M332.675 0C333.164 0 333.408 0 333.638 0.0552602C333.843 0.104254 334.038 0.185062 334.217 0.29472C334.418 0.418403 334.591 0.591355 334.937 0.937258L341.063 7.06274C341.409 7.40865 341.582 7.5816 341.705 7.78343C341.815 7.96237 341.896 8.15746 341.945 8.36154C342 8.59171 342 8.8363 342 9.32548V231C342 233.209 340.209 235 338 235H9.32547C8.8363 235 8.59171 235 8.36154 234.945C8.15746 234.896 7.96237 234.815 7.78343 234.705C7.5816 234.582 7.40865 234.409 7.06274 234.063L0.937257 227.937C0.591355 227.591 0.418403 227.418 0.29472 227.217C0.185062 227.038 0.104254 226.843 0.0552602 226.638C0 226.408 0 226.164 0 225.675V4C2.77034e-06 1.79086 1.79086 1.61064e-08 4 0H332.675Z"
+          fill="#F59E0B"
+          fillOpacity="0.12"
+        />
+      </svg>
+
+      <div className="relative flex flex-col w-full gap-1">
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
             <span
@@ -290,8 +318,17 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
           </span>
         </div>
       </div>
-      <ProgressBar progress={sprint.progress} />
-      <div className="flex flex-wrap w-full gap-x-3 gap-y-2" aria-label="Статистика спринта">
+
+      <div className="relative w-full">
+        <ProgressBar progress={sprint.progress} />
+      </div>
+
+      {/* Divider — matches Figma divider.svg (white @ 20% opacity) */}
+      <svg viewBox="0 0 358 1" preserveAspectRatio="none" className="relative w-full h-px" aria-hidden="true">
+        <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
+      </svg>
+
+      <div className="relative flex flex-wrap w-full gap-x-3 gap-y-2" aria-label="Статистика спринта">
         <div className="flex items-center gap-1">
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneSP}</span>
@@ -306,7 +343,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.onReview}</span>
         </div>
       </div>
-    </div>
+    </NotchedPanel>
   );
 }
 

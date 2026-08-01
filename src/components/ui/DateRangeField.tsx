@@ -1,5 +1,6 @@
 'use client';
 
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { formatDateRange } from '@/lib/date';
 
 /**
@@ -18,38 +19,48 @@ export function DateRangeField({
   placeholder?: string;
 }) {
   const displayValue = formatDateRange(startDate, endDate);
+  const isFilled = displayValue !== '';
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-center justify-between rounded-[6px] border border-[rgba(255,255,255,0.2)] bg-[#161616] px-4 py-3 text-left text-[15px] transition-colors hover:border-[rgba(255,255,255,0.3)]"
+      className="block h-10 w-full appearance-none border-0 bg-transparent p-0"
       aria-label={displayValue || placeholder}
     >
-      <span
-        className={
-          displayValue ? 'text-[#FAFAFA]' : 'text-[#8B8B8B]'
-        }
+      <NotchedPanel
+        corner="field"
+        notch={8}
+        fill="var(--color-surface)"
+        contentClassName="flex h-full w-full items-center justify-between gap-1.5 px-3"
       >
-        {displayValue || placeholder}
-      </span>
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 16 16"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-        className="shrink-0 text-[#8B8B8B]"
-      >
-        <path
-          d="M4 6L8 10L12 6"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+        <span
+          className={
+            isFilled
+              ? 'text-base tracking-tighter text-text'
+              : 'text-base tracking-tighter text-text-muted/50'
+          }
+        >
+          {displayValue || placeholder}
+        </span>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+          className="shrink-0 text-text-muted/50"
+        >
+          <path
+            d="M5 8L10 13L15 8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </NotchedPanel>
     </button>
   );
 }

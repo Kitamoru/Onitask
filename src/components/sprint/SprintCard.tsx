@@ -23,7 +23,11 @@ export function SprintCard({
           onClick();
         }
       }}
-      aria-label={sprint ? `Открыть спринт ${sprint.name}` : 'Создать спринт'}
+      aria-label={
+        sprint
+          ? `Открыть спринт ${sprint.name}${sprint.isActive ? ' (активный)' : ''}`
+          : 'Создать спринт'
+      }
     >
       <SprintCompressedInfo sprint={sprint} />
     </div>
