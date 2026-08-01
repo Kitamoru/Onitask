@@ -65,7 +65,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, start_date, end_date, goal, status, task_ids } = body;
+    const { name, start_date, end_date, goal, status, capacity, task_ids } = body;
 
     const supabase = createServerClient();
 
@@ -76,6 +76,9 @@ export async function PATCH(
     if (end_date !== undefined) updatePayload.end_date = end_date;
     if (goal !== undefined) updatePayload.goal = goal;
     if (status !== undefined) updatePayload.status = status;
+    if (capacity !== undefined) {
+      updatePayload.capacity = capacity ? parseInt(String(capacity), 10) : null;
+    }
 
     const { data: sprint, error: sprintError } = await supabase
       .from('sprints')

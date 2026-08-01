@@ -126,11 +126,8 @@ export function SprintViewSheet({
               <Button variant="solid" onClick={onActivate}>
                 Активировать спринт
               </Button>
-              <Button variant="outline" onClick={onEdit}>
-                Редактировать спринт
-              </Button>
               <p className="text-center text-[12px] leading-[1.5] text-text-faint">
-                После активации спринт можно будет завершить или отредактировать
+                После активации спринт можно будет завершить
               </p>
             </>
           )}
@@ -139,13 +136,8 @@ export function SprintViewSheet({
               <Button variant="solid" onClick={onComplete}>
                 Завершить спринт
               </Button>
-              <Button variant="outline" onClick={onEdit}>
-                Редактировать спринт
-              </Button>
               <p className="text-center text-[12px] leading-[1.5] text-text-faint">
                 Завершение архивирует текущий спринт
-                <br />
-                Спринт можно отредактировать в любой момент
               </p>
             </>
           )}

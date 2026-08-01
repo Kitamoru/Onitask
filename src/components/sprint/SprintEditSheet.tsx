@@ -8,6 +8,7 @@ import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { Button } from '@/components/ui/desk-ui/Button';
 import { Field } from '@/components/sprint/Field';
 import { StatBox } from '@/components/sprint/StatBox';
+import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
 import type { SprintFormValue, SprintStats } from '@/components/sprint/types';
 
 export function SprintEditSheet({
@@ -19,9 +20,9 @@ export function SprintEditSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  initialValue: Omit<SprintFormValue, 'capacity'>;
+  initialValue: SprintFormValue;
   stats: SprintStats;
-  onSubmit: (value: Omit<SprintFormValue, 'capacity'>) => void;
+  onSubmit: (value: SprintFormValue) => void;
 }) {
   const [name, setName] = useState(initialValue.name);
   const [startDate, setStartDate] = useState<Date | null>(
@@ -29,6 +30,7 @@ export function SprintEditSheet({
   );
   const [endDate, setEndDate] = useState<Date | null>(initialValue.endDate);
   const [goal, setGoal] = useState(initialValue.goal);
+  const [capacity, setCapacity] = useState(initialValue.capacity ?? '');
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
 
   const canSubmit =
@@ -36,7 +38,7 @@ export function SprintEditSheet({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ name, startDate, endDate, goal });
+    onSubmit({ name, startDate, endDate, goal, capacity });
   };
 
   return (
@@ -71,6 +73,17 @@ export function SprintEditSheet({
               placeholder="Текст плейсхолдера"
             />
           </Field>
+
+          <Field label="Ёмкость спринта">
+            <TextInput
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="0"
+              inputMode="numeric"
+            />
+          </Field>
+
+          <TasksAccordionRow taskCount={0} />
 
           <div className="border-t border-line pt-5">
             <div className="grid grid-cols-2 gap-3">

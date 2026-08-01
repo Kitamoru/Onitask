@@ -32,6 +32,7 @@ export function DateRangeField({
         corner="field"
         notch={8}
         fill="var(--color-surface)"
+        className="w-full"
         contentClassName="flex h-full w-full items-center justify-between gap-1.5 px-3"
       >
         <span

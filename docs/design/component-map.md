@@ -95,7 +95,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | | SprintCreateSheet | SprintCreateSheet.tsx | open, onClose, onSubmit | BottomSheet for creating a new sprint (name, dates, goal, capacity, task picker) |
-| | SprintEditSheet | SprintEditSheet.tsx | open, onClose, initialValue, stats, onSubmit | BottomSheet for editing sprint details with stats display |
+| | SprintEditSheet | SprintEditSheet.tsx | open, onClose, initialValue, stats, onSubmit | BottomSheet for editing sprint details. Fields match SprintCreateSheet (Название, Даты, Цель, Ёмкость, Задачи) + stats display |
 | | SprintViewSheet | SprintViewSheet.tsx | open, onClose, sprint, stats, isActive, onEdit, onComplete | BottomSheet for viewing sprint details, progress bar, edit/complete actions |
 | | SprintCard | SprintCard.tsx | sprint, onClick | Clickable wrapper around SprintCompressedInfo |
 | | Field | Field.tsx | label, children | Label wrapper for form fields |

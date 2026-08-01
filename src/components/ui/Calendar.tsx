@@ -50,17 +50,18 @@ export function Calendar({
           const isToday = isSameDay(date, today);
           const isEdge = isStart || isEnd;
 
+          const isInRange = inRange && !isEdge;
+
           return (
             <div
               key={i}
               className={cn(
                 'relative flex h-10 items-center justify-center',
-                // Connects the start/end pill visually to the in-range
-                // fill on either side — a plain rounded pill per day
-                // would look like disconnected dots instead of a range.
-                inRange && 'bg-success/[0.12]',
-                isStart && rangeEnd && 'rounded-l-full bg-success/[0.12]',
-                isEnd && rangeStart && !isSameDay(rangeStart, rangeEnd) && 'rounded-r-full bg-success/[0.12]'
+                // Green squares fill the whole in-range band — start/end
+                // are solid green edge cells, middle cells get the tint.
+                inRange && 'bg-success',
+                isStart && rangeEnd && 'rounded-l-md bg-success',
+                isEnd && rangeStart && !isSameDay(rangeStart, rangeEnd) && 'rounded-r-md bg-success'
               )}
             >
               <button
@@ -68,11 +69,13 @@ export function Calendar({
                 disabled={disabled || !inMonth}
                 onClick={() => onDayClick(date)}
                 className={cn(
-                  'flex h-9 w-9 items-center justify-center rounded-full text-[14px] transition-colors',
+                  'flex h-9 w-9 items-center justify-center text-[14px] transition-colors',
                   !inMonth && 'invisible',
                   disabled && 'text-text-faint opacity-40',
-                  !disabled && inMonth && !isEdge && 'text-text',
-                  !disabled && isToday && !isEdge && 'border border-line',
+                  'rounded-md',
+                  !disabled && inMonth && !isEdge && !isInRange && 'text-text',
+                  isInRange && 'bg-success/25 text-white',
+                  !disabled && isToday && !isEdge && !isInRange && 'border border-line',
                   isEdge && 'bg-success font-semibold text-accent-ink'
                 )}
               >

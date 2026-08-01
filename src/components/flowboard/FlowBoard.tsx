@@ -45,6 +45,8 @@ export interface SprintInfo {
   isActive: boolean;
   /** Sprint status: 'planning' | 'active' | 'completed' */
   status?: string;
+  /** Sprint capacity in story points */
+  capacity?: string | null;
 }
 
 export interface SignalData {
@@ -145,11 +147,11 @@ export function PriorityBadge({ label, color = 'green' }: { label: string; color
       style={{ backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: 'var(--radius-flowboard-section)' }}
       aria-label={`Приоритет: ${label}`}
     >
-      {/* Rhombus marker — matches Figma task-shape-rhombus.svg (#F59E0B) */}
+      {/* Rhombus marker — matches task-shape-rhombus.svg, colored like the label text */}
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="shrink-0">
         <path
           d="M4.58579 2.91421C5.36684 2.13316 6.63316 2.13317 7.41421 2.91421L9.08579 4.58579C9.86684 5.36684 9.86683 6.63316 9.08579 7.41421L7.41421 9.08579C6.63316 9.86684 5.36683 9.86683 4.58579 9.08579L2.91421 7.41421C2.13316 6.63316 2.13317 5.36683 2.91421 4.58579L4.58579 2.91421Z"
-          fill="#F59E0B"
+          fill={c.text}
         />
       </svg>
       <span
@@ -238,6 +240,10 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
     );
   }
 
+  // Progress is computed from completed story points cost, not from sprint dates
+  const progressPercent =
+    sprint.totalSP > 0 ? Math.round((sprint.doneSP / sprint.totalSP) * 100) : 0;
+
   return (
     <NotchedPanel
       corner="action"
@@ -306,7 +312,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
       </div>
 
       <div className="relative w-full">
-        <ProgressBar progress={sprint.progress} />
+        <ProgressBar progress={progressPercent} />
       </div>
 
       {/* Divider — matches Figma divider.svg (white @ 20% opacity) */}
@@ -319,14 +325,6 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneSP}</span>
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.totalSP} SP</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>В работе:</span>
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.inProgress}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>На проверке:</span>
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.onReview}</span>
         </div>
       </div>
     </NotchedPanel>
@@ -641,7 +639,7 @@ export function FlowBoard({
   );
 
   const handleEditSubmit = useCallback(
-    async (value: Omit<SprintFormValue, 'capacity'>) => {
+    async (value: SprintFormValue) => {
       if (!sprint) return;
       try {
         const res = await fetch(`/api/sprints/${sprint.id}`, {
@@ -652,6 +650,7 @@ export function FlowBoard({
             start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
+            capacity: value.capacity || undefined,
           }),
         });
         const result = await res.json();
@@ -665,7 +664,6 @@ export function FlowBoard({
     },
     [sprint, onRefresh, authBody],
   );
-
   const handleActivate = useCallback(async () => {
     if (!sprint) return;
     try {
@@ -708,6 +706,16 @@ export function FlowBoard({
     setCreateOpen(true);
   }, []);
 
+  const sprintFormData = sprint
+    ? {
+        name: sprint.name,
+        startDate: new Date(sprint.startDate),
+        endDate: new Date(sprint.endDate),
+        goal: '',
+        capacity: sprint.capacity ?? '',
+      }
+    : undefined;
+
   const stats: SprintStats | undefined = sprint
     ? {
         completedTasks: Math.round((sprint.progress / 100) * (sprint.doneSP || 1)),
@@ -716,14 +724,6 @@ export function FlowBoard({
       }
     : undefined;
 
-  const sprintFormData = sprint
-    ? {
-        name: sprint.name,
-        startDate: new Date(sprint.startDate),
-        endDate: new Date(sprint.endDate),
-        goal: '',
-      }
-    : undefined;
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
