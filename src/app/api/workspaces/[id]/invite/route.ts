@@ -83,7 +83,7 @@ export async function GET(
     }
 
     const invite = inviteData as { code: string; expires_at: string; used_count: number; max_uses: number };
-    const inviteUrl = `https://t.me/onitask_bot/app?startapp=${invite.code}`;
+    const inviteUrl = `https://t.me/onitask_bot/Onitask?startapp=${invite.code}`;
 
     return NextResponse.json({
       success: true,
@@ -180,7 +180,7 @@ export async function POST(
 
     // 6. Build startapp URL
     // Bot username configured in BotFather with Mini App short name
-    const inviteUrl = `https://t.me/onitask_bot/app?startapp=${code}`;
+    const inviteUrl = `https://t.me/onitask_bot/Onitask?startapp=${code}`;
 
     return NextResponse.json({
       success: true,
