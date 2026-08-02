@@ -87,29 +87,34 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    // 1. Get all active workers for this profile (needed for workspaceIds)
-    const { data: workersData, error: workersError } = await supabase
+    // 1. Get all active workers for this profile (needed for workspaceIds + board cards)
+    const { data: userWorkersData, error: userWorkersError } = await supabase
       .from('workers')
       .select('*')
       .eq('source_id', profileId)
       .eq('is_active', true);
 
-    if (workersError) {
-      console.error('my-data: workers query error', workersError);
+    if (userWorkersError) {
+      console.error('my-data: user workers query error', userWorkersError);
       return NextResponse.json({ error: 'database_error' }, { status: 500 });
     }
 
-    const workers = workersData || [];
-    const workspaceIds = workers.map((w: any) => w.workspace_id).filter(Boolean);
+    const userWorkers = userWorkersData || [];
+    const workspaceIds = userWorkers.map((w: any) => w.workspace_id).filter(Boolean);
     const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
 
     // When partial load with workspace_id, only fetch tasks for that workspace
     // (full load fetches tasks across all workspaces for board cards)
     const taskWorkspaceIds = (isPartial && requestedWorkspaceId) ? [requestedWorkspaceId] : workspaceIds;
 
-    // 2. Parallelize: fetch workspaces, tasks, settings, sprints concurrently
-    // This reduces 4 sequential DB roundtrips to 1 parallel roundtrip
-    const [wsResult, taskResult, settingsResult, sprintResult] = await Promise.all([
+    // 2. Parallelize: fetch workspaces, tasks, settings, sprints, AND all workspace workers concurrently
+    // This reduces 4+ sequential DB roundtrips to 1 parallel roundtrip
+    // All workspace workers are needed for FlowBoard metrics (shows ALL colleagues, not just current user)
+    const [allWorkspaceWorkersResult, wsResult, taskResult, settingsResult, sprintResult] = await Promise.all([
+      // All active workers in user's workspaces (for FlowBoard metrics)
+      workspaceIds.length > 0
+        ? supabase.from('workers').select('*').in('workspace_id', workspaceIds).eq('is_active', true)
+        : Promise.resolve({ data: [], error: null as any }),
       // Workspaces (always fetch all — needed for board cards on full load)
       workspaceIds.length > 0
         ? supabase.from('workspaces').select('*').in('id', workspaceIds)
@@ -128,16 +133,20 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ data: null, error: null as any }),
     ]);
 
+    if (allWorkspaceWorkersResult.error) console.error('my-data: all workers query error', allWorkspaceWorkersResult.error);
+
     if (wsResult.error) console.error('my-data: workspaces query error', wsResult.error);
     if (taskResult.error) console.error('my-data: tasks query error', taskResult.error);
 
+    const allWorkspaceWorkers = allWorkspaceWorkersResult.data || [];
     const workspaces = wsResult.data || [];
     const tasks = taskResult.data || [];
     const relevantTasks = metricsWorkspaceId ? tasks.filter((t: any) => t.workspace_id === metricsWorkspaceId) : tasks;
 
-    // 3. Compute metrics from pre-fetched data (no additional DB queries needed)
+    // 3. Compute metrics from ALL workspace workers (not just current user's workers)
+    // This ensures FlowBoard shows all colleagues, including those who joined via invite links
     const metrics = computeMetricsFromData(
-      workers,
+      allWorkspaceWorkers,
       tasks,
       metricsWorkspaceId,
       relevantTasks,
@@ -148,7 +157,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        workers,
+        workers: userWorkers, // Keep user-specific workers for backward compat (board cards)
+        allWorkspaceWorkers, // New field: all workers in workspace (for FlowBoard metrics)
         workspaces,
         tasks,
         metrics,

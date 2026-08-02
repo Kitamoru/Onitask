@@ -309,7 +309,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(json.error || 'Failed to load board data');
       }
 
-      const { workers: workersData, workspaces: wsData, tasks, metrics } = json.data;
+      const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData, tasks, metrics } = json.data;
 
       // Track which workspace was used for this load (for parallel load comparison)
       if (!workspaceId && wsData?.length > 0) {
@@ -331,9 +331,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         } as TaskEntity;
       });
 
-      // On partial load (board switch), only update tasks + metrics — skip board cards
-      // Board cards are only needed on the /boards page, not when switching boards
-      if (!isPartial) {
+      // Partial load: update workers (for FlowBoard colleagues) + tasks + metrics
+      // Full load: update workspaces + tasks + metrics (for /boards page)
+      if (isPartial) {
+        // For partial loads, use allWorkspaceWorkers so FlowBoard shows ALL colleagues
+        // This ensures new invitees appear without full reload
+        dispatch({ type: 'SET_WORKERS', payload: allWorkersData ?? workersData ?? [] });
+      } else {
         dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
         dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
       }

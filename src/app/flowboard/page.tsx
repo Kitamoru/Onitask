@@ -137,6 +137,11 @@ export default function FlowBoardPage() {
     }
   }, [loadBoardsData, state.activeWorkspaceId, state.metrics.lastUpdated]);
 
+  // Callback for after invite/boarding — forces a full metrics refresh so new colleagues appear
+  const handleBoardCreate = useCallback(async () => {
+    await refreshMetrics({ force: true });
+  }, [refreshMetrics]);
+
   // Refresh metrics periodically (30s interval with TTL check)
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -244,6 +249,7 @@ export default function FlowBoardPage() {
         onAddAgent={() => console.log('Add agent clicked')}
         onRefresh={(options) => refreshMetrics(options ?? { force: true })}
         isNewUser={isNewUser}
+        onBoardCreate={handleBoardCreate}
         initData={tgInitData}
         workspaceId={state.activeWorkspaceId ?? undefined}
       />
@@ -251,7 +257,11 @@ export default function FlowBoardPage() {
       {/* Invite modal for adding colleagues */}
       <InviteModal
         open={showInviteModal}
-        onClose={() => setShowInviteModal(false)}
+        onClose={() => {
+          setShowInviteModal(false);
+          // After closing invite modal, refresh FlowBoard data to show new colleagues
+          handleBoardCreate();
+        }}
         workspaceId={state.activeWorkspaceId}
         initData={tgInitData}
       />
