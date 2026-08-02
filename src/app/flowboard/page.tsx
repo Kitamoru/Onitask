@@ -245,6 +245,7 @@ export default function FlowBoardPage() {
         onRefresh={(options) => refreshMetrics(options ?? { force: true })}
         isNewUser={isNewUser}
         initData={tgInitData}
+        workspaceId={state.activeWorkspaceId ?? undefined}
       />
 
       {/* Invite modal for adding colleagues */}

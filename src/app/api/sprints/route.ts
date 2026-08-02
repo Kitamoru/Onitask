@@ -79,6 +79,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate first to get profileId for workspace validation
+    let initData: string | undefined;
+    try {
+      const bodyClone = await request.clone().json();
+      initData = bodyClone.init_data as string | undefined;
+    } catch {
+      initData = request.headers.get('x-init-data') || undefined;
+    }
+    const authResult = await authenticateRequest(initData);
+    if (!authResult.authenticated) {
+      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    }
+
     const worker = await getAuthenticatedWorker(request);
     if (!worker) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
@@ -95,6 +108,7 @@ export async function POST(request: NextRequest) {
       goal,
       capacity,
       task_ids,
+      workspace_id: requestedWorkspaceId,
     } = body as Record<string, unknown>;
     const start_date = (sd ?? startDate) as string | undefined;
     const end_date = (ed ?? endDate) as string | undefined;
@@ -115,11 +129,30 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
+    // Use explicitly provided workspace_id (fixes bug where sprint was always created on first workspace)
+    // Fall back to worker.workspace_id for backward compatibility
+    const targetWorkspaceId = (requestedWorkspaceId as string) || worker.workspace_id;
+
+    // Validate that the worker belongs to this workspace
+    const { data: workers } = await supabase
+      .from('workers')
+      .select('id, workspace_id')
+      .eq('source_id', authResult.profileId!)
+      .eq('is_active', true)
+      .eq('workspace_id', targetWorkspaceId);
+
+    if (!workers || workers.length === 0) {
+      return NextResponse.json(
+        { error: 'Доступ запрещён: вы не являетесь участником этого workspace' },
+        { status: 403 },
+      );
+    }
+
     // Create the sprint
     const { data: sprint, error: sprintError } = await supabase
       .from('sprints')
       .insert({
-        workspace_id: worker.workspace_id,
+        workspace_id: targetWorkspaceId,
         name: name.trim(),
         start_date,
         end_date,

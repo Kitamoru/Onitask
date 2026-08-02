@@ -111,6 +111,8 @@ export interface FlowBoardProps {
   onBoardCreate?: () => void;
   /** Telegram WebApp initData string for API authentication */
   initData?: string;
+  /** Current workspace ID — used to create sprints in the correct workspace */
+  workspaceId?: string;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -585,6 +587,7 @@ export function FlowBoard({
   onAddAgent,
   onRefresh,
   initData,
+  workspaceId,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -622,6 +625,7 @@ export function FlowBoard({
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
             capacity: value.capacity || undefined,
+            workspace_id: workspaceId,
           }),
         });
         const result = await res.json();
@@ -635,7 +639,7 @@ export function FlowBoard({
         setIsSubmitting(false);
       }
     },
-    [onRefresh, authBody, isSubmitting],
+    [onRefresh, authBody, isSubmitting, workspaceId],
   );
 
   const handleEditSubmit = useCallback(
