@@ -1,21 +1,28 @@
 ﻿'use server';
 
 /**
- * POST /api/init тАФ Find-or-create user profile and workspace membership
- * 
- * INV-16: find-or-create ╨в╨Ю╨Ы╨м╨Ъ╨Ю. display_name ╨╕ avatar_url ╤Г╤Б╤В╨░╨╜╨░╨▓╨╗╨╕╨▓╨░╤О╤В╤Б╤П
- * ╨┐╤А╨╕ ╤Б╨╛╨╖╨┤╨░╨╜╨╕╨╕ ╨╕╨╖ Telegram initData ╨╕ ╨╛╨▒╨╜╨╛╨▓╨╗╤П╤О╤В╤Б╤П ╨в╨Ю╨Ы╨м╨Ъ╨Ю ╤З╨╡╤А╨╡╨╖ ╤П╨▓╨╜╤Л╨╡ ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨╕
- * ╨┐╤А╨╛╤Д╨╕╨╗╤П ╨▓ TWA. ╨Р╨▓╤В╨╛╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨╕╨╡ ╨┐╤А╨╕ ╨┐╨╛╨▓╤В╨╛╤А╨╜╤Л╤Е ╨▓╤Л╨╖╨╛╨▓╨░╤Е /api-init ╨╖╨░╨┐╤А╨╡╤Й╨╡╨╜╨╛.
- * 
- * WS-06: ╨Ю╨▒╤А╨░╨▒╨╛╤В╨║╨░ start_param ╨╕╨╖ Telegram Mini App deep link ╨┤╨╗╤П ╨╕╨╜╨▓╨░╨╣╤В-╤Б╤Б╤Л╨╗╨╛╨║.
- * ╨Х╤Б╨╗╨╕ ╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤М ╨┐╨╡╤А╨╡╤И╤С╨╗ ╨┐╨╛ ╤А╨╡╤Д╨╡╤А╨░╨╗╤М╨╜╨╛╨╣ ╤Б╤Б╤Л╨╗╨║╨╡ тАФ ╤Б╨╛╨╖╨┤╨░╤С╤В╤Б╤П worker ╨▓ ╤Ж╨╡╨╗╨╡╨▓╨╛╨╝ workspace.
- * 
+ * POST /api/init — Find-or-create user profile and workspace membership
+ *
+ * INV-16: find-or-create ONLY. display_name and avatar_url are set
+ * at creation from Telegram initData and updated ONLY through explicit
+ * profile settings in TWA. Auto-update on repeated /api-init calls is forbidden.
+ *
+ * WS-06: Process start_param from Telegram Mini App deep link for invite links.
+ * If user followed a referral link — creates worker in target workspace.
+ * Works for BOTH new and existing users (Scenario 3: existing user joins new workspace).
+ *
  * Algorithm:
- * 1. ╨Т╨╡╤А╨╕╤Д╨╕╤Ж╨╕╤А╨╛╨▓╨░╤В╤М Telegram initData (timingSafeEqual, A-2)
- * 2. ╨Э╨░╨╣╤В╨╕ profiles WHERE telegram_id = user.id
- * 3. ╨Х╤Б╨╗╨╕ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜ тЖТ ╤Б╨╛╨╖╨┤╨░╤В╤М profile (+ worker ╨╡╤Б╨╗╨╕ ╨╡╤Б╤В╤М invite link)
- * 4. ╨Х╤Б╨╗╨╕ ╨╜╨░╨╣╨┤╨╡╨╜ тЖТ ╨▓╨╡╤А╨╜╤Г╤В╤М ╨║╨░╨║ ╨╡╤Б╤В╤М (╨Э╨Х ╨╛╨▒╨╜╨╛╨▓╨╗╤П╤В╤М display_name/avatar_url)
- * 5. ╨Т╨╡╤А╨╜╤Г╤В╤М ╨┐╤А╨╛╤Д╨╕╨╗╤М + ╤Б╨┐╨╕╤Б╨╛╨║ workspace + is_new_user
+ * 1. Verify Telegram initData (timingSafeEqual, A-2)
+ * 2. If start_param present — call atomic RPC accept_invite_link
+ *    - RPC increments used_count + returns workspace_id (or 0 rows if invalid)
+ * 3. Find profile by telegram_id
+ * 4. If profile found:
+ *    a. If invitedWorkspaceId — find-or-create worker in that workspace
+ *    b. Return profile + all workspaces + is_new_user=false
+ * 5. If profile not found:
+ *    a. Create profile from Telegram data
+ *    b. If invitedWorkspaceId — create worker with role='member'
+ *    c. Return profile + workspaces + is_new_user flag
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -77,11 +84,23 @@ export async function POST(req: NextRequest) {
     const telegramUser = validation.user;
     const supabase = createServerClient();
 
-    // 2. Find profile by telegram_id (SEC-06: convert to number for bigint column)
-    // Note: workers.source_id is text, profiles.id is uuid — no FK relationship exists.
-    // We query profiles first, then fetch workers separately.
-    // last_active_workspace_id added in migration 016 (applied before deploy).
-    // Use as any to bypass type check until migration is applied locally.
+    // 2. If start_param present — call atomic RPC accept_invite_link
+    // This is done BEFORE profile check so existing users can join new workspaces (Scenario 3)
+    let invitedWorkspaceId: string | null = null;
+
+    if (start_param) {
+      const { data: inviteData, error: inviteError } = await supabase.rpc(
+        'accept_invite_link',
+        { p_code: start_param },
+      );
+
+      if (!inviteError && inviteData && inviteData.length > 0) {
+        invitedWorkspaceId = (inviteData[0] as Record<string, unknown>).workspace_id as string;
+      }
+      // If RPC returns 0 rows — link is invalid/expired/exhausted, fallback to standard logic
+    }
+
+    // 3. Find profile by telegram_id (SEC-06: convert to number for bigint column)
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('id, telegram_id, display_name, avatar_url, last_active_workspace_id')
@@ -96,12 +115,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3a. Profile exists — find their workers + last_active_workspace_id
+    // 4a. Profile exists — find their workers + last_active_workspace_id
     if (profileData) {
       const profile = profileData as ProfileWithActiveBoard & { last_active_workspace_id?: string | null };
       const profileId = profile.id;
       const displayName = profile.display_name;
       const lastActiveWorkspaceId = (profile as any).last_active_workspace_id ?? null;
+
+      // If invited to a new workspace — find-or-create worker (Scenario 3)
+      // Idempotent: if worker already exists (UNIQUE workspace_id+source_id), do nothing
+      if (invitedWorkspaceId) {
+        await supabase
+          .from('workers')
+          .upsert({
+            workspace_id: invitedWorkspaceId,
+            source_id: profileId,
+            type: 'human',
+            role: 'member',
+            display_name: displayName,
+          }, { onConflict: 'workspace_id,source_id', ignoreDuplicates: true });
+      }
 
       // Get all active workers for this profile (source_id matches profile id as text)
       const { data: workersData, error: workersError } = await supabase
@@ -154,24 +187,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: response });
     }
 
-    // 3b. Check for valid invite link via start_param (WS-06)
-    let invitedWorkspaceId: string | null = null;
-
-    if (start_param) {
-      const inviteResult = await supabase
-        .from('invite_links')
-        .select('workspace_id')
-        .eq('code', start_param)
-        .eq('is_active', true)
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        .maybeSingle();
-
-      if (inviteResult.data && !inviteResult.error) {
-        invitedWorkspaceId = (inviteResult.data as Record<string, unknown>).workspace_id as string;
-      }
-    }
-
-    // 3c. New user тАФ create profile + optionally worker from invite
+    // 4b. New user — create profile + optionally worker from invite
     const userId = crypto.randomUUID();
 
     // Generate display_name from Telegram data
@@ -181,7 +197,6 @@ export async function POST(req: NextRequest) {
       `User_${telegramUser.id}`;
 
     // Create profile (SEC-06: convert string id to number for bigint column)
-    // Note: last_active_workspace_id defaults to NULL for new users
     const { data: newProfileDataRaw, error: insertError } = await supabase
       .from('profiles')
       .insert({

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useCallback } from 'react';
-import { FlowBoard, OnboardingModal } from '@/components/flowboard';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import { FlowBoard, OnboardingModal, InviteModal } from '@/components/flowboard';
 import type {
   SprintInfo,
   SignalData,
@@ -29,6 +29,7 @@ export default function FlowBoardPage() {
   useScrollReset();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -227,10 +228,18 @@ export default function FlowBoardPage() {
         agents={agents}
         loading={isSwitchingWorkspace}
         error={dataError}
-        onAddWorker={() => console.log('Add worker clicked')}
+        onAddWorker={() => setShowInviteModal(true)}
         onAddAgent={() => console.log('Add agent clicked')}
         onRefresh={() => refreshMetrics(true)}
         isNewUser={isNewUser}
+        initData={tgInitData}
+      />
+
+      {/* Invite modal for adding colleagues */}
+      <InviteModal
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        workspaceId={state.activeWorkspaceId}
         initData={tgInitData}
       />
       

@@ -2100,6 +2100,14 @@ export type Database = {
     }
     Functions: {
       current_worker_workspace_ids: { Args: never; Returns: string[] }
+      accept_invite_link: {
+        Args: { p_code: string }
+        Returns: { workspace_id: string; invite_id: string }[]
+      }
+      create_invite_link: {
+        Args: { p_workspace_id: string; p_created_by: string; p_code: string }
+        Returns: { invite_id: string; code: string }[]
+      }
       ensure_edge_fn_url: { Args: never; Returns: undefined }
       find_duplicate_tasks: {
         Args: {
