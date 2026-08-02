@@ -4,16 +4,17 @@
  * InviteModal — BottomSheet for creating and sharing invite links.
  *
  * WS-06: Admin/Owner clicks "Добавить коллегу" → modal opens →
- * POST /api/workspaces/[id]/invite → link displayed → copy to clipboard.
+ * GET /api/workspaces/[id]/invite → existing link shown (if any) →
+ * POST /api/workspaces/[id]/invite → new link created → copy to clipboard.
  *
  * Design System:
  * - BottomSheet (portal, slide-up, var(--color-surface))
- * - Button (variant="primary" for copy, variant="outline" for close)
+ * - Button (variant="solid" for copy/create, variant="outline" for close)
  * - TextInput (read-only for link display)
  * - var() tokens for colors, Tailwind for layout
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button } from '../ui/desk-ui/Button';
 import { TextInput } from '../ui/desk-ui/TextInput';
@@ -30,6 +31,28 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Load existing active invite link when modal opens
+  useEffect(() => {
+    if (!open || !workspaceId || !initData) return;
+
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/workspaces/${workspaceId}/invite?init_data=${encodeURIComponent(initData)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data.url) {
+          setInviteUrl(data.data.url);
+        } else {
+          setInviteUrl(null);
+        }
+      })
+      .catch(() => {
+        setInviteUrl(null);
+      })
+      .finally(() => setLoading(false));
+  }, [open, workspaceId, initData]);
 
   const handleCreateLink = useCallback(async () => {
     if (!workspaceId || !initData) return;
@@ -98,15 +121,6 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
           Пригласить коллегу
         </h2>
 
-        {/* Description */}
-        <p
-          className="text-sm mb-6"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          Создайте ссылку и отправьте её коллегам в Telegram.
-          Ссылка действительна 24 часа, до 10 использований.
-        </p>
-
         {/* Error state */}
         {error && (
           <div
@@ -132,9 +146,31 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-3">
-          {!inviteUrl ? (
+        {/* Actions — buttons above, instructions below (like sprint sheet) */}
+        <div className="flex gap-3 mb-6">
+          {/* If link exists — show Copy + Create new */}
+          {inviteUrl ? (
+            <>
+              <Button
+                variant="solid"
+                onClick={handleCopy}
+                aria-label="Скопировать ссылку"
+                type="button"
+              >
+                {copied ? '✓ Скопировано' : 'Скопировать'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCreateLink}
+                disabled={loading}
+                aria-label="Создать новую ссылку"
+                type="button"
+              >
+                {loading ? 'Создание...' : 'Создать новую'}
+              </Button>
+            </>
+          ) : (
+            /* No link — show Create only */
             <Button
               variant="solid"
               onClick={handleCreateLink}
@@ -143,15 +179,6 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
               type="button"
             >
               {loading ? 'Создание...' : 'Создать ссылку'}
-            </Button>
-          ) : (
-            <Button
-              variant="solid"
-              onClick={handleCopy}
-              aria-label="Скопировать ссылку"
-              type="button"
-            >
-              {copied ? '✓ Скопировано' : 'Скопировать'}
             </Button>
           )}
 
@@ -164,6 +191,15 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
             Закрыть
           </Button>
         </div>
+
+        {/* Instructions — at the bottom, like sprint sheet */}
+        <p
+          className="text-sm"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          Скопируйте ссылку или создайте новую.
+          Ссылка действительна 24 часа, до 10 использований.
+        </p>
       </div>
     </BottomSheet>
   );
