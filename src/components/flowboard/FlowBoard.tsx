@@ -104,7 +104,7 @@ export interface FlowBoardProps {
   error?: string | null;
   onAddWorker?: () => void;
   onAddAgent?: () => void;
-  onRefresh?: () => void;
+  onRefresh?: (options?: { force?: boolean }) => void;
   /** Show onboarding modal for new users (no workspace) */
   isNewUser?: boolean;
   /** Callback when board is created successfully */
@@ -626,7 +626,7 @@ export function FlowBoard({
         });
         const result = await res.json();
         if (!res.ok) throw new Error(result.error);
-        await onRefresh?.();
+        await onRefresh?.({ force: true });
         setCreateOpen(false);
       } catch (err) {
         console.error('Failed to create sprint:', err);
@@ -655,7 +655,7 @@ export function FlowBoard({
         });
         const result = await res.json();
         if (!res.ok) throw new Error(result.error);
-        await onRefresh?.();
+        await onRefresh?.({ force: true });
         setEditOpen(false);
       } catch (err) {
         console.error('Failed to update sprint:', err);
@@ -674,7 +674,7 @@ export function FlowBoard({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
-      await onRefresh?.();
+      await onRefresh?.({ force: true });
       setViewOpen(false);
     } catch (err) {
       console.error('Failed to activate sprint:', err);
@@ -693,7 +693,7 @@ export function FlowBoard({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
-      await onRefresh?.();
+      await onRefresh?.({ force: true });
       setViewOpen(false);
     } catch (err) {
       console.error('Failed to delete sprint:', err);
@@ -749,7 +749,7 @@ export function FlowBoard({
           </p>
           {onRefresh && (
             <button
-              onClick={onRefresh}
+              onClick={() => onRefresh({ force: true })}
               className="flex items-center justify-center h-10 px-6 rounded transition-colors hover:bg-surface/50"
               style={{
                 fontFamily: 'var(--font-family-display)',

@@ -121,14 +121,15 @@ export default function FlowBoardPage() {
       });
   }, [metrics, tasks]);
 
-  const refreshMetrics = useCallback(async (force = false) => {
+  const refreshMetrics = useCallback(async (options?: { force?: boolean }) => {
+    const force = options?.force ?? false;
     if (!state.activeWorkspaceId) return;
-    // TTL check: only refetch if data is older than 60 seconds.
+    // TTL check: only refetch if data is older than 30 seconds.
     // force=true bypasses the TTL — used after sprint mutations (create/edit/activate/delete)
     // so the UI reflects the new state immediately instead of waiting for the next interval.
     const lastUpdated = state.metrics.lastUpdated ?? 0;
     const ageMs = Date.now() - lastUpdated;
-    if (!force && ageMs < 60000) return; // Data is still fresh
+    if (!force && ageMs < 30000) return; // Data is still fresh (reduced from 60s to 30s for snappier UX)
     try {
       await loadBoardsData(state.activeWorkspaceId, { partial: true });
     } catch (err) {
@@ -136,12 +137,23 @@ export default function FlowBoardPage() {
     }
   }, [loadBoardsData, state.activeWorkspaceId, state.metrics.lastUpdated]);
 
-  // Refresh metrics periodically (60s interval with TTL check)
+  // Refresh metrics periodically (30s interval with TTL check)
   React.useEffect(() => {
     const interval = setInterval(() => {
       refreshMetrics();
-    }, 60000); // every 60s
+    }, 30000); // every 30s
     return () => clearInterval(interval);
+  }, [refreshMetrics]);
+
+  // Auto-refresh on visibility change (user returns to the tab/page)
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshMetrics({ force: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshMetrics]);
 
   // Loading state — wait for auth + first server load to complete
@@ -185,7 +197,7 @@ export default function FlowBoardPage() {
             Ошибка загрузки данных доски
           </p>
           <button
-            onClick={() => refreshMetrics(true)}
+            onClick={() => refreshMetrics({ force: true })}
             style={{
               fontFamily: 'system-ui',
               fontSize: '14px',
@@ -230,7 +242,7 @@ export default function FlowBoardPage() {
         error={dataError}
         onAddWorker={() => setShowInviteModal(true)}
         onAddAgent={() => console.log('Add agent clicked')}
-        onRefresh={() => refreshMetrics(true)}
+        onRefresh={(options) => refreshMetrics(options ?? { force: true })}
         isNewUser={isNewUser}
         initData={tgInitData}
       />

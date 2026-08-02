@@ -45,13 +45,13 @@ export default function BoardsPage() {
   const { state, setActiveWorkspace, loadBoardsData } = useData();
 
   // Load boards data on mount (in case it wasn't loaded yet)
-  // TTL check: skip if data was loaded less than 60 seconds ago
+  // TTL check: skip if data was loaded less than 30 seconds ago
   // Pass activeWorkspaceId to ensure correct metrics (fixes tenant isolation #11)
   useEffect(() => {
     if (authLoading) return;
     const lastUpdated = state.boards.lastUpdated ?? 0;
     const ageMs = Date.now() - lastUpdated;
-    if (ageMs < 60000) return; // Data is still fresh
+    if (ageMs < 30000) return; // Data is still fresh (reduced from 60s to 30s)
     loadBoardsData(state.activeWorkspaceId ?? undefined);
   }, [authLoading, loadBoardsData, state.activeWorkspaceId, state.boards.lastUpdated]);
 
