@@ -326,7 +326,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         <div className="flex items-center gap-1">
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
           <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneSP}</span>
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.totalSP} SP</span>
+          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.capacity ?? 0}</span>
         </div>
       </div>
     </NotchedPanel>
@@ -688,7 +688,7 @@ export function FlowBoard({
 
   const handleComplete = useCallback(async () => {
     if (!sprint) return;
-    if (!confirm('Удалить спринт? Это действие нельзя отменить.')) return;
+    if (!confirm('Завершить спринт?')) return;
     try {
       const res = await fetch(`/api/sprints/${sprint.id}`, {
         method: 'DELETE',
@@ -715,7 +715,7 @@ export function FlowBoard({
         name: sprint.name,
         startDate: new Date(sprint.startDate),
         endDate: new Date(sprint.endDate),
-        goal: '',
+        goal: sprint.topic,
         capacity: sprint.capacity ?? '',
       }
     : undefined;

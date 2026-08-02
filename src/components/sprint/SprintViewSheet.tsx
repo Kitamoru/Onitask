@@ -137,7 +137,7 @@ export function SprintViewSheet({
                 Завершить спринт
               </Button>
               <p className="text-center text-[12px] leading-[1.5] text-text-faint">
-                Завершение архивирует текущий спринт
+                Завершение удалит текущий спринт
               </p>
             </>
           )}
