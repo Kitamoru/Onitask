@@ -182,19 +182,11 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            onClick={onClose}
-            aria-label="Закрыть"
-            type="button"
-          >
-            Закрыть
-          </Button>
         </div>
 
-        {/* Instructions — at the bottom, like sprint sheet */}
+        {/* Instructions — at the bottom, centered, like sprint sheet */}
         <p
-          className="text-sm"
+          className="text-sm text-center"
           style={{ color: 'var(--color-text-muted)' }}
         >
           Скопируйте ссылку или создайте новую.
