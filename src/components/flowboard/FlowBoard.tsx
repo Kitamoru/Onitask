@@ -49,8 +49,6 @@ export interface SprintInfo {
   capacity?: string | null;
   /** Number of completed tasks in this sprint */
   doneTasks?: number;
-  /** Total number of tasks in this sprint */
-  totalTasks?: number;
 }
 
 export interface SignalData {
@@ -246,11 +244,11 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
     );
   }
 
-  // Progress is computed from completed tasks vs total tasks in the sprint
-  const totalTasks = sprint.totalTasks ?? 0;
+  // Progress is computed from completed tasks vs capacity in the sprint
+  const capacityNum = parseInt(sprint.capacity ?? '0', 10) || 0;
   const doneTasks = sprint.doneTasks ?? 0;
   const progressPercent =
-    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+    capacityNum > 0 ? Math.round((doneTasks / capacityNum) * 100) : 0;
 
   // Short date format: "19-28 мая"
   const shortDateRange = (() => {
@@ -341,11 +339,11 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
       </svg>
 
-      {/* Stats row: Готово: doneTasks/totalTasks (both numbers gray) */}
+      {/* Stats row: Готово: doneTasks/capacity (both numbers gray) */}
       <div className="relative flex items-center gap-1 mt-2" aria-label="Статистика спринта">
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{doneTasks}</span>
-        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {totalTasks}</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {capacityNum || '-'}</span>
       </div>
     </NotchedPanel>
   );
@@ -741,7 +739,7 @@ export function FlowBoard({
   const stats: SprintStats | undefined = sprint
     ? {
         completedTasks: sprint.doneTasks ?? 0,
-        totalTasks: sprint.totalTasks ?? 0,
+        totalTasks: parseInt(sprint.capacity ?? '0', 10) || 0,
         daysLeft: computeDaysLeft(sprint.endDate),
       }
     : undefined;
