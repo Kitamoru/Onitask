@@ -47,6 +47,10 @@ export interface SprintInfo {
   status?: string;
   /** Sprint capacity in story points */
   capacity?: string | null;
+  /** Number of completed tasks in this sprint */
+  doneTasks?: number;
+  /** Total number of tasks in this sprint */
+  totalTasks?: number;
 }
 
 export interface SignalData {
@@ -242,9 +246,20 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
     );
   }
 
-  // Progress is computed from completed story points cost, not from sprint dates
+  // Progress is computed from completed tasks vs total tasks in the sprint
+  const totalTasks = sprint.totalTasks ?? 0;
+  const doneTasks = sprint.doneTasks ?? 0;
   const progressPercent =
-    sprint.totalSP > 0 ? Math.round((sprint.doneSP / sprint.totalSP) * 100) : 0;
+    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+  // Short date format: "19-28 мая"
+  const shortDateRange = (() => {
+    if (!sprint.startDate || !sprint.endDate) return '';
+    const start = new Date(sprint.startDate);
+    const end = new Date(sprint.endDate);
+    const monthNames = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    return `${start.getDate()} ${monthNames[start.getMonth()]} – ${end.getDate()} ${monthNames[end.getMonth()]}`;
+  })();
 
   return (
     <NotchedPanel
@@ -257,35 +272,39 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
       contentClassName="relative flex flex-col w-full p-3"
       aria-label="Информация о спринте"
     >
-      <div className="relative flex flex-col w-full gap-1">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
-            <span
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-lg)',
-                lineHeight: 'var(--text-body-lg-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              {sprint.name}
-            </span>
-            <span style={{ color: 'var(--color-text-primary)' }}>•</span>
-            <span
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-lg)',
-                lineHeight: 'var(--text-body-lg-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              {sprint.topic}
-            </span>
-          </div>
-          <PriorityBadge label={sprint.isActive ? 'Активный' : 'Неактивный'} color={sprint.isActive ? 'green' : 'amber'} />
-        </div>
+      {/* Row 1: Sprint name */}
+      <div className="flex items-center justify-between w-full">
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-lg)',
+            lineHeight: 'var(--text-body-lg-line)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
+          }}
+        >
+          {sprint.name}
+        </span>
+        <PriorityBadge label={sprint.isActive ? 'Активный' : 'Неактивный'} color={sprint.isActive ? 'green' : 'amber'} />
+      </div>
+
+      {/* Row 2: Sprint goal/topic */}
+      {sprint.topic && (
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-sm)',
+            lineHeight: 'var(--text-body-sm-line)',
+            fontWeight: 'var(--font-weight-normal)',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          {sprint.topic}
+        </span>
+      )}
+
+      {/* Row 3: Short date range + days elapsed/total */}
+      {shortDateRange && (
         <div className="flex items-center gap-1">
           <span
             style={{
@@ -296,7 +315,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
               color: 'var(--color-text-muted)',
             }}
           >
-            {sprint.startDate}–{sprint.endDate}
+            {shortDateRange}
           </span>
           <span style={{ color: 'var(--color-text-muted)' }}>•</span>
           <span
@@ -308,26 +327,25 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
               color: 'var(--color-text-muted)',
             }}
           >
-            День {sprint.daysElapsed}/{sprint.totalDays}
+            {sprint.daysElapsed}/{sprint.totalDays} дней
           </span>
         </div>
-      </div>
+      )}
 
-      <div className="relative w-full">
+      <div className="relative w-full mt-2">
         <ProgressBar progress={progressPercent} />
       </div>
 
-      {/* Divider — matches Figma divider.svg (white @ 20% opacity) */}
-      <svg viewBox="0 0 358 1" preserveAspectRatio="none" className="relative w-full h-px" aria-hidden="true">
+      {/* Divider */}
+      <svg viewBox="0 0 358 1" preserveAspectRatio="none" className="relative w-full h-px mt-2" aria-hidden="true">
         <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
       </svg>
 
-      <div className="relative flex flex-wrap w-full gap-x-3 gap-y-2" aria-label="Статистика спринта">
-        <div className="flex items-center gap-1">
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneSP}</span>
-          <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.capacity ?? 0}</span>
-        </div>
+      {/* Stats row: Готово: doneTasks/totalTasks */}
+      <div className="relative flex items-center gap-1 mt-2" aria-label="Статистика спринта">
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneTasks ?? 0}</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.totalTasks ?? 0}</span>
       </div>
     </NotchedPanel>
   );

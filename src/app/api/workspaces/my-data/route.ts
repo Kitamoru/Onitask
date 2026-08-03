@@ -46,6 +46,10 @@ interface FlowMetricsResponse {
     onReview: number;
     isActive: boolean;
     status?: string;
+    /** Number of completed tasks in this sprint */
+    doneTasks?: number;
+    /** Total number of tasks in this sprint */
+    totalTasks?: number;
   } | null;
   columns: Array<{
     name: string;
@@ -228,6 +232,8 @@ function computeMetricsFromData(
         .reduce((sum: number, t: any) => sum + (t.story_points as number), 0);
       const inProgress = sprintTasks.filter((t: any) => t.column === 'in_progress').length;
       const onReview = sprintTasks.filter((t: any) => t.column === 'review').length;
+      const doneTasks = sprintTasks.filter((t: any) => t.column === 'done').length;
+      const totalTasks = sprintTasks.length;
 
       sprint = {
         id: sp.id,
@@ -244,6 +250,8 @@ function computeMetricsFromData(
         onReview,
         isActive: sp.status === 'active',
         status: sp.status,
+        doneTasks,
+        totalTasks,
       };
     }
   }

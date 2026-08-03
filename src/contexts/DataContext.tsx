@@ -27,6 +27,10 @@ export interface FlowMetrics {
     onReview: number;
     isActive: boolean;
     status?: string;
+    /** Number of completed tasks in this sprint */
+    doneTasks?: number;
+    /** Total number of tasks in this sprint */
+    totalTasks?: number;
   } | null;
   columns: Array<{
     name: string;
@@ -351,6 +355,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Only compute + dispatch board cards on full load (not partial)
       if (!isPartial) {
+        // Resolve variables needed in the card mapping closure
+        const allWorkspaceWorkers = allWorkersData ?? [];
+        const metricsWorkspaceId = (wsData?.[0]?.id as string | undefined) ?? null;
+
         // Compute boards risk data
         const peopleSet = new Set<string>();
         let processCount = 0;
@@ -371,19 +379,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const cards = (wsData ?? []).map((ws: any) => {
           const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
 
+          // Use allWorkspaceWorkers for accurate member counts across the entire workspace
+          const wsAllWorkers = allWorkspaceWorkers.filter((w: any) => w.workspace_id === ws.id);
+
+          // Attach sprint data if this is the active workspace and metrics contain a sprint
+          const cardSprint = (ws.id === metricsWorkspaceId && metrics?.sprint)
+            ? {
+                name: metrics.sprint.name,
+                topic: metrics.sprint.topic,
+                daysElapsed: metrics.sprint.daysElapsed,
+                totalDays: metrics.sprint.totalDays,
+              }
+            : undefined;
+
           return {
             id: ws.id,
             name: ws.name,
             slug: ws.slug,
-            memberCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'human').length,
-            agentCount: (workersData ?? []).filter((w: any) => w.workspace_id === ws.id && w.type === 'agent').length,
+            memberCount: wsAllWorkers.filter((w: any) => w.type === 'human').length,
+            agentCount: wsAllWorkers.filter((w: any) => w.type === 'agent').length,
             stats: {
               inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
               inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
               onReview: wsTasks.filter((t: any) => t.column === 'review').length,
               done: wsTasks.filter((t: any) => t.column === 'done').length,
             },
-            sprint: undefined,
+            sprint: cardSprint,
           };
         });
 

@@ -48,21 +48,14 @@ export function Calendar({
           const inRange =
             rangeStart && rangeEnd && isBetween(date, rangeStart, rangeEnd);
           const isToday = isSameDay(date, today);
-          const isEdge = isStart || isEnd;
 
-          const isInRange = inRange && !isEdge;
+          // Green circles for all dates in the selected range (including edges)
+          const isSelected = isStart || isEnd || inRange;
 
           return (
             <div
               key={i}
-              className={cn(
-                'relative flex h-10 items-center justify-center',
-                // Green squares fill the whole in-range band — start/end
-                // are solid green edge cells, middle cells get the tint.
-                inRange && 'bg-success',
-                isStart && rangeEnd && 'rounded-l-md bg-success',
-                isEnd && rangeStart && !isSameDay(rangeStart, rangeEnd) && 'rounded-r-md bg-success'
-              )}
+              className="relative flex h-10 items-center justify-center"
             >
               <button
                 type="button"
@@ -72,11 +65,12 @@ export function Calendar({
                   'flex h-9 w-9 items-center justify-center text-[14px] transition-colors',
                   !inMonth && 'invisible',
                   disabled && 'text-text-faint opacity-40',
-                  'rounded-md',
-                  !disabled && inMonth && !isEdge && !isInRange && 'text-text',
-                  isInRange && 'bg-success/25 text-white',
-                  !disabled && isToday && !isEdge && !isInRange && 'border border-line',
-                  isEdge && 'bg-success font-semibold text-accent-ink'
+                  // Selected dates: green circle with white text
+                  isSelected && 'rounded-full bg-success font-semibold text-white',
+                  // Today marker (only when not selected)
+                  !disabled && inMonth && !isSelected && isToday && 'border border-line rounded-md',
+                  // Default state
+                  !disabled && inMonth && !isSelected && 'text-text rounded-md hover:bg-surface-hover',
                 )}
               >
                 {date.getDate()}
