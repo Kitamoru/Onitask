@@ -662,6 +662,8 @@ export function FlowBoard({
   const handleEditSubmit = useCallback(
     async (value: SprintFormValue) => {
       if (!sprint) return;
+      if (isSubmitting) return;
+      setIsSubmitting(true);
       try {
         const res = await fetch(`/api/sprints/${sprint.id}`, {
           method: 'PATCH',
@@ -682,12 +684,16 @@ export function FlowBoard({
       } catch (err) {
         console.error('Failed to update sprint:', err);
         alert(err instanceof Error ? err.message : 'Не удалось обновить спринт');
+      } finally {
+        setIsSubmitting(false);
       }
     },
-    [sprint, onRefresh, authBody],
+    [sprint, onRefresh, authBody, isSubmitting],
   );
   const handleActivate = useCallback(async () => {
     if (!sprint) return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const res = await fetch(`/api/sprints/${sprint.id}/activate`, {
         method: 'PATCH',
@@ -702,12 +708,16 @@ export function FlowBoard({
     } catch (err) {
       console.error('Failed to activate sprint:', err);
       alert(err instanceof Error ? err.message : 'Не удалось активировать спринт');
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [sprint, onRefresh, authBody]);
+  }, [sprint, onRefresh, authBody, isSubmitting]);
 
   const handleComplete = useCallback(async () => {
     if (!sprint) return;
     if (!confirm('Завершить спринт?')) return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const res = await fetch(`/api/sprints/${sprint.id}`, {
         method: 'DELETE',
@@ -722,8 +732,10 @@ export function FlowBoard({
     } catch (err) {
       console.error('Failed to delete sprint:', err);
       alert(err instanceof Error ? err.message : 'Не удалось удалить спринт');
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [sprint, onRefresh, authBody]);
+  }, [sprint, onRefresh, authBody, isSubmitting]);
 
   const handleCreateNew = useCallback(() => {
     setViewOpen(false);
@@ -950,7 +962,6 @@ export function FlowBoard({
                 open={editOpen}
                 onClose={() => setEditOpen(false)}
                 initialValue={sprintFormData}
-                stats={stats}
                 onSubmit={handleEditSubmit}
               />
             </>

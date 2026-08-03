@@ -7,21 +7,18 @@ import { DateRangeField } from '@/components/ui/DateRangeField';
 import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { Button } from '@/components/ui/desk-ui/Button';
 import { Field } from '@/components/sprint/Field';
-import { StatBox } from '@/components/sprint/StatBox';
 import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
-import type { SprintFormValue, SprintStats } from '@/components/sprint/types';
+import type { SprintFormValue } from '@/components/sprint/types';
 
 export function SprintEditSheet({
   open,
   onClose,
   initialValue,
-  stats,
   onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   initialValue: SprintFormValue;
-  stats: SprintStats;
   onSubmit: (value: SprintFormValue) => void;
 }) {
   const [name, setName] = useState(initialValue.name);
@@ -84,17 +81,6 @@ export function SprintEditSheet({
           </Field>
 
           <TasksAccordionRow taskCount={0} />
-
-          <div className="border-t border-line pt-5">
-            <div className="grid grid-cols-2 gap-3">
-              <StatBox
-                label="Выполнено задач"
-                value={`${stats.completedTasks} / ${stats.totalTasks}`}
-                valueTone="success"
-              />
-              <StatBox label="Осталось дней" value={String(stats.daysLeft)} />
-            </div>
-          </div>
 
           <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
             Сохранить спринт
