@@ -46,6 +46,8 @@ interface FlowMetricsResponse {
     onReview: number;
     isActive: boolean;
     status?: string;
+    /** Sprint capacity as string (for UI form binding) */
+    capacity?: string | null;
     /** Number of completed tasks in this sprint */
     doneTasks?: number;
     /** Total number of tasks in this sprint */
@@ -250,6 +252,7 @@ function computeMetricsFromData(
         onReview,
         isActive: sp.status === 'active',
         status: sp.status,
+        capacity: sp.capacity != null ? String(sp.capacity) : null,
         doneTasks,
         totalTasks,
       };

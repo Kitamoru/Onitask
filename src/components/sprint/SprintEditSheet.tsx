@@ -70,7 +70,7 @@ export function SprintEditSheet({
             <TextInput
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Для чего мы делаем это?"
+              placeholder="Введите цель спринта"
             />
           </Field>
 

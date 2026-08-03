@@ -285,7 +285,7 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         >
           {sprint.name}
         </span>
-        <PriorityBadge label={sprint.isActive ? 'Активный' : 'Неактивный'} color={sprint.isActive ? 'green' : 'amber'} />
+        <PriorityBadge label={sprint.isActive ? 'Активный' : 'Запланирован'} color={sprint.isActive ? 'green' : 'amber'} />
       </div>
 
       {/* Row 2: Sprint goal/topic */}
@@ -341,11 +341,11 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
       </svg>
 
-      {/* Stats row: Готово: doneTasks/totalTasks */}
+      {/* Stats row: Готово: doneTasks/totalTasks (both numbers gray) */}
       <div className="relative flex items-center gap-1 mt-2" aria-label="Статистика спринта">
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
-        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{sprint.doneTasks ?? 0}</span>
-        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {sprint.totalTasks ?? 0}</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{doneTasks}</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {totalTasks}</span>
       </div>
     </NotchedPanel>
   );
@@ -740,8 +740,8 @@ export function FlowBoard({
 
   const stats: SprintStats | undefined = sprint
     ? {
-        completedTasks: Math.round((sprint.progress / 100) * (sprint.doneSP || 1)),
-        totalTasks: sprint.doneSP || 1,
+        completedTasks: sprint.doneTasks ?? 0,
+        totalTasks: sprint.totalTasks ?? 0,
         daysLeft: computeDaysLeft(sprint.endDate),
       }
     : undefined;

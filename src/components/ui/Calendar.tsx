@@ -66,7 +66,7 @@ export function Calendar({
                   !inMonth && 'invisible',
                   disabled && 'text-text-faint opacity-40',
                   // Selected dates: green circle with white text
-                  isSelected && 'rounded-full bg-success font-semibold text-white',
+                  isSelected && 'rounded-full bg-signal-green font-semibold text-white',
                   // Today marker (only when not selected)
                   !disabled && inMonth && !isSelected && isToday && 'border border-line rounded-md',
                   // Default state
