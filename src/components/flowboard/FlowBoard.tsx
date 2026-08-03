@@ -646,7 +646,8 @@ export function FlowBoard({
         });
         const result = await res.json();
         if (!res.ok) throw new Error(result.error);
-        await onRefresh?.({ force: true });
+        // Fire-and-forget refresh — close sheet immediately without waiting
+        void onRefresh?.({ force: true });
         setCreateOpen(false);
       } catch (err) {
         console.error('Failed to create sprint:', err);
@@ -675,7 +676,8 @@ export function FlowBoard({
         });
         const result = await res.json();
         if (!res.ok) throw new Error(result.error);
-        await onRefresh?.({ force: true });
+        // Fire-and-forget refresh — close sheet immediately without waiting
+        void onRefresh?.({ force: true });
         setEditOpen(false);
       } catch (err) {
         console.error('Failed to update sprint:', err);
@@ -694,7 +696,8 @@ export function FlowBoard({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
-      await onRefresh?.({ force: true });
+      // Fire-and-forget refresh — close sheet immediately without waiting
+      void onRefresh?.({ force: true });
       setViewOpen(false);
     } catch (err) {
       console.error('Failed to activate sprint:', err);
@@ -713,7 +716,8 @@ export function FlowBoard({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
-      await onRefresh?.({ force: true });
+      // Fire-and-forget refresh — close sheet immediately without waiting
+      void onRefresh?.({ force: true });
       setViewOpen(false);
     } catch (err) {
       console.error('Failed to delete sprint:', err);

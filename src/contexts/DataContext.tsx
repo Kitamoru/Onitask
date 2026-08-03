@@ -103,6 +103,7 @@ type Action =
   | { type: 'PATCH_TASK'; payload: TaskEntity }
   | { type: 'REMOVE_TASK'; payload: string }
   | { type: 'SET_METRICS'; payload: FlowMetrics | null }
+  | { type: 'PATCH_METRICS'; payload: Partial<FlowMetrics> }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
@@ -188,6 +189,18 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
+
+    case 'PATCH_METRICS': {
+      const current = state.metrics.data;
+      if (!current) return state;
+      return {
+        ...state,
+        metrics: {
+          data: { ...current, ...action.payload },
+          lastUpdated: Date.now(),
+        },
+      };
+    }
 
     case 'SET_WORKSPACES':
       return {
