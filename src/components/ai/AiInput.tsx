@@ -1,11 +1,13 @@
 /**
  * F-04 AI Input (F04-05).
  *
- * Text input with voice recording (F04-02) and AI task parsing (F04-03).
- * On submit: calls /api/ai/parse-task, then opens CorrectionSheet (F04-06)
- * for user confirmation before creating the task.
+ * Text input with voice recording (F04-02) and AI task creation (F04-07).
+ * On submit: calls /api/ai/create-task (полный Route Handler по §3.6 —
+ * задача создаётся на сервере со всеми полями), затем условно открывает
+ * CorrectionSheet (F04-06) для редактирования уже созданной задачи
+ * при низком clarity_score или confidence (§3.7).
  *
- * Based on: onitask_ai_.md §3.1–§3.6
+ * Based on: onitask_ai_.md §3.1–§3.7
  */
 
 'use client';
@@ -13,16 +15,24 @@
 import { useState } from 'react';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { CorrectionSheet } from './CorrectionSheet';
-import type { ParseResponseV2 } from '../../lib/ai/types';
+import type { ParseResponseV2, EnrichmentStrategy } from '../../lib/ai/types';
 
 interface AiInputProps {
   initData: string;
-  onTaskCreated: (task: ParseResponseV2) => void;
+  onTaskCreated: (taskId: string) => void;
+}
+
+interface CreateTaskResponse {
+  task: { id: string };
+  parse: ParseResponseV2;
+  strategy: EnrichmentStrategy;
+  showCorrectionSheet: boolean;
 }
 
 export function AiInput({ initData, onTaskCreated }: AiInputProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(null);
   const [parse, setParse] = useState<ParseResponseV2 | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,17 +47,27 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/ai/parse-task', {
+      const res = await fetch('/api/ai/create-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ init_data: initData, input }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка AI-парсинга');
-      setParse(data.parse);
-      setSheetOpen(true);
+      if (!res.ok) throw new Error(data.error || 'Ошибка AI-создания задачи');
+
+      const result = data as CreateTaskResponse;
+      // Задача создана на сервере со всеми полями (raw_input, clarity, complexity, strategy…)
+      if (result.showCorrectionSheet) {
+        // Условный показ Correction Sheet для редактирования уже созданной задачи (§3.7)
+        setTaskId(result.task.id);
+        setParse(result.parse);
+        setSheetOpen(true);
+      } else {
+        setInput('');
+        onTaskCreated(result.task.id);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка AI-парсинга');
+      setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
       setLoading(false);
     }
@@ -56,7 +76,7 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
   const handleConfirm = (edited: ParseResponseV2) => {
     setSheetOpen(false);
     setInput('');
-    onTaskCreated(edited);
+    onTaskCreated(taskId ?? '');
   };
 
   return (
@@ -81,7 +101,7 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
           className="rounded-lg bg-blue-600 p-2 text-sm text-white disabled:opacity-50"
           onClick={handleSubmit}
           disabled={loading || !input.trim()}
-          aria-label="Распознать задачу"
+          aria-label="Создать задачу"
         >
           {loading ? '…' : 'AI'}
         </button>
@@ -97,7 +117,9 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
 
       <CorrectionSheet
         open={sheetOpen}
+        taskId={taskId}
         parse={parse}
+        initData={initData}
         onConfirm={handleConfirm}
         onCancel={() => setSheetOpen(false)}
       />

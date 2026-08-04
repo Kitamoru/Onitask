@@ -7,8 +7,9 @@
  * creation overlay (AiInput + CorrectionSheet) on every page.
  *
  * Flow:
- *   Center button → AiInput (text/voice) → /api/ai/parse-task → CorrectionSheet
- *   → /api/tasks (create) → refresh FlowBoard data via DataContext.
+ *   Center button → AiInput (text/voice) → /api/ai/create-task (полный Route
+ *   Handler §3.6: parse + INSERT tasks + enrichment_queue/task_enrichments +
+ *   task_events) → условный CorrectionSheet (§3.7) → refresh FlowBoard data.
  *
  * Based on: onitask_ai_.md §3.1–§3.7, TASKS.md Stage 5 F-04
  * INV-05: workspace_id is resolved server-side (workers.source_id = profileId)
@@ -19,8 +20,6 @@ import { BottomMenu } from './BottomMenu';
 import { AiInput } from '@/components/ai/AiInput';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
-import { createTask } from '@/lib/api/flow';
-import type { ParseResponseV2 } from '@/lib/ai/types';
 
 export function AiTaskCreator() {
   const { initData } = useTelegramAuth();
@@ -36,25 +35,10 @@ export function AiTaskCreator() {
   }, []);
 
   const handleTaskCreated = useCallback(
-    async (task: ParseResponseV2) => {
-      // Create the task via /api/tasks (server resolves workspace_id from initData — INV-05)
-      try {
-        const result = await createTask({
-          title: task.title || task.rewritten_title,
-          description: task.rewritten_description || undefined,
-          priority: task.priority ?? undefined,
-          deadline: task.deadline ?? undefined,
-          // No column → is_inbox=true (task lands in inbox for triage)
-        });
-        if (result.error) {
-          console.error('[AiTaskCreator] Task creation failed:', result.error);
-        }
-      } catch (err) {
-        console.error('[AiTaskCreator] Task creation failed:', err);
-      }
-
+    async (_taskId: string) => {
+      // Задача уже создана на сервере (/api/ai/create-task) со всеми полями.
+      // Здесь только закрываем оверлей и обновляем данные.
       setOpen(false);
-      // Refresh flow data so the new task appears in metrics/columns immediately
       try {
         await loadBoardsData(state.activeWorkspaceId ?? undefined, { partial: true });
       } catch (err) {

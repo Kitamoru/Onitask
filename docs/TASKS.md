@@ -177,7 +177,7 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] F04-06 Correction Sheet (TWA) при `clarity_score`/`confidence` ниже порога #ui !med @blocked_by:F04-05
       ai_.md §3.7. Реализовано: `src/components/ai/CorrectionSheet.tsx`.
 - [x] F04-07 Route Handler полный поток: INSERT `tasks` + условный `task_enrichments`(skip) или `enrichment_queue` #db !high @blocked_by:F04-04
-      ai_.md §3.6. Реализовано: `AiTaskCreator.tsx` → `createTask()` → `/api/tasks` (server-side `workspace_id` resolution).
+      ai_.md §3.6. Реализовано: `src/app/api/ai/create-task/route.ts` — полный Route Handler: parse → assignee matching → INSERT `tasks` со всеми полями (raw_input, clarity_score, complexity, enrichment_strategy, cognitive_weight, tags, column) → условный `task_enrichments`(skip) или `enrichment_queue` → `task_events` (parse_rewrite). `AiInput.tsx` вызывает `/api/ai/create-task`; `CorrectionSheet.tsx` редактирует уже созданную задачу через PATCH `/api/tasks/:id` (условный показ по §3.7).
 - [x] INV-05 Ревью: все AI-outputs F-04 содержат `workspace_id` (tenant isolation) #ai !high @blocked_by:F04-07
       Master A-7, INV-05. Закрыто: `/api/ai/parse-task` резолвит `workspace_id` через `workers.source_id = profileId`, `/api/tasks` POST использует `worker.workspace_id`.
 - [ ] F04-08 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-04 Parse #ai !high @blocked_by:F04-03
