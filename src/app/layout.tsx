@@ -59,8 +59,8 @@ export default function RootLayout({
                 <AuthLoader>
                   {children}
                 </AuthLoader>
+                <AiTaskCreator />
               </DataProvider>
-              <AiTaskCreator />
             </TelegramThemeProvider>
           </TelegramProvider>
         </body>

@@ -153,20 +153,22 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: `/api/ai/transcribe`, `/api/ai/parse-task`, `VoiceRecorder`, `AiInput`, confidence handling. DoD: голос → транскрипт ≤400мс, парсинг корректный, fallback при ошибке Groq.
 
-- [ ] F04-01 `POST /api/ai/transcribe` (Groq Whisper) + `detectSTTStrategy` (web-speech / groq-whisper) #ai !high @blocked_by:WS-01
-      ai_.md §3.1–3.2.
-- [ ] F04-02 `VoiceRecorder.tsx` + waveform + MediaRecorder lifecycle #ui !high @blocked_by:F04-01
-- [ ] F04-03 `POST /api/ai/parse-task` (Groq llama-3.3-70b, JSON mode обязателен) + `ParseResponseV2` #ai !high @blocked_by:WS-01
-      ai_.md §3.3–3.4.
-- [ ] F04-04 Детерминированный Gatekeeper (skip/light/standard) #ai !high @blocked_by:F04-03
-      ai_.md §3.5.
-- [ ] F04-05 `AiInput.tsx` — единая строка NL + голос #ui !high @blocked_by:F04-02,F04-03
-- [ ] F04-06 Correction Sheet (TWA) при `clarity_score`/`confidence` ниже порога #ui !med @blocked_by:F04-05
-      ai_.md §3.7.
-- [ ] F04-07 Route Handler полный поток: INSERT `tasks` + условный `task_enrichments`(skip) или `enrichment_queue` #db !high @blocked_by:F04-04
-      ai_.md §3.6.
-- [ ] INV-05 Ревью: все AI-outputs F-04 содержат `workspace_id` (tenant isolation) #ai !high @blocked_by:F04-07
-      Master A-7, INV-05.
+- [x] F04-01 `POST /api/ai/transcribe` (Groq Whisper) + `detectSTTStrategy` (web-speech / groq-whisper) #ai !high @blocked_by:WS-01
+      ai_.md §3.1–3.2. Реализовано: `src/app/api/ai/transcribe/route.ts`, `src/lib/ai/stt.ts`.
+- [x] F04-02 `VoiceRecorder.tsx` + waveform + MediaRecorder lifecycle #ui !high @blocked_by:F04-01
+      Реализовано: `src/hooks/useVoiceRecorder.ts`.
+- [x] F04-03 `POST /api/ai/parse-task` (Groq llama-3.3-70b, JSON mode обязателен) + `ParseResponseV2` #ai !high @blocked_by:WS-01
+      ai_.md §3.3–3.4. Реализовано: `src/app/api/ai/parse-task/route.ts`, `src/lib/ai/groq.ts`, `src/lib/ai/prompts.ts`, `src/lib/ai/types.ts`.
+- [x] F04-04 Детерминированный Gatekeeper (skip/light/standard) #ai !high @blocked_by:F04-03
+      ai_.md §3.5. Реализовано: `determineEnrichmentStrategy()` в `src/lib/ai/types.ts`.
+- [x] F04-05 `AiInput.tsx` — единая строка NL + голос #ui !high @blocked_by:F04-02,F04-03
+      Реализовано: `src/components/ai/AiInput.tsx`.
+- [x] F04-06 Correction Sheet (TWA) при `clarity_score`/`confidence` ниже порога #ui !med @blocked_by:F04-05
+      ai_.md §3.7. Реализовано: `src/components/ai/CorrectionSheet.tsx`.
+- [x] F04-07 Route Handler полный поток: INSERT `tasks` + условный `task_enrichments`(skip) или `enrichment_queue` #db !high @blocked_by:F04-04
+      ai_.md §3.6. Реализовано: `AiTaskCreator.tsx` → `createTask()` → `/api/tasks` (server-side `workspace_id` resolution).
+- [x] INV-05 Ревью: все AI-outputs F-04 содержат `workspace_id` (tenant isolation) #ai !high @blocked_by:F04-07
+      Master A-7, INV-05. Закрыто: `/api/ai/parse-task` резолвит `workspace_id` через `workers.source_id = profileId`, `/api/tasks` POST использует `worker.workspace_id`.
 
 ---
 

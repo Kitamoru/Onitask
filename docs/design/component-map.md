@@ -123,7 +123,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | BottomMenu | BottomMenu.tsx | — | Bottom navigation bar |
+| | BottomMenu | BottomMenu.tsx | onCenterClick | Bottom navigation bar. Central button triggers `onCenterClick` or shows fallback notice |
+| | AiTaskCreator | AiTaskCreator.tsx | — | Global wrapper: BottomMenu + AI task creation overlay (AiInput + CorrectionSheet). Opens on center button click, creates task via `/api/tasks`, refreshes metrics |
 | | TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
 | | TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
 | | TelegramTheme | TelegramTheme.tsx | children | Theme provider |
