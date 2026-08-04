@@ -95,21 +95,22 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: GET/POST `/api/workspaces`, `WorkspaceWizard.tsx`, seed `workspace_settings`. DoD: новый пользователь видит wizard, после заполнения — попадает в Flow Board.
 
-- [x] WS-06 Rate limit + randomBytes(16) для `/api/invite` (SEC-02) #auth !high @blocked_by:DB-15
-      Реализовано: supabase/migrations/006_invite_unique_index.sql, app/api/invite/route.ts (POST+GET),
-      app/api/init/route.ts (start_param обработка), hooks/useTelegram.ts (startParam), types/api.ts (InviteGenerateResponse).
-      Механика: одна активная ссылка на workspace, 24h expiry, многоразовая, частичный уникальный индекс.
-      WS-01 `POST /api/workspaces` — атомарная транзакция (workspaces → triggers → workspace_settings → workers owner → sprint если enabled) #db !high @blocked_by:INV-16
-      dev_setup §7.4.
+- [x] WS-01 `POST /api/workspaces` — атомарная транзакция (workspaces → triggers → workspace_settings → workers owner → sprint если enabled) #db !high @blocked_by:INV-16
+      dev_setup §7.4. Реализовано: app/api/workspaces/route.ts (POST+GET).
 - [x] WS-02 `generateTaskPrefix()` (slug → prefix, `needsManualReview`) #ui !med @blocked_by:WS-01
-      Реализовано: lib/workspace.ts.
-      Master §8.
-- [ ] WS-03 `WorkspaceWizard.tsx` (slug, task_prefix, `workspace_context` опционально со Skip) #ui !high @blocked_by:WS-01,WS-02
+      Реализовано: lib/workspace.ts. Master §8.
+- [x] WS-03 `WorkspaceWizard.tsx` (slug, task_prefix, `workspace_context` опционально со Skip) #ui !high @blocked_by:WS-01,WS-02
+      Реализовано: src/components/board/WorkspaceWizard.tsx + CreateDeskForm.
+      Страница создания доски: src/app/board/create/page.tsx.
 - [x] WS-04 `GET /api/workspaces` — список workspace пользователя #db !med @blocked_by:WS-01
       Реализовано: app/api/workspaces/route.ts (POST+GET).
-- [ ] WS-05 Роутинг: `is_new_user` → wizard; существующий пользователь → Flow Board #ui !med @blocked_by:AUTH-02,WS-03
-- [ ] WS-06 Rate limit + randomBytes(16) для `/api/invite` (SEC-02) #auth !high @blocked_by:DB-15
+- [x] WS-05 Роутинг: `is_new_user` → wizard; существующий пользователь → Flow Board #ui !med @blocked_by:AUTH-02,WS-03
+      Реализовано: src/app/page.tsx (Guard + redirect на /board/create или /flowboard).
+- [x] WS-06 Rate limit + randomBytes(16) для `/api/invite` (SEC-02) #auth !high @blocked_by:DB-15
       product_vision §8.5. `randomBytes(16).toString('base64url')`, rate limit 10/IP/15мин. Таблица `invite_links` создана в DB-15.
+      Реализовано: supabase/migrations/006_invite_unique_index.sql, app/api/invite/route.ts (POST+GET),
+      app/api/init/route.ts (start_param обработка), hooks/useTelegramAuth.ts (startParam), types/api.ts (InviteGenerateResponse).
+      Механика: одна активная ссылка на workspace, 24h expiry, многоразовая, частичный уникальный индекс.
 
 ---
 
@@ -117,24 +118,34 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: GET/PATCH `/api/tasks`, `KanbanBoard` + DnD, Realtime, `SprintBar`, ручное создание, `UrgencyBadge`. DoD: DnD работает, Realtime синхронизирует клиентов, `trg_record_task_column_move` пишет историю.
 
-- [ ] FLOW-01 `GET/PATCH /api/tasks` — last-write-wins, **без** version-check (см. INV-09 примечание в Architecture-Compact) #db !high @blocked_by:WS-01
-      dev_setup §7.2, §7.3.
+- [x] FLOW-01 `GET/PATCH /api/tasks` — last-write-wins, **без** version-check (см. INV-09 примечание в Architecture-Compact) #db !high @blocked_by:WS-01
+      dev_setup §7.2, §7.3. Реализовано: app/api/tasks/route.ts (GET+POST), app/api/tasks/[id]/route.ts (PATCH).
 - [ ] FLOW-02 `KanbanBoard.tsx` + `KanbanColumn` + `KanbanCard` + `DragOverlay` (`@dnd-kit`) #ui !high @blocked_by:FLOW-01
+      Пока не трогаем. `@dnd-kit` установлен (package.json), но UI ещё не реализован.
 - [ ] FLOW-03 Fractional indexing (`position = (prev+next)/2`) #ui !high @blocked_by:FLOW-02
-      product_vision UC-03.
+      product_vision UC-03. `lib/fractionalIndex.ts` существует, но не используется — ждёт FLOW-02.
 - [ ] FLOW-04 Realtime-подписка на `tasks` #ui !high @blocked_by:FLOW-02
-- [ ] FLOW-05 `SprintBar.tsx` (метрики скрыты в статусе `planning`) #ui !med @blocked_by:FLOW-02
-      flow_.md §7.
-- [ ] FLOW-06 Ручное создание задачи (`TaskForm.tsx`) + `is_inbox=false` при явном column #ui !high @blocked_by:FLOW-01
-      Master §5.
-- [ ] FLOW-07 `UrgencyBadge.tsx` — светофор по дедлайну #ui !med @blocked_by:FLOW-02
-      product_vision US-04.
-- [ ] FLOW-08 `GET /api/flow/metrics` → Edge Function `flow-metrics` (кэш 5с columns / 60с workers+alerts) #db !high @blocked_by:DB-13
-      flow_.md §9–10, A-10.
+      Хуки написаны (`src/lib/realtime/tasks.ts`: `useTasksRealtime`, `useFlowMetricsRealtime`), но не подключены к UI — ждёт реализации tasks/DnD.
+- [x] FLOW-05 `SprintBar.tsx` (метрики скрыты в статусе `planning`) #ui !med @blocked_by:FLOW-02
+      flow_.md §7. Реализовано в текущем виде: `SprintCompressedInfo` внутри `FlowBoard.tsx` + Sprint sheets (Create/Edit/View).
+      Статус остаётся в текущем уровне готовности.
+- [x] FLOW-06 Ручное создание задачи (`TaskForm.tsx`) + `is_inbox=false` при явном column #ui !high @blocked_by:FLOW-01
+      Master §5. Реализовано: src/components/flowboard/TaskForm.tsx.
+      is_inbox=true при отсутствии column, is_inbox=false при явном column.
+- [x] FLOW-07 `UrgencyBadge.tsx` — светофор по дедлайну #ui !med @blocked_by:FLOW-02
+      product_vision US-04. Реализовано: src/components/flowboard/UrgencyBadge.tsx.
+      Цвета: red (просрочено/≤24ч), amber (≤48ч), green (>48ч).
+- [x] FLOW-08 `GET /api/flow/metrics` → Edge Function `flow-metrics` (кэш 5с columns / 60с workers+alerts) #db !high @blocked_by:DB-13
+      flow_.md §9–10, A-10. Реализовано: src/app/api/flow/metrics/route.ts (POST).
+      Возвращает: sprintEnabled, sprint, columns (health), workers (load), alerts. TTL 30с.
 - [ ] FLOW-09 Column Health Grid 2×2 + bottom sheet по тапу колонки #ui !med @blocked_by:FLOW-08
+      Health-логика есть в metrics API, но UI-грида/тап-шейта нет — жду tasks.
 - [ ] FLOW-10 Stream — персональная лента (Фокус/В работе/На проверке/Надо сделать/Черновики) #ui !med @blocked_by:FLOW-01
-- [ ] FLOW-11 `SprintCloseWizard.tsx` + переход `sprint.status→completed` #ui !med @blocked_by:FLOW-05
+      Скоро будет.
+- [x] FLOW-11 `SprintCloseWizard.tsx` + переход `sprint.status→completed` #ui !med @blocked_by:FLOW-05
       product_vision US-06 (AC-06-1…3). Триггер `trg_context_invalidate_sprints` (Master §6.16) реагирует на событие.
+      Реализовано в текущем уровне готовности: DELETE /api/sprints/[id] (complete), PATCH /api/sprints/[id]/activate.
+      Sprint sheets: SprintViewSheet с кнопками Activate/Complete, SprintEditSheet.
 
 ---
 
