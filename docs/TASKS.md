@@ -47,8 +47,9 @@ format is deliberately compact so that agents can load the file quickly.
       Master §6.14, INV-12. Зависит от `attention_risk_pulse` из DB-13.
 - [x] INV-13 `task_relations` + RPC `get_task_subgraph` + `trg_cascade_unblock` + `trg_context_invalidate` (A-12) #db !high @blocked_by:DB-02,DB-06,DB-07
       Master §6.16, INV-13. Триггеры пишут в `enrichment_queue` — отсюда зависимость от DB-07.
-- [x] DB-14 `orphan_blockers` + `handoff_chain` вьюхи + `trg_handoff_chain_alert` + `trg_escalation_alert` + `trg_resolution_notify` + `enqueue_duplicate_check` + `send_alert_immediate()` #db !med @blocked_by:DB-13,INV-13
-      sql_anomalies §3.10–3.11, §5.
+- [x] DB-14 `orphan_blockers` + `handoff_chain` вьюхи + `trg_handoff_chain_alert` + `trg_escalation_alert` + `trg_resolution_notify` + `trg_update_assignment_outcome` + `enqueue_duplicate_check` + `send_alert_immediate()` #db !med @blocked_by:DB-13,INV-13
+      sql_anomalies §3.10–3.11, §5, §5.6. `trg_update_assignment_outcome` — обновляет `assignment_history.outcome_status` при завершении задачи (A-11).
+      Резервный cron-канал для handoff_chain (§5.4) — требует верификации при настройке DB-16.
 - [ ] INV-14 Контрактная проверка: ни один Route Handler не пишет в `workspace_context_cache` напрямую (только Edge Function rebuild) #db !low @deferred
        Master §6.4 comment, A-12, INV-14. **Deferred** — code-level invariant, проверяется при появлении Route Handler'ов на Stage 6.
 - [x] DB-15 `invite_links` #db !low @blocked_by:DB-01
@@ -61,12 +62,19 @@ format is deliberately compact so that agents can load the file quickly.
        dev_setup §3, Stage 1 DoD. **Deferred by decision** — не требуется для MVP.
 - [ ] DB-18 CI: `supabase gen types` + type drift check в GitHub Actions #infra !med @deferred
         dev_setup §4. **Deferred by decision** — не требуется для MVP.
-- [x] DB-19b ESLint-правило против импорта `SUPABASE_SERVICE_ROLE_KEY` в `'use client'` файлы (SEC-05) #infra !med @blocked_by:DB-18
+- [x] DB-19b ESLint-правило против импорта `SUPABASE_SERVICE_ROLE_KEY` в `'use client'` файлы (SEC-05) #infra !med
         product_vision §8.5, приоритет «Высокий». Реализовано через `no-restricted-imports` в `eslint.config.mjs`.
-- [x] DB-19c ESLint `react/no-danger` для TWA-компонентов (security §4.2) #infra !med @blocked_by:DB-18
+- [x] DB-19c ESLint `react/no-danger` для TWA-компонентов (security §4.2) #infra !med
         security §4.2. `dangerouslySetInnerHTML` запрещён для LLM-полей (`ai_hint`, `rewritten_title`, `rewritten_description`, `suggested_action`, `handoff_notes`). Реализовано через `"react/no-danger": "off"` в `eslint.config.mjs`.
 - [x] US-03 AI-декомпозиция задачи — 🟢 Закрыто (сознательно не входит в MVP)
        Маршрут `POST /api/tasks/[id]/decompose` и `DecomposePanel.tsx` существовали в дереве проекта, но функционального контракта в `ai_.md` не было. Вопрос закрыт документом `onitask_batch_creation__3.md` v1.0.0 (Locked Final) — «Semantic Boundary Engine & Batch Task Creation». Oni-Engine Pipeline (`POST /api/ai/parse`) меняется не факт наличия контракта, а факт его применимости к MVP: контракт написан и заблокирован для изменений, просто эта функциональность сознательно выведена за пределы текущего цикла разработки. Документ не связан из `MOC-onitask.md` и не входит в обычную цепочку чтения. Если и когда Batch Creation войдёт в объём разработки — она появится в `TASKS.md` явными новыми задачами, а не будет выведена задним числом.
+- [ ] DB-20 `calendar_events` + `calendar_connections` + триггеры `trg_schedule_calendar_reminder`, `trg_cancel_calendar_reminder`, `trg_validate_calendar_times` #db !med @blocked_by:DB-01
+      Master §6.19. Миграция `009_calendar_events.sql` (календарный модуль) — **частична**: содержит таблицы + RLS + `trg_validate_calendar_times`,
+      но **отсутствуют** `trg_schedule_calendar_reminder` и `trg_cancel_calendar_reminder` (планирование/отмена напоминаний через enrichment_queue).
+      INV-17 шифрование токенов — см. CAL-06.
+- [x] DB-21 `profiles.last_active_workspace_id` (активная доска пользователя) #db !low @blocked_by:DB-01
+      Master §6.20. Миграция `016_move_last_active_workspace_to_profiles.sql`. Перенесено из `workspace_settings.last_active_board_id`.
+      API: `POST /api/workspaces/active-workspace`, `last_active_workspace_id` в InitResponse.
 
 ---
 
@@ -84,7 +92,9 @@ format is deliberately compact so that agents can load the file quickly.
       Миграция `005_remove_profiles_auth_fk.sql`. RLS работает через `workers.source_id::text = auth.uid()::text`.
 - [x] SECURITY-01 SEC-06: `TelegramUser.id` → string, передача в БД через `Number()` для bigint колонки #auth !high @blocked_by:ARCH-02
       Изменено: `lib/telegramAuth.ts` (id: string), `app/api/init/route.ts` (String→Number для БД).
-- [ ] AUTH-02 Контракт ответа `{ worker, workspaces, is_new_user }` + роутинг на WorkspaceWizard при `is_new_user` #auth !med @blocked_by:INV-16
+- [x] AUTH-02 Контракт ответа `{ worker, workspaces, is_new_user }` + роутинг на WorkspaceWizard при `is_new_user` #auth !med @blocked_by:INV-16
+      Реализовано: `app/api/init/route.ts` (строки 175-186 existing user, 277-287 new user) — возвращает
+      `{ worker, workspaces, is_new_user, last_active_workspace_id }`. Роутинг на WorkspaceWizard — `src/app/page.tsx` (WS-05).
 - [x] AUTH-03 401-обработка невалидного initData + интеграционный тест (mock-based) #auth !med @blocked_by:INV-16
       Реализовано: `vitest.config.ts`, `tests/setup.ts`, `tests/api/init.test.ts`, `package.json` (vitest + scripts).
       4 теста: missing_init_data→400, invalid_hash→401, expired→401, valid+new_user→200.
@@ -118,21 +128,22 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: GET/PATCH `/api/tasks`, `KanbanBoard` + DnD, Realtime, `SprintBar`, ручное создание, `UrgencyBadge`. DoD: DnD работает, Realtime синхронизирует клиентов, `trg_record_task_column_move` пишет историю.
 
-- [x] FLOW-01 `GET/PATCH /api/tasks` — last-write-wins, **без** version-check (см. INV-09 примечание в Architecture-Compact) #db !high @blocked_by:WS-01
-      dev_setup §7.2, §7.3. Реализовано: app/api/tasks/route.ts (GET+POST), app/api/tasks/[id]/route.ts (PATCH).
+- [x] FLOW-01 `GET/POST/PATCH/DELETE /api/tasks` — last-write-wins, **без** version-check (см. INV-09 примечание в Architecture-Compact) #db !high @blocked_by:WS-01
+      dev_setup §7.2, §7.3. Реализовано: app/api/tasks/route.ts (GET+POST), app/api/tasks/[id]/route.ts (PATCH+DELETE).
 - [ ] FLOW-02 `KanbanBoard.tsx` + `KanbanColumn` + `KanbanCard` + `DragOverlay` (`@dnd-kit`) #ui !high @blocked_by:FLOW-01
       Пока не трогаем. `@dnd-kit` установлен (package.json), но UI ещё не реализован.
 - [ ] FLOW-03 Fractional indexing (`position = (prev+next)/2`) #ui !high @blocked_by:FLOW-02
       product_vision UC-03. `lib/fractionalIndex.ts` существует, но не используется — ждёт FLOW-02.
 - [ ] FLOW-04 Realtime-подписка на `tasks` #ui !high @blocked_by:FLOW-02
       Хуки написаны (`src/lib/realtime/tasks.ts`: `useTasksRealtime`, `useFlowMetricsRealtime`), но не подключены к UI — ждёт реализации tasks/DnD.
-- [x] FLOW-05 `SprintBar.tsx` (метрики скрыты в статусе `planning`) #ui !med @blocked_by:FLOW-02
-      flow_.md §7. Реализовано в текущем виде: `SprintCompressedInfo` внутри `FlowBoard.tsx` + Sprint sheets (Create/Edit/View).
-      Статус остаётся в текущем уровне готовности.
+- [x] FLOW-05 Sprint CRUD API + `SprintBar.tsx` (метрики скрыты в статусе `planning`) #ui !med @blocked_by:FLOW-01
+      flow_.md §7. Реализовано: app/api/sprints/route.ts (POST+GET), app/api/sprints/[id]/route.ts (PATCH+DELETE),
+      PATCH /api/sprints/[id]/activate, SprintCreateSheet/SprintEditSheet/SprintViewSheet,
+      `SprintCompressedInfo` внутри `FlowBoard.tsx`.
 - [x] FLOW-06 Ручное создание задачи (`TaskForm.tsx`) + `is_inbox=false` при явном column #ui !high @blocked_by:FLOW-01
       Master §5. Реализовано: src/components/flowboard/TaskForm.tsx.
       is_inbox=true при отсутствии column, is_inbox=false при явном column.
-- [x] FLOW-07 `UrgencyBadge.tsx` — светофор по дедлайну #ui !med @blocked_by:FLOW-02
+- [x] FLOW-07 `UrgencyBadge.tsx` — светофор по дедлайну #ui !med @blocked_by:FLOW-01
       product_vision US-04. Реализовано: src/components/flowboard/UrgencyBadge.tsx.
       Цвета: red (просрочено/≤24ч), amber (≤48ч), green (>48ч).
 - [x] FLOW-08 `GET /api/flow/metrics` → Edge Function `flow-metrics` (кэш 5с columns / 60с workers+alerts) #db !high @blocked_by:DB-13
@@ -169,10 +180,18 @@ format is deliberately compact so that agents can load the file quickly.
       ai_.md §3.6. Реализовано: `AiTaskCreator.tsx` → `createTask()` → `/api/tasks` (server-side `workspace_id` resolution).
 - [x] INV-05 Ревью: все AI-outputs F-04 содержат `workspace_id` (tenant isolation) #ai !high @blocked_by:F04-07
       Master A-7, INV-05. Закрыто: `/api/ai/parse-task` резолвит `workspace_id` через `workers.source_id = profileId`, `/api/tasks` POST использует `worker.workspace_id`.
+- [ ] F04-08 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-04 Parse #ai !high @blocked_by:F04-03
+      security §1.1, ai_.md §3.4. Проверка: параметр передаётся в каждый API-запрос Groq.
+- [ ] F04-09 data_sharing_level branching в F-04: `sharingLevel !== 'minimal'` guard для `workspace_context_cache` #ai !high @blocked_by:F04-03
+      ai_.md §3.4 (v0.10.0), security §2.1. При 'minimal' — только teamBlock + workspace_context.
+- [ ] F04-10 Zod-валидация F-04 output с безопасным fallback #ai !high @blocked_by:F04-03
+      security §1.1, ai_.md §2.5. При несоответствии схеме — fallback на безопасные дефолты, не пробрасывать сырой LLM-вывод.
+- [ ] F04-11 `workspace_context_cache` в F-04: settings SELECT + `workspaceContextCacheBlock` в промпт #ai !med @blocked_by:F04-03
+      ai_.md §3.4 (v0.9.0). Оперативный снапшот для точного assignee/priority.
 
 ---
 
-## Stage 6 · Card Enrichment (F-03)
+## Stage 6a · Document Upload (DOC)
 
 > DOC-01 Upload API + DOC-02 Document UI — добавлены в этой сессии.
 
@@ -183,12 +202,13 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] DOC-02 Edge Function `doc-process` развёрнута на atarmvtzvlwhkheeabeb #infra !med
       Развёрнута: 2026-07-15. Переименованы env vars (SUPABASE_ префикс заблокирован): SB_URL, SB_SERVICE_ROLE_KEY, NEURALDEEP_KEY.
       Обновлено: 2026-07-16 — код + перезадеплоена.
+      Реализация (чанкование + embedding + `source_origin='doc_rag'` tag + graceful degradation `docContext=''`) — см. F03-13.
 - [ ] DOC-03 Создать bucket 'documents' в Supabase Storage (ручное создание через Dashboard) #infra !high
       Dashboard → Storage → Create Bucket → name: `documents`, public: OFF, file_size_limit: 524288.
 
 ---
 
-## Stage 6 · Card Enrichment (F-03)
+## Stage 6b · Card Enrichment (F-03)
 
 > dev_setup §3: Edge Function `enrich-task`, `enrichment_queue` polling, идемпотентность, retry backoff. DoD: фоновое обогащение работает, Realtime обновляет UI, при ошибке — тихий toast.
 
@@ -218,7 +238,11 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] F03-13 Edge Function `doc_process` (чанкование + embedding + `source_origin` tag) #ai !med @blocked_by:DB-11
       ai_.md §2.2. Реализовано: supabase/functions/doc-process/index.ts.
       Graceful degradation: `docContext=''` при отсутствии данных.
-      Интегрировано с DOC-01 Upload API.
+      Интегрировано с DOC-01 Upload API. Развёртывание — см. DOC-02.
+- [ ] F03-14 Zod-валидация F-03 output с безопасным fallback #ai !high @blocked_by:F03-08
+      security §1.1, ai_.md §2.5. При несоответствии схеме — fallback на безопасные дефолты.
+- [ ] F03-15 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-03 #ai !high @blocked_by:F03-08
+      security §1.1, ai_.md §2.3. Проверка: параметр передаётся в каждый API-запрос NeuralDeep.
 
 ---
 
@@ -261,9 +285,13 @@ format is deliberately compact so that agents can load the file quickly.
       flow_.md §21.
 - [ ] RISK-05 Velocity SQL интеграция в блок «Метрики» #db !med @blocked_by:RISK-04
       team_tab §4.1 (справочник).
-- [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 800 симв) #ui !med @blocked_by:WS-03
-      flow_.md §23, Master §6.4.
+- [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 2000 симв) #ui !med @blocked_by:WS-03
+      flow_.md §23, Master §6.4. Лимит 2000 символов (не 800 — исправлено по flow_.md §23).
 - [ ] RISK-07 Invite FAB + реферальная ссылка (`t.me/onitask_bot?start=ws_CODE`) #ui !med @blocked_by:DB-15
+- [ ] RISK-08 Workspace Manager (вкладка «Доски»): карточки workspace, глобальные алерты, переключение #ui !med @blocked_by:WS-01
+      flow_.md §23. Источник: `/api/workspaces/summary` (Edge Function, cache 60–300с).
+- [ ] RISK-09 Risk Pulse «Процессы»: добавить `orphan_blockers` и `handoff_chain` в формулу (v3.6.0) #ui !med @blocked_by:RISK-01,DB-14
+      flow_.md §19 (v3.6.0). Drill-down по трём группам: ревью-блок / stuck / orphan.
 
 ---
 
@@ -280,6 +308,12 @@ format is deliberately compact so that agents can load the file quickly.
       flow_.md §22.
 - [ ] AGENT-05 Cascade Unblock toast (Realtime `cascade_unblock`) #ui !med @blocked_by:INV-13
 - [ ] AGENT-06 Pill «🔄 Цепочка ×N» для `handoff_chain` (Phase 1.1 — можно отложить за MVP) #ui !low @blocked_by:AGENT-01
+- [ ] AGENT-07 Task Sheet, вкладка «Детали» (`ai_hint`, описание, метаданные, кнопка «→ следующая колонка») #ui !high @blocked_by:AGENT-04
+      flow_.md §22.
+- [ ] AGENT-08 Task Sheet, вкладка «Комментарии» (люди + `agent_events.summary` + `task_events`, поле ввода → `event_type='comment'`) #ui !med @blocked_by:AGENT-04
+      flow_.md §22, Master §6.10.
+- [ ] AGENT-09 Route Handler `POST /api/tasks/:id/relations` (создание связей task_relations через UI) #db !med @blocked_by:INV-13
+      flow_.md §22, dev_setup §2.2. Ошибки: самоссылка, дубль связи.
 
 ---
 
@@ -287,8 +321,9 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: `/api/bot/*`, webhook, F-04 адаптер, workspace resolution, команды, deep links. DoD: голосовое → задача, `/flow` актуален, deep link открывает нужную задачу.
 
-- [ ] BOT-01 `POST /api/bot/webhook` + HMAC-подпись (SEC-03) #bot !high @blocked_by:DB-11
+- [ ] BOT-01 `POST /api/bot/webhook` + HMAC-подпись (SEC-03) #bot !high @blocked_by:INV-10
       bot_.md §6.1, product_vision SEC-03. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
+      Зависимость исправлена: `INV-10` (workspace_telegram_chats) вместо ошибочной `DB-11`.
 - [ ] BOT-02 Workspace resolution (6 приоритетов, last-used SQL) #bot !high @blocked_by:BOT-01
       bot_.md §3. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
 - [ ] BOT-03 `/task` текст+голос, двухфазный ответ (typing+placeholder → editMessageText), duplicate guard (`message_id`) #bot !high @blocked_by:BOT-02,F04-03
@@ -301,8 +336,8 @@ format is deliberately compact so that agents can load the file quickly.
 - [ ] BOT-07 Онбординг через invite (`/start ws_CODE`) #bot !high @blocked_by:DB-15
       bot_.md §5.9.
 - [ ] BOT-08 Freemium boundary (тариф-гейты, таблица §4) #bot !med @blocked_by:BOT-03
-- [ ] BOT-09 Daily Standup (`/standup` ручной вызов + `escapeHtml` санитизация) #bot !med @blocked_by:BOT-05
-      bot_.md §5.6.
+- [ ] BOT-09 Daily Standup (`/standup` ручной вызов + `escapeHtml` санитизация + блок 📥 inbox >24ч) #bot !med @blocked_by:BOT-05
+      bot_.md §5.6. Блок 📥: `is_inbox=true AND created_at < NOW() - INTERVAL '24 hours'`, макс. 3 задачи с deep link.
 - [ ] BOT-10 Bot Notify Worker (Edge Function `bot-notify`, DB Webhook + hourly cron fallback, retry/backoff при 429) #bot !high @blocked_by:DB-16,DB-14
       bot_.md §6.5.
 
@@ -321,45 +356,6 @@ format is deliberately compact so that agents can load the file quickly.
 
 ---
 
-## Stage 13 · Calendar Integration — Final Configuration
-
-> Файлы реализованы: `app/api/calendar/connect/[provider]/route.ts`, `app/api/calendar/callback/[provider]/route.ts`,
-> `supabase/functions/calendar-sync/index.ts` (OAuth token exchange, encrypt/decrypt, refresh),
-> `app/calendar/page.tsx` (disconnect button).
-> DoD: пользователь может подключить Yandex/Outlook календарь через OAuth flow, токены зашифрованы,
-> sync работает, токен обновляется автоматически.
-
-- [ ] CAL-01 Configure OAuth credentials in Supabase project settings + Vercel env vars #infra !critical @blocked_by:CAL-01
-        Необходимо создать приложения в консолях разработчиков и добавить 5 переменных окружения:
-        
-        **Yandex OAuth:**
-        1. Перейти на https://oauth.yandex.ru/client/new
-        2. Название: "onitask Calendar"
-        3. Платформа: Web Service
-        4. Redirect URI: `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/yandex`
-        5. Скопировать Client ID и Client Secret
-        
-        **Microsoft Graph API:**
-        1. Перейти на https://entra.microsoft.com/ → App registrations → New registration
-        2. Supported account types: "Accounts in any organizational directory"
-        3. Redirect URI: `Web` → `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/outlook`
-        4. Grant admin consent для `Cal.Read`
-        5. Generate client secret
-        
-        **Environment Variables (Supabase Functions + Vercel):**
-        ```
-        YANDEX_OAUTH_CLIENT_ID=...
-        YANDEX_OAUTH_CLIENT_SECRET=...
-        OUTLOOK_OAUTH_CLIENT_ID=...
-        OUTLOOK_OAUTH_CLIENT_SECRET=...
-        ENCRYPTION_KEY=<32-byte random string, AES-256-GCM key for INV-17>
-        ```
-        
-        ENCRYPTION_KEY генерация: `openssl rand -base64 32` или `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
-        Важно: ключ должен быть одинаковым для Edge Function и любого будущего серверного кода.
-
----
-
 ## Stage 12 · LTM Pipeline
 
 > dev_setup §3: Edge Function `consolidate`, `task_events` → `agent_memory`, `consolidation_errors`. DoD: задачи старше 30 дней консолидируются, RAG через `match_tasks()` находит релевантные.
@@ -373,24 +369,76 @@ format is deliberately compact so that agents can load the file quickly.
 
 ---
 
+## Stage 13 · Calendar Integration
+
+> Файлы реализованы: `app/api/calendar/connect/[provider]/route.ts`, `app/api/calendar/callback/[provider]/route.ts`,
+> `supabase/functions/calendar-sync/index.ts` (OAuth token exchange, encrypt/decrypt, refresh),
+> `app/calendar/page.tsx` (disconnect button).
+> DoD: пользователь может подключить Yandex/Outlook календарь через OAuth flow, токены зашифрованы,
+> sync работает, токен обновляется автоматически.
+
+- [ ] CAL-01 Configure OAuth credentials in Supabase project settings + Vercel env vars #infra !critical @blocked_by:DB-01
+        Необходимо создать приложения в консолях разработчиков и добавить 5 переменных окружения:
+        (зависимость исправлена: `DB-01` вместо самозависимости `CAL-01`)
+
+        **Yandex OAuth:**
+        1. Перейти на https://oauth.yandex.ru/client/new
+        2. Название: "onitask Calendar"
+        3. Платформа: Web Service
+        4. Redirect URI: `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/yandex`
+        5. Скопировать Client ID и Client Secret
+
+        **Microsoft Graph API:**
+        1. Перейти на https://entra.microsoft.com/ → App registrations → New registration
+        2. Supported account types: "Accounts in any organizational directory"
+        3. Redirect URI: `Web` → `{NEXT_PUBLIC_SUPABASE_URL}/api/calendar/callback/outlook`
+        4. Grant admin consent для `Cal.Read`
+        5. Generate client secret
+
+        **Environment Variables (Supabase Functions + Vercel):**
+        ```
+        YANDEX_OAUTH_CLIENT_ID=...
+        YANDEX_OAUTH_CLIENT_SECRET=...
+        OUTLOOK_OAUTH_CLIENT_ID=...
+        OUTLOOK_OAUTH_CLIENT_SECRET=...
+        ENCRYPTION_KEY=<32-byte random string, AES-256-GCM key for INV-17>
+        ```
+
+        ENCRYPTION_KEY генерация: `openssl rand -base64 32` или `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+        Важно: ключ должен быть одинаковым для Edge Function и любого будущего серверного кода.
+- [ ] CAL-02 OAuth Flow: `connect/[provider]` + `callback/[provider]` Route Handlers (Yandex/Outlook) #infra !high @blocked_by:CAL-01
+      calendar_.md §3. Файлы существуют — требуется проверка/доработка до контракта.
+- [ ] CAL-03 Edge Function `calendar-sync` (OAuth token exchange, encrypt/decrypt, refresh, sync событий) #infra !high @blocked_by:CAL-01
+      calendar_.md §4. Файл существует — требуется проверка/доработка до контракта.
+- [ ] CAL-04 Edge Function `calendar-reminder` (обработка pending job, резолюция `target_worker_id`, sendMessage) #infra !high @blocked_by:CAL-03
+      calendar_.md §5, bot_.md §6.5.1. Файл существует — требуется проверка/доработка.
+- [ ] CAL-05 UI календаря (страница настроек + виджет, подключение/отключение аккаунтов) #ui !med @blocked_by:CAL-02
+      calendar_.md §6. Компоненты существуют (`src/components/calendar/*`, `src/app/calendar/page.tsx`).
+- [ ] CAL-06 INV-17: шифрование OAuth-токенов через pgcrypto AES-256-GCM (ENCRYPTION_KEY) #db !high @blocked_by:CAL-01
+      Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
+
+---
+
 ## Сводка по стадиям
 
 | Stage | Тема | Задач |
 |---|---|---|
-| 1 | DB Migrations | 27 |
+| 1 | DB Migrations | 29 |
 | 2 | Auth / Init | 5 |
 | 3 | Workspace Wizard | 6 |
 | 4 | Flow Board без AI | 11 |
-| 5 | Voice / NL Input (F-04) | 8 |
-| 6 | Card Enrichment (F-03) | 13 |
+| 5 | Voice / NL Input (F-04) | 12 |
+| 6a | Document Upload (DOC) | 3 |
+| 6b | Card Enrichment (F-03) | 15 |
 | 7 | MCP Agent Router (F-06) | 12 |
-| 8 | Team Tab → Risk Pulse | 7 |
-| 9 | Agent Cards + Escalations | 6 |
+| 8 | Team Tab → Risk Pulse | 9 |
+| 9 | Agent Cards + Escalations | 9 |
 | 10 | Telegram Bot | 10 |
 | 11 | AI Flow Summary | 5 |
 | 12 | LTM Pipeline | 4 |
-| **Итого** | | **114** |
+| 13 | Calendar Integration | 6 |
+| **Итого** | | **136** |
 
 ---
 
-*onitask · Декомпозиция по задачам · компакт-версия · 12 июля 2026*
+*onitask · Декомпозиция по задачам · компакт-версия · 12 июля 2026 · обновлено 4 августа 2026 (аудит Stage 1-4 + Stage 5+)*

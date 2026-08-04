@@ -258,6 +258,7 @@ types/
 | 10 | **Telegram Bot** | `/api/bot/*` endpoints. Webhook handler. F-04 адаптер для голоса в боте. Workspace resolution. `/task`, `/flow`, `/inbox` команды. Deep links. | Голосовое сообщение → задача в workspace. `/flow` возвращает актуальный статус. Deep link открывает TWA на нужной задаче. |
 | 11 | **AI Flow Summary** | Edge Function `flow-metrics` (Cold Path). `POST /api/flow/metrics` с кэшом 5/60 сек. AI инсайты + кнопка «Применить» → `move_task`. | AI Flow Summary появляется для Admin/Owner. При ошибке LLM — показываются последние успешные инсайты из кэша. |
 | 12 | **LTM Pipeline** | Edge Function `consolidate`. `task_events` → суммаризация → `agent_memory`. `consolidation_errors`. pg_cron каждые 15 мин. | `task_events` старше 30 дней консолидируются в `agent_memory`. RAG через `match_tasks()` возвращает релевантные задачи. |
+| 13 | **Calendar Integration** | OAuth flow (Yandex CalDAV, Outlook Graph). Edge Functions `calendar-sync` (OAuth exchange + sync) и `calendar-reminder` (напоминания через Bot Notify Worker). UI календаря. INV-17: шифрование OAuth-токенов через AES-256-GCM. | Пользователь подключает Yandex/Outlook календарь через OAuth flow. Токены зашифрованы (INV-17). Sync работает. Токен обновляется автоматически. Напоминания приходят через бота. |
 
 ---
 

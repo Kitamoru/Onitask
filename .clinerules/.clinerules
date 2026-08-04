@@ -132,6 +132,7 @@ invariants:
   - INV-14: workspace_context и workspace_context_cache строго разделены
   - INV-15: data_sharing_level = 'full' только Admin/Owner с DPA
   - INV-16: /api/init — find-or-create только
+  - INV-17: OAuth-токены (calendar_connections.encrypted_oauth_tokens) шифруются AES-256-GCM через pgcrypto
 
 axioms:
   - A-01: Vercel = только Hot Path (< 2s)
