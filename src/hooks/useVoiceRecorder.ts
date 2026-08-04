@@ -58,7 +58,10 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
         try {
           const formData = new FormData();
           formData.append('init_data', initData);
-          formData.append('audio', blob, 'audio.webm');
+          // Расширение должно соответствовать реальному формату (iOS → mp4, десктоп → webm)
+          const mimeType = blob.type || 'audio/webm';
+          const ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+          formData.append('audio', blob, `audio.${ext}`);
 
           console.log('[useVoiceRecorder] Uploading audio blob:', blob.size, 'bytes, type:', blob.type);
           const res = await fetch('/api/ai/transcribe', {

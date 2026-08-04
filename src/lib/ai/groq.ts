@@ -34,7 +34,14 @@ function getGroqClient(): Groq {
 export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
   const groq = getGroqClient();
 
-  const file = new File([audioBlob], 'audio.webm', { type: audioBlob.type || 'audio/webm' });
+  // Groq Whisper определяет формат по расширению файла.
+  // iOS TWA записывает в audio/mp4, десктоп — в audio/webm.
+  // Несоответствие расширения и реального формата → Groq не может распарсить и висит.
+  const mimeType = audioBlob.type || 'audio/webm';
+  const ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+  const file = new File([audioBlob], `audio.${ext}`, { type: mimeType });
+
+  console.log('[groq] Sending to Whisper:', file.name, file.type, file.size, 'bytes');
 
   try {
     const response = await groq.audio.transcriptions.create({
