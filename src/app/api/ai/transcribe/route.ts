@@ -1,7 +1,6 @@
-'use server';
-
 /**
  * F-04 AI — Transcribe endpoint (F04-01).
+ * Route handlers are server-side by default in Next.js App Router — no 'use server' directive.
  *
  * POST /api/ai/transcribe
  * FormData: { init_data, audio }
