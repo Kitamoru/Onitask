@@ -37,10 +37,12 @@ export async function POST(request: NextRequest) {
     }
 
     const blob = new Blob([await audio.arrayBuffer()], { type: audio.type || 'audio/webm' });
+    console.log('[transcribe] Audio received:', blob.size, 'bytes, type:', blob.type);
     const result = await transcribeAudio(blob);
 
     return NextResponse.json(result);
   } catch (err) {
+    console.error('[transcribe] Failed:', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Ошибка распознавания' },
       { status: 500 },

@@ -36,12 +36,16 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
 
   const file = new File([audioBlob], 'audio.webm', { type: audioBlob.type || 'audio/webm' });
 
-  const response = await groq.audio.transcriptions.create({
-    model: 'whisper-large-v3-turbo',
-    file,
-  });
-
-  return { text: response.text };
+  try {
+    const response = await groq.audio.transcriptions.create({
+      model: 'whisper-large-v3-turbo',
+      file,
+    });
+    return { text: response.text };
+  } catch (err) {
+    console.error('[groq] transcribeAudio failed:', err);
+    throw err;
+  }
 }
 
 // ─── Chat (llama-3.3-70b-versatile with JSON mode) ────────────────────────────

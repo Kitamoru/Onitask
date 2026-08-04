@@ -19,11 +19,16 @@ interface UseVoiceRecorderOptions {
   onTranscribed: (text: string) => void;
 }
 
+/** Timeout for the transcribe request — prevents infinite "processing" state */
+const TRANSCRIBE_TIMEOUT_MS = 15000;
+
 export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOptions) {
   const [state, setState] = useState<RecorderState>('idle');
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const start = useCallback(async () => {
     setError(null);
@@ -41,19 +46,39 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
         setState('processing');
+
+        // Abort controller + timeout — prevents infinite "processing" state
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        timeoutRef.current = setTimeout(() => {
+          console.warn('[useVoiceRecorder] Transcribe request timed out after', TRANSCRIBE_TIMEOUT_MS, 'ms');
+          controller.abort();
+        }, TRANSCRIBE_TIMEOUT_MS);
+
         try {
           const formData = new FormData();
           formData.append('init_data', initData);
           formData.append('audio', blob, 'audio.webm');
 
-          const res = await fetch('/api/ai/transcribe', { method: 'POST', body: formData });
+          console.log('[useVoiceRecorder] Uploading audio blob:', blob.size, 'bytes, type:', blob.type);
+          const res = await fetch('/api/ai/transcribe', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal,
+          });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
+          console.log('[useVoiceRecorder] Transcribed:', data.text);
           onTranscribed(data.text);
           setState('idle');
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Ошибка распознавания');
+          const message = err instanceof Error ? err.message : 'Ошибка распознавания';
+          console.error('[useVoiceRecorder] Transcribe failed:', err);
+          setError(message);
           setState('error');
+        } finally {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          abortControllerRef.current = null;
         }
       };
 

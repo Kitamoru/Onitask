@@ -27,7 +27,7 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { state: recState, start: startRec, stop: stopRec } = useVoiceRecorder({
+  const { state: recState, error: recError, start: startRec, stop: stopRec } = useVoiceRecorder({
     initData,
     onTranscribed: (text) => setInput((prev) => (prev ? prev + ' ' : '') + text),
   });
@@ -89,6 +89,9 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
 
       {recState === 'processing' && (
         <p className="mt-1 text-xs text-gray-500">Распознавание речи…</p>
+      )}
+      {recState === 'error' && recError && (
+        <p className="mt-1 text-xs text-red-500">Ошибка распознавания: {recError}</p>
       )}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
 
