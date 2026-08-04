@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -62,8 +62,28 @@ const MENU_ITEMS: MenuItem[] = [
   },
 ];
 
-export function BottomMenu() {
+export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const pathname = usePathname();
+  const [showNotice, setShowNotice] = useState(false);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear timer on unmount
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    };
+  }, []);
+
+  const handleCenterClick = useCallback(() => {
+    if (onCenterClick) {
+      onCenterClick();
+      return;
+    }
+    // Fallback: task creation not yet available on this page — show a notice
+    setShowNotice(true);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setShowNotice(false), 2500);
+  }, [onCenterClick]);
 
   return (
     <nav
@@ -108,8 +128,9 @@ export function BottomMenu() {
         </div>
 
         {/* Center "create" button — notch bottom touches gradient line */}
-        <Link
-          href="/board/create"
+        <button
+          type="button"
+          onClick={handleCenterClick}
           className="
             flex items-center justify-center
             relative shrink-0
@@ -121,9 +142,12 @@ export function BottomMenu() {
             width: 'var(--size-main-btn-width)',
             height: 'var(--size-main-btn-height)',
             top: '0',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
           }}
           aria-label="Создать новую задачу"
-          role="button"
         >
           {/* Background shape — 160×160px, auto-clipped to 80×54px container */}
           <img
@@ -146,7 +170,28 @@ export function BottomMenu() {
               height: '40px',
             }}
           />
-        </Link>
+        </button>
+
+        {/* Fallback notice — shown when task creation is not yet available on this page */}
+        {showNotice && (
+          <div
+            className="fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg text-sm"
+            style={{
+              bottom: 'calc(var(--size-bottom-menu-height) + 12px)',
+              backgroundColor: 'var(--color-bg-surface)',
+              color: 'var(--color-text-primary)',
+              border: '1px solid var(--color-line)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-body-sm)',
+              whiteSpace: 'nowrap',
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            Создание задачи пока недоступно, подождите
+          </div>
+        )}
 
         {/* Right group — symmetric width, icons aligned with center plus */}
         <div

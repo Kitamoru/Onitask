@@ -1,7 +1,7 @@
 import type { Viewport, Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { BottomMenu } from "@/components/shared/BottomMenu";
+import { AiTaskCreator } from "@/components/shared/AiTaskCreator";
 import { TelegramThemeProvider } from "@/components/shared/TelegramThemeProvider";
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
@@ -60,7 +60,7 @@ export default function RootLayout({
                   {children}
                 </AuthLoader>
               </DataProvider>
-              <BottomMenu />
+              <AiTaskCreator />
             </TelegramThemeProvider>
           </TelegramProvider>
         </body>
