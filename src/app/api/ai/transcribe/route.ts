@@ -21,6 +21,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 import { transcribeAudio } from '../../../../lib/ai/groq';
 
+// Groq Whisper может обрабатывать аудио дольше 10с (Vercel Hobby limit)
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest) {
     const blob = new Blob([await audio.arrayBuffer()], { type: audio.type || 'audio/webm' });
     console.log('[transcribe] Audio received:', blob.size, 'bytes, type:', blob.type);
     const result = await transcribeAudio(blob);
+    console.log('[transcribe] transcribeAudio returned, result:', JSON.stringify(result));
 
     return NextResponse.json(result);
   } catch (err) {

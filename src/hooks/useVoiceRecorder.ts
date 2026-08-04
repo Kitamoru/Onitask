@@ -69,7 +69,10 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
             body: formData,
             signal: controller.signal,
           });
-          const data = await res.json();
+          console.log('[useVoiceRecorder] Response status:', res.status);
+          const rawText = await res.text();
+          console.log('[useVoiceRecorder] Response body:', rawText);
+          const data = JSON.parse(rawText);
           if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
           console.log('[useVoiceRecorder] Transcribed:', data.text);
           onTranscribed(data.text);
