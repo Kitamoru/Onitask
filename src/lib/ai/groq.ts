@@ -32,7 +32,10 @@ function getGroqClient(): Groq {
 // ai_.md §3.2 — Groq Whisper path (primary for iOS TWA, used for all platforms in MVP)
 
 export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
-  const groq = getGroqClient();
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is not set');
+  }
 
   // Groq Whisper определяет формат по расширению файла.
   // iOS TWA записывает в audio/mp4, десктоп — в audio/webm.
@@ -44,11 +47,28 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
   console.log('[groq] Sending to Whisper:', file.name, file.type, file.size, 'bytes');
 
   try {
-    const response = await groq.audio.transcriptions.create({
-      model: 'whisper-large-v3-turbo',
-      file,
+    // Прямой fetch к Groq REST API — groq-sdk@0.9.0 зависает на audio transcriptions
+    // (см. onitask_ai_.md §3.2 — документация использует именно fetch).
+    const form = new FormData();
+    form.append('file', file);
+    form.append('model', 'whisper-large-v3-turbo');
+
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
     });
-    return { text: response.text };
+
+    console.log('[groq] Whisper HTTP status:', res.status);
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`Groq Whisper error ${res.status}: ${errBody}`);
+    }
+
+    const json = await res.json();
+    console.log('[groq] Whisper response text length:', json.text?.length);
+    return { text: json.text };
   } catch (err) {
     console.error('[groq] transcribeAudio failed:', err);
     throw err;
