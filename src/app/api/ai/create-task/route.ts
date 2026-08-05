@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * F-04 AI — Create Task endpoint (F04-07).
  *
