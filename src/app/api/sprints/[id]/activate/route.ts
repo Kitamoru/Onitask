@@ -57,19 +57,28 @@ export async function PATCH(
 
     const supabase = createServerClient();
 
-    // Only allow activating sprints in 'planning' status
+    // Find sprint by ID only → get workspace_id from the sprint itself.
+    // This avoids the non-deterministic "first active worker" issue when a user
+    // has multiple workspaces (worker.workspace_id may not match the sprint's).
     const { data: sprint, error: fetchError } = await supabase
       .from('sprints')
-      .select('id, status')
+      .select('id, status, workspace_id')
       .eq('id', sprintId)
-      .eq('workspace_id', worker.workspace_id)
-      .single();
+      .maybeSingle();
 
     if (fetchError) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
     if (!sprint) {
+      return NextResponse.json(
+        { error: 'Спринт не найден' },
+        { status: 404 },
+      );
+    }
+
+    // Tenant isolation: verify the authenticated worker belongs to the sprint's workspace
+    if (sprint.workspace_id !== worker.workspace_id) {
       return NextResponse.json(
         { error: 'Спринт не найден' },
         { status: 404 },
@@ -83,16 +92,27 @@ export async function PATCH(
       );
     }
 
-    // Activate the sprint
+    // Activate the sprint atomically — the `.eq('status', 'planning')` condition
+    // prevents a TOCTOU race where two parallel activate requests could both
+    // transition the sprint to 'active'. Only one will match the condition.
     const { data: updated, error: updateError } = await supabase
       .from('sprints')
       .update({ status: 'active' })
       .eq('id', sprintId)
+      .eq('workspace_id', sprint.workspace_id)
+      .eq('status', 'planning')
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: 'Спринт не найден или уже активирован' },
+        { status: 404 },
+      );
     }
 
     return NextResponse.json({ sprint: updated });

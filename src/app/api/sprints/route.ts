@@ -161,10 +161,17 @@ export async function POST(request: NextRequest) {
         status: 'planning',
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (sprintError) {
       return NextResponse.json({ error: sprintError.message }, { status: 500 });
+    }
+
+    if (!sprint) {
+      return NextResponse.json(
+        { error: 'Не удалось создать спринт' },
+        { status: 500 },
+      );
     }
 
     // If task_ids provided, assign them to the sprint
@@ -173,7 +180,7 @@ export async function POST(request: NextRequest) {
         .from('tasks')
         .update({ sprint_id: sprint.id })
         .in('id', task_ids)
-        .eq('workspace_id', worker.workspace_id);
+        .eq('workspace_id', targetWorkspaceId);
 
       if (tasksError) {
         // Sprint created but task assignment failed — return sprint with warning

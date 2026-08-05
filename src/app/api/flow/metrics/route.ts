@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       .from('workspace_settings')
       .select('story_points_config')
       .eq('workspace_id', workspaceId)
-      .single();
+      .maybeSingle();
 
     const sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
 
