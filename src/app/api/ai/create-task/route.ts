@@ -135,8 +135,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Title/Description finalization (ai_.md §3.6)
+    // При низком clarity rewritten_description может быть пустым (§3.4) — задача идёт
+    // в Correction Sheet, сырой input НЕ должен попадать в описание как fallback.
     const finalTitle = parsed.rewritten_title?.trim() || parsed.title;
-    const finalDescription = parsed.rewritten_description?.trim() || input;
+    const finalDescription = parsed.rewritten_description?.trim() || '';
 
     // 10. INSERT tasks со ВСЕМИ полями (raw_input, clarity, complexity, strategy, tags, column)
     const insertPayload: TasksInsert = {

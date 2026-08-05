@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { CorrectionSheet } from './CorrectionSheet';
 import type { ParseResponseV2, EnrichmentStrategy } from '../../lib/ai/types';
@@ -32,6 +32,9 @@ interface CreateTaskResponse {
 export function AiInput({ initData, onTaskCreated }: AiInputProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // Синхронная блокировка от повторной отправки (setLoading асинхронный —
+  // при быстрых нажатиях Enter/кликах несколько POST уходили бы одновременно).
+  const submittingRef = useRef(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [parse, setParse] = useState<ParseResponseV2 | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -43,7 +46,8 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
   });
 
   const handleSubmit = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -69,6 +73,7 @@ export function AiInput({ initData, onTaskCreated }: AiInputProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
