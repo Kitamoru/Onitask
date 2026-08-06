@@ -403,15 +403,29 @@ function SignalCard({ signal }: { signal: SignalData }) {
 
 function TaskStatusCard({ status, onClick }: { status: TaskStatusData; onClick?: () => void }) {
   return (
-    <NotchedPanel
-      corner="action"
-      radius={4}
-      notch={8}
-      borderWidth={1}
-      border="var(--color-line)"
-      fill="var(--color-surface)"
-      contentClassName="flex flex-col gap-2 p-3"
+    <div
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className="w-full cursor-pointer"
+      aria-label={onClick ? `Открыть задачи: ${status.label}` : undefined}
     >
+      <NotchedPanel
+        corner="action"
+        radius={4}
+        notch={8}
+        borderWidth={1}
+        border="var(--color-line)"
+        fill="var(--color-surface)"
+        contentClassName="flex flex-col gap-2 p-3"
+      >
       <div className="flex items-center gap-1">
         <div
           className="shrink-0"
@@ -458,6 +472,7 @@ function TaskStatusCard({ status, onClick }: { status: TaskStatusData; onClick?:
         ))}
       </div>
     </NotchedPanel>
+    </div>
   );
 }
 
