@@ -7,17 +7,14 @@ import type { TaskEntity } from '@/types/flowboard';
 /**
  * SwipeableTaskCard — обёртка над TaskCard с поддержкой свайпов для перемещения между колонками.
  *
- * Оптимизации:
- * - will-change: transform для GPU-композиции (убирает "деревянность")
- * - WebkitTapHighlightColor: transparent для мобильных
- * - touchAction: pan-y для корректной обработки скролла
- *
  * Поведение:
  * - Свайп вправо → следующая колонка
  * - Свайп влево → предыдущая колонка
  * - Tap (без свайпа) → onTap
  * - При достижении порога (80px) — вибрация + мгновенное перемещение
  * - Если порог не достигнут — bounce-back анимация
+ *
+ * Без цветного оверлея, только анимация движения карточки.
  */
 
 const SWIPE_THRESHOLD = 80; // px
@@ -76,7 +73,7 @@ export function SwipeableTaskCard({
       setIsSwiping(false);
       setTranslateX(0);
     },
-    [],
+    []
   );
 
   const handleTouchMove = useCallback(
@@ -119,7 +116,7 @@ export function SwipeableTaskCard({
         });
       }
     },
-    [canMoveNext, canMovePrev],
+    [canMoveNext, canMovePrev]
   );
 
   const handleTouchEnd = useCallback(
@@ -141,10 +138,10 @@ export function SwipeableTaskCard({
       if (absDelta >= SWIPE_THRESHOLD || fastSwipe) {
         // Достигли порога — перемещаем
         if (deltaX > 0 && canMoveNext) {
-          try { navigator.vibrate?.(50); } catch { /* not supported */ }
+          navigator.vibrate?.(50);
           onMoveNext(task.id);
         } else if (deltaX < 0 && canMovePrev) {
-          try { navigator.vibrate?.(50); } catch { /* not supported */ }
+          navigator.vibrate?.(50);
           onMovePrev(task.id);
         } else {
           // Нельзя двигать в этом направлении — откат
@@ -158,7 +155,7 @@ export function SwipeableTaskCard({
       setIsSwiping(false);
       isSwipingRef.current = false;
     },
-    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap, cleanup],
+    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap, cleanup]
   );
 
   // Обработка мыши для десктопной отладки
@@ -238,17 +235,15 @@ export function SwipeableTaskCard({
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     },
-    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap],
+    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap]
   );
 
-  // Bounce-back transition + GPU hint for smoother animation
+  // Bounce-back transition
   const cardStyle: React.CSSProperties = {
     transform: `translateX(${translateX}px)`,
     transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     touchAction: 'pan-y',
     cursor: 'pointer',
-    willChange: 'transform',
-    WebkitTapHighlightColor: 'transparent',
   };
 
   return (
