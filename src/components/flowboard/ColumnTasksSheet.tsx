@@ -28,10 +28,12 @@ export interface ColumnTasksSheetProps {
   tasks: TaskEntity[];
   /** Accent color for the header shape */
   accentColor?: string;
-  /** Callback when a task is moved to a different column */
+  /** Callback when a task is moved to a different column (optimistic — called immediately) */
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
+  /** Called when a task card swipes away — removes it from local list */
+  onSwipeAway?: (taskId: string) => void;
 }
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
@@ -52,6 +54,7 @@ export function ColumnTasksSheet({
   accentColor,
   onMoveTask,
   onTaskTap,
+  onSwipeAway,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
 
@@ -138,6 +141,7 @@ export function ColumnTasksSheet({
                 onMoveNext={handleMoveNext}
                 onMovePrev={handleMovePrev}
                 onTap={handleTap}
+                onSwipeAway={onSwipeAway}
               />
             ))}
           </div>

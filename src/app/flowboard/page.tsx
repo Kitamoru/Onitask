@@ -41,7 +41,8 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
-  const [swappingTaskId, setSwappingTaskId] = useState<string | null>(null);
+  // Set of task IDs that have been swiped away (optimistic removal)
+  const [swipedTaskIds, setSwipedTaskIds] = useState<Set<string>>(new Set());
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -181,35 +182,31 @@ function FlowBoardPageContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshMetrics]);
 
-  // Move task to a different column via swipe
+  // Optimistic move task — API call goes in background (fire-and-forget)
+  // Card is removed from local list immediately via onSwipeAway
   const handleMoveTask = useCallback(
-    async (taskId: string, newColumn: string) => {
+    (taskId: string, newColumn: string) => {
       if (!state.activeWorkspaceId) return;
-      setSwappingTaskId(taskId);
-      try {
-        const res = await fetch(`/api/tasks/${taskId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            column: newColumn,
-            init_data: tgInitData,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error ?? 'Не удалось переместить задачу');
-        }
-        // Fire-and-forget refresh to update metrics + tasks list
-        void refreshMetrics({ force: true });
-      } catch (err) {
-        console.error('Move task error:', err);
-        alert(err instanceof Error ? err.message : 'Не удалось переместить задачу');
-      } finally {
-        setSwappingTaskId(null);
-      }
+      // Fire-and-forget: no await, no blocking UI
+      fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          column: newColumn,
+          init_data: tgInitData,
+        }),
+      }).catch((err) => {
+        // Best-effort error logging — card already left screen
+        console.error('[Optimistic Swipe] Move task failed (card already gone):', err);
+      });
     },
-    [state.activeWorkspaceId, tgInitData, refreshMetrics],
+    [state.activeWorkspaceId, tgInitData],
   );
+
+  // Remove swiped task from local list immediately
+  const handleSwipeAway = useCallback((taskId: string) => {
+    setSwipedTaskIds((prev) => new Set(prev).add(taskId));
+  }, []);
 
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
@@ -341,9 +338,13 @@ function FlowBoardPageContent() {
           onClose={handleColumnSheetClose}
           column={columnSheet.column}
           title={columnSheet.label}
-          tasks={tasks.filter((t) => t.column === columnSheet.column)}
+          /** Filter out swiped-away tasks + tasks not matching current column */
+          tasks={tasks.filter(
+            (t) => t.column === columnSheet.column && !swipedTaskIds.has(t.id),
+          )}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
+          onSwipeAway={handleSwipeAway}
         />
     </>
   );
