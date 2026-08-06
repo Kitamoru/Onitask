@@ -1,7 +1,8 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { TaskCard } from '@/components/stream';
+import { SwipeableTaskCard } from '@/components/flowboard/SwipeableTaskCard';
 import type { TaskEntity } from '@/types/flowboard';
 
 /**
@@ -12,7 +13,7 @@ import type { TaskEntity } from '@/types/flowboard';
  *   - Header: colored shape (10×7) + title "Активные" etc (Inter Display 20/24 Medium)
  *   - List: column, gap 8px, task-cards
  *
- * Reuses BottomSheet + TaskCard from the stream module (Figma "task-card").
+ * Uses SwipeableTaskCard for swipe-to-move gestures.
  * All values relative (gap, %, var(--spacing-*)) for adaptive design.
  */
 
@@ -27,7 +28,13 @@ export interface ColumnTasksSheetProps {
   tasks: TaskEntity[];
   /** Accent color for the header shape */
   accentColor?: string;
+  /** Callback when a task is moved to a different column */
+  onMoveTask?: (taskId: string, newColumn: string) => void;
+  /** Callback when a task card is tapped */
+  onTaskTap?: (taskId: string) => void;
 }
+
+const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
 
 const COLUMN_ACCENTS: Record<string, string> = {
   in_progress: 'var(--color-accent-amber)',
@@ -43,8 +50,39 @@ export function ColumnTasksSheet({
   title,
   tasks,
   accentColor,
+  onMoveTask,
+  onTaskTap,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
+
+  const handleMoveNext = useCallback(
+    (taskId: string) => {
+      if (!column) return;
+      const currentIndex = COLUMN_ORDER.indexOf(column);
+      if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
+      const nextColumn = COLUMN_ORDER[currentIndex + 1];
+      onMoveTask?.(taskId, nextColumn);
+    },
+    [column, onMoveTask]
+  );
+
+  const handleMovePrev = useCallback(
+    (taskId: string) => {
+      if (!column) return;
+      const currentIndex = COLUMN_ORDER.indexOf(column);
+      if (currentIndex <= 0) return;
+      const prevColumn = COLUMN_ORDER[currentIndex - 1];
+      onMoveTask?.(taskId, prevColumn);
+    },
+    [column, onMoveTask]
+  );
+
+  const handleTap = useCallback(
+    (taskId: string) => {
+      onTaskTap?.(taskId);
+    },
+    [onTaskTap]
+  );
 
   return (
     <BottomSheet open={open} onClose={onClose}>
@@ -92,7 +130,15 @@ export function ColumnTasksSheet({
         {tasks.length > 0 ? (
           <div className="flex w-full flex-col gap-2">
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
+              <SwipeableTaskCard
+                key={task.id}
+                task={task}
+                columnOrder={COLUMN_ORDER}
+                currentColumn={column ?? 'backlog'}
+                onMoveNext={handleMoveNext}
+                onMovePrev={handleMovePrev}
+                onTap={handleTap}
+              />
             ))}
           </div>
         ) : (

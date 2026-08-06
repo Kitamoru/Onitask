@@ -52,6 +52,58 @@ format is deliberately compact so that agents can load the file quickly.
       Резервный cron-канал для handoff_chain (§5.4) — требует верификации при настройке DB-16.
 - [ ] INV-14 Контрактная проверка: ни один Route Handler не пишет в `workspace_context_cache` напрямую (только Edge Function rebuild) #db !low @deferred
        Master §6.4 comment, A-12, INV-14. **Deferred** — code-level invariant, проверяется при появлении Route Handler'ов на Stage 6.
+- [ ] TEST-CACHE-01 Интеграционное тестирование workspace_context_cache: end-to-end сценарий #test !high @blocked_by:F03-12,F04-11
+       ai_.md §2.9, INV-14, A-12. **Цель:** убедиться что кеш собирается, инвалидируется и используется в AI-промптах.
+       
+       **Подзадачи:**
+       
+       TEST-CACHE-01.1 Unit-тест `getWorkspaceContextCache()`: успешное чтение, null при отсутствии, null при DB error, graceful handling null cache #test !med
+              Файл: `tests/api/ai/workspaceContextCache.test.ts` (уже есть базовые тесты, добавить edge cases).
+              Проверки: возвращает корректный WorkspaceContextCacheResult, context_stale флаг, обработка ошибок.
+       
+       TEST-CACHE-01.2 Интеграционный тест rebuild pipeline: INSERT enrichment_queue → вызов Edge Function → UPDATE workspace_settings #test !high
+              Сценарий:
+              1. Создать workspace + workspace_settings (context_stale=true, cache=null)
+              2. INSERT enrichment_queue (type='workspace_context_rebuild', status='pending')
+              3. Вызвать rebuild-workspace-context Edge Function (mock NeuralDeep)
+              4. Проверить: workspace_context_cache ≤500 символов, context_stale=false, job status='done'
+              5. Валидировать JSON-формат кеша: {"sprint": "...|...", "top_tasks": [...], "overloaded_workers": [...], "escalations": N, "blockers": N}
+       
+       TEST-CACHE-01.3 Тест инвалидации кеша: триггеры устанавливают context_stale=true #test !high
+              Триггеры (Master §6.16):
+              - tasks.needs_human = true → context_stale = true
+              - tasks.handoff_to IS NOT NULL → context_stale = true
+              - tasks.priority = 'critical' → context_stale = true
+              - sprints.status → 'active' → context_stale = true
+              - sprints.status → 'completed' → context_stale = true
+              Проверка: после каждого события в enrichment_queue появляется pending job (type='workspace_context_rebuild').
+       
+       TEST-CACHE-01.4 E2E тест: кеш используется в F-03 (enrich-task) промпте #test !high
+              1. Создать workspace с workspace_context_cache (не null, не minimal sharing level)
+              2. Создать задачу → trigger enrichment_queue
+              3. Вызвать enrich-task Edge Function
+              4. Проверить что промпт содержит блок "ОПЕРАТИВНЫЙ КОНТЕКСТ" с данными из кеша
+              5. Проверить что при sharing_level='minimal' кеш НЕ передаётся в промпт
+       
+       TEST-CACHE-01.5 E2E тест: кеш используется в F-04 (parse-task) промпте #test !high
+              1. Создать workspace с workspace_context_cache
+              2. Вызвать POST /api/ai/parse-task с NL-вводом
+              3. Проверить что промпт содержит "ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ" с кешем
+              4. Проверить что LLM использует кеш для уточнения assignee/priority
+       
+       TEST-CACHE-01.6 Тест лимита 500 символов: LLM возвращает >500 → обрезается #test !med
+              Mock NeuralDeep возвращает строку 600 символов → проверить что в workspace_settings записывается 500 символов.
+       
+       TEST-CACHE-01.7 Тест graceful degradation: cache=null или stale → AI работает без кеша #test !med
+              1. workspace_context_cache = null → F-03/F-04 работают, промпт без оперативного контекста
+              2. context_stale = true, rebuild в очереди → используется старый кеш (не блокирует enrichment)
+       
+       **DoD:**
+       - Все 7 подзадач завершены
+       - Покрытие: getWorkspaceContextCache (unit), rebuild pipeline (integration), invalidation triggers (DB), F-03/F-04 usage (E2E)
+       - Валидация: `npm run test -- tests/api/ai/workspaceContextCache.test.ts` + новые интеграционные тесты
+       - Кеш ≤500 символов, JSON-формат валиден
+       - INV-14 не нарушается (ни один Route Handler не пишет в кеш)
 - [x] DB-15 `invite_links` #db !low @blocked_by:DB-01
       Master §6.18.
 - [x] INV-15 RLS-политики (`002_rls.sql`, 21 таблица) + ограничение записи `data_sharing_level` только Admin/Owner + `get_my_workspace_ids()` #db !high @blocked_by:DB-01,DB-02,DB-03,DB-04,DB-05,DB-06,DB-07,DB-08,DB-09,DB-10,DB-11,DB-12,DB-13,DB-14,DB-15,INV-04,INV-10,INV-11,INV-12,INV-13

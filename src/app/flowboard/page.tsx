@@ -41,6 +41,7 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
+  const [swappingTaskId, setSwappingTaskId] = useState<string | null>(null);
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -180,6 +181,36 @@ function FlowBoardPageContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshMetrics]);
 
+  // Move task to a different column via swipe
+  const handleMoveTask = useCallback(
+    async (taskId: string, newColumn: string) => {
+      if (!state.activeWorkspaceId) return;
+      setSwappingTaskId(taskId);
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            column: newColumn,
+            init_data: tgInitData,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error ?? 'Не удалось переместить задачу');
+        }
+        // Fire-and-forget refresh to update metrics + tasks list
+        void refreshMetrics({ force: true });
+      } catch (err) {
+        console.error('Move task error:', err);
+        alert(err instanceof Error ? err.message : 'Не удалось переместить задачу');
+      } finally {
+        setSwappingTaskId(null);
+      }
+    },
+    [state.activeWorkspaceId, tgInitData, refreshMetrics],
+  );
+
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
   if (authLoading || (!firstLoadDone && !dataError)) {
@@ -312,6 +343,7 @@ function FlowBoardPageContent() {
           title={columnSheet.label}
           tasks={tasks.filter((t) => t.column === columnSheet.column)}
           accentColor={columnSheet.accentColor}
+          onMoveTask={handleMoveTask}
         />
     </>
   );
