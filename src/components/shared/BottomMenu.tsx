@@ -92,15 +92,22 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   // useSearchParams would break static prerendering of /404 and /_not-found.
   const isOnFlowboard = pathname === '/flowboard';
 
-  const handleFlowboardClick = useCallback(() => {
-    if (!isOnFlowboard) {
-      router.push('/flowboard');
-      return;
-    }
-    // Already on flowboard — toggle between stream and flowboard views
-    const isStream = new URLSearchParams(window.location.search).get('view') === 'stream';
-    router.push(isStream ? '/flowboard' : '/flowboard?view=stream');
-  }, [isOnFlowboard, router]);
+  const handleFlowboardClick = useCallback(
+    (e?: React.MouseEvent<HTMLAnchorElement>) => {
+      // Always prevent the Link's own navigation — we control routing via router.push.
+      // Without this, a second click on /flowboard (href === current URL) would
+      // just re-navigate to /flowboard, discarding our ?view=stream toggle.
+      e?.preventDefault();
+      if (!isOnFlowboard) {
+        router.push('/flowboard');
+        return;
+      }
+      // Already on flowboard — toggle between stream and flowboard views
+      const isStream = new URLSearchParams(window.location.search).get('view') === 'stream';
+      router.push(isStream ? '/flowboard' : '/flowboard?view=stream');
+    },
+    [isOnFlowboard, router],
+  );
 
   return (
     <nav
@@ -231,14 +238,28 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
  * Figma: column, padding 8px, gap 2px, height 54px, border-radius 9999px
  * Icon: 20×20px, Text: 8px Semi Bold, letterSpacing -0.0625em
  */
-function NavButton({ item, currentPath, onClick }: { item: MenuItem; currentPath: string; onClick?: () => void }) {
+function NavButton({
+  item,
+  currentPath,
+  onClick,
+}: {
+  item: MenuItem;
+  currentPath: string;
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
 
   return (
     <Link
       href={item.href}
-      onClick={onClick}
+      onClick={(e) => {
+        // If a custom handler is provided, let it decide navigation (it calls
+        // preventDefault itself). Only fall back to the Link's href otherwise.
+        if (onClick) {
+          onClick(e);
+        }
+      }}
       className="
         flex flex-1 flex-col items-center justify-center
         rounded-full
