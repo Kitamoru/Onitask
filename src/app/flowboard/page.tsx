@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { FlowBoard, OnboardingModal, InviteModal } from '@/components/flowboard';
+import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
   SignalData,
@@ -27,6 +29,9 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
 
 export default function FlowBoardPage() {
   useScrollReset();
+  const searchParams = useSearchParams();
+  const view = searchParams.get('view');
+  const isStreamView = view === 'stream';
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -233,26 +238,39 @@ export default function FlowBoardPage() {
 
   return (
     <>
-      <FlowBoard
-        key={state.activeWorkspaceId || 'default'}
-        title="Флоу задач"
-        currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
-        sprintEnabled={sprintEnabled}
-        sprint={sprint}
-        signals={signals}
-        taskStatuses={taskStatuses}
-        workers={workers}
-        agents={agents}
-        loading={isSwitchingWorkspace}
-        error={dataError}
-        onAddWorker={() => setShowInviteModal(true)}
-        onAddAgent={() => console.log('Add agent clicked')}
-        onRefresh={(options) => refreshMetrics(options ?? { force: true })}
-        isNewUser={isNewUser}
-        onBoardCreate={handleBoardCreate}
-        initData={tgInitData}
-        workspaceId={state.activeWorkspaceId ?? undefined}
-      />
+      {isStreamView ? (
+        <StreamView
+          key={state.activeWorkspaceId || 'default'}
+          tasks={tasks}
+          currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
+          cognitiveWeight={0}
+          loadStatus="Свободен"
+          loading={isSwitchingWorkspace}
+          error={dataError}
+          onRefresh={(options) => refreshMetrics(options ?? { force: true })}
+        />
+      ) : (
+        <FlowBoard
+          key={state.activeWorkspaceId || 'default'}
+          title="Флоу задач"
+          currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
+          sprintEnabled={sprintEnabled}
+          sprint={sprint}
+          signals={signals}
+          taskStatuses={taskStatuses}
+          workers={workers}
+          agents={agents}
+          loading={isSwitchingWorkspace}
+          error={dataError}
+          onAddWorker={() => setShowInviteModal(true)}
+          onAddAgent={() => console.log('Add agent clicked')}
+          onRefresh={(options) => refreshMetrics(options ?? { force: true })}
+          isNewUser={isNewUser}
+          onBoardCreate={handleBoardCreate}
+          initData={tgInitData}
+          workspaceId={state.activeWorkspaceId ?? undefined}
+        />
+      )}
 
       {/* Invite modal for adding colleagues */}
       <InviteModal

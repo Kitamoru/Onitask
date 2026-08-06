@@ -90,6 +90,17 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
+### stream/ — Task Stream
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| | StreamView | StreamView.tsx | tasks, currentDate, cognitiveWeight, loadStatus, loading, error, onRefresh | Task stream view (Figma "desks-stream"). Reuses NotchedPanel, SectionHeader, Button, CognitiveWeightIndicator, PriorityBadge, UrgencyBadge |
+
+**Exports** (`index.ts`): `StreamView`
+**Types**: `StreamViewProps`
+
+---
+
 ### sprint/ — Sprint Management
 
 | Component | File | Key Props | Purpose |
@@ -123,7 +134,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | BottomMenu | BottomMenu.tsx | onCenterClick | Bottom navigation bar. Central button triggers `onCenterClick` or shows fallback notice |
+| | BottomMenu | BottomMenu.tsx | onCenterClick | Bottom navigation bar. Central button triggers `onCenterClick` or shows fallback notice. "Доска" button toggles between `/flowboard` and `/flowboard?view=stream` when already on flowboard |
 | | AiTaskCreator | AiTaskCreator.tsx | — | Global wrapper: BottomMenu + AI task creation overlay (AiInput + CorrectionSheet). Opens on center button click, creates task via `/api/tasks`, refreshes metrics |
 | | TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
 | | TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
@@ -144,7 +155,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | desk detail | BoardDetail | BoardDetail.tsx | ✅ |
 | task-card | BoardCard | BoardCard.tsx | ✅ |
 | risk-pulse | RiskPulse | RiskPulse.tsx | ✅ |
+| 98:6093 desks-stream | StreamView | StreamView.tsx | ✅ |
 
 ---
 
-*Last updated: 2026-07-30*
+*Last updated: 2026-08-06*

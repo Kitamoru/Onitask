@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   IconLayoutList,
   IconGridDots,
@@ -64,6 +64,8 @@ const MENU_ITEMS: MenuItem[] = [
 
 export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [showNotice, setShowNotice] = useState(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -84,6 +86,19 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
     noticeTimerRef.current = setTimeout(() => setShowNotice(false), 2500);
   }, [onCenterClick]);
+
+  // Toggle between flowboard and stream views when already on /flowboard
+  const isOnFlowboard = pathname === '/flowboard';
+  const isStreamView = searchParams.get('view') === 'stream';
+
+  const handleFlowboardClick = useCallback(() => {
+    if (!isOnFlowboard) {
+      router.push('/flowboard');
+      return;
+    }
+    // Already on flowboard — toggle between stream and flowboard views
+    router.push(isStreamView ? '/flowboard' : '/flowboard?view=stream');
+  }, [isOnFlowboard, isStreamView, router]);
 
   return (
     <nav
@@ -123,7 +138,7 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
             marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
-          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} />
+          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} onClick={handleFlowboardClick} />
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
@@ -214,13 +229,14 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
  * Figma: column, padding 8px, gap 2px, height 54px, border-radius 9999px
  * Icon: 20×20px, Text: 8px Semi Bold, letterSpacing -0.0625em
  */
-function NavButton({ item, currentPath }: { item: MenuItem; currentPath: string }) {
+function NavButton({ item, currentPath, onClick }: { item: MenuItem; currentPath: string; onClick?: () => void }) {
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
 
   return (
     <Link
       href={item.href}
+      onClick={onClick}
       className="
         flex flex-1 flex-col items-center justify-center
         rounded-full
