@@ -208,7 +208,7 @@
 | Файл | Версия |
 |---|---|
 | onitask_Architecture_Master_.md | **0.14.0** |
-| onitask_ai_.md | **0.10.1** |
+| onitask_ai_.md | **0.11.0** |
 | onitask_flow_.md | **3.6.0** |
 | onitask_team_tab.md | **1.3.0 (Deprecated)** |
 | onitask_bot.md | **0.7.0** |
@@ -244,7 +244,7 @@
 
 ---
 
-**Master v0.13.4 / bot v0.6.0 / security v0.1.1 / dev_setup v0.2.2 / INDEX v2.7.4 — июнь 2026**
+**Master v0.13.4 / bot v0.6.0 / security v0.1.1 / dev_setup v0.2.2 / ai v0.11.0 / INDEX v2.8.0 — август 2026**
 
 **Bot Notify Worker — закрытие архитектурного пробела, найденного при сверке дерева `dev_setup.md` с фактическими контрактами:**
 

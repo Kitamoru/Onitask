@@ -1,7 +1,7 @@
 # onitask · Функциональный контракт AI-модулей и политика памяти
 
-**Версия:** 0.10.1
-**Дата:** июнь 2026
+**Версия:** 0.11.0
+**Дата:** август 2026
 **Статус:** Production-Ready
 
 > **Схема БД** — см. [Master Spec](onitask_Architecture_Master_.md), разделы 6.4 (workspace_settings), 6.5 (enrichment_queue), 6.6 (task_enrichments), 6.7 (agent_events), 6.8 (agent_memory), 6.10 (task_events), **6.16 (task_relations)**.
@@ -1377,6 +1377,25 @@ if (succeeded.length > 0) {
 
 ## Changelog (кратко)
 
+**v0.11.0 — август 2026**
+
+*Prompt Quality & Security Enforcement Fix (аудит промптов F-03/F-04):*
+
+- §2.2, §2.3: добавлена резолюция full_id + title для задач в structural subgraph (шаг 1.5),
+  semantic related (шаг 3) и LTM memory (шаг 2.6). Ранее модель получала только сырые UUID,
+  при этом anchor-примеры промпта (§2.3) требовали ALPHA-N формат — расхождение провоцировало
+  риск галлюцинации ID моделью
+- §2.2 шаг 3: `match_count` для `match_tasks()` теперь зависит от sharingLevel
+  (minimal=3, standard/full=5) — было захардкожено в 5 независимо от уровня
+- §2.2 шаг 4: добавлен guard `sharingLevel !== 'minimal'` перед запросом
+  `assignment_history` — устраняет расхождение с таблицей уровней security_.md §2.1,
+  где 'minimal' explicit исключает avg_completion_days и assignment_history
+- §2.9: Workspace Context Rebuild — добавлен агрегат cognitive_load по воркерам
+  (формула A-9) в snapshotData.workers. Ранее compression-промпт запрашивал у модели
+  "перегруженных участников" без единого поля данных для этого вывода
+
+---
+
 **v0.10.1 — июнь 2026**
 
 *Embedding Cache (Master v0.13.2):*
@@ -1439,4 +1458,4 @@ if (succeeded.length > 0) {
 
 ---
 
-*onitask · AI Contract · v0.10.1 · июнь 2026*
+*onitask · AI Contract · v0.11.0 · август 2026*

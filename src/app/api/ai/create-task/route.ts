@@ -39,6 +39,7 @@ import {
   type EnrichmentStrategy,
 } from '../../../../lib/ai/types';
 import type { Database } from '../../../../../types/supabase';
+import { getWorkspaceContextCache } from '../../../../lib/ai/workspaceContextCache';
 
 type TasksInsert = Database['public']['Tables']['tasks']['Insert'];
 
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     // 2. Load workspace settings (f04_config, context, data_sharing_level)
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
-      .select('f04_config, workspace_context, workspace_context_cache, data_sharing_level')
+      .select('f04_config, workspace_context, data_sharing_level')
       .eq('workspace_id', workspaceId)
       .single();
 
@@ -93,6 +94,9 @@ export async function POST(request: NextRequest) {
     }
 
     const config = parseF04Config(settings?.f04_config);
+
+    // 2a. Read workspace_context_cache via dedicated utility (F04-11)
+    const cacheResult = await getWorkspaceContextCache(workspaceId);
 
     // 3. Load team workers (id + display_name for assignee matching)
     const { data: workers, error: workersError } = await supabase
@@ -107,7 +111,7 @@ export async function POST(request: NextRequest) {
     // 4. Build prompt
     const prompt = buildParsePrompt(input, {
       workspace_context: settings?.workspace_context ?? null,
-      workspace_context_cache: settings?.workspace_context_cache ?? null,
+      workspace_context_cache: cacheResult?.workspace_context_cache ?? null,
       data_sharing_level: settings?.data_sharing_level ?? 'standard',
     }, workers ?? []);
 

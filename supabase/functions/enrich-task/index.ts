@@ -211,32 +211,61 @@ async function buildRagContext(
   supabase: ReturnType<typeof createClient>,
   task: TaskRow,
   apiKey: string,
+  sharingLevel: string = 'standard',
+  taskPrefix: string = '???',
 ): Promise<{ structural: string; doc: string; memory: string; related: string }> {
   const ctx = { structural: '', doc: '', memory: '', related: '' };
 
   try {
-    // 1. Structural graph (task_relations)
+    // 1. Structural graph (task_relations) — v0.11.0: резолюция full_id + title
     const { data: subgraph } = await supabase.rpc('get_task_subgraph', {
       p_task_id: task.id,
       p_workspace_id: task.workspace_id,
     });
+
     if (subgraph && subgraph.length > 0) {
-      ctx.structural = subgraph.map((edge: any) => {
+      // Собираем все task_ids задействованных задач из графа
+      const subgraphTaskIds = (subgraph as any[])
+        .map((e: any) => e.from_task_id === task.id ? e.to_task_id : e.from_task_id)
+        .filter((id: string) => id && id !== task.id);
+
+      // Резолюция UUID → { title, full_id }
+      const refMap = new Map();
+      if (subgraphTaskIds.length > 0) {
+        const { data: refs } = await supabase
+          .from('tasks')
+          .select('id, title, task_number')
+          .in('id', subgraphTaskIds)
+          .eq('workspace_id', task.workspace_id); // tenant isolation (A-7)
+        for (const r of refs ?? []) {
+          refMap.set(r.id, {
+            title: r.title,
+            full_id: `${taskPrefix}-${r.task_number}`,
+          });
+        }
+      }
+
+      ctx.structural = (subgraph as any[]).map((edge: any) => {
+        const otherId   = edge.from_task_id === task.id ? edge.to_task_id : edge.from_task_id;
+        const ref       = refMap.get(otherId);
+        const label     = ref ? `${ref.full_id} «${ref.title}»` : otherId;
         const direction = edge.from_task_id === task.id ? '→' : '←';
-        return `${direction} ${edge.relation_type} (вес ${edge.weight}, глубина ${edge.depth}): task_id=${
-          edge.from_task_id === task.id ? edge.to_task_id : edge.from_task_id
-        }`;
+        return `${direction} ${edge.relation_type} (вес ${edge.weight}, глубина ${edge.depth}): ${label}`;
       }).join('\n');
     }
 
     // 2. Semantic search — requires embedding
+    // v0.11.0: match_count зависит от sharingLevel (security_.md §2.1)
+    // 'minimal': top-3 без детализации — меньше данных провайдеру
+    // 'standard'/'full': top-5 (текущее поведение)
+    const matchCount = sharingLevel === 'minimal' ? 3 : RAG_MATCH_COUNT;
     const queryText = `${task.title} ${task.description ?? ''}`.trim();
     const embedding = await generateEmbedding(queryText, apiKey);
 
     const [tasksRes, docRes, memoryRes] = await Promise.all([
       supabase.rpc('match_tasks', {
         query_embedding: embedding,
-        match_count: RAG_MATCH_COUNT,
+        match_count: matchCount,
         min_similarity: RAG_MIN_SIMILARITY,
         exclude_task_id: task.id,
         p_workspace_id: task.workspace_id,
@@ -256,7 +285,28 @@ async function buildRagContext(
     ]);
 
     if (tasksRes.data && tasksRes.data.length > 0) {
-      ctx.related = JSON.stringify(tasksRes.data);
+      // v0.11.0: резолюция UUID → full_id + title для semantic related.
+      // Модель должна видеть человекочитаемые ссылки (ALPHA-7), а не UUID.
+      const relatedIds = (tasksRes.data as any[]).map((t: any) => t.task_id).filter(Boolean);
+      const taskRefMap = new Map();
+      if (relatedIds.length > 0) {
+        const { data: refs } = await supabase
+          .from('tasks')
+          .select('id, title, task_number')
+          .in('id', relatedIds)
+          .eq('workspace_id', task.workspace_id); // tenant isolation (A-7)
+        for (const r of refs ?? []) {
+          taskRefMap.set(r.id, { title: r.title, full_id: `${taskPrefix}-${r.task_number}` });
+        }
+      }
+
+      ctx.related = JSON.stringify(
+        (tasksRes.data as any[]).map((t: any) => ({
+          ...t,
+          full_id: taskRefMap.get(t.task_id)?.full_id ?? t.task_id,
+          title: taskRefMap.get(t.task_id)?.title ?? null,
+        }))
+      );
     }
     if (docRes.data && docRes.data.length > 0) {
       ctx.doc = docRes.data.map((c: any) =>
@@ -266,11 +316,28 @@ async function buildRagContext(
       ).join('\n\n');
     }
     if (memoryRes.data && memoryRes.data.length > 0) {
-      ctx.memory = memoryRes.data.map((m: any) =>
-        wrapData('memory',
-          `<past_experience task_id="${m.task_id}" period="${m.period_start?.slice(0, 10) ?? ''}">\n${m.summary_text ?? ''}\n</past_experience>`
-        )
-      ).join('\n\n');
+      // v0.11.0: резолюция task_id → full_id в LTM memoryContext.
+      // Ранее модель получала сырой UUID в атрибуте task_id — нечитаемо.
+      const memIds = (memoryRes.data as any[]).map((m: any) => m.task_id).filter(Boolean);
+      const memRefMap = new Map();
+      if (memIds.length > 0) {
+        const { data: refs } = await supabase
+          .from('tasks')
+          .select('id, title, task_number')
+          .in('id', memIds)
+          .eq('workspace_id', task.workspace_id);
+        for (const r of refs ?? []) {
+          memRefMap.set(r.id, { title: r.title, full_id: `${taskPrefix}-${r.task_number}` });
+        }
+      }
+
+      ctx.memory = (memoryRes.data as any[]).map((m: any) => {
+        const ref = memRefMap.get(m.task_id);
+        const label = ref?.full_id ?? m.task_id;
+        return wrapData('memory',
+          `<past_experience task_id="${label}" period="${m.period_start?.slice(0, 10) ?? ''}">\n${m.summary_text ?? ''}\n</past_experience>`
+        );
+      }).join('\n\n');
     }
   } catch (err) {
     console.error('enrich-task: RAG context build failed (degraded mode)', err);
@@ -366,10 +433,19 @@ serve(async (req: Request) => {
     const sharingLevel = settings?.data_sharing_level ?? 'standard';
     const storyPointsEnabled = settings?.story_points_config?.enabled ?? false;
 
+    // ── 4a. Load task_prefix for full_id resolution (v0.11.0) ──
+    // RAG-контексты возвращают UUID; anchor-примеры промпта требуют ALPHA-N.
+    const { data: workspaceRow } = await supabase
+      .from('workspaces')
+      .select('task_prefix')
+      .eq('id', task.workspace_id)
+      .single();
+    const taskPrefix = workspaceRow?.task_prefix ?? '???';
+
     // ── 5. Build RAG context (standard only) ────────────────
     let rag = { structural: '', doc: '', memory: '', related: '' };
     if (mode === 'standard') {
-      rag = await buildRagContext(supabase, task, neuralDeepKey);
+      rag = await buildRagContext(supabase, task, neuralDeepKey, sharingLevel, taskPrefix);
     }
 
     // ── 6. Build system prompt (onitask_ai_.md §2.3) ────────
