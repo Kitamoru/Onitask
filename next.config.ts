@@ -15,6 +15,13 @@ const nextConfig: NextConfig = {
       'lucide-react',
     ],
   },
+  // ESLint is broken in this repo: @rushstack/eslint-patch is incompatible
+  // with ESLint 9.39.0 ("Failed to patch ESLint because the calling module
+  // was not recognized"), which fails `next build` during the lint phase.
+  // Linting is run separately via `npm run lint`. See eslint.config.mjs.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;

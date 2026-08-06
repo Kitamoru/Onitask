@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   IconLayoutList,
   IconGridDots,
@@ -65,7 +65,6 @@ const MENU_ITEMS: MenuItem[] = [
 export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [showNotice, setShowNotice] = useState(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,9 +86,11 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
     noticeTimerRef.current = setTimeout(() => setShowNotice(false), 2500);
   }, [onCenterClick]);
 
-  // Toggle between flowboard and stream views when already on /flowboard
+  // Toggle between flowboard and stream views when already on /flowboard.
+  // Reads the query string from window.location at click-time instead of
+  // useSearchParams — this component is mounted globally (root layout) and
+  // useSearchParams would break static prerendering of /404 and /_not-found.
   const isOnFlowboard = pathname === '/flowboard';
-  const isStreamView = searchParams.get('view') === 'stream';
 
   const handleFlowboardClick = useCallback(() => {
     if (!isOnFlowboard) {
@@ -97,8 +98,9 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
       return;
     }
     // Already on flowboard — toggle between stream and flowboard views
-    router.push(isStreamView ? '/flowboard' : '/flowboard?view=stream');
-  }, [isOnFlowboard, isStreamView, router]);
+    const isStream = new URLSearchParams(window.location.search).get('view') === 'stream';
+    router.push(isStream ? '/flowboard' : '/flowboard?view=stream');
+  }, [isOnFlowboard, router]);
 
   return (
     <nav

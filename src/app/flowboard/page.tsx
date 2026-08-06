@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FlowBoard, OnboardingModal, InviteModal } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
@@ -27,7 +27,7 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
   });
 }
 
-export default function FlowBoardPage() {
+function FlowBoardPageContent() {
   useScrollReset();
   const searchParams = useSearchParams();
   const view = searchParams.get('view');
@@ -283,11 +283,21 @@ export default function FlowBoardPage() {
         workspaceId={state.activeWorkspaceId}
         initData={tgInitData}
       />
-      
+
       {/* Onboarding modal for new users */}
       {needsOnboarding && (
         <OnboardingModal onSuccess={refreshAuth} />
       )}
     </>
+  );
+}
+
+export default function FlowBoardPage() {
+  // useSearchParams must be wrapped in a Suspense boundary to allow static
+  // prerendering of this route (and the global /404 / _not-found pages).
+  return (
+    <Suspense fallback={null}>
+      <FlowBoardPageContent />
+    </Suspense>
   );
 }
