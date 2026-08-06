@@ -1,18 +1,16 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState, memo } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TaskCard } from '@/components/stream';
 import type { TaskEntity } from '@/types/flowboard';
 
 /**
- * SwipeableTaskCard — обёртка над TaskCard с оптимизированным свайпом.
+ * SwipeableTaskCard — обёртка над TaskCard с поддержкой свайпов для перемещения между колонками.
  *
  * Оптимизации:
- * - Transform применяется напрямую через DOM ref (без React re-render во время драга)
- * - will-change: transform для GPU-композиции
- * - Passive touch listeners где возможно
- * - CSS transition для bounce-back
- * - React.memo для предотвращения лишних ререндеров
+ * - will-change: transform для GPU-композиции (убирает "деревянность")
+ * - WebkitTapHighlightColor: transparent для мобильных
+ * - touchAction: pan-y для корректной обработки скролла
  *
  * Поведение:
  * - Свайп вправо → следующая колонка
@@ -24,8 +22,6 @@ import type { TaskEntity } from '@/types/flowboard';
 
 const SWIPE_THRESHOLD = 80; // px
 const SWIPE_MAX_TIME = 500; // ms
-const MAX_DRAG = 120; // px
-const CLAMP_FACTOR = 0.2; // сопротивление за пределами MAX_DRAG
 
 export interface SwipeableTaskCardProps {
   task: TaskEntity;
@@ -41,7 +37,7 @@ export interface SwipeableTaskCardProps {
   onTap: (taskId: string) => void;
 }
 
-function SwipeableTaskCardInner({
+export function SwipeableTaskCard({
   task,
   columnOrder,
   currentColumn,
@@ -49,202 +45,214 @@ function SwipeableTaskCardInner({
   onMovePrev,
   onTap,
 }: SwipeableTaskCardProps) {
-  // Ref-driven transform — avoids React re-renders during drag
-  const cardRef = useRef<HTMLDivElement>(null);
-  const translateXRef = useRef(0);
+  const [translateX, setTranslateX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const startTime = useRef(0);
   const isSwipingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startYRef = useRef(0);
-  const startTimeRef = useRef(0);
-  const animFrameRef = useRef<number | null>(null);
-  const hasCommittedRef = useRef(false); // tracks if we already fired move callback this gesture
+  const rafRef = useRef<number | null>(null);
 
   const currentIndex = columnOrder.indexOf(currentColumn);
   const canMoveNext = currentIndex >= 0 && currentIndex < columnOrder.length - 1;
   const canMovePrev = currentIndex > 0;
 
-  // Apply transform directly to DOM node — no setState
-  const applyTransform = useCallback((value: number) => {
-    const el = cardRef.current;
-    if (el) {
-      el.style.transform = `translateX(${value}px)`;
+  const cleanup = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
-    translateXRef.current = value;
   }, []);
 
-  // Cleanup animation frame on unmount
-  useEffect(() => {
-    return () => {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
-    };
-  }, []);
+  useEffect(() => cleanup, [cleanup]);
 
-  // Start a new gesture
-  const beginGesture = useCallback((clientX: number, clientY: number) => {
-    startXRef.current = clientX;
-    startYRef.current = clientY;
-    startTimeRef.current = Date.now();
-    isSwipingRef.current = false;
-    hasCommittedRef.current = false;
-    applyTransform(0);
-  }, [applyTransform]);
-
-  // Determine if horizontal movement exceeds threshold to start swiping
-  const shouldStartSwiping = useCallback((deltaX: number, deltaY: number): boolean => {
-    return Math.abs(deltaX) > 8 && Math.abs(deltaX) >= Math.abs(deltaY);
-  }, []);
-
-  // Clamp drag with resistance at edges
-  const clampDrag = useCallback((deltaX: number): number => {
-    const absDelta = Math.abs(deltaX);
-    if (absDelta > MAX_DRAG) {
-      return Math.sign(deltaX) * (MAX_DRAG + (absDelta - MAX_DRAG) * CLAMP_FACTOR);
-    }
-    return deltaX;
-  }, []);
-
-  // Handle pointer move (touch or mouse)
-  const handlePointerMove = useCallback(
-    (clientX: number, clientY: number, isMouse: boolean) => {
-      const deltaX = clientX - startXRef.current;
-      const deltaY = Math.abs(clientY - startYRef.current);
-
-      // Not yet started swiping? Check if we should
-      if (!isSwipingRef.current) {
-        if (shouldStartSwiping(deltaX, deltaY)) {
-          isSwipingRef.current = true;
-          // Disable transition once swiping starts for instant response
-          const el = cardRef.current;
-          if (el) {
-            el.style.transition = 'none';
-          }
-        } else {
-          return;
-        }
-      }
-
-      if (!isSwipingRef.current) return;
-
-      // Check direction constraints
-      const direction = deltaX > 0 ? 'next' : 'prev';
-      const allowed =
-        (direction === 'next' && canMoveNext) || (direction === 'prev' && canMovePrev);
-
-      if (!allowed) {
-        applyTransform(0);
-        return;
-      }
-
-      // Schedule transform update on next frame (throttled to display refresh)
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
-      animFrameRef.current = requestAnimationFrame(() => {
-        applyTransform(clampDrag(deltaX));
-      });
-    },
-    [canMoveNext, canMovePrev, shouldStartSwiping, clampDrag, applyTransform]
-  );
-
-  // End gesture and decide: commit move or bounce back
-  const endGesture = useCallback(
-    (finalClientX: number, finalClientY: number, isMouse: boolean) => {
-      const deltaX = finalClientX - startXRef.current;
-      const deltaY = Math.abs(finalClientY - startYRef.current);
-      const elapsed = Date.now() - startTimeRef.current;
-      const absDelta = Math.abs(deltaX);
-
-      // If we never entered swipe mode, it was a tap
-      if (!isSwipingRef.current) {
-        onTap(task.id);
-        return;
-      }
-
-      // Restore transition for smooth bounce-back
-      const el = cardRef.current;
-      if (el) {
-        el.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
-      }
-
-      // Check threshold: static drag or fast flick
-      const fastSwipe = elapsed < SWIPE_MAX_TIME && absDelta > 60;
-      const thresholdMet = absDelta >= SWIPE_THRESHOLD || fastSwipe;
-
-      if (thresholdMet) {
-        if (deltaX > 0 && canMoveNext && !hasCommittedRef.current) {
-          navigator.vibrate?.(50);
-          onMoveNext(task.id);
-          hasCommittedRef.current = true;
-        } else if (deltaX < 0 && canMovePrev && !hasCommittedRef.current) {
-          navigator.vibrate?.(50);
-          onMovePrev(task.id);
-          hasCommittedRef.current = true;
-        } else {
-          // Direction blocked or already committed — bounce back
-          applyTransform(0);
-        }
-      } else {
-        // Didn't reach threshold — bounce back
-        applyTransform(0);
-      }
-
-      isSwipingRef.current = false;
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-    },
-    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap, applyTransform]
-  );
-
-  // --- Touch handlers ---
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      beginGesture(e.touches[0].clientX, e.touches[0].clientY);
+      const touch = e.touches[0];
+      startX.current = touch.clientX;
+      startY.current = touch.clientY;
+      startTime.current = Date.now();
+      isSwipingRef.current = false;
+      setIsSwiping(false);
+      setTranslateX(0);
     },
-    [beginGesture]
+    [],
   );
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      handlePointerMove(e.touches[0].clientX, e.touches[0].clientY, false);
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startX.current;
+      const deltaY = Math.abs(touch.clientY - startY.current);
+
+      // Если вертикальное движение больше горизонтального — не считаем свайпом
+      if (!isSwipingRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
+        return;
+      }
+
+      if (!isSwipingRef.current && Math.abs(deltaX) > 8) {
+        isSwipingRef.current = true;
+        setIsSwiping(true);
+      }
+
+      if (isSwipingRef.current) {
+        // Ограничиваем движение, если свайп не в разрешённом направлении
+        const direction = deltaX > 0 ? 'next' : 'prev';
+        const allowed =
+          (direction === 'next' && canMoveNext) || (direction === 'prev' && canMovePrev);
+
+        if (!allowed) {
+          setTranslateX(0);
+          return;
+        }
+
+        // Лёгкое сопротивление у края
+        const maxDrag = 120;
+        const clampedDelta =
+          Math.abs(deltaX) > maxDrag
+            ? Math.sign(deltaX) * (maxDrag + (Math.abs(deltaX) - maxDrag) * 0.2)
+            : deltaX;
+
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          setTranslateX(clampedDelta);
+        });
+      }
     },
-    [handlePointerMove]
+    [canMoveNext, canMovePrev],
   );
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent) => {
-      endGesture(e.changedTouches[0].clientX, e.changedTouches[0].clientY, false);
+      cleanup();
+
+      const deltaX = (e.changedTouches[0]?.clientX ?? startX.current) - startX.current;
+      const elapsed = Date.now() - startTime.current;
+
+      if (!isSwipingRef.current) {
+        // Это был тап
+        onTap(task.id);
+        return;
+      }
+
+      const absDelta = Math.abs(deltaX);
+      const fastSwipe = elapsed < SWIPE_MAX_TIME && absDelta > 60;
+
+      if (absDelta >= SWIPE_THRESHOLD || fastSwipe) {
+        // Достигли порога — перемещаем
+        if (deltaX > 0 && canMoveNext) {
+          try { navigator.vibrate?.(50); } catch { /* not supported */ }
+          onMoveNext(task.id);
+        } else if (deltaX < 0 && canMovePrev) {
+          try { navigator.vibrate?.(50); } catch { /* not supported */ }
+          onMovePrev(task.id);
+        } else {
+          // Нельзя двигать в этом направлении — откат
+          setTranslateX(0);
+        }
+      } else {
+        // Не дошли до порога — bounce-back
+        setTranslateX(0);
+      }
+
+      setIsSwiping(false);
+      isSwipingRef.current = false;
     },
-    [endGesture]
+    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap, cleanup],
   );
 
-  // --- Mouse handlers (for desktop debugging) ---
+  // Обработка мыши для десктопной отладки
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      beginGesture(e.clientX, e.clientY);
+      startX.current = e.clientX;
+      startY.current = e.clientY;
+      startTime.current = Date.now();
+      isSwipingRef.current = false;
+      setIsSwiping(false);
+      setTranslateX(0);
 
-      const onMouseMove = (ev: MouseEvent) => {
-        handlePointerMove(ev.clientX, ev.clientY, true);
+      const handleMouseMove = (ev: MouseEvent) => {
+        const deltaX = ev.clientX - startX.current;
+        const deltaY = Math.abs(ev.clientY - startY.current);
+
+        if (!isSwipingRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
+          return;
+        }
+
+        if (!isSwipingRef.current && Math.abs(deltaX) > 8) {
+          isSwipingRef.current = true;
+          setIsSwiping(true);
+        }
+
+        if (isSwipingRef.current) {
+          const direction = deltaX > 0 ? 'next' : 'prev';
+          const allowed =
+            (direction === 'next' && canMoveNext) || (direction === 'prev' && canMovePrev);
+
+          if (!allowed) {
+            setTranslateX(0);
+            return;
+          }
+
+          const maxDrag = 120;
+          const clampedDelta =
+            Math.abs(deltaX) > maxDrag
+              ? Math.sign(deltaX) * (maxDrag + (Math.abs(deltaX) - maxDrag) * 0.2)
+              : deltaX;
+
+          setTranslateX(clampedDelta);
+        }
       };
 
-      const onMouseUp = (ev: MouseEvent) => {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        endGesture(ev.clientX, ev.clientY, true);
+      const handleMouseUp = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+
+        const deltaX = ev.clientX - startX.current;
+        const elapsed = Date.now() - startTime.current;
+
+        if (!isSwipingRef.current) {
+          onTap(task.id);
+          return;
+        }
+
+        const absDelta = Math.abs(deltaX);
+        const fastSwipe = elapsed < SWIPE_MAX_TIME && absDelta > 60;
+
+        if (absDelta >= SWIPE_THRESHOLD || fastSwipe) {
+          if (deltaX > 0 && canMoveNext) {
+            onMoveNext(task.id);
+          } else if (deltaX < 0 && canMovePrev) {
+            onMovePrev(task.id);
+          } else {
+            setTranslateX(0);
+          }
+        } else {
+          setTranslateX(0);
+        }
+
+        setIsSwiping(false);
+        isSwipingRef.current = false;
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
     },
-    [beginGesture, handlePointerMove, endGesture]
+    [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap],
   );
+
+  // Bounce-back transition + GPU hint for smoother animation
+  const cardStyle: React.CSSProperties = {
+    transform: `translateX(${translateX}px)`,
+    transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    touchAction: 'pan-y',
+    cursor: 'pointer',
+    willChange: 'transform',
+    WebkitTapHighlightColor: 'transparent',
+  };
 
   return (
     <div
-      ref={cardRef}
       role="button"
       tabIndex={0}
       aria-label={`Задача ${task.full_id}. Свайп вправо для перемещения в следующую колонку, влево — в предыдущую.`}
@@ -252,17 +260,9 @@ function SwipeableTaskCardInner({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onMouseDown={handleMouseDown}
-      style={{
-        willChange: 'transform',
-        touchAction: 'pan-y',
-        cursor: 'grab',
-        WebkitTapHighlightColor: 'transparent',
-      }}
+      style={cardStyle}
     >
       <TaskCard task={task} />
     </div>
   );
 }
-
-// Memoize to prevent re-renders when props are referentially stable
-export const SwipeableTaskCard = memo(SwipeableTaskCardInner);
