@@ -105,7 +105,7 @@ function ChevronIcon({ open }: { open: boolean }) {
  * TaskCard — single task in the stream.
  * Figma "task-card" (10:10763): padding 16px, gap 12px, radius 4, notch 16.
  */
-function TaskCard({ task }: { task: TaskEntity }) {
+export function TaskCard({ task }: { task: TaskEntity }) {
   const priorityColor =
     task.priority === 'critical' || task.priority === 'high'
       ? 'red'

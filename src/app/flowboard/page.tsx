@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
@@ -35,6 +35,12 @@ function FlowBoardPageContent() {
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [columnSheet, setColumnSheet] = useState<{ open: boolean; column: string | null; label: string; accentColor: string }>({
+    open: false,
+    column: null,
+    label: '',
+    accentColor: 'var(--color-accent-amber)',
+  });
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -125,6 +131,14 @@ function FlowBoardPageContent() {
         } as AgentCardData;
       });
   }, [metrics, tasks]);
+
+  const handleColumnClick = useCallback((column: string, label: string, accentColor: string) => {
+    setColumnSheet({ open: true, column, label, accentColor });
+  }, []);
+
+  const handleColumnSheetClose = useCallback(() => {
+    setColumnSheet((prev) => ({ ...prev, open: false }));
+  }, []);
 
   const refreshMetrics = useCallback(async (options?: { force?: boolean }) => {
     const force = options?.force ?? false;
@@ -269,6 +283,7 @@ function FlowBoardPageContent() {
           onBoardCreate={handleBoardCreate}
           initData={tgInitData}
           workspaceId={state.activeWorkspaceId ?? undefined}
+          onColumnClick={handleColumnClick}
         />
       )}
 
@@ -288,6 +303,16 @@ function FlowBoardPageContent() {
       {needsOnboarding && (
         <OnboardingModal onSuccess={refreshAuth} />
       )}
+
+      {/* Column tasks bottom sheet */}
+        <ColumnTasksSheet
+          open={columnSheet.open}
+          onClose={handleColumnSheetClose}
+          column={columnSheet.column}
+          title={columnSheet.label}
+          tasks={tasks.filter((t) => t.column === columnSheet.column)}
+          accentColor={columnSheet.accentColor}
+        />
     </>
   );
 }

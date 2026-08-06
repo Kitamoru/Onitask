@@ -115,6 +115,8 @@ export interface FlowBoardProps {
   initData?: string;
   /** Current workspace ID — used to create sprints in the correct workspace */
   workspaceId?: string;
+  /** Called when a task status card (column) is clicked — opens task bottom sheet */
+  onColumnClick?: (column: string, label: string, accentColor: string) => void;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -399,7 +401,7 @@ function SignalCard({ signal }: { signal: SignalData }) {
   );
 }
 
-function TaskStatusCard({ status }: { status: TaskStatusData }) {
+function TaskStatusCard({ status, onClick }: { status: TaskStatusData; onClick?: () => void }) {
   return (
     <NotchedPanel
       corner="action"
@@ -604,6 +606,7 @@ export function FlowBoard({
   onRefresh,
   initData,
   workspaceId,
+  onColumnClick,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -897,7 +900,11 @@ export function FlowBoard({
              aria-label="Статусы задач"
            >
             {taskStatuses.map((status) => (
-              <TaskStatusCard key={status.id} status={status} />
+              <TaskStatusCard
+                key={status.id}
+                status={status}
+                onClick={() => onColumnClick?.(status.id, status.label, status.color)}
+              />
             ))}
           </div>
         </div>

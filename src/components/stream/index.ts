@@ -1,2 +1,2 @@
-export { StreamView } from './StreamView';
+export { StreamView, TaskCard } from './StreamView';
 export type { StreamViewProps } from './StreamView';
