@@ -44,9 +44,6 @@ const COLUMN_ACCENTS: Record<string, string> = {
   done: 'var(--color-signal-green)',
 };
 
-// Глобальный реф для определения направления последнего свайпа
-const swipeDirectionRef = useRef<number>(1);
-
 export function ColumnTasksSheet({
   open,
   onClose,
@@ -59,6 +56,9 @@ export function ColumnTasksSheet({
   onSwipeAway,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
+
+  // Ref for tracking swipe direction (must be inside component to avoid SSR issues)
+  const swipeDirectionRef = useRef<number>(1);
 
   // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
   const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
