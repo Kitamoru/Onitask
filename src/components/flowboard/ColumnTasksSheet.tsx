@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, lazy, Suspense } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { useSwappedTasksStore } from '@/components/flowboard/useSwappedTasksStore';
 import type { TaskEntity } from '@/types/flowboard';
 
 // Lazy-load SwipeableTaskCard to avoid SSR serialization issues with useRef
@@ -33,9 +34,6 @@ export interface ColumnTasksSheetProps {
   onTaskTap?: (taskId: string) => void;
   /** Called when a task card swipes away — removes it from current list and adds to target column */
   onSwipeAway?: (taskId: string, targetColumn: string) => void;
-  /** Shared optimistic swap state lifted up from parent */
-  swappedTasks: Map<string, { targetColumn: string; originalTask: TaskEntity }>;
-  onSwappedTasksChange: (updater: (prev: Map<string, { targetColumn: string; originalTask: TaskEntity }>) => Map<string, { targetColumn: string; originalTask: TaskEntity }>) => void;
 }
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
@@ -57,13 +55,14 @@ export function ColumnTasksSheet({
   onMoveTask,
   onTaskTap,
   onSwipeAway,
-  swappedTasks,
-  onSwappedTasksChange,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
 
   // Ref for tracking swipe direction (must be inside component to avoid SSR issues)
   const swipeDirectionRef = useRef<number>(1);
+
+  // Zustand store for shared optimistic swap state
+  const { swappedTasks, setSwappedTasks } = useSwappedTasksStore();
 
   const handleMoveNext = useCallback(
     (taskId: string) => {
@@ -113,7 +112,7 @@ export function ColumnTasksSheet({
         : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
 
       // Обновляем разделённый state: задача теперь в новой колонке
-      onSwappedTasksChange((prev: Map<string, { targetColumn: string; originalTask: TaskEntity }>) => {
+      setSwappedTasks((prev: Map<string, { targetColumn: string; originalTask: TaskEntity }>) => {
         const next = new Map(prev);
         next.set(taskId, { targetColumn, originalTask: sourceTask });
         return next;

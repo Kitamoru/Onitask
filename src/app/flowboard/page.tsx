@@ -43,8 +43,6 @@ function FlowBoardPageContent() {
   });
   // Track which tasks were swiped away so we don't re-send API calls on sheet reopen
   const [swipedTaskIds, setSwipedTaskIds] = useState<Set<string>>(new Set());
-  // Shared optimistic swap state — lifted up so all ColumnTasksSheet instances see the same data
-  const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -343,8 +341,6 @@ function FlowBoardPageContent() {
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
           onSwipeAway={handleSwipeAway}
-          swappedTasks={swappedTasks}
-          onSwappedTasksChange={setSwappedTasks}
         />
     </>
   );
