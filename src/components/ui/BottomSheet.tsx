@@ -21,11 +21,13 @@ const SETTLE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
  *
  * - Swipe down on the drag handle / top zone (or from scroll-top) to dismiss,
  *   even when the backdrop isn't reachable (e.g. a long task list).
- * - The drag transform is applied directly to the DOM inside requestAnimationFrame
- *   (no React re-render per frame) for smooth 60fps tracking.
+ * - The drag offset is written to the `--sheet-y` CSS variable directly on the
+ *   DOM inside requestAnimationFrame (no React re-render per frame) for smooth
+ *   60fps tracking. React state (`open`) is the single source of truth for the
+ *   resting position: `--sheet-y: 0px` when open, `100%` when closed.
  * - A fast fling dismisses the sheet; a slow pull dismisses past the threshold.
  * - Reserves a ~40px gap above Telegram's home-bar controls via
- *   `padding-bottom: calc(40px + env(safe-area-inset-bottom))`.
+ *   `margin-bottom: calc(40px + env(safe-area-inset-bottom))`.
  */
 export function BottomSheet({
   open,
@@ -48,15 +50,17 @@ export function BottomSheet({
   const rafRef = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Apply the drag offset directly to the DOM inside rAF — no React re-render
-  // per touchmove, which keeps the sheet smooth even on low-end devices.
+  // Apply the drag offset to the `--sheet-y` CSS variable directly on the DOM
+  // inside rAF — no React re-render per touchmove, keeps the sheet smooth even
+  // on low-end devices. React's inline `--sheet-y` (open/closed) is the resting
+  // position; this temporarily overrides it during the drag gesture.
   const applyDrag = (offset: number) => {
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       const el = sheetRef.current;
       if (!el) return;
-      el.style.transform = offset > 0 ? `translateY(${offset}px)` : 'translateY(0)';
+      el.style.setProperty('--sheet-y', offset > 0 ? `${offset}px` : '0px');
     });
   };
 
@@ -118,7 +122,7 @@ export function BottomSheet({
       dragOffsetRef.current = 0;
       velocityRef.current = 0;
       setIsDragging(false);
-      // Reset transform so the CSS transition animates the settle/return
+      // Reset the drag offset so the CSS transition animates the settle/return
       applyDrag(0);
 
       const threshold = Math.min(CLOSE_SWIPE_THRESHOLD, el.offsetHeight * 0.15);
@@ -174,17 +178,6 @@ export function BottomSheet({
     };
   }, [open]);
 
-  // Reset any inline transform left over from a drag gesture whenever the
-  // open state changes. The drag handlers write `el.style.transform` directly
-  // to the DOM (inside rAF), and that inline style would otherwise override
-  // the CSS `translate-y-full` class on the next open/close cycle — leaving
-  // the sheet stuck and preventing other columns from opening.
-  useEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return;
-    el.style.transform = '';
-  }, [open]);
-
   if (typeof window === 'undefined') return null;
 
   return createPortal(
@@ -208,19 +201,31 @@ export function BottomSheet({
         aria-modal={open}
         className={`relative z-10 w-full max-h-[90vh] overflow-y-auto rounded-t-2xl ${
           isDragging ? '' : 'transition-transform duration-300'
-        } ${open ? '' : 'translate-y-full'}`}
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          borderTopLeftRadius: '16px',
-          borderTopRightRadius: '16px',
-          overscrollBehavior: 'contain',
-          willChange: 'transform',
-          transitionProperty: 'transform',
-          transitionDuration: isDragging ? '0ms' : '300ms',
-          transitionTimingFunction: SETTLE_EASING,
-          // Guarantee a ~40px gap between content and Telegram's home-bar controls
-          paddingBottom: 'calc(40px + env(safe-area-inset-bottom))',
-        }}
+        }`}
+        style={
+          {
+            backgroundColor: 'var(--color-surface)',
+            borderTopLeftRadius: '16px',
+            borderTopRightRadius: '16px',
+            overscrollBehavior: 'contain',
+            willChange: 'transform',
+            // Single source of truth for vertical position:
+            // - open → 0px (fully visible)
+            // - closed → 100% (off-screen below)
+            // - during drag → overridden by applyDrag() via the same variable
+            transform: 'translateY(var(--sheet-y, 0px))',
+            transitionProperty: 'transform',
+            transitionDuration: isDragging ? '0ms' : '300ms',
+            transitionTimingFunction: SETTLE_EASING,
+            // Resting position driven by React state (low frequency)
+            '--sheet-y': open ? '0px' : '100%',
+            // Lift the sheet 40px above the bottom of the viewport so it clears
+            // Telegram's home-bar controls (e.g. the close button). Using
+            // margin-bottom (not padding) actually moves the sheet up instead of
+            // just adding empty space inside the scrollable content.
+            marginBottom: 'calc(40px + env(safe-area-inset-bottom))',
+          } as React.CSSProperties
+        }
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-2 pb-2">
