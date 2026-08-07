@@ -221,12 +221,10 @@ export function BottomSheet({
         className={`relative z-10 w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
-        style={
-          {
-            backgroundColor: 'var(--color-surface)',
-            borderTopWidth: 1,
-            borderTop: `1px solid var(--color-line)`,
-            clipPath: 'polygon(16px 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
+          style={
+            {
+              backgroundColor: 'var(--color-surface)',
+              clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             overscrollBehavior: 'contain',
             willChange: 'transform',
             // Single source of truth for vertical position:
