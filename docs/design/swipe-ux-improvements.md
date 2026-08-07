@@ -107,6 +107,21 @@ Start drag (0%)
 - [ ] Desktop mouse drag — verify visual feedback works without haptics
 - [ ] Fast swipe (< 500ms, > 60px) — verify fast-swipe still works
 
+## SSR/Prerender Fix
+
+**Problem:** Next.js prerender failed with `TypeError: Cannot read properties of null (reading 'useRef')` on `/flowboard` page.
+
+**Root Cause:** `SwipeableTaskCard` uses `useRef`, which cannot be serialized during server-side rendering when imported statically into a component tree that gets prerendered.
+
+**Solution:** Changed import in `ColumnTasksSheet.tsx` from static to dynamic lazy import:
+```typescript
+const SwipeableTaskCard = lazy(() =>
+  import('@/components/flowboard/SwipeableTaskCard').then((mod) => ({ default: mod.SwipeableTaskCard })),
+);
+```
+
+Wrapped each card in `<Suspense>` with a fallback placeholder. This ensures the swipe component only loads client-side after hydration.
+
 ## Future Enhancements (Not Implemented)
 
 1. **Direction hint icon**: Show arrow at 40%+ progress

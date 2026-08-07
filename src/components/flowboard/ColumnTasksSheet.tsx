@@ -1,9 +1,13 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, lazy, Suspense } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { SwipeableTaskCard } from '@/components/flowboard/SwipeableTaskCard';
 import type { TaskEntity } from '@/types/flowboard';
+
+// Lazy-load SwipeableTaskCard to avoid SSR serialization issues with useRef
+const SwipeableTaskCard = lazy(() =>
+  import('@/components/flowboard/SwipeableTaskCard').then((mod) => ({ default: mod.SwipeableTaskCard })),
+);
 
 /**
  * ColumnTasksSheet — bottom sheet listing tasks from a specific column.
@@ -192,16 +196,17 @@ export function ColumnTasksSheet({
                 : task.column;
 
               return (
-                <SwipeableTaskCard
-                  key={task.id}
-                  task={task}
-                  columnOrder={COLUMN_ORDER}
-                  currentColumn={actualColumn}
-                  onMoveNext={handleMoveNext}
-                  onMovePrev={handleMovePrev}
-                  onTap={handleTap}
-                  onSwipeAway={handleSwipeAway}
-                />
+                <Suspense key={task.id} fallback={<div className="h-24 rounded bg-white/5" />}>
+                  <SwipeableTaskCard
+                    task={task}
+                    columnOrder={COLUMN_ORDER}
+                    currentColumn={actualColumn}
+                    onMoveNext={handleMoveNext}
+                    onMovePrev={handleMovePrev}
+                    onTap={handleTap}
+                    onSwipeAway={handleSwipeAway}
+                  />
+                </Suspense>
               );
             })}
           </div>
