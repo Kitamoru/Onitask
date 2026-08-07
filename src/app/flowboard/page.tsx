@@ -41,7 +41,7 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
-  // Set of task IDs that have been swiped away (optimistic removal)
+  // Track which tasks were swiped away so we don't re-send API calls on sheet reopen
   const [swipedTaskIds, setSwipedTaskIds] = useState<Set<string>>(new Set());
 
   const metrics = state.metrics.data;
@@ -182,12 +182,11 @@ function FlowBoardPageContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshMetrics]);
 
-  // Optimistic move task — API call goes in background (fire-and-forget)
-  // Card is removed from local list immediately via onSwipeAway
+  // Optimistic move task — fire-and-forget API call
+  // The card is already gone from UI by the time this resolves
   const handleMoveTask = useCallback(
     (taskId: string, newColumn: string) => {
       if (!state.activeWorkspaceId) return;
-      // Fire-and-forget: no await, no blocking UI
       fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -196,15 +195,14 @@ function FlowBoardPageContent() {
           init_data: tgInitData,
         }),
       }).catch((err) => {
-        // Best-effort error logging — card already left screen
-        console.error('[Optimistic Swipe] Move task failed (card already gone):', err);
+        console.error('[Optimistic Swipe] Move task failed:', err);
       });
     },
     [state.activeWorkspaceId, tgInitData],
   );
 
-  // Remove swiped task from local list immediately
-  const handleSwipeAway = useCallback((taskId: string) => {
+  // Called when a task card swipes away — marks it as swiped to avoid duplicate API calls
+  const handleSwipeAway = useCallback((taskId: string, _targetColumn: string) => {
     setSwipedTaskIds((prev) => new Set(prev).add(taskId));
   }, []);
 
@@ -338,10 +336,8 @@ function FlowBoardPageContent() {
           onClose={handleColumnSheetClose}
           column={columnSheet.column}
           title={columnSheet.label}
-          /** Filter out swiped-away tasks + tasks not matching current column */
-          tasks={tasks.filter(
-            (t) => t.column === columnSheet.column && !swipedTaskIds.has(t.id),
-          )}
+          /** Filter out already-swiped tasks */
+          tasks={tasks.filter((t) => !swipedTaskIds.has(t.id))}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
           onSwipeAway={handleSwipeAway}

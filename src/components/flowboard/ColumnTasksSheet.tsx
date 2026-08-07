@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SwipeableTaskCard } from '@/components/flowboard/SwipeableTaskCard';
 import type { TaskEntity } from '@/types/flowboard';
@@ -8,13 +8,8 @@ import type { TaskEntity } from '@/types/flowboard';
 /**
  * ColumnTasksSheet — bottom sheet listing tasks from a specific column.
  *
- * Figma node 240:27222 "[task-type] / tasks":
- *   - Container: column, maxWidth 390, bg #0A0A0A @ 80%, padding 24px 16px 32px
- *   - Header: colored shape (10×7) + title "Активные" etc (Inter Display 20/24 Medium)
- *   - List: column, gap 8px, task-cards
- *
- * Uses SwipeableTaskCard for swipe-to-move gestures.
- * All values relative (gap, %, var(--spacing-*)) for adaptive design.
+ * Optimistic UI: при свайпе задачи она мгновенно перемещается между колонками
+ * на клиенте (через swappedTasks), не дожидаясь ответа сервера.
  */
 
 export interface ColumnTasksSheetProps {
@@ -32,8 +27,8 @@ export interface ColumnTasksSheetProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
-  /** Called when a task card swipes away — removes it from local list */
-  onSwipeAway?: (taskId: string) => void;
+  /** Called when a task card swipes away — removes it from current list and adds to target column */
+  onSwipeAway?: (taskId: string, targetColumn: string) => void;
 }
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
@@ -44,6 +39,9 @@ const COLUMN_ACCENTS: Record<string, string> = {
   review: 'var(--color-signal-cyan)',
   done: 'var(--color-signal-green)',
 };
+
+// Глобальный реф для определения направления последнего свайпа
+const swipeDirectionRef = useRef<number>(1);
 
 export function ColumnTasksSheet({
   open,
@@ -58,12 +56,16 @@ export function ColumnTasksSheet({
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
 
+  // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
+  const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
+
   const handleMoveNext = useCallback(
     (taskId: string) => {
       if (!column) return;
       const currentIndex = COLUMN_ORDER.indexOf(column);
       if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
       const nextColumn = COLUMN_ORDER[currentIndex + 1];
+      swipeDirectionRef.current = 1;
       onMoveTask?.(taskId, nextColumn);
     },
     [column, onMoveTask]
@@ -75,6 +77,7 @@ export function ColumnTasksSheet({
       const currentIndex = COLUMN_ORDER.indexOf(column);
       if (currentIndex <= 0) return;
       const prevColumn = COLUMN_ORDER[currentIndex - 1];
+      swipeDirectionRef.current = -1;
       onMoveTask?.(taskId, prevColumn);
     },
     [column, onMoveTask]
@@ -86,6 +89,55 @@ export function ColumnTasksSheet({
     },
     [onTaskTap]
   );
+
+  // При свайпе: удаляем из текущей колонки, добавляем в новую
+  const handleSwipeAway = useCallback(
+    (taskId: string) => {
+      if (!column) return;
+      // Находим задачу в swappedTasks или в исходном списке
+      const swapped = swappedTasks.get(taskId);
+      const sourceTask = swapped?.originalTask ?? tasks.find((t) => t.id === taskId);
+      if (!sourceTask) return;
+
+      // Определяем целевую колонку по направлению свайпа
+      const currentIndex = COLUMN_ORDER.indexOf(column);
+      const direction = swipeDirectionRef.current;
+      const targetColumn = direction > 0
+        ? COLUMN_ORDER[Math.min(currentIndex + 1, COLUMN_ORDER.length - 1)]
+        : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
+
+      // Обновляем локальный state: задача теперь в новой колонке
+      setSwappedTasks((prev) => {
+        const next = new Map(prev);
+        next.set(taskId, { targetColumn, originalTask: sourceTask });
+        return next;
+      });
+
+      onSwipeAway?.(taskId, targetColumn);
+    },
+    [column, tasks, swappedTasks, onSwipeAway]
+  );
+
+  // Получаем задачи с учётом оптимистичных перемещений
+  const displayTasks = (() => {
+    // Задачи, которые были перемещены в эту колонку
+    const incomingTasks = tasks.filter((t) => {
+      const swapped = swappedTasks.get(t.id);
+      return swapped && swapped.targetColumn === column;
+    });
+
+    // Задачи, которые остались в этой колонке (исключая те, что ушли)
+    const stayedTasks = tasks.filter((t) => {
+      const swapped = swappedTasks.get(t.id);
+      // Исключаем задачи, которые были перемещены ОТсюда
+      if (swapped && swapped.targetColumn !== column) return false;
+      // Исключаем задачи, которые пришли из другой колонки (они уже в incoming)
+      if (swapped && swapped.targetColumn === column) return false;
+      return t.column === column;
+    });
+
+    return [...incomingTasks, ...stayedTasks];
+  })();
 
   return (
     <BottomSheet open={open} onClose={onClose}>
@@ -125,25 +177,33 @@ export function ColumnTasksSheet({
               color: 'var(--color-text-muted)',
             }}
           >
-            {tasks.length}
+            {displayTasks.length}
           </span>
         </div>
 
         {/* List of tasks */}
-        {tasks.length > 0 ? (
+        {displayTasks.length > 0 ? (
           <div className="flex w-full flex-col gap-2">
-            {tasks.map((task) => (
-              <SwipeableTaskCard
-                key={task.id}
-                task={task}
-                columnOrder={COLUMN_ORDER}
-                currentColumn={column ?? 'backlog'}
-                onMoveNext={handleMoveNext}
-                onMovePrev={handleMovePrev}
-                onTap={handleTap}
-                onSwipeAway={onSwipeAway}
-              />
-            ))}
+            {displayTasks.map((task) => {
+              // Проверяем, была ли эта задача перемещена в эту колонку
+              const wasSwapped = swappedTasks.has(task.id);
+              const actualColumn = wasSwapped
+                ? swappedTasks.get(task.id)?.targetColumn ?? task.column
+                : task.column;
+
+              return (
+                <SwipeableTaskCard
+                  key={task.id}
+                  task={task}
+                  columnOrder={COLUMN_ORDER}
+                  currentColumn={actualColumn}
+                  onMoveNext={handleMoveNext}
+                  onMovePrev={handleMovePrev}
+                  onTap={handleTap}
+                  onSwipeAway={handleSwipeAway}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="flex w-full flex-col items-center justify-center gap-2 py-10">

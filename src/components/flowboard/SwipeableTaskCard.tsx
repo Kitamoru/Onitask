@@ -10,20 +10,18 @@ import type { TaskEntity } from '@/types/flowboard';
  * Optimistic UI паттерн:
  * - При достижении порога свайпа → карточка мгновенно анимируется за пределы экрана
  * - API вызов идёт в фоне (void, без await)
- * - Если API провалился → карточка НЕ возвращается, но показывается toast-уведомление
- * - Колбэк onSwipeAway вызывается сразу после успешного свайпа для удаления карточки из списка
+ * - Колбэк onSwipeAway вызывается после успешного свайпа для удаления карточки из списка
  *
- * Поведение:
- * - Свайп вправо → следующая колонка
- * - Свайп влево → предыдущая колонка
- * - Tap (без свайпа) → onTap
- * - При достижении порога (80px) → анимация ухода + вибрация
- * - Если порог не достигнут → bounce-back анимация
+ * Анимация: 300ms, cubic-bezier(0.25, 0.46, 0.45, 0.94) — Telegram-style ease-out
  */
 
-const SWIPE_THRESHOLD = 80; // px
-const SWIPE_MAX_TIME = 500; // ms
-const SWIPE_EXIT_DURATION = 250; // ms — duration for card to exit screen
+const SWIPE_THRESHOLD = 80; // px — distance needed to trigger swipe
+const SWIPE_MAX_TIME = 500; // ms — max time for fast-swipe detection
+const SWIPE_EXIT_DURATION = 300; // ms — smooth exit animation (Telegram HIG standard)
+// Telegram-style easing: starts fast, decelerates smoothly to rest
+const EXIT_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+// Soft bounce-back easing (no overshoot) — Material Design standard
+const BOUNCE_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 export interface SwipeableTaskCardProps {
   task: TaskEntity;
@@ -53,12 +51,14 @@ export function SwipeableTaskCard({
   const [translateX, setTranslateX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [swipeProgress, setSwipeProgress] = useState(0); // 0..1 — how close to threshold
   const startX = useRef(0);
   const startY = useRef(0);
   const startTime = useRef(0);
   const isSwipingRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const exitedRef = useRef(false);
+  const hasVibratedAt50Ref = useRef(false); // track 50% haptic per swipe gesture
 
   const currentIndex = columnOrder.indexOf(currentColumn);
   const canMoveNext = currentIndex >= 0 && currentIndex < columnOrder.length - 1;
@@ -76,9 +76,10 @@ export function SwipeableTaskCard({
   // Когда isExiting=true — карточка плавно улетает за экран
   useEffect(() => {
     if (isExiting) {
-      // Сначала разблокируем transition, потом запускаем уход
       requestAnimationFrame(() => {
-        setTranslateX(currentColumn === 'backlog' || !canMoveNext ? 600 : -600);
+        // Определяем направление ухода
+        const direction = deltaXRef.current;
+        setTranslateX(direction > 0 ? 500 : -500);
       });
       // Через анимационное время — вызываем onSwipeAway
       const timer = setTimeout(() => {
@@ -86,7 +87,9 @@ export function SwipeableTaskCard({
       }, SWIPE_EXIT_DURATION);
       return () => clearTimeout(timer);
     }
-  }, [isExiting, onSwipeAway, task.id, currentColumn, canMoveNext]);
+  }, [isExiting, onSwipeAway, task.id]);
+
+  const deltaXRef = useRef(0);
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
@@ -98,6 +101,8 @@ export function SwipeableTaskCard({
       isSwipingRef.current = false;
       setIsSwiping(false);
       setTranslateX(0);
+      setSwipeProgress(0);
+      hasVibratedAt50Ref.current = false;
     },
     []
   );
@@ -127,6 +132,7 @@ export function SwipeableTaskCard({
 
         if (!allowed) {
           setTranslateX(0);
+          setSwipeProgress(0);
           return;
         }
 
@@ -136,6 +142,16 @@ export function SwipeableTaskCard({
           Math.abs(deltaX) > maxDrag
             ? Math.sign(deltaX) * (maxDrag + (Math.abs(deltaX) - maxDrag) * 0.2)
             : deltaX;
+
+        // Progressive feedback: compute progress toward threshold
+        const progress = Math.min(Math.abs(clampedDelta) / SWIPE_THRESHOLD, 1);
+        setSwipeProgress(progress);
+
+        // Haptic feedback at 50% progress (light tap)
+        if (progress > 0.5 && !hasVibratedAt50Ref.current) {
+          navigator.vibrate?.(10);
+          hasVibratedAt50Ref.current = true;
+        }
 
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
@@ -152,8 +168,7 @@ export function SwipeableTaskCard({
       exitedRef.current = true;
       setIsSwiping(false);
       setIsExiting(true);
-      // Блокируем интерактивность через pointer-events
-      // onSwipeAway вызовется автоматически через setTimeout в useEffect
+      deltaXRef.current = direction === 'next' ? 1 : -1;
     },
     []
   );
@@ -221,6 +236,8 @@ export function SwipeableTaskCard({
       isSwipingRef.current = false;
       setIsSwiping(false);
       setTranslateX(0);
+      setSwipeProgress(0);
+      hasVibratedAt50Ref.current = false;
 
       const handleMouseMove = (ev: MouseEvent) => {
         if (exitedRef.current) return;
@@ -243,6 +260,7 @@ export function SwipeableTaskCard({
 
           if (!allowed) {
             setTranslateX(0);
+            setSwipeProgress(0);
             return;
           }
 
@@ -251,6 +269,16 @@ export function SwipeableTaskCard({
             Math.abs(deltaX) > maxDrag
               ? Math.sign(deltaX) * (maxDrag + (Math.abs(deltaX) - maxDrag) * 0.2)
               : deltaX;
+
+          // Progressive feedback: compute progress toward threshold
+          const progress = Math.min(Math.abs(clampedDelta) / SWIPE_THRESHOLD, 1);
+          setSwipeProgress(progress);
+
+          // Haptic feedback at 50% progress (desktop browsers may not support vibrate)
+          if (progress > 0.5 && !hasVibratedAt50Ref.current) {
+            navigator.vibrate?.(10);
+            hasVibratedAt50Ref.current = true;
+          }
 
           setTranslateX(clampedDelta);
         }
@@ -297,15 +325,23 @@ export function SwipeableTaskCard({
     [task.id, canMoveNext, canMovePrev, onMoveNext, onMovePrev, onTap, triggerSwipeExit]
   );
 
+  // Progressive visual feedback: opacity and scale based on swipe progress
+  // At 0% progress: opacity 0.6, scale 0.97 (card "dims" at start of drag)
+  // At 100% progress: opacity 1.0, scale 1.0 (card "wakes up" near threshold)
+  const fadeOpacity = 0.6 + swipeProgress * 0.4;
+  const pressScale = 0.97 + swipeProgress * 0.03;
+
   // Bounce-back / exit transition
   const cardStyle: React.CSSProperties = {
-    transform: `translateX(${translateX}px)`,
-    transition: isSwiping || isExiting
-      ? `transform ${isExiting ? SWIPE_EXIT_DURATION : 0}ms cubic-bezier(0.34, 1.56, 0.64, 1)`
-      : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    transform: `translateX(${translateX}px) scale(${isSwiping ? pressScale : 1})`,
+    transition: isSwiping
+      ? 'none'
+      : isExiting
+        ? `transform ${SWIPE_EXIT_DURATION}ms ${EXIT_EASING}, opacity ${SWIPE_EXIT_DURATION}ms ${EXIT_EASING}`
+        : `transform 0.3s ${BOUNCE_EASING}, opacity 0.3s ${BOUNCE_EASING}`,
     touchAction: 'pan-y',
     cursor: 'pointer',
-    opacity: isExiting ? 0.5 : 1,
+    opacity: isExiting ? 0 : fadeOpacity,
     pointerEvents: isExiting ? 'none' : 'auto',
     willChange: 'transform, opacity',
   };
