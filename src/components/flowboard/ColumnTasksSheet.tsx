@@ -60,6 +60,19 @@ export function ColumnTasksSheet({
   // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
   const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
 
+  // Задачи, которые сейчас в exit-анимации: taskId -> fromColumn.
+  // Нужно, чтобы карточка оставалась видимой в старой колонке, пока летит
+  // за экран (300ms), даже если tasks.column уже мгновенно обновлён PATCH_TASK.
+  const [pendingExit, setPendingExit] = useState<Map<string, string>>(new Map());
+
+  // Сброс при закрытии шита — чтобы Map не копил устаревшие записи
+  useEffect(() => {
+    if (!open && (swappedTasks.size > 0 || pendingExit.size > 0)) {
+      setSwappedTasks(new Map());
+      setPendingExit(new Map());
+    }
+  }, [open, swappedTasks.size, pendingExit.size]);
+
   // Cleanup: как только задача подтверждена (task.column === targetColumn —
   // через realtime или оптимистичный PATCH_TASK), удаляем запись из Map.
   // Это держит Map ограниченным и не даёт originalTask замораживаться навсегда.
@@ -86,6 +99,9 @@ export function ColumnTasksSheet({
       if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
       const nextColumn = COLUMN_ORDER[currentIndex + 1];
       swipeDirectionRef.current = 1;
+      // Помечаем задачу как «уходящую» из этой колонки — она останется видимой
+      // в stayedTasks, пока летит за экран (exit-анимация 300ms).
+      setPendingExit((prev) => new Map(prev).set(taskId, column));
       onMoveTask?.(taskId, nextColumn);
     },
     [column, onMoveTask]
@@ -98,6 +114,9 @@ export function ColumnTasksSheet({
       if (currentIndex <= 0) return;
       const prevColumn = COLUMN_ORDER[currentIndex - 1];
       swipeDirectionRef.current = -1;
+      // Помечаем задачу как «уходящую» из этой колонки — она останется видимой
+      // в stayedTasks, пока летит за экран (exit-анимация 300ms).
+      setPendingExit((prev) => new Map(prev).set(taskId, column));
       onMoveTask?.(taskId, prevColumn);
     },
     [column, onMoveTask]
@@ -132,6 +151,13 @@ export function ColumnTasksSheet({
         next.set(taskId, { targetColumn, originalTask: sourceTask });
         return next;
       });
+      // Exit-анимация завершена — убираем из pendingExit
+      setPendingExit((prev) => {
+        if (!prev.has(taskId)) return prev;
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
     },
     [column, tasks, swappedTasks]
   );
@@ -151,6 +177,9 @@ export function ColumnTasksSheet({
       if (swapped && swapped.targetColumn !== column) return false;
       // Исключаем задачи, которые пришли из другой колонки (они уже в incoming)
       if (swapped && swapped.targetColumn === column) return false;
+      // Задача в exit-анимации из этой колонки — держим её видимой, пока летит
+      // за экран (даже если tasks.column уже обновлён PATCH_TASK).
+      if (pendingExit.get(t.id) === column) return true;
       return t.column === column;
     });
 
