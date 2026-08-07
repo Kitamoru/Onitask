@@ -28,7 +28,7 @@ const SETTLE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
  * - A fast fling dismisses the sheet; a slow pull dismisses past the threshold.
  * - Reserves space at the top of the viewport so the sheet's content clears
  *   Telegram's top controls (e.g. the close button in the corner) via
- *   `max(16px, var(--tg-content-safe-top, 0px))` on the container.
+ *   `calc(max(16px, var(--tg-content-safe-top, 0px)) + 40px)` on the container.
  */
 export function BottomSheet({
   open,
@@ -207,7 +207,7 @@ export function BottomSheet({
         // `--tg-content-safe-top` is set by TelegramThemeProvider from
         // tg.contentSafeAreaInset.top. Applied to the container so the backdrop
         // still covers the full screen while the sheet content stays clear.
-        paddingTop: 'max(16px, var(--tg-content-safe-top, 0px))',
+        paddingTop: 'calc(max(16px, var(--tg-content-safe-top, 0px)) + 40px)',
       }}
       aria-hidden={!open}
     >
