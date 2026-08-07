@@ -41,6 +41,8 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
+  // Track optimistic counter adjustments from swipe operations
+  const [counterAdjustments, setCounterAdjustments] = useState<Record<string, number>>({});
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -79,17 +81,17 @@ function FlowBoardPageContent() {
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
     if (!metrics) return [];
-    const backlogCount = metrics.columns.find(c => c.name === 'backlog')?.wip_current ?? 0;
-    const inProgressCount = metrics.columns.find(c => c.name === 'in_progress')?.wip_current ?? 0;
-    const reviewCount = metrics.columns.find(c => c.name === 'review')?.wip_current ?? 0;
-    const doneCount = metrics.columns.find(c => c.name === 'done')?.wip_current ?? 0;
+    const backlogCount = (metrics.columns.find(c => c.name === 'backlog')?.wip_current ?? 0) + (counterAdjustments['backlog'] || 0);
+    const inProgressCount = (metrics.columns.find(c => c.name === 'in_progress')?.wip_current ?? 0) + (counterAdjustments['in_progress'] || 0);
+    const reviewCount = (metrics.columns.find(c => c.name === 'review')?.wip_current ?? 0) + (counterAdjustments['review'] || 0);
+    const doneCount = (metrics.columns.find(c => c.name === 'done')?.wip_current ?? 0) + (counterAdjustments['done'] || 0);
     return [
       { id: 'in_progress', label: 'Активные', count: inProgressCount, shapes: Math.min(inProgressCount, 10), maxShapes: 10, color: 'var(--color-accent-amber)' },
       { id: 'backlog', label: 'В очереди', count: backlogCount, shapes: Math.min(backlogCount, 10), maxShapes: 10, color: 'var(--color-text-primary)' },
       { id: 'review', label: 'На проверке', count: reviewCount, shapes: Math.min(reviewCount, 10), maxShapes: 10, color: 'var(--color-signal-cyan)' },
       { id: 'done', label: 'Сделано', count: doneCount, shapes: Math.min(doneCount, 10), maxShapes: 10, color: 'var(--color-signal-green)' },
     ];
-  }, [metrics]);
+  }, [metrics, counterAdjustments]);
 
   const workers = useMemo<WorkerCardData[]>(() => {
     if (!metrics) return [];
@@ -198,6 +200,16 @@ function FlowBoardPageContent() {
     },
     [state.activeWorkspaceId, tgInitData],
   );
+
+  // Called from ColumnTasksSheet when counters should be adjusted
+  const handleCounterChange = useCallback((sourceColumn: string, targetColumn: string) => {
+    setCounterAdjustments((prev) => {
+      const next = { ...prev };
+      next[sourceColumn] = (next[sourceColumn] || 0) - 1;
+      next[targetColumn] = (next[targetColumn] || 0) + 1;
+      return next;
+    });
+  }, []);
 
 
   // Loading state — wait for auth + first server load to complete
@@ -333,6 +345,7 @@ function FlowBoardPageContent() {
           tasks={tasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
+          onCounterChange={handleCounterChange}
         />
     </>
   );

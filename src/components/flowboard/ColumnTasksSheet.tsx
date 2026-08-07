@@ -33,6 +33,8 @@ export interface ColumnTasksSheetProps {
   onTaskTap?: (taskId: string) => void;
   /** Called when a task card swipes away — removes it from current list and adds to target column */
   onSwipeAway?: (taskId: string, targetColumn: string) => void;
+  /** Called when task is swiped to update column counters optimistically */
+  onCounterChange?: (sourceColumn: string, targetColumn: string) => void;
 }
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
@@ -54,6 +56,7 @@ export function ColumnTasksSheet({
   onMoveTask,
   onTaskTap,
   onSwipeAway,
+  onCounterChange,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
 
@@ -116,6 +119,9 @@ export function ColumnTasksSheet({
         next.set(taskId, { targetColumn, originalTask: sourceTask });
         return next;
       });
+
+      // Notify parent to adjust column counters
+      onCounterChange?.(column, targetColumn);
 
       onSwipeAway?.(taskId, targetColumn);
     },
