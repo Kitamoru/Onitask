@@ -215,38 +215,46 @@ export function BottomSheet({
 
       {/* Sheet panel — background matches RiskPulse cards (var(--color-surface)) */}
       <div
-        ref={sheetRef}
-        role="dialog"
-        aria-modal={open}
-        className={`relative z-10 w-full max-h-[calc(90vh-40px)] overflow-y-auto rounded-t-2xl ${
-          isDragging ? '' : 'transition-transform duration-300'
-        }`}
-        style={
-          {
-            backgroundColor: 'var(--color-surface)',
-            borderTopLeftRadius: '16px',
-            borderTopRightRadius: '16px',
-            overscrollBehavior: 'contain',
-            willChange: 'transform',
-            // Single source of truth for vertical position:
-            // - open → 0px (fully visible)
-            // - closed → 100% (off-screen below)
-            // - during drag → overridden by applyDrag() via the same variable
-            transform: 'translateY(var(--sheet-y, 0px))',
-            transitionProperty: 'transform',
-            transitionDuration: isDragging ? '0ms' : '300ms',
-            transitionTimingFunction: SETTLE_EASING,
-            // Resting position driven by React state (low frequency)
-            '--sheet-y': open ? '0px' : '100%',
-          } as React.CSSProperties
-        }
+        style={{
+          // Outer border wrapper with crop
+          padding: 1,
+          background: 'var(--color-line)',
+          clipPath: 'polygon(16px 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
+        }}
       >
+        <div
+          ref={sheetRef}
+          role="dialog"
+          aria-modal={open}
+          className={`relative z-10 w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
+            isDragging ? '' : 'transition-transform duration-300'
+          }`}
+          style={
+            {
+              backgroundColor: 'var(--color-surface)',
+              clipPath: 'polygon(16px 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
+              overscrollBehavior: 'contain',
+              willChange: 'transform',
+              // Single source of truth for vertical position:
+              // - open → 0px (fully visible)
+              // - closed → 100% (off-screen below)
+              // - during drag → overridden by applyDrag() via the same variable
+              transform: 'translateY(var(--sheet-y, 0px))',
+              transitionProperty: 'transform',
+              transitionDuration: isDragging ? '0ms' : '300ms',
+              transitionTimingFunction: SETTLE_EASING,
+              // Resting position driven by React state (low frequency)
+              '--sheet-y': open ? '0px' : '100%',
+            } as React.CSSProperties
+          }
+        >
         {/* Drag handle */}
         <div className="flex justify-center pt-2 pb-2">
           <div className="w-10 h-1 rounded-full bg-text-muted/40" />
         </div>
 
         {children}
+        </div>
       </div>
     </div>,
     document.body,
