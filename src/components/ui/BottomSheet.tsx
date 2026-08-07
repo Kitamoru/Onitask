@@ -202,8 +202,7 @@ export function BottomSheet({
         open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}
       style={{
-        // Backdrop covers the full screen; spacing is applied to the sheet
-        // panel itself via marginTop so the sheet actually moves down.
+        // Backdrop covers the full screen
       }}
       aria-hidden={!open}
     >
@@ -219,7 +218,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative z-10 w-full max-h-[90vh] overflow-y-auto rounded-t-2xl ${
+        className={`relative z-10 w-full max-h-[calc(90vh-40px)] overflow-y-auto rounded-t-2xl ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
         style={
@@ -229,10 +228,6 @@ export function BottomSheet({
             borderTopRightRadius: '16px',
             overscrollBehavior: 'contain',
             willChange: 'transform',
-            // Push the sheet down from the bottom so its content clears
-            // Telegram's top controls. `--tg-content-safe-top` is set by
-            // TelegramThemeProvider from tg.contentSafeAreaInset.top.
-            marginTop: 'calc(max(16px, var(--tg-content-safe-top, 0px)) + 40px)',
             // Single source of truth for vertical position:
             // - open → 0px (fully visible)
             // - closed → 100% (off-screen below)
