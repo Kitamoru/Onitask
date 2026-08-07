@@ -41,8 +41,6 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
-  // Track which tasks were swiped away so we don't re-send API calls on sheet reopen
-  const [swipedTaskIds, setSwipedTaskIds] = useState<Set<string>>(new Set());
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -201,10 +199,6 @@ function FlowBoardPageContent() {
     [state.activeWorkspaceId, tgInitData],
   );
 
-  // Called when a task card swipes away — marks it as swiped to avoid duplicate API calls
-  const handleSwipeAway = useCallback((taskId: string, _targetColumn: string) => {
-    setSwipedTaskIds((prev) => new Set(prev).add(taskId));
-  }, []);
 
   // Loading state — wait for auth + first server load to complete
   // This ensures sprint data from DB is available before rendering FlowBoard
@@ -336,11 +330,9 @@ function FlowBoardPageContent() {
           onClose={handleColumnSheetClose}
           column={columnSheet.column}
           title={columnSheet.label}
-          /** Filter out already-swiped tasks */
-          tasks={tasks.filter((t) => !swipedTaskIds.has(t.id))}
+          tasks={tasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
-          onSwipeAway={handleSwipeAway}
         />
     </>
   );
