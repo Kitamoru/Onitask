@@ -174,6 +174,17 @@ export function BottomSheet({
     };
   }, [open]);
 
+  // Reset any inline transform left over from a drag gesture whenever the
+  // open state changes. The drag handlers write `el.style.transform` directly
+  // to the DOM (inside rAF), and that inline style would otherwise override
+  // the CSS `translate-y-full` class on the next open/close cycle — leaving
+  // the sheet stuck and preventing other columns from opening.
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.transform = '';
+  }, [open]);
+
   if (typeof window === 'undefined') return null;
 
   return createPortal(
