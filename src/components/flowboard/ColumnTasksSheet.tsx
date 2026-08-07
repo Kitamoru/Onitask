@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import type { TaskEntity } from '@/types/flowboard';
 
@@ -31,10 +31,6 @@ export interface ColumnTasksSheetProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
-  /** Called when a task card swipes away — removes it from current list and adds to target column */
-  onSwipeAway?: (taskId: string, targetColumn: string) => void;
-  /** Called when task is swiped to update column counters optimistically */
-  onCounterChange?: (sourceColumn: string, targetColumn: string) => void;
 }
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
@@ -55,8 +51,6 @@ export function ColumnTasksSheet({
   accentColor,
   onMoveTask,
   onTaskTap,
-  onSwipeAway,
-  onCounterChange,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
 
@@ -65,6 +59,25 @@ export function ColumnTasksSheet({
 
   // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
   const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
+
+  // Cleanup: как только задача подтверждена (task.column === targetColumn —
+  // через realtime или оптимистичный PATCH_TASK), удаляем запись из Map.
+  // Это держит Map ограниченным и не даёт originalTask замораживаться навсегда.
+  useEffect(() => {
+    if (swappedTasks.size === 0) return;
+    setSwappedTasks((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [taskId, swapped] of prev) {
+        const task = tasks.find((t) => t.id === taskId);
+        if (task && task.column === swapped.targetColumn) {
+          next.delete(taskId);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [tasks, swappedTasks]);
 
   const handleMoveNext = useCallback(
     (taskId: string) => {
@@ -119,13 +132,8 @@ export function ColumnTasksSheet({
         next.set(taskId, { targetColumn, originalTask: sourceTask });
         return next;
       });
-
-      // Notify parent to adjust column counters
-      onCounterChange?.(column, targetColumn);
-
-      onSwipeAway?.(taskId, targetColumn);
     },
-    [column, tasks, swappedTasks, onSwipeAway]
+    [column, tasks, swappedTasks]
   );
 
   // Получаем задачи с учётом оптимистичных перемещений

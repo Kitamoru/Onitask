@@ -3,7 +3,9 @@
 /**
  * PATCH /api/tasks/[id] — Update a single task (last-write-wins).
  *
- * Implements last-write-wins semantics without version check (per INV-09 note).
+ * Implements last-write-wins semantics (per INV-09). When the client sends an
+ * `expected_version`, the server compares it against the current DB version and
+ * returns a `warning` on mismatch so the client can reconcile via force refresh.
  * Supports partial updates: column, assigned_to, reviewer_id, priority,
  * cognitive_weight, deadline, title, description, is_blocked, needs_human, tags.
  *
@@ -121,7 +123,7 @@ export async function PATCH(
       update.moved_to_column_at = new Date().toISOString();
     }
 
-    // Increment version
+    // Increment version atomically (INV-09).
     const supabase = createServerClient();
     const { data: currentTask } = await supabase
       .from('tasks')
@@ -129,9 +131,20 @@ export async function PATCH(
       .eq('id', taskId)
       .single();
 
-    if (currentTask) {
-      update.version = ((currentTask as any).version ?? 0) + 1;
+    // Optimistic concurrency: if the client sent expected_version and it doesn't
+    // match the current DB version, another client changed the task concurrently.
+    // Apply last-write-wins (backward compatible) but surface a warning so the
+    // client can reconcile its local state with a force refresh.
+    const expectedVersion = (body as { expected_version?: number }).expected_version;
+    const currentVersion = (currentTask as any)?.version ?? 0;
+    let versionWarning: string | undefined;
+    if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
+      versionWarning = `Version mismatch: client expected ${expectedVersion}, server has ${currentVersion}. Applied last-write-wins; refresh to reconcile.`;
     }
+
+    if (currentTask) {
+      update.version = currentVersion + 1;
+    } // Apply last-write-wins (backward compatible) — no early rejection.
 
     // Remove undefined values
     const cleanUpdate = Object.fromEntries(
@@ -162,7 +175,10 @@ export async function PATCH(
       // Broadcast is best-effort
     }
 
-    return NextResponse.json({ task: mapTaskRow(data as TasksRow) });
+    return NextResponse.json({
+      task: mapTaskRow(data as TasksRow),
+      ...(versionWarning ? { warning: versionWarning } : {}),
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

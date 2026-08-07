@@ -33,7 +33,7 @@ function FlowBoardPageContent() {
   const view = searchParams.get('view');
   const isStreamView = view === 'stream';
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
-  const { state, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+  const { state, dispatch, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [columnSheet, setColumnSheet] = useState<{ open: boolean; column: string | null; label: string; accentColor: string }>({
     open: false,
@@ -41,8 +41,6 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
-  // Track optimistic counter adjustments from swipe operations
-  const [counterAdjustments, setCounterAdjustments] = useState<Record<string, number>>({});
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -81,17 +79,20 @@ function FlowBoardPageContent() {
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
     if (!metrics) return [];
-    const backlogCount = (metrics.columns.find(c => c.name === 'backlog')?.wip_current ?? 0) + (counterAdjustments['backlog'] || 0);
-    const inProgressCount = (metrics.columns.find(c => c.name === 'in_progress')?.wip_current ?? 0) + (counterAdjustments['in_progress'] || 0);
-    const reviewCount = (metrics.columns.find(c => c.name === 'review')?.wip_current ?? 0) + (counterAdjustments['review'] || 0);
-    const doneCount = (metrics.columns.find(c => c.name === 'done')?.wip_current ?? 0) + (counterAdjustments['done'] || 0);
+    // Single source of truth: derive column counters from the same `tasks` array
+    // that powers the bottom sheet, so both stay consistent during optimistic moves.
+    const countByColumn = (col: string) => tasks.filter((t) => t.column === col).length;
+    const inProgressCount = countByColumn('in_progress');
+    const backlogCount = countByColumn('backlog');
+    const reviewCount = countByColumn('review');
+    const doneCount = countByColumn('done');
     return [
       { id: 'in_progress', label: 'Активные', count: inProgressCount, shapes: Math.min(inProgressCount, 10), maxShapes: 10, color: 'var(--color-accent-amber)' },
       { id: 'backlog', label: 'В очереди', count: backlogCount, shapes: Math.min(backlogCount, 10), maxShapes: 10, color: 'var(--color-text-primary)' },
       { id: 'review', label: 'На проверке', count: reviewCount, shapes: Math.min(reviewCount, 10), maxShapes: 10, color: 'var(--color-signal-cyan)' },
       { id: 'done', label: 'Сделано', count: doneCount, shapes: Math.min(doneCount, 10), maxShapes: 10, color: 'var(--color-signal-green)' },
     ];
-  }, [metrics, counterAdjustments]);
+  }, [metrics, tasks]);
 
   const workers = useMemo<WorkerCardData[]>(() => {
     if (!metrics) return [];
@@ -182,34 +183,49 @@ function FlowBoardPageContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshMetrics]);
 
-  // Optimistic move task — fire-and-forget API call
-  // The card is already gone from UI by the time this resolves
+  // Optimistic move task with rollback + version sync (INV-09).
   const handleMoveTask = useCallback(
-    (taskId: string, newColumn: string) => {
+    async (taskId: string, newColumn: string) => {
       if (!state.activeWorkspaceId) return;
-      fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          column: newColumn,
-          init_data: tgInitData,
-        }),
-      }).catch((err) => {
+      const task = state.tasks.items.find((t) => t.id === taskId);
+      const originalColumn = task?.column;
+      // Optimistic local update: move the task in the shared `tasks` array immediately
+      // so column counters and the bottom sheet stay consistent without waiting for realtime.
+      if (task) {
+        dispatch({ type: 'PATCH_TASK', payload: { ...task, column: newColumn } });
+      }
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            column: newColumn,
+            expected_version: task?.version,
+            init_data: tgInitData,
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to move task');
+        // Sync server-confirmed state (fresh version, moved_to_column_at, etc.)
+        if (result.task) {
+          dispatch({ type: 'PATCH_TASK', payload: result.task });
+        }
+        // Version mismatch (INV-09): server applied last-write-wins, but another
+        // client changed the task concurrently — refresh to reconcile local state.
+        if (result.warning) {
+          console.warn('[Optimistic Swipe]', result.warning);
+          void refreshMetrics({ force: true });
+        }
+      } catch (err) {
         console.error('[Optimistic Swipe] Move task failed:', err);
-      });
+        // Rollback: return task to its original column so UI stays truthful.
+        if (task && originalColumn) {
+          dispatch({ type: 'PATCH_TASK', payload: { ...task, column: originalColumn } });
+        }
+      }
     },
-    [state.activeWorkspaceId, tgInitData],
+    [state.activeWorkspaceId, state.tasks.items, tgInitData, dispatch, refreshMetrics],
   );
-
-  // Called from ColumnTasksSheet when counters should be adjusted
-  const handleCounterChange = useCallback((sourceColumn: string, targetColumn: string) => {
-    setCounterAdjustments((prev) => {
-      const next = { ...prev };
-      next[sourceColumn] = (next[sourceColumn] || 0) - 1;
-      next[targetColumn] = (next[targetColumn] || 0) + 1;
-      return next;
-    });
-  }, []);
 
 
   // Loading state — wait for auth + first server load to complete
@@ -345,7 +361,6 @@ function FlowBoardPageContent() {
           tasks={tasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
-          onCounterChange={handleCounterChange}
         />
     </>
   );
