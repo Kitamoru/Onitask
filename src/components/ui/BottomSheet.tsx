@@ -26,8 +26,9 @@ const SETTLE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
  *   60fps tracking. React state (`open`) is the single source of truth for the
  *   resting position: `--sheet-y: 0px` when open, `100%` when closed.
  * - A fast fling dismisses the sheet; a slow pull dismisses past the threshold.
- * - Reserves a ~40px gap above Telegram's home-bar controls via
- *   `margin-bottom: calc(40px + env(safe-area-inset-bottom))`.
+ * - Reserves space at the top of the viewport so the sheet's content clears
+ *   Telegram's top controls (e.g. the close button in the corner) via
+ *   `max(16px, var(--tg-content-safe-top, 0px))` on the container.
  */
 export function BottomSheet({
   open,
@@ -185,6 +186,14 @@ export function BottomSheet({
       className={`fixed inset-0 z-50 flex items-end transition-opacity duration-300 ${
         open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}
+      style={{
+        // Reserve space at the top of the viewport so the sheet's content
+        // clears Telegram's top controls (e.g. the close button in the corner).
+        // `--tg-content-safe-top` is set by TelegramThemeProvider from
+        // tg.contentSafeAreaInset.top. Applied to the container so the backdrop
+        // still covers the full screen while the sheet content stays clear.
+        paddingTop: 'max(16px, var(--tg-content-safe-top, 0px))',
+      }}
       aria-hidden={!open}
     >
       {/* Backdrop */}
@@ -219,11 +228,6 @@ export function BottomSheet({
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',
-            // Lift the sheet 40px above the bottom of the viewport so it clears
-            // Telegram's home-bar controls (e.g. the close button). Using
-            // margin-bottom (not padding) actually moves the sheet up instead of
-            // just adding empty space inside the scrollable content.
-            marginBottom: 'calc(40px + env(safe-area-inset-bottom))',
           } as React.CSSProperties
         }
       >
