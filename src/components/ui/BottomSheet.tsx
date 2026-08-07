@@ -42,6 +42,7 @@ export function BottomSheet({
   stacked?: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
   const draggingRef = useRef(false);
   const dragOffsetRef = useRef(0);
@@ -73,8 +74,10 @@ export function BottomSheet({
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
+      const startX = e.touches[0].clientX;
       const startY = e.touches[0].clientY;
       const inHandleZone = startY - el.getBoundingClientRect().top <= HANDLE_ZONE_HEIGHT;
+      dragStartX.current = startX;
       dragStartY.current = startY;
       lastYRef.current = startY;
       lastTimeRef.current = performance.now();
@@ -83,8 +86,10 @@ export function BottomSheet({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (dragStartY.current === null) return;
+      if (dragStartY.current === null || dragStartX.current === null) return;
+      const x = e.touches[0].clientX;
       const y = e.touches[0].clientY;
+      const deltaX = x - dragStartX.current;
       const deltaY = y - dragStartY.current;
       const now = performance.now();
       const dt = now - lastTimeRef.current;
@@ -93,6 +98,14 @@ export function BottomSheet({
       }
       lastYRef.current = y;
       lastTimeRef.current = now;
+
+      // Axis lock: if the gesture is predominantly horizontal (a task-card
+      // swipe), yield to the card and do NOT claim the gesture for closing the
+      // sheet. This prevents accidental sheet dismissal while swiping a card.
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        draggingRef.current = false;
+        return;
+      }
 
       // List isn't at the top — let it scroll instead of closing the sheet
       if (el.scrollTop > 0) {
@@ -118,6 +131,7 @@ export function BottomSheet({
       const offset = dragOffsetRef.current;
       const velocity = velocityRef.current;
       const wasDragging = draggingRef.current;
+      dragStartX.current = null;
       dragStartY.current = null;
       draggingRef.current = false;
       dragOffsetRef.current = 0;
@@ -134,6 +148,7 @@ export function BottomSheet({
 
     const onTouchCancel = () => {
       // System cancelled the gesture — just reset, do NOT close
+      dragStartX.current = null;
       dragStartY.current = null;
       draggingRef.current = false;
       dragOffsetRef.current = 0;
