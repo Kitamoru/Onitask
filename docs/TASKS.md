@@ -182,12 +182,15 @@ format is deliberately compact so that agents can load the file quickly.
 
 - [x] FLOW-01 `GET/POST/PATCH/DELETE /api/tasks` — last-write-wins, **без** version-check (см. INV-09 примечание в Architecture-Compact) #db !high @blocked_by:WS-01
       dev_setup §7.2, §7.3. Реализовано: app/api/tasks/route.ts (GET+POST), app/api/tasks/[id]/route.ts (PATCH+DELETE).
-- [ ] FLOW-02 `KanbanBoard.tsx` + `KanbanColumn` + `KanbanCard` + `DragOverlay` (`@dnd-kit`) #ui !high @blocked_by:FLOW-01
-      Пока не трогаем. `@dnd-kit` установлен (package.json), но UI ещё не реализован.
-- [ ] FLOW-03 Fractional indexing (`position = (prev+next)/2`) #ui !high @blocked_by:FLOW-02
-      product_vision UC-03. `lib/fractionalIndex.ts` существует, но не используется — ждёт FLOW-02.
-- [ ] FLOW-04 Realtime-подписка на `tasks` #ui !high @blocked_by:FLOW-02
-      Хуки написаны (`src/lib/realtime/tasks.ts`: `useTasksRealtime`, `useFlowMetricsRealtime`), но не подключены к UI — ждёт реализации tasks/DnD.
+- [x] FLOW-02 `KanbanBoard` — реализовано через BottomSheet + SwipeableTaskCard с 4 колонками (backlog, in_progress, review, done) и оптимистичным UI #ui !high ✅
+      Реализовано: `src/components/flowboard/ColumnTasksSheet.tsx` + `SwipeableTaskCard.tsx`. Свайпы для перемещения между колонками, exit-анимации, swappedTasks/PendingExit state.
+      **Примечание:** Не через `@dnd-kit`, а через swipeable-паттерн для TWA.
+- [ ] FLOW-03 Fractional indexing (`position = (prev+next)/2`) #ui !low @deferred
+      product_vision UC-03. `lib/fractionalIndex.ts` существует как заготовка на будущее.
+      **Использование пока не требуется** — задачи сортируются по created_at в текущей архитектуре.
+      Возможные применения: приоритизация "мои задачи сверху", drag-and-drop позиционирование, pin задач, смарт-сортировка.
+- [x] FLOW-04 Realtime-подписка на `tasks` #ui !high ✅
+      Реализовано в `src/contexts/DataContext.tsx` (строки 559-598): подписка на `postgres_changes` для tasks таблицы, автоматическое обновление через dispatch PATCH_TASK/REMOVE_TASK.
 - [x] FLOW-05 Sprint CRUD API + `SprintBar.tsx` (метрики скрыты в статусе `planning`) #ui !med @blocked_by:FLOW-01
       flow_.md §7. Реализовано: app/api/sprints/route.ts (POST+GET), app/api/sprints/[id]/route.ts (PATCH+DELETE),
       PATCH /api/sprints/[id]/activate, SprintCreateSheet/SprintEditSheet/SprintViewSheet,
@@ -201,10 +204,12 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] FLOW-08 `GET /api/flow/metrics` → Edge Function `flow-metrics` (кэш 5с columns / 60с workers+alerts) #db !high @blocked_by:DB-13
       flow_.md §9–10, A-10. Реализовано: src/app/api/flow/metrics/route.ts (POST).
       Возвращает: sprintEnabled, sprint, columns (health), workers (load), alerts. TTL 30с.
-- [ ] FLOW-09 Column Health Grid 2×2 + bottom sheet по тапу колонки #ui !med @blocked_by:FLOW-08
-      Health-логика есть в metrics API, но UI-грида/тап-шейта нет — жду tasks.
-- [ ] FLOW-10 Stream — персональная лента (Фокус/В работе/На проверке/Надо сделать/Черновики) #ui !med @blocked_by:FLOW-01
-      Скоро будет.
+- [x] FLOW-09 Column Health Grid 2×2 + bottom sheet по тапу колонки #ui !med ✅
+      Реализовано: `TaskStatusCard` в `FlowBoard.tsx` (строки 404-477) + `handleColumnClick` → `ColumnTasksSheet`.
+      WIP-метрики вычисляются из `metrics.columns[].health` (green/yellow/red).
+- [x] FLOW-10 Stream — персональная лента (Фокус/В работе/На проверке/Надо сделать/Черновики) #ui !med ✅
+      Реализовано: `src/components/stream/StreamView.tsx` + интеграция в `src/app/flowboard/page.tsx` (view=stream).
+      Группировка задач по колонкам с groupByColumn, отображение статусов.
 - [x] FLOW-11 `SprintCloseWizard.tsx` + переход `sprint.status→completed` #ui !med @blocked_by:FLOW-05
       product_vision US-06 (AC-06-1…3). Триггер `trg_context_invalidate_sprints` (Master §6.16) реагирует на событие.
       Реализовано в текущем уровне готовности: DELETE /api/sprints/[id] (complete), PATCH /api/sprints/[id]/activate.
