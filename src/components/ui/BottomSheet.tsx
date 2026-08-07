@@ -11,8 +11,8 @@ const HANDLE_ZONE_HEIGHT = 48;
 const MAX_DRAG_RATIO = 0.6;
 /** Fling velocity (px/ms) that dismisses the sheet regardless of distance */
 const FLING_VELOCITY = 0.5;
-/** iOS-like easing for the settle/return animation */
-const SETTLE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
+/** Telegram-style easing for the settle/return animation (matches SwipeableTaskCard) */
+const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
 /**
  * BottomSheet — slide-up panel with backdrop overlay.
