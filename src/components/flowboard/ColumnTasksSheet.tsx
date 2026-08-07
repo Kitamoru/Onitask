@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, useState, lazy, Suspense } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { useSwappedTasksStore } from '@/components/flowboard/useSwappedTasksStore';
 import type { TaskEntity } from '@/types/flowboard';
 
 // Lazy-load SwipeableTaskCard to avoid SSR serialization issues with useRef
@@ -61,8 +60,8 @@ export function ColumnTasksSheet({
   // Ref for tracking swipe direction (must be inside component to avoid SSR issues)
   const swipeDirectionRef = useRef<number>(1);
 
-  // Zustand store for shared optimistic swap state
-  const { swappedTasks, setSwappedTasks } = useSwappedTasksStore();
+  // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
+  const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
 
   const handleMoveNext = useCallback(
     (taskId: string) => {
@@ -111,8 +110,8 @@ export function ColumnTasksSheet({
         ? COLUMN_ORDER[Math.min(currentIndex + 1, COLUMN_ORDER.length - 1)]
         : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
 
-      // Обновляем разделённый state: задача теперь в новой колонке
-      setSwappedTasks((prev: Map<string, { targetColumn: string; originalTask: TaskEntity }>) => {
+      // Обновляем локальный state: задача теперь в новой колонке
+      setSwappedTasks((prev) => {
         const next = new Map(prev);
         next.set(taskId, { targetColumn, originalTask: sourceTask });
         return next;
