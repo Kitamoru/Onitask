@@ -16,6 +16,18 @@ function getFileExtension(filename: string): string {
   return lastDot >= 0 ? filename.slice(lastDot).toLowerCase() : '';
 }
 
+/**
+ * Resolve MIME type from file extension.
+ * Supabase Storage bucket 'documents' has allowed_mime_types: ['text/markdown', 'text/plain'].
+ * Browser's file.type is unreliable (often '' or 'application/octet-stream').
+ */
+function resolveContentType(filename: string, fileType?: string): string {
+  // Trust browser type only if it matches our allowed types
+  if (fileType === 'text/markdown' || fileType === 'text/plain') return fileType;
+  const ext = getFileExtension(filename);
+  return ext === '.md' ? 'text/markdown' : 'text/plain';
+}
+
 function computeChecksum(buffer: ArrayBuffer): string {
   const hash = new Uint8Array(buffer);
   let binary = '';
@@ -161,11 +173,14 @@ export async function POST(
       const filename = `${crypto.randomUUID()}${ext}`;
       const storagePath = `${workspaceId}/${filename}`;
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage — use extension-based content type
+      // because browser file.type is unreliable (often '' or 'application/octet-stream')
+      const resolvedContentType = resolveContentType(file.name, file.type);
+
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(storagePath, fileBuffer, {
-          contentType: file.type || 'text/plain',
+        .upload(storagePath, new Uint8Array(fileBuffer), {
+          contentType: resolvedContentType,
           upsert: false,
         });
 
