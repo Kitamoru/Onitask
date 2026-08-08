@@ -180,18 +180,20 @@ export async function POST(
       }
 
       // Insert into workspace_documents
+      const insertPayload = {
+        workspace_id: workspaceId,
+        filename: file.name,
+        file_type: ext === '.md' ? 'markdown' : 'text',
+        size_bytes: file.size,
+        checksum,
+        chunk_count: 0,
+        status: 'processing' as const,
+        uploaded_by: workerData.id,
+        storage_path: storagePath,
+      };
       const { data: docData, error: docError } = await supabase
         .from('workspace_documents')
-        .insert({
-          workspace_id: workspaceId,
-          filename: file.name,
-          file_type: ext === '.md' ? 'markdown' : 'text',
-          size_bytes: file.size,
-          checksum,
-          chunk_count: 0,
-          status: 'processing',
-          uploaded_by: workerData.id,
-        })
+        .insert(insertPayload as any)
         .select()
         .single();
 
@@ -383,8 +385,10 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'document_not_found' }, { status: 404 });
     }
 
-    const storagePath = `${workspaceId}/${(docData as any).filename}`;
-    const { error: storageError } = await supabase.storage.from('documents').remove([storagePath]);
+    // Use storage_path if available, fallback to constructing from filename
+    const docAny = docData as any;
+    const deleteStoragePath = docAny.storage_path || `${workspaceId}/${docAny.filename}`;
+    const { error: storageError } = await supabase.storage.from('documents').remove([deleteStoragePath]);
     if (storageError) {
       console.error('documents: storage delete error', storageError);
     }

@@ -21,6 +21,7 @@ export interface ServerDocument {
   size_bytes: number;
   status: DocumentStatus;
   chunk_count: number;
+  storage_path?: string;
   created_at: string;
 }
 
@@ -40,6 +41,8 @@ interface DocumentsCardProps {
   uploading?: boolean;
   uploadProgress?: number;
   uploadTotal?: number;
+  // Delete tracking (for edit flow)
+  deletingId?: string | null;
 }
 
 export function DocumentsCard({
@@ -54,6 +57,7 @@ export function DocumentsCard({
   uploading = false,
   uploadProgress,
   uploadTotal,
+  deletingId = null,
 }: DocumentsCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const atLimit = files.length >= MAX_DOCUMENTS;
@@ -186,9 +190,18 @@ export function DocumentsCard({
                         type="button"
                         onClick={() => onDeleteServerDocument(doc.id)}
                         aria-label={`Удалить ${doc.filename}`}
-                        className="ml-2 shrink-0 text-text-muted hover:text-text"
+                        disabled={deletingId === doc.id}
+                        className={`ml-2 shrink-0 ${
+                          deletingId === doc.id
+                            ? 'cursor-not-allowed opacity-40'
+                            : 'text-text-muted hover:text-text'
+                        }`}
                       >
-                        <X className="h-4 w-4" />
+                        {deletingId === doc.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
                       </button>
                     )}
                   </div>

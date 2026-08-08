@@ -65,6 +65,7 @@ export function EditDeskForm({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState(initialData.name);
@@ -152,6 +153,7 @@ export function EditDeskForm({
    * Delete a server-stored document.
    */
   const handleDeleteDocument = async (documentId: string) => {
+    setDeletingId(documentId);
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/documents/${documentId}`, {
         method: 'DELETE',
@@ -163,13 +165,17 @@ export function EditDeskForm({
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
         console.error('Document delete failed:', errData);
+        alert(`Не удалось удалить документ: ${errData.error || res.statusText}`);
         return;
       }
 
-      // Update local state
+      // Update local state only on success
       setDocs((prev) => prev.filter((d) => d.id !== documentId));
     } catch (err) {
       console.error('Document delete error:', err);
+      alert('Произошла ошибка при удалении документа');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -301,6 +307,7 @@ export function EditDeskForm({
               serverDocuments={docs}
               onDeleteServerDocument={handleDeleteDocument}
               uploading={uploading}
+              deletingId={deletingId}
             />
             <ExternalLinksCard
               enabled={linksEnabled}

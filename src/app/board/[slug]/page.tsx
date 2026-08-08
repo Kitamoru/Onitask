@@ -114,9 +114,15 @@ export default function BoardDetailPage() {
           try {
             const docsRes = await fetch(`/api/workspaces/${ws.id}/documents`, {
               method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': getTelegramInitData(),
+              },
             });
-            if (docsRes.ok) {
+            if (!docsRes.ok) {
+              console.error('Board detail: failed to load documents, status:', docsRes.status);
+              setError(`Не удалось загрузить документы (${docsRes.status})`);
+            } else {
               const docsJson = await docsRes.json();
               if (docsJson.success) {
                 serverDocuments = (docsJson.data ?? []).map((d: any) => ({
@@ -126,6 +132,7 @@ export default function BoardDetailPage() {
                   size_bytes: d.size_bytes,
                   status: d.status,
                   chunk_count: d.chunk_count,
+                  storage_path: d.storage_path,
                   created_at: d.created_at,
                 }));
               }
