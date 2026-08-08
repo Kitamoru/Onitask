@@ -10,7 +10,10 @@ import { StoryPointCostCard } from '@/components/desk-create/StoryPointCostCard'
 import { CognitiveWeightCard } from '@/components/desk-create/CognitiveWeightCard';
 import { CoworkingSection } from '@/components/desk-create/CoworkingSection';
 import { ContextSection } from '@/components/desk-create/ContextSection';
-import { DocumentsCard } from '@/components/desk-create/DocumentsCard';
+import {
+  DocumentsCard,
+  type ServerDocument,
+} from '@/components/desk-create/DocumentsCard';
 import {
   ExternalLinksCard,
   type ExternalLink,
@@ -31,6 +34,7 @@ export interface BoardDetailProps {
   documentsEnabled: boolean;
   linksEnabled: boolean;
   links: ExternalLink[];
+  serverDocuments?: ServerDocument[];
   trafficLightEnabled: boolean;
   warningDays: number;
   urgentDays: number;
@@ -49,6 +53,7 @@ export function BoardDetail({
   documentsEnabled,
   linksEnabled,
   links,
+  serverDocuments = [],
   trafficLightEnabled,
   warningDays,
   urgentDays,
@@ -121,6 +126,7 @@ export function BoardDetail({
               onEnabledChange={() => {}}
               files={[]}
               onFilesChange={() => {}}
+              serverDocuments={serverDocuments}
               disabled
               readOnly
             />

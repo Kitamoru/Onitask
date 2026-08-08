@@ -11,12 +11,14 @@
  * 
  * Behavior:
  * - Fetches pending doc_process jobs from enrichment_queue
- * - Downloads document content from Supabase Storage
- * - Chunks text into ~500-1000 token segments
+ * - Downloads document content from Supabase Storage (path from payload.storage_path)
+ * - Chunks text into ~500 token segments
  * - Generates embeddings via NeuralDeep bge-m3
- * - Inserts chunks into workspace_doc_chunks
+ * - Inserts chunks into workspace_doc_chunks in batches of 10 (memory-safe)
  * - Updates workspace_documents status to 'ready'
  * - Marks enrichment_queue job as 'done'
+ * 
+ * v8: Memory optimization — batch inserts, reduced chunk size, storage_path support.
  */
 
 // @ts-nocheck — Supabase Edge Function uses Deno runtime, not Node.js
@@ -36,6 +38,7 @@ interface EnrichmentJob {
     document_id: string;
     filename: string;
     file_type: string;
+    storage_path?: string;
   };
 }
 
@@ -52,9 +55,10 @@ interface DocChunk {
 // Constants
 // ═══════════════════════════════════════════════════════
 
-const CHUNK_SIZE = 800;        // tokens per chunk (approximate for UTF-8)
+const CHUNK_SIZE = 500;        // tokens per chunk (reduced from 800 — memory-safe)
 const CHUNK_OVERLAP = 100;     // overlapping tokens between chunks
-const MAX_CHUNKS_PER_DOC = 200; // safety limit (20 files × ~40 chunks = 800 vectors)
+const MAX_CHUNKS_PER_DOC = 50; // safety limit (reduced from 200 — memory-safe)
+const BATCH_SIZE = 10;         // insert chunks in batches of 10 (memory-safe)
 const MINIMUM_CHUNK_LENGTH = 50; // minimum characters before creating a chunk
 
 // ═══════════════════════════════════════════════════════
@@ -113,7 +117,7 @@ function extractMetaHeaders(chunk: string): Record<string, unknown> {
 }
 
 /**
- * Generate embedding via NeuralDeep Hub.
+ * Generate embedding via NeuralDeep Hub (bge-m3).
  */
 async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
   const res = await fetch('https://api.neuraldeep.ru/v1/embeddings', {
@@ -150,6 +154,7 @@ serve(async (req: Request) => {
     const neuralDeepKey = Deno.env.get('NEURALDEEP_KEY') || '';
 
     if (!neuralDeepKey) {
+      console.error('doc_process: NEURALDEEP_KEY not configured');
       return new Response(
         JSON.stringify({ error: 'NEURALDEEP_KEY not configured' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } },
@@ -181,7 +186,8 @@ serve(async (req: Request) => {
       .update({ status: 'processing', locked_at: new Date().toISOString() })
       .eq('id', job.id);
 
-    const { document_id, filename, file_type } = job.payload;
+    const { document_id, filename, file_type, storage_path } = job.payload;
+    console.log(`doc_process: processing job ${job.id} doc=${document_id} file=${filename}`);
 
     // ── 3. Fetch document metadata ─────────────────────────
     const { data: doc, error: docError } = await supabase
@@ -203,20 +209,11 @@ serve(async (req: Request) => {
     }
 
     // ── 4. Download document content from Storage ──────────
-    const storagePath = `${doc.workspace_id}/${document_id}_${filename}`;
-    
-    // Note: In production, document content should be stored in Supabase Storage.
-    // For now, we read from a text field or storage bucket.
-    // The actual download path depends on how documents are uploaded.
-    // This is a placeholder — adjust based on your storage strategy.
-    
-    // Alternative: if content is stored inline (for small text/markdown files):
-    // We'll assume the content was pre-stored and we need to chunk it.
-    // For MVP, we'll use a simple approach: read from a hypothetical content field.
-    
-    // Since workspace_documents doesn't have a content field (only metadata),
-    // the actual content must come from Supabase Storage.
-    
+    // v8: Use storage_path from payload (set by route.ts on upload).
+    // Fallback to legacy path for backward compatibility.
+    const storagePath = storage_path || `${doc.workspace_id}/${document_id}_${filename}`;
+    console.log(`doc_process: downloading storage_path=${storagePath}`);
+
     const { data: fileData, error: storageError } = await supabase.storage
       .from('documents')
       .download(storagePath);
@@ -234,13 +231,14 @@ serve(async (req: Request) => {
         .eq('id', job.id);
       
       return new Response(
-        JSON.stringify({ error: 'storage_download_failed' }),
+        JSON.stringify({ error: 'storage_download_failed', path: storagePath }),
         { status: 500, headers: { 'Content-Type': 'application/json' } },
       );
     }
 
     // ── 5. Process content ─────────────────────────────────
     const textContent = await fileData.text();
+    console.log(`doc_process: downloaded ${textContent.length} chars`);
     
     if (!textContent || textContent.trim().length === 0) {
       await supabase
@@ -261,6 +259,7 @@ serve(async (req: Request) => {
 
     // ── 6. Chunk the document ──────────────────────────────
     const chunks = chunkText(textContent, CHUNK_SIZE, CHUNK_OVERLAP);
+    console.log(`doc_process: chunked into ${chunks.length} chunks`);
     
     if (chunks.length === 0) {
       await supabase
@@ -282,45 +281,56 @@ serve(async (req: Request) => {
     // Safety limit
     const limitedChunks = chunks.slice(0, MAX_CHUNKS_PER_DOC);
 
-    // ── 7. Generate embeddings and insert chunks ───────────
-    const insertedChunks: DocChunk[] = [];
+    // ── 7. Generate embeddings and insert chunks in batches ──
+    // v8: Process in batches of BATCH_SIZE — insert and free memory.
+    let insertedCount = 0;
     const errors: string[] = [];
 
-    for (let i = 0; i < limitedChunks.length; i++) {
-      const chunkTextContent = limitedChunks[i];
-      
-      try {
-        const embedding = await generateEmbedding(chunkTextContent, neuralDeepKey);
+    for (let batchStart = 0; batchStart < limitedChunks.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, limitedChunks.length);
+      const batch: DocChunk[] = [];
+
+      for (let i = batchStart; i < batchEnd; i++) {
+        const chunkTextContent = limitedChunks[i];
         
-        insertedChunks.push({
-          document_id,
-          workspace_id: doc.workspace_id,
-          chunk_index: i,
-          content: chunkTextContent,
-          meta_headers: extractMetaHeaders(chunkTextContent),
-          embedding,
-        });
-      } catch (err) {
-        console.error(`doc_process: embedding failed for chunk ${i}`, err);
-        errors.push(`chunk_${i}: ${err instanceof Error ? err.message : 'unknown'}`);
+        try {
+          const embedding = await generateEmbedding(chunkTextContent, neuralDeepKey);
+          
+          batch.push({
+            document_id,
+            workspace_id: doc.workspace_id,
+            chunk_index: i,
+            content: chunkTextContent,
+            meta_headers: extractMetaHeaders(chunkTextContent),
+            embedding,
+          });
+        } catch (err) {
+          console.error(`doc_process: embedding failed for chunk ${i}`, err);
+          errors.push(`chunk_${i}: ${err instanceof Error ? err.message : 'unknown'}`);
+        }
       }
+
+      // Insert batch
+      if (batch.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: insertError } = await supabase
+          .from('workspace_doc_chunks' as any)
+          .insert(batch as any);
+
+        if (insertError) {
+          console.error('doc_process: chunk insert error', insertError);
+          errors.push(`insert_batch_${batchStart}: ${JSON.stringify(insertError)}`);
+        } else {
+          insertedCount += batch.length;
+          console.log(`doc_process: inserted batch ${batchStart}-${batchEnd} (${batch.length} chunks)`);
+        }
+      }
+
+      // Free memory — batch goes out of scope
     }
 
-    // ── 8. Insert chunks into workspace_doc_chunks ─────────
-    if (insertedChunks.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await supabase
-        .from('workspace_doc_chunks' as any)
-        .insert(insertedChunks as any);
-
-      if (insertError) {
-        console.error('doc_process: chunk insert error', insertError);
-        errors.push(`insert: ${JSON.stringify(insertError)}`);
-      }
-    }
-
-    // ── 9. Update document status ──────────────────────────
-    const finalStatus = errors.length > 0 && insertedChunks.length === 0
+    // ── 8. Update document status ──────────────────────────
+    const finalStatus = errors.length > 0 && insertedCount === 0
       ? 'failed'
       : 'ready';
 
@@ -328,11 +338,11 @@ serve(async (req: Request) => {
       .from('workspace_documents')
       .update({
         status: finalStatus,
-        chunk_count: insertedChunks.length,
+        chunk_count: insertedCount,
       })
       .eq('id', document_id);
 
-    // ── 10. Mark job as done/failed ────────────────────────
+    // ── 9. Mark job as done/failed ────────────────────────
     await supabase
       .from('enrichment_queue')
       .update({
@@ -341,7 +351,7 @@ serve(async (req: Request) => {
       })
       .eq('id', job.id);
 
-    // ── 11. Invalidate workspace context if needed ─────────
+    // ── 10. Invalidate workspace context if needed ─────────
     // New documents may make previous context stale
     await supabase
       .from('workspace_settings')
@@ -365,7 +375,7 @@ serve(async (req: Request) => {
       JSON.stringify({
         message: 'Document processed successfully',
         document_id,
-        chunk_count: insertedChunks.length,
+        chunk_count: insertedCount,
         errors: errors.length > 0 ? errors : undefined,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },

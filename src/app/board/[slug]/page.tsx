@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
+import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -46,6 +47,7 @@ export default function BoardDetailPage() {
     documentsEnabled: boolean;
     linksEnabled: boolean;
     links: ExternalLink[];
+    serverDocuments: ServerDocument[];
     trafficLightEnabled: boolean;
     warningDays: number;
     urgentDays: number;
@@ -97,12 +99,39 @@ export default function BoardDetailPage() {
 
         let settingsData: any = null;
         let linksData: any[] = [];
+        let serverDocuments: ServerDocument[] = [];
 
         if (settingsRes.ok) {
           const settingsJson = await settingsRes.json();
           if (settingsJson.success) {
             settingsData = settingsJson.data?.workspace_settings;
             linksData = settingsJson.data?.workspace_links ?? [];
+          }
+        }
+
+        // 3. Load server documents
+        if (settingsData?.doc_kb_config?.enabled) {
+          try {
+            const docsRes = await fetch(`/api/workspaces/${ws.id}/documents`, {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            if (docsRes.ok) {
+              const docsJson = await docsRes.json();
+              if (docsJson.success) {
+                serverDocuments = (docsJson.data ?? []).map((d: any) => ({
+                  id: d.id,
+                  filename: d.filename,
+                  file_type: d.file_type,
+                  size_bytes: d.size_bytes,
+                  status: d.status,
+                  chunk_count: d.chunk_count,
+                  created_at: d.created_at,
+                }));
+              }
+            }
+          } catch (err) {
+            console.error('Board detail: failed to load documents', err);
           }
         }
 
@@ -135,6 +164,7 @@ export default function BoardDetailPage() {
             label: link.name || link.label || '',
             url: link.url || '',
           })),
+          serverDocuments,
           trafficLightEnabled: hasSignals,
           warningDays: amberSignal?.value ?? 3,
           urgentDays: redSignal?.value ?? 1,
