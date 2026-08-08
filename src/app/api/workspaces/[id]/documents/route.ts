@@ -37,13 +37,14 @@ function computeChecksum(buffer: ArrayBuffer): string {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!TELEGRAM_BOT_TOKEN) {
     return NextResponse.json({ success: false, error: 'server_configuration_error' }, { status: 500 });
   }
 
   try {
+    const { id: workspaceId } = await params;
     const initData = req.headers.get('x-telegram-init-data') || '';
     if (!initData) {
       return NextResponse.json({ success: false, error: 'missing_init_data' }, { status: 400 });
@@ -53,8 +54,6 @@ export async function POST(
     if (!validation.valid || !validation.user) {
       return NextResponse.json({ success: false, error: validation.error || 'invalid_init_data' }, { status: 401 });
     }
-
-    const workspaceId = params.id;
     const supabase = createServerClient();
 
     // Verify user has access to this workspace
@@ -281,13 +280,14 @@ export async function GET(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!TELEGRAM_BOT_TOKEN) {
     return NextResponse.json({ success: false, error: 'server_configuration_error' }, { status: 500 });
   }
 
   try {
+    const { id: workspaceId } = await params;
     const initData = req.headers.get('x-telegram-init-data') || '';
     if (!initData) {
       return NextResponse.json({ success: false, error: 'missing_init_data' }, { status: 400 });
@@ -297,8 +297,6 @@ export async function DELETE(
     if (!validation.valid || !validation.user) {
       return NextResponse.json({ success: false, error: validation.error || 'invalid_init_data' }, { status: 401 });
     }
-
-    const workspaceId = params.id;
     const url = new URL(req.url);
     const documentId = url.pathname.split('/').pop();
 
