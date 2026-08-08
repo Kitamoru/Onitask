@@ -18,7 +18,8 @@ import { useData } from '@/contexts/DataContext';
  * 2. If user already has a workspace (not new), redirect to /flowboard
  * 3. User fills CreateDeskForm
  * 4. Submit → POST /api/workspaces with form data + Telegram init_data
- * 5. On success → redirect to /boards
+ * 5. If documents selected → POST /api/workspaces/{id}/documents
+ * 6. On success → redirect to /boards
  */
 
 export default function CreateBoardPage() {
@@ -41,6 +42,34 @@ export default function CreateBoardPage() {
     }
     return '';
   }
+
+  /**
+   * Upload files to the workspace documents endpoint.
+   */
+  const uploadDocuments = async (workspaceId: string, files: File[]): Promise<boolean> => {
+    if (!files.length) return true;
+
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    const res = await fetch(`/api/workspaces/${workspaceId}/documents`, {
+      method: 'POST',
+      headers: {
+        'x-telegram-init-data': getTelegramInitData(),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ error: res.statusText }));
+      console.error('Document upload failed:', errData);
+      return false;
+    }
+
+    return true;
+  };
 
   /**
    * Maps the new CreateDeskForm format to the API payload.
@@ -100,6 +129,18 @@ export default function CreateBoardPage() {
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(errData.error || errData.message || res.statusText || 'Failed to create board');
+      }
+
+      const result = await res.json();
+      const workspaceId = result.data?.workspace?.id;
+
+      // Upload documents if any were selected
+      if (workspaceId && value.documents.length > 0) {
+        const uploadSuccess = await uploadDocuments(workspaceId, value.documents);
+        if (!uploadSuccess) {
+          // Don't block creation, just log the error
+          console.warn('Document upload failed, but workspace was created successfully');
+        }
       }
 
       await refresh();

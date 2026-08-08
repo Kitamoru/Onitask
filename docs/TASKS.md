@@ -237,14 +237,19 @@ format is deliberately compact so that agents can load the file quickly.
       ai_.md §3.6. Реализовано: `src/app/api/ai/create-task/route.ts` — полный Route Handler: parse → assignee matching → INSERT `tasks` со всеми полями (raw_input, clarity_score, complexity, enrichment_strategy, cognitive_weight, tags, column) → условный `task_enrichments`(skip) или `enrichment_queue` → `task_events` (parse_rewrite). `AiInput.tsx` вызывает `/api/ai/create-task`; `CorrectionSheet.tsx` редактирует уже созданную задачу через PATCH `/api/tasks/:id` (условный показ по §3.7).
 - [x] INV-05 Ревью: все AI-outputs F-04 содержат `workspace_id` (tenant isolation) #ai !high @blocked_by:F04-07
       Master A-7, INV-05. Закрыто: `/api/ai/parse-task` резолвит `workspace_id` через `workers.source_id = profileId`, `/api/tasks` POST использует `worker.workspace_id`.
-- [ ] F04-08 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-04 Parse #ai !high @blocked_by:F04-03
-      security §1.1, ai_.md §3.4. Проверка: параметр передаётся в каждый API-запрос Groq.
-- [ ] F04-09 data_sharing_level branching в F-04: `sharingLevel !== 'minimal'` guard для `workspace_context_cache` #ai !high @blocked_by:F04-03
-      ai_.md §3.4 (v0.10.0), security §2.1. При 'minimal' — только teamBlock + workspace_context.
-- [ ] F04-10 Zod-валидация F-04 output с безопасным fallback #ai !high @blocked_by:F04-03
-      security §1.1, ai_.md §2.5. При несоответствии схеме — fallback на безопасные дефолты, не пробрасывать сырой LLM-вывод.
-- [ ] F04-11 `workspace_context_cache` в F-04: settings SELECT + `workspaceContextCacheBlock` в промпт #ai !med @blocked_by:F04-03
-      ai_.md §3.4 (v0.9.0). Оперативный снапшот для точного assignee/priority.
+- [x] F04-08 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-04 Parse #ai !high ✅
+       security §1.1, ai_.md §3.4. Реализовано: `src/lib/ai/groq.ts` строка 96 (`response_format: { type: 'json_object' }`).
+       Параметр передаётся в каждый API-запрос Groq через `chatCompletion()`.
+- [x] F04-09 data_sharing_level branching в F-04: `sharingLevel !== 'minimal'` guard для `workspace_context_cache` #ai !high ✅
+       ai_.md §3.4 (v0.10.0), security §2.1. Реализовано: `src/lib/ai/prompts.ts` строки 41-45.
+       При 'minimal' — cache блок пропускается, отправляются только teamBlock + workspace_context.
+- [x] F04-10 Zod-валидация F-04 output с безопасным fallback #ai !high ✅
+       security §1.1, ai_.md §2.5. Реализовано: `src/lib/ai/types.ts` (schema строки 29-41, validateParseResponse строки 126-132, SAFE_FALLBACK_PARSE строки 108-120).
+       При несоответствии схеме — возвращается SAFE_FALLBACK_PARSE, сырой LLM-вывод не пробрасывается.
+- [x] F04-11 `workspace_context_cache` в F-04: settings SELECT + `workspaceContextCacheBlock` в промпт #ai !med ✅
+       ai_.md §3.4 (v0.9.0). Реализовано: `src/app/api/ai/create-task/route.ts` строки 98-99 (GET cache), строка 114 (передача в промпт).
+       `src/lib/ai/workspaceContextCache.ts` (getWorkspaceContextCache utility).
+       `src/lib/ai/prompts.ts` строки 39-45 (workspaceContextCacheBlock builder).
 
 ---
 

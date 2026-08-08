@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { EditDeskForm } from '@/components/desk-create/EditDeskForm';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
+import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -43,6 +44,7 @@ export default function BoardEditPage() {
     warningDays: number;
     urgentDays: number;
   } | null>(null);
+  const [serverDocuments, setServerDocuments] = useState<ServerDocument[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -100,6 +102,23 @@ export default function BoardEditPage() {
             linksData = settingsJson.data?.workspace_links ?? [];
           }
         }
+
+        // 3. Load server documents
+        const docsRes = await fetch(`/api/workspaces/${ws.id}/documents`, {
+          method: 'GET',
+          headers: {
+            'x-telegram-init-data': getTelegramInitData(),
+          },
+        });
+
+        let docsData: ServerDocument[] = [];
+        if (docsRes.ok) {
+          const docsJson = await docsRes.json();
+          if (docsJson.success) {
+            docsData = docsJson.data?.documents ?? [];
+          }
+        }
+        setServerDocuments(docsData);
 
         // Parse deadline_signals with level field
         const signals = (settingsData?.deadline_signals ?? []) as any[];
@@ -192,6 +211,7 @@ export default function BoardEditPage() {
       <EditDeskForm
         workspaceId={workspace.id}
         initialData={initialData}
+        serverDocuments={serverDocuments}
         onAddColleague={() => router.push(`/board/${slug}/members`)}
       />
     </main>

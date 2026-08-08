@@ -10,7 +10,7 @@ import { StoryPointCostCard } from "@/components/desk-create/StoryPointCostCard"
 import { CognitiveWeightCard } from "@/components/desk-create/CognitiveWeightCard";
 import { CoworkingSection } from "@/components/desk-create/CoworkingSection";
 import { ContextSection } from "@/components/desk-create/ContextSection";
-import { DocumentsCard } from "@/components/desk-create/DocumentsCard";
+import { DocumentsCard, type ServerDocument } from "@/components/desk-create/DocumentsCard";
 import {
   ExternalLinksCard,
   type ExternalLink,
@@ -40,6 +40,7 @@ export type EditDeskFormValue = {
 export function EditDeskForm({
   workspaceId,
   initialData,
+  serverDocuments,
   onAddColleague,
 }: {
   workspaceId: string;
@@ -58,10 +59,12 @@ export function EditDeskForm({
     warningDays: number;
     urgentDays: number;
   };
+  serverDocuments?: ServerDocument[];
   onAddColleague: () => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState(initialData.name);
@@ -73,7 +76,10 @@ export function EditDeskForm({
   const [colleagueCount] = useState(0);
   const [context, setContext] = useState(initialData.context);
   const [documentsEnabled, setDocumentsEnabled] = useState(initialData.documentsEnabled);
-  const [documents, setDocuments] = useState<File[]>([]);
+  // Local files for new uploads (edit flow)
+  const [localFiles, setLocalFiles] = useState<File[]>([]);
+  // Server documents state (for deletion tracking)
+  const [docs, setDocs] = useState<ServerDocument[]>(serverDocuments ?? []);
   const [linksEnabled, setLinksEnabled] = useState(initialData.linksEnabled);
   const [links, setLinks] = useState<ExternalLink[]>(initialData.links);
   const [trafficLightEnabled, setTrafficLightEnabled] = useState(initialData.trafficLightEnabled);
@@ -82,6 +88,91 @@ export function EditDeskForm({
 
   const canSubmit = name.trim().length > 0;
 
+  function getTelegramInitData(): string {
+    if (typeof window !== 'undefined') {
+      return (window as any).Telegram?.WebApp?.initData || '';
+    }
+    return '';
+  }
+
+  /**
+   * Upload local files to the workspace documents endpoint.
+   */
+  const uploadLocalFiles = async (): Promise<boolean> => {
+    if (!localFiles.length) return true;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      for (const file of localFiles) {
+        formData.append('files', file);
+      }
+
+      const res = await fetch(`/api/workspaces/${workspaceId}/documents`, {
+        method: 'POST',
+        headers: {
+          'x-telegram-init-data': getTelegramInitData(),
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: res.statusText }));
+        console.error('Document upload failed:', errData);
+        return false;
+      }
+
+      // Refresh document list
+      const docsRes = await fetch(`/api/workspaces/${workspaceId}/documents`, {
+        method: 'GET',
+        headers: {
+          'x-telegram-init-data': getTelegramInitData(),
+        },
+      });
+
+      if (docsRes.ok) {
+        const docsJson = await docsRes.json();
+        if (docsJson.success) {
+          setDocs(docsJson.data?.documents ?? []);
+        }
+      }
+
+      // Clear local files after successful upload
+      setLocalFiles([]);
+      return true;
+    } catch (err) {
+      console.error('Document upload error:', err);
+      return false;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /**
+   * Delete a server-stored document.
+   */
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/documents/${documentId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-telegram-init-data': getTelegramInitData(),
+        },
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: res.statusText }));
+        console.error('Document delete failed:', errData);
+        return;
+      }
+
+      // Update local state
+      setDocs((prev) => prev.filter((d) => d.id !== documentId));
+    } catch (err) {
+      console.error('Document delete error:', err);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
 
@@ -89,9 +180,13 @@ export function EditDeskForm({
     setError(null);
 
     try {
-      const initData = typeof window !== 'undefined'
-        ? (window as any).Telegram?.WebApp?.initData || ''
-        : '';
+      // First, upload any local files
+      const uploadSuccess = await uploadLocalFiles();
+      if (!uploadSuccess) {
+        throw new Error('Failed to upload documents');
+      }
+
+      const initData = getTelegramInitData();
 
       const res = await fetch('/api/workspaces', {
         method: 'PUT',
@@ -201,8 +296,11 @@ export function EditDeskForm({
             <DocumentsCard
               enabled={documentsEnabled}
               onEnabledChange={setDocumentsEnabled}
-              files={documents}
-              onFilesChange={setDocuments}
+              files={localFiles}
+              onFilesChange={setLocalFiles}
+              serverDocuments={docs}
+              onDeleteServerDocument={handleDeleteDocument}
+              uploading={uploading}
             />
             <ExternalLinksCard
               enabled={linksEnabled}
@@ -233,10 +331,10 @@ export function EditDeskForm({
       >
         <Button
           variant="solid"
-          disabled={!canSubmit || saving}
+          disabled={!canSubmit || saving || uploading}
           onClick={handleSubmit}
         >
-          {saving ? 'Сохранение...' : 'Сохранить'}
+          {saving ? 'Сохранение...' : uploading ? 'Загрузка документов...' : 'Сохранить'}
         </Button>
       </div>
     </div>
