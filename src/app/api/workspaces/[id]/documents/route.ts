@@ -225,7 +225,7 @@ export async function POST(
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!TELEGRAM_BOT_TOKEN) {
     return NextResponse.json({ success: false, error: 'server_configuration_error' }, { status: 500 });
@@ -242,7 +242,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: validation.error || 'invalid_init_data' }, { status: 401 });
     }
 
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const supabase = createServerClient();
 
     // Verify user has access to this workspace
