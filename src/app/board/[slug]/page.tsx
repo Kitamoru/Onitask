@@ -109,37 +109,35 @@ export default function BoardDetailPage() {
           }
         }
 
-        // 3. Load server documents
-        if (settingsData?.doc_kb_config?.enabled) {
-          try {
-            const docsRes = await fetch(`/api/workspaces/${ws.id}/documents`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-telegram-init-data': getTelegramInitData(),
-              },
-            });
-            if (!docsRes.ok) {
-              console.error('Board detail: failed to load documents, status:', docsRes.status);
-              setError(`Не удалось загрузить документы (${docsRes.status})`);
-            } else {
-              const docsJson = await docsRes.json();
-              if (docsJson.success) {
-                serverDocuments = (docsJson.data ?? []).map((d: any) => ({
-                  id: d.id,
-                  filename: d.filename,
-                  file_type: d.file_type,
-                  size_bytes: d.size_bytes,
-                  status: d.status,
-                  chunk_count: d.chunk_count,
-                  storage_path: d.storage_path,
-                  created_at: d.created_at,
-                }));
-              }
+        // 3. Load server documents — always fetch them regardless of doc_kb_config.enabled
+        //    This ensures users can see their uploaded documents even if the feature was later disabled.
+        try {
+          const docsRes = await fetch(`/api/workspaces/${ws.id}/documents`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-telegram-init-data': getTelegramInitData(),
+            },
+          });
+          if (!docsRes.ok) {
+            console.warn('Board detail: failed to load documents, status:', docsRes.status);
+          } else {
+            const docsJson = await docsRes.json();
+            if (docsJson.success) {
+              serverDocuments = (docsJson.data ?? []).map((d: any) => ({
+                id: d.id,
+                filename: d.filename,
+                file_type: d.file_type,
+                size_bytes: d.size_bytes,
+                status: d.status,
+                chunk_count: d.chunk_count,
+                storage_path: d.storage_path,
+                created_at: d.created_at,
+              }));
             }
-          } catch (err) {
-            console.error('Board detail: failed to load documents', err);
           }
+        } catch (err) {
+          console.error('Board detail: failed to load documents', err);
         }
 
         // Parse deadline_signals with level field
@@ -165,7 +163,8 @@ export default function BoardDetailPage() {
           cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
           colleagueCount: memberWorkers.length,
           context: settingsData?.workspace_context || '',
-          documentsEnabled: settingsData?.doc_kb_config?.enabled ?? false,
+          // Show documents section if feature was enabled OR if there are existing documents
+          documentsEnabled: (settingsData?.doc_kb_config?.enabled ?? false) || serverDocuments.length > 0,
           linksEnabled: linksData.length > 0,
           links: linksData.map((link: any) => ({
             label: link.name || link.label || '',

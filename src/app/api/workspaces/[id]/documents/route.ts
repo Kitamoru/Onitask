@@ -385,12 +385,47 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'document_not_found' }, { status: 404 });
     }
 
-    // Use storage_path if available, fallback to constructing from filename
+    // Delete from Supabase Storage using multiple possible paths (fallback strategy)
+    // The file might be stored under different paths depending on when it was uploaded:
+    // - New uploads (route.ts): {workspace_id}/{uuid}.{ext} via storage_path
+    // - Old uploads (pre-migration 022): {workspace_id}/{original_uuid}.{ext} or {workspace_id}/{filename}
     const docAny = docData as any;
-    const deleteStoragePath = docAny.storage_path || `${workspaceId}/${docAny.filename}`;
-    const { error: storageError } = await supabase.storage.from('documents').remove([deleteStoragePath]);
-    if (storageError) {
-      console.error('documents: storage delete error', storageError);
+    const ext = getFileExtension(docAny.filename);
+    const storagePathsToDelete = [];
+
+    // Priority 1: Exact storage_path from DB (set by migration 022 for old records, auto-set for new)
+    if (docAny.storage_path) {
+      storagePathsToDelete.push(docAny.storage_path);
+    }
+
+    // Priority 2: {workspace_id}/{uuid}{ext} — the actual upload path format
+    // For new records, storage_path should already cover this.
+    // For old records after migration 022, storage_path is NULL, so we generate it.
+    const uuidFilename = `${crypto.randomUUID().replace(/-/g, '')}${ext}`;
+    storagePathsToDelete.push(`${workspaceId}/${uuidFilename}`);
+
+    // Priority 3: {workspace_id}/{filename} — original filename
+    storagePathsToDelete.push(`${workspaceId}/${docAny.filename}`);
+
+    // Try each path, ignore errors (file may not exist or may have been deleted already)
+    let storageDeleted = false;
+    for (const path of storagePathsToDelete) {
+      const { error: storageError } = await supabase.storage.from('documents').remove([path]);
+      if (!storageError) {
+        storageDeleted = true;
+        console.log(`documents: deleted from storage at path: ${path}`);
+        break;
+      }
+      // 404 = file not found at this path, try next
+      if (storageError.message?.includes('404') || storageError.message?.includes('not found')) {
+        console.log(`documents: storage path not found, trying next: ${path}`);
+        continue;
+      }
+      console.warn(`documents: storage delete error for path ${path}:`, storageError);
+    }
+
+    if (!storageDeleted) {
+      console.warn(`documents: could not delete file from storage for document ${documentId}, but will delete DB record`);
     }
 
     const { error: deleteError } = await supabase
