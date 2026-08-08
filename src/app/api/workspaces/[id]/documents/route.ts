@@ -1,4 +1,4 @@
-pppkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkpimport { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { validateTelegramInitData } from '@/lib/telegram/validate';
 import { createServerClient } from '../../../../../../lib/supabase';
 
@@ -24,7 +24,6 @@ function getFileExtension(filename: string): string {
  * Browser's file.type is unreliable (often '' or 'application/octet-stream').
  */
 function resolveContentType(filename: string, fileType?: string): string {
-  // Trust browser type only if it matches our allowed types
   if (fileType === 'text/markdown' || fileType === 'text/plain') return fileType;
   const ext = getFileExtension(filename);
   return ext === '.md' ? 'text/markdown' : 'text/plain';
@@ -32,16 +31,6 @@ function resolveContentType(filename: string, fileType?: string): string {
 
 function computeChecksum(buffer: ArrayBuffer): string {
   const hash = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < hash.length; i++) {
-    binary += String.fromCharCode(hash[i]);
-  }
-  // Use SubtleCrypto if available, fallback to simple hash
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    // This is async, but we need sync here - use simple checksum
-    // In production, you'd want to make this async
-  }
-  // Simple checksum for now (sum of bytes)
   let sum = 0;
   for (let i = 0; i < hash.length; i++) {
     sum = (sum + hash[i]) % 1000000;
@@ -70,7 +59,7 @@ export async function POST(
     }
     const supabase = createServerClient();
 
-    // Resolve Telegram user ID to profile ID (workers.source_id stores profile.id, not telegram_id)
+    // Resolve Telegram user ID to profile ID
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('id')
@@ -175,8 +164,7 @@ export async function POST(
       const filename = `${crypto.randomUUID()}${ext}`;
       const storagePath = `${workspaceId}/${filename}`;
 
-      // Upload to Supabase Storage — use extension-based content type
-      // because browser file.type is unreliable (often '' or 'application/octet-stream')
+      // Use extension-based content type because browser file.type is unreliable
       const resolvedContentType = resolveContentType(file.name, file.type);
 
       const { error: uploadError } = await supabase.storage
@@ -209,7 +197,6 @@ export async function POST(
 
       if (docError) {
         console.error('documents: insert error', docError);
-        // Cleanup storage
         await supabase.storage.from('documents').remove([storagePath]);
         continue;
       }
@@ -240,9 +227,7 @@ export async function POST(
     }
 
     // Fire-and-forget: trigger doc-process Edge Function immediately
-    // This ensures documents start processing right away without waiting for cron polling.
-    // The function itself fetches pending jobs from enrichment_queue.
-    // We use service_role_key because doc-process has verify_jwt: true.
+    // The function fetches pending jobs from enrichment_queue itself.
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && queueJobs.length > 0) {
       void fetch(`${SUPABASE_URL}/functions/v1/doc-process`, {
         method: 'POST',
@@ -271,7 +256,7 @@ export async function POST(
 }
 
 /**
- * GET /api/workspaces/[id]/documents — List workspace documents
+ * GET /api/workspaces/[id]/documents - List workspace documents
  */
 export async function GET(
   req: NextRequest,
@@ -295,7 +280,6 @@ export async function GET(
     const { id: workspaceId } = await params;
     const supabase = createServerClient();
 
-    // Resolve Telegram user ID to profile ID
     const { data: profileData } = await supabase
       .from('profiles')
       .select('id')
@@ -306,7 +290,6 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'profile_not_found' }, { status: 404 });
     }
 
-    // Verify user has access to this workspace
     const { data: workerData, error: workerError } = await supabase
       .from('workers')
       .select('id')
@@ -318,7 +301,6 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
     }
 
-    // Get documents ordered by created_at desc
     const { data: docs, error: docsError } = await supabase
       .from('workspace_documents')
       .select('*')
@@ -369,7 +351,6 @@ export async function DELETE(
 
     const supabase = createServerClient();
 
-    // Resolve Telegram user ID to profile ID
     const { data: profileData } = await supabase
       .from('profiles')
       .select('id')
@@ -380,7 +361,6 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'profile_not_found' }, { status: 404 });
     }
 
-    // Verify user has access to this workspace
     const { data: workerData, error: workerError } = await supabase
       .from('workers')
       .select('id')
@@ -392,7 +372,6 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
     }
 
-    // Get document info
     const { data: docData, error: docError } = await supabase
       .from('workspace_documents')
       .select('*')
@@ -404,14 +383,12 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'document_not_found' }, { status: 404 });
     }
 
-    // Delete from Storage
     const storagePath = `${workspaceId}/${(docData as any).filename}`;
     const { error: storageError } = await supabase.storage.from('documents').remove([storagePath]);
     if (storageError) {
       console.error('documents: storage delete error', storageError);
     }
 
-    // Delete from workspace_documents
     const { error: deleteError } = await supabase
       .from('workspace_documents')
       .delete()
@@ -422,7 +399,6 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'delete_failed' }, { status: 400 });
     }
 
-    // Cancel pending enrichment jobs
     await supabase
       .from('enrichment_queue')
       .delete()
