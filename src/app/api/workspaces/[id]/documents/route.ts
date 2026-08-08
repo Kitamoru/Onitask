@@ -56,12 +56,28 @@ export async function POST(
     }
     const supabase = createServerClient();
 
+    // Resolve Telegram user ID to profile ID (workers.source_id stores profile.id, not telegram_id)
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('telegram_id', Number(validation.user.id))
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('documents: profile query error', profileError);
+      return NextResponse.json({ success: false, error: 'database_error' }, { status: 500 });
+    }
+
+    if (!profileData) {
+      return NextResponse.json({ success: false, error: 'profile_not_found' }, { status: 404 });
+    }
+
     // Verify user has access to this workspace
     const { data: workerData, error: workerError } = await supabase
       .from('workers')
       .select('id, role')
       .eq('workspace_id', workspaceId)
-      .eq('source_id', validation.user.id)
+      .eq('source_id', profileData.id)
       .maybeSingle();
 
     if (workerError || !workerData) {
@@ -244,12 +260,23 @@ export async function GET(
     const { id: workspaceId } = await params;
     const supabase = createServerClient();
 
+    // Resolve Telegram user ID to profile ID
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('telegram_id', Number(validation.user.id))
+      .maybeSingle();
+
+    if (!profileData) {
+      return NextResponse.json({ success: false, error: 'profile_not_found' }, { status: 404 });
+    }
+
     // Verify user has access to this workspace
     const { data: workerData, error: workerError } = await supabase
       .from('workers')
       .select('id')
       .eq('workspace_id', workspaceId)
-      .eq('source_id', validation.user.id)
+      .eq('source_id', profileData.id)
       .maybeSingle();
 
     if (workerError || !workerData) {
@@ -297,6 +324,7 @@ export async function DELETE(
     if (!validation.valid || !validation.user) {
       return NextResponse.json({ success: false, error: validation.error || 'invalid_init_data' }, { status: 401 });
     }
+
     const url = new URL(req.url);
     const documentId = url.pathname.split('/').pop();
 
@@ -306,12 +334,23 @@ export async function DELETE(
 
     const supabase = createServerClient();
 
+    // Resolve Telegram user ID to profile ID
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('telegram_id', Number(validation.user.id))
+      .maybeSingle();
+
+    if (!profileData) {
+      return NextResponse.json({ success: false, error: 'profile_not_found' }, { status: 404 });
+    }
+
     // Verify user has access to this workspace
     const { data: workerData, error: workerError } = await supabase
       .from('workers')
       .select('id')
       .eq('workspace_id', workspaceId)
-      .eq('source_id', validation.user.id)
+      .eq('source_id', profileData.id)
       .maybeSingle();
 
     if (workerError || !workerData) {
