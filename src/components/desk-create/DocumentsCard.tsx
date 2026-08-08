@@ -128,7 +128,7 @@ export function DocumentsCard({
 
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          enabled
+          enabled || serverDocuments.length > 0
             ? "max-h-[1200px] opacity-100"
             : "max-h-0 opacity-0"
         }`}

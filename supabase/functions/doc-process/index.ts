@@ -10,14 +10,16 @@
  * Master Spec §6.13, ai_.md §2.2 шаг 2.5
  * 
  * Behavior:
- * - Fetches pending doc_process jobs from enrichment_queue
+ * - Fetches ALL pending doc_process jobs from enrichment_queue (up to MAX_JOBS_PER_RUN)
  * - Downloads document content from Supabase Storage (path from payload.storage_path)
  * - Chunks text into ~500 token segments
  * - Generates embeddings via NeuralDeep bge-m3
  * - Inserts chunks into workspace_doc_chunks in batches of 10 (memory-safe)
  * - Updates workspace_documents status to 'ready'
  * - Marks enrichment_queue job as 'done'
+ * - Loops to process remaining pending jobs
  * 
+ * v9: Sequential multi-job processing — handles all pending documents per upload batch.
  * v8: Memory optimization — batch inserts, reduced chunk size, storage_path support.
  */
 
@@ -60,6 +62,7 @@ const CHUNK_OVERLAP = 100;     // overlapping tokens between chunks
 const MAX_CHUNKS_PER_DOC = 50; // safety limit (reduced from 200 — memory-safe)
 const BATCH_SIZE = 10;         // insert chunks in batches of 10 (memory-safe)
 const MINIMUM_CHUNK_LENGTH = 50; // minimum characters before creating a chunk
+const MAX_JOBS_PER_RUN = 10;   // max doc_process jobs per invocation (prevents timeout)
 
 // ═══════════════════════════════════════════════════════
 // Helpers
@@ -163,220 +166,234 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ── 2. Fetch pending doc_process job ───────────────────
-    const { data: job, error: jobError } = await supabase
-      .from('enrichment_queue')
-      .select('*')
-      .eq('type', 'doc_process')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle() as { data: EnrichmentJob | null; error: unknown } & { error: unknown };
+    // ── 2. Process ALL pending doc_process jobs sequentially ──
+    // v9: Loop to handle all queued documents instead of just one.
+    // Limits to MAX_JOBS_PER_RUN to prevent Edge Function timeout (30s).
+    let totalProcessed = 0;
+    let totalDocuments = 0;
+    const allErrors: string[] = [];
+    let lastWorkspaceId: string | null = null;
 
-    if (jobError || !job) {
-      return new Response(
-        JSON.stringify({ message: 'No pending doc_process jobs' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+    while (totalProcessed < MAX_JOBS_PER_RUN) {
+      // Fetch next pending job
+      const { data: job, error: jobError } = await supabase
+        .from('enrichment_queue')
+        .select('*')
+        .eq('type', 'doc_process')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle() as { data: EnrichmentJob | null; error: unknown } & { error: unknown };
 
-    // Lock the job
-    await supabase
-      .from('enrichment_queue')
-      .update({ status: 'processing', locked_at: new Date().toISOString() })
-      .eq('id', job.id);
+      // No more pending jobs — done
+      if (jobError || !job) {
+        break;
+      }
 
-    const { document_id, filename, file_type, storage_path } = job.payload;
-    console.log(`doc_process: processing job ${job.id} doc=${document_id} file=${filename}`);
-
-    // ── 3. Fetch document metadata ─────────────────────────
-    const { data: doc, error: docError } = await supabase
-      .from('workspace_documents')
-      .select('id, workspace_id, filename, file_type, size_bytes, checksum')
-      .eq('id', document_id)
-      .single() as { data: { workspace_id: string; filename: string; file_type: string; size_bytes: number; checksum: string } | null; error: unknown };
-
-    if (docError || !doc) {
-      console.error('doc_process: document not found', docError);
+      // Lock the job
       await supabase
         .from('enrichment_queue')
-        .update({ status: 'failed', processed_at: new Date().toISOString() })
+        .update({ status: 'processing', locked_at: new Date().toISOString() })
         .eq('id', job.id);
-      return new Response(
-        JSON.stringify({ error: 'document_not_found' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
 
-    // ── 4. Download document content from Storage ──────────
-    // v8: Use storage_path from payload (set by route.ts on upload).
-    // Fallback to legacy path for backward compatibility.
-    const storagePath = storage_path || `${doc.workspace_id}/${document_id}_${filename}`;
-    console.log(`doc_process: downloading storage_path=${storagePath}`);
+      const { document_id, filename, file_type, storage_path } = job.payload;
+      console.log(`doc_process [${totalProcessed + 1}/${MAX_JOBS_PER_RUN}]: processing job ${job.id} doc=${document_id} file=${filename}`);
 
-    const { data: fileData, error: storageError } = await supabase.storage
-      .from('documents')
-      .download(storagePath);
-
-    if (storageError || !fileData) {
-      console.error('doc_process: storage download error', storageError);
-      await supabase
+      // ── 3. Fetch document metadata ─────────────────────────
+      const { data: doc, error: docError } = await supabase
         .from('workspace_documents')
-        .update({ status: 'failed' })
-        .eq('id', document_id);
-      
-      await supabase
-        .from('enrichment_queue')
-        .update({ status: 'failed', processed_at: new Date().toISOString() })
-        .eq('id', job.id);
-      
-      return new Response(
-        JSON.stringify({ error: 'storage_download_failed', path: storagePath }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+        .select('id, workspace_id, filename, file_type, size_bytes, checksum')
+        .eq('id', document_id)
+        .single() as { data: { workspace_id: string; filename: string; file_type: string; size_bytes: number; checksum: string } | null; error: unknown };
 
-    // ── 5. Process content ─────────────────────────────────
-    const textContent = await fileData.text();
-    console.log(`doc_process: downloaded ${textContent.length} chars`);
-    
-    if (!textContent || textContent.trim().length === 0) {
-      await supabase
-        .from('workspace_documents')
-        .update({ status: 'failed' })
-        .eq('id', document_id);
-      
-      await supabase
-        .from('enrichment_queue')
-        .update({ status: 'failed', processed_at: new Date().toISOString() })
-        .eq('id', job.id);
-      
-      return new Response(
-        JSON.stringify({ error: 'empty_document_content' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+      if (docError || !doc) {
+        console.error(`doc_process: document not found for job ${job.id}`, docError);
+        await supabase
+          .from('enrichment_queue')
+          .update({ status: 'failed', processed_at: new Date().toISOString() })
+          .eq('id', job.id);
+        totalProcessed++;
+        continue; // skip to next job
+      }
 
-    // ── 6. Chunk the document ──────────────────────────────
-    const chunks = chunkText(textContent, CHUNK_SIZE, CHUNK_OVERLAP);
-    console.log(`doc_process: chunked into ${chunks.length} chunks`);
-    
-    if (chunks.length === 0) {
-      await supabase
-        .from('workspace_documents')
-        .update({ status: 'ready', chunk_count: 0 })
-        .eq('id', document_id);
-      
-      await supabase
-        .from('enrichment_queue')
-        .update({ status: 'done', processed_at: new Date().toISOString() })
-        .eq('id', job.id);
-      
-      return new Response(
-        JSON.stringify({ message: 'Document too small to chunk', chunk_count: 0 }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+      lastWorkspaceId = doc.workspace_id;
 
-    // Safety limit
-    const limitedChunks = chunks.slice(0, MAX_CHUNKS_PER_DOC);
+      // ── 4. Download document content from Storage ──────────
+      // v9: Use storage_path from payload (set by route.ts on upload).
+      // Fallback to legacy path for backward compatibility.
+      const storagePath = storage_path || `${doc.workspace_id}/${document_id}_${filename}`;
+      console.log(`doc_process: downloading storage_path=${storagePath}`);
 
-    // ── 7. Generate embeddings and insert chunks in batches ──
-    // v8: Process in batches of BATCH_SIZE — insert and free memory.
-    let insertedCount = 0;
-    const errors: string[] = [];
+      const { data: fileData, error: storageError } = await supabase.storage
+        .from('documents')
+        .download(storagePath);
 
-    for (let batchStart = 0; batchStart < limitedChunks.length; batchStart += BATCH_SIZE) {
-      const batchEnd = Math.min(batchStart + BATCH_SIZE, limitedChunks.length);
-      const batch: DocChunk[] = [];
-
-      for (let i = batchStart; i < batchEnd; i++) {
-        const chunkTextContent = limitedChunks[i];
+      if (storageError || !fileData) {
+        console.error(`doc_process: storage download error for job ${job.id}`, storageError);
+        await supabase
+          .from('workspace_documents')
+          .update({ status: 'failed' })
+          .eq('id', document_id);
         
-        try {
-          const embedding = await generateEmbedding(chunkTextContent, neuralDeepKey);
+        await supabase
+          .from('enrichment_queue')
+          .update({ status: 'failed', processed_at: new Date().toISOString() })
+          .eq('id', job.id);
+        
+        totalProcessed++;
+        continue; // skip to next job
+      }
+
+      // ── 5. Process content ─────────────────────────────────
+      const textContent = await fileData.text();
+      console.log(`doc_process: downloaded ${textContent.length} chars`);
+      
+      if (!textContent || textContent.trim().length === 0) {
+        await supabase
+          .from('workspace_documents')
+          .update({ status: 'failed' })
+          .eq('id', document_id);
+        
+        await supabase
+          .from('enrichment_queue')
+          .update({ status: 'failed', processed_at: new Date().toISOString() })
+          .eq('id', job.id);
+        
+        totalProcessed++;
+        continue; // skip to next job
+      }
+
+      // ── 6. Chunk the document ──────────────────────────────
+      const chunks = chunkText(textContent, CHUNK_SIZE, CHUNK_OVERLAP);
+      console.log(`doc_process: chunked into ${chunks.length} chunks`);
+      
+      if (chunks.length === 0) {
+        await supabase
+          .from('workspace_documents')
+          .update({ status: 'ready', chunk_count: 0 })
+          .eq('id', document_id);
+        
+        await supabase
+          .from('enrichment_queue')
+          .update({ status: 'done', processed_at: new Date().toISOString() })
+          .eq('id', job.id);
+        
+        totalProcessed++;
+        totalDocuments++;
+        continue; // skip to next job
+      }
+
+      // Safety limit
+      const limitedChunks = chunks.slice(0, MAX_CHUNKS_PER_DOC);
+
+      // ── 7. Generate embeddings and insert chunks in batches ──
+      // v8: Process in batches of BATCH_SIZE — insert and free memory.
+      let insertedCount = 0;
+      const docErrors: string[] = [];
+
+      for (let batchStart = 0; batchStart < limitedChunks.length; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, limitedChunks.length);
+        const batch: DocChunk[] = [];
+
+        for (let i = batchStart; i < batchEnd; i++) {
+          const chunkTextContent = limitedChunks[i];
           
-          batch.push({
-            document_id,
-            workspace_id: doc.workspace_id,
-            chunk_index: i,
-            content: chunkTextContent,
-            meta_headers: extractMetaHeaders(chunkTextContent),
-            embedding,
-          });
-        } catch (err) {
-          console.error(`doc_process: embedding failed for chunk ${i}`, err);
-          errors.push(`chunk_${i}: ${err instanceof Error ? err.message : 'unknown'}`);
+          try {
+            const embedding = await generateEmbedding(chunkTextContent, neuralDeepKey);
+            
+            batch.push({
+              document_id,
+              workspace_id: doc.workspace_id,
+              chunk_index: i,
+              content: chunkTextContent,
+              meta_headers: extractMetaHeaders(chunkTextContent),
+              embedding,
+            });
+          } catch (err) {
+            console.error(`doc_process: embedding failed for chunk ${i}`, err);
+            docErrors.push(`chunk_${i}: ${err instanceof Error ? err.message : 'unknown'}`);
+          }
         }
+
+        // Insert batch
+        if (batch.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: insertError } = await supabase
+            .from('workspace_doc_chunks' as any)
+            .insert(batch as any);
+
+          if (insertError) {
+            console.error('doc_process: chunk insert error', insertError);
+            docErrors.push(`insert_batch_${batchStart}: ${JSON.stringify(insertError)}`);
+          } else {
+            insertedCount += batch.length;
+            console.log(`doc_process: inserted batch ${batchStart}-${batchEnd} (${batch.length} chunks)`);
+          }
+        }
+
+        // Free memory — batch goes out of scope
       }
 
-      // Insert batch
-      if (batch.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: insertError } = await supabase
-          .from('workspace_doc_chunks' as any)
-          .insert(batch as any);
+      // ── 8. Update document status ──────────────────────────
+      const finalStatus = docErrors.length > 0 && insertedCount === 0
+        ? 'failed'
+        : 'ready';
 
-        if (insertError) {
-          console.error('doc_process: chunk insert error', insertError);
-          errors.push(`insert_batch_${batchStart}: ${JSON.stringify(insertError)}`);
-        } else {
-          insertedCount += batch.length;
-          console.log(`doc_process: inserted batch ${batchStart}-${batchEnd} (${batch.length} chunks)`);
-        }
+      await supabase
+        .from('workspace_documents')
+        .update({
+          status: finalStatus,
+          chunk_count: insertedCount,
+        })
+        .eq('id', document_id);
+
+      // ── 9. Mark job as done/failed ────────────────────────
+      await supabase
+        .from('enrichment_queue')
+        .update({
+          status: finalStatus,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+
+      if (docErrors.length > 0) {
+        allErrors.push(`doc_${document_id}: ${docErrors.join('; ')}`);
       }
 
-      // Free memory — batch goes out of scope
+      totalProcessed++;
+      totalDocuments++;
+      console.log(`doc_process: job ${job.id} complete — status=${finalStatus}, chunks=${insertedCount}`);
     }
-
-    // ── 8. Update document status ──────────────────────────
-    const finalStatus = errors.length > 0 && insertedCount === 0
-      ? 'failed'
-      : 'ready';
-
-    await supabase
-      .from('workspace_documents')
-      .update({
-        status: finalStatus,
-        chunk_count: insertedCount,
-      })
-      .eq('id', document_id);
-
-    // ── 9. Mark job as done/failed ────────────────────────
-    await supabase
-      .from('enrichment_queue')
-      .update({
-        status: finalStatus,
-        processed_at: new Date().toISOString(),
-      })
-      .eq('id', job.id);
 
     // ── 10. Invalidate workspace context if needed ─────────
     // New documents may make previous context stale
-    await supabase
-      .from('workspace_settings')
-      .update({ context_stale: true })
-      .eq('workspace_id', doc.workspace_id);
+    if (lastWorkspaceId && totalDocuments > 0) {
+      await supabase
+        .from('workspace_settings')
+        .update({ context_stale: true })
+        .eq('workspace_id', lastWorkspaceId);
 
-    // Queue context rebuild
-    await supabase
-      .from('enrichment_queue')
-      .insert({
-        workspace_id: doc.workspace_id,
-        type: 'workspace_context_rebuild',
-        payload: { workspace_id: doc.workspace_id },
-        status: 'pending',
-        scheduled_at: new Date().toISOString(),
-      })
-      .select()
-      .maybeSingle();
+      // Queue context rebuild (deduplicated by UNIQUE index)
+      await supabase
+        .from('enrichment_queue')
+        .insert({
+          workspace_id: lastWorkspaceId,
+          type: 'workspace_context_rebuild',
+          payload: { workspace_id: lastWorkspaceId },
+          status: 'pending',
+          scheduled_at: new Date().toISOString(),
+        })
+        .select()
+        .maybeSingle();
+    }
 
     return new Response(
       JSON.stringify({
-        message: 'Document processed successfully',
-        document_id,
-        chunk_count: insertedCount,
-        errors: errors.length > 0 ? errors : undefined,
+        message: 'Processing complete',
+        jobs_processed: totalProcessed,
+        documents_processed: totalDocuments,
+        errors: allErrors.length > 0 ? allErrors : undefined,
+        has_more: totalProcessed >= MAX_JOBS_PER_RUN,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
