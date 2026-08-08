@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+pppkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkpimport { NextRequest, NextResponse } from 'next/server';
 import { validateTelegramInitData } from '@/lib/telegram/validate';
 import { createServerClient } from '../../../../../../lib/supabase';
 
@@ -6,6 +6,8 @@ import { createServerClient } from '../../../../../../lib/supabase';
 export type { ServerDocument, DocumentStatus } from '@/components/desk-create/DocumentsCard';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const MAX_FILE_SIZE = 512 * 1024; // 512KB
 const MAX_FILES_PER_REQUEST = 20;
 const ALLOWED_TYPES = ['text/markdown', 'text/plain', 'application/octet-stream'];
@@ -235,6 +237,24 @@ export async function POST(
       } else {
         queueJobs.push(queueData);
       }
+    }
+
+    // Fire-and-forget: trigger doc-process Edge Function immediately
+    // This ensures documents start processing right away without waiting for cron polling.
+    // The function itself fetches pending jobs from enrichment_queue.
+    // We use service_role_key because doc-process has verify_jwt: true.
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && queueJobs.length > 0) {
+      void fetch(`${SUPABASE_URL}/functions/v1/doc-process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'X-Client-Info': 'onitask-documents-api',
+        },
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      }).catch((e) => {
+        console.error('documents: doc-process trigger failed (non-fatal, queue still pending)', e);
+      });
     }
 
     return NextResponse.json({
