@@ -22,13 +22,16 @@ import type { TaskEntity } from '@/types/flowboard';
  * Tap vs Swipe disambiguation (fixed 2026-08-10):
  * - MIN_SWIPE_MOVE (12px): minimum horizontal movement before we consider it a swipe gesture
  * - TAP_DEBOUNCE_MS (150ms): delay before firing onTap so rapid touches don't trigger swipes
+ * - VERTICAL_SCROLL_THRESHOLD (5px): deltaY that cancels tap timer and treats gesture as scroll
  * - hasMovedRef: tracks whether MIN_SWIPE_MOVE was exceeded during this gesture
+ * - hasScrolledRef: tracks whether VERTICAL_SCROLL_THRESHOLD was exceeded during this gesture
  */
 
 const SWIPE_THRESHOLD = 100; // px — distance needed to trigger swipe (raised from 80)
 const SWIPE_MAX_TIME = 500; // ms — max time for fast-swipe detection
 const MIN_SWIPE_MOVE = 12; // px — minimum horizontal movement to consider it a swipe, not a tap
 const TAP_DEBOUNCE_MS = 150; // ms — delay before firing onTap to allow swipe gesture to be ruled out
+const VERTICAL_SCROLL_THRESHOLD = 5; // px — deltaY that cancels tap timer and treats gesture as scroll
 const SWIPE_EXIT_DURATION = 300; // ms — smooth exit animation (Telegram HIG standard)
 // Telegram-style easing: starts fast, decelerates smoothly to rest
 const EXIT_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
@@ -74,6 +77,7 @@ export function SwipeableTaskCard({
   const deltaXRef = useRef(0); // declared before the exit effect that reads it
   const tapTimerRef = useRef<number | null>(null); // timer for debouncing onTap
   const hasMovedRef = useRef(false); // tracks whether minimum swipe distance was exceeded
+  const hasScrolledRef = useRef(false); // tracks whether vertical scroll threshold was exceeded
 
   const currentIndex = columnOrder.indexOf(currentColumn);
   const canMoveNext = currentIndex >= 0 && currentIndex < columnOrder.length - 1;
@@ -129,6 +133,7 @@ export function SwipeableTaskCard({
       applyDrag(0, 0);
       hasVibratedAt50Ref.current = false;
       hasMovedRef.current = false;
+      hasScrolledRef.current = false;
       // Cancel any pending tap — we're about to decide if this is a swipe
       if (tapTimerRef.current) {
         clearTimeout(tapTimerRef.current);
@@ -144,6 +149,16 @@ export function SwipeableTaskCard({
       const touch = e.touches[0];
       const deltaX = touch.clientX - startX.current;
       const deltaY = Math.abs(touch.clientY - startY.current);
+
+      // --- Vertical scroll guard: cancel tap timer immediately ---
+      if (!hasScrolledRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
+        hasScrolledRef.current = true;
+        // Clear tap timer so it won't fire after this scroll gesture
+        if (tapTimerRef.current) {
+          clearTimeout(tapTimerRef.current);
+          tapTimerRef.current = null;
+        }
+      }
 
       // If vertical movement dominates early on — ignore it (user scrolling)
       if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
@@ -214,6 +229,15 @@ export function SwipeableTaskCard({
       const deltaX = (e.changedTouches[0]?.clientX ?? startX.current) - startX.current;
       const elapsed = Date.now() - startTime.current;
 
+      // If the user scrolled vertically — treat as scroll, do NOT fire onTap
+      if (hasScrolledRef.current) {
+        isSwipingRef.current = false;
+        setIsSwiping(false);
+        hasMovedRef.current = false;
+        hasScrolledRef.current = false;
+        return;
+      }
+
       // If the user barely moved (didn't exceed MIN_SWIPE_MOVE), treat as tap
       // and debounce it so rapid touches don't accidentally trigger swipes
       if (!isSwipingRef.current || !hasMovedRef.current) {
@@ -277,6 +301,7 @@ export function SwipeableTaskCard({
     isSwipingRef.current = false;
     setIsSwiping(false);
     hasMovedRef.current = false;
+    hasScrolledRef.current = false;
     if (tapTimerRef.current) {
       clearTimeout(tapTimerRef.current);
       tapTimerRef.current = null;
@@ -296,6 +321,7 @@ export function SwipeableTaskCard({
       applyDrag(0, 0);
       hasVibratedAt50Ref.current = false;
       hasMovedRef.current = false;
+      hasScrolledRef.current = false;
       // Cancel any pending tap
       if (tapTimerRef.current) {
         clearTimeout(tapTimerRef.current);
@@ -306,6 +332,15 @@ export function SwipeableTaskCard({
         if (exitedRef.current) return;
         const deltaX = ev.clientX - startX.current;
         const deltaY = Math.abs(ev.clientY - startY.current);
+
+        // --- Vertical scroll guard: cancel tap timer immediately ---
+        if (!hasScrolledRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
+          hasScrolledRef.current = true;
+          if (tapTimerRef.current) {
+            clearTimeout(tapTimerRef.current);
+            tapTimerRef.current = null;
+          }
+        }
 
         // Ignore vertical scrolling gestures
         if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
@@ -360,6 +395,15 @@ export function SwipeableTaskCard({
 
         const deltaX = ev.clientX - startX.current;
         const elapsed = Date.now() - startTime.current;
+
+        // If the user scrolled vertically — treat as scroll, do NOT fire onTap
+        if (hasScrolledRef.current) {
+          isSwipingRef.current = false;
+          setIsSwiping(false);
+          hasMovedRef.current = false;
+          hasScrolledRef.current = false;
+          return;
+        }
 
         // If the user barely moved (didn't exceed MIN_SWIPE_MOVE), treat as tap
         // and debounce it so rapid clicks don't accidentally trigger swipes

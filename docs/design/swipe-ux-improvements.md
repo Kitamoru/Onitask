@@ -87,6 +87,7 @@ Start drag (0%)
 | `SWIPE_MAX_TIME` | 500ms | Max time for fast-swipe detection |
 | `MIN_SWIPE_MOVE` | 12px | Minimum horizontal movement to consider it a swipe, not a tap (added 2026-08-10) |
 | `TAP_DEBOUNCE_MS` | 150ms | Delay before firing onTap to allow swipe gesture to be ruled out (added 2026-08-10) |
+| `VERTICAL_SCROLL_THRESHOLD` | 5px | deltaY that cancels tap timer and treats gesture as scroll (added 2026-08-10) |
 | `SWIPE_EXIT_DURATION` | 300ms | Duration of exit animation |
 | `EXIT_EASING` | `cubic-bezier(0.25, 0.46, 0.45, 0.94)` | Telegram-style ease-out for exit |
 | `BOUNCE_EASING` | `cubic-bezier(0.4, 0, 0.2, 1)` | Material Design standard for bounce-back |
@@ -97,31 +98,42 @@ Start drag (0%)
 
 **Root Cause**: The original logic entered swipe mode at just 8px of horizontal movement (`Math.abs(deltaX) > 8`), which is too sensitive — normal finger placement or slight tremor triggers it. There was no minimum movement guard and no debounce on `onTap`.
 
-**Solution**:
+**Solution (Phase 1)**:
 1. **`MIN_SWIPE_MOVE = 12px`**: A new threshold that must be exceeded before `hasMovedRef` becomes `true`. Only then does `isSwipingRef` flip to true.
 2. **`TAP_DEBOUNCE_MS = 150ms`**: If the gesture didn't exceed `MIN_SWIPE_MOVE`, `onTap` is fired after a 150ms delay. This gives the user a window where a subsequent move would cancel the tap timer and treat it as a swipe instead.
 3. **`hasMovedRef`**: Tracks whether minimum horizontal movement occurred during the current gesture. Used in `handleTouchEnd` / `handleMouseUp` to decide: "was this a tap or a failed swipe?"
 4. **Raised `SWIPE_THRESHOLD` from 80 → 100px**: Gives more room for intentional swipes while preventing accidental triggers near the edge of the card.
 
-**Gesture Flow After Fix**:
+**Problem (Phase 2)**: Fast vertical scrolls still triggered `onTap` because the tap timer wasn't cancelled when the user scrolled up/down quickly.
+
+**Solution (Phase 2)**:
+1. **`VERTICAL_SCROLL_THRESHOLD = 5px`**: A small vertical delta that immediately cancels the tap timer.
+2. **`hasScrolledRef`**: Tracks whether vertical movement exceeded the threshold during the current gesture.
+3. In `handleTouchMove` / `handleMouseMove`: if `deltaY > VERTICAL_SCROLL_THRESHOLD`, set `hasScrolledRef.current = true` and clear `tapTimerRef`.
+4. In `handleTouchEnd` / `handleMouseUp`: if `hasScrolledRef.current` is true, skip `onTap` entirely — treat the gesture as a scroll.
+
+**Gesture Flow After Full Fix**:
 ```
 Touch down
-  └─→ hasMovedRef = false, tapTimer cleared
+  └─→ hasMovedRef = false, hasScrolledRef = false, tapTimer cleared
   
-Touch move < 12px horizontal
-  └─→ Still not swiping (hasMovedRef stays false)
+Touch move < 12px horizontal AND < 5px vertical
+  └─→ Still not swiping, not scrolling
   
 Touch move ≥ 12px horizontal
   └─→ hasMovedRef = true → isSwiping = true
   
-Release before 100px threshold
-  └─→ Bounce-back animation, hasMovedRef reset
+Touch move ≥ 5px vertical
+  └─→ hasScrolledRef = true → tapTimer cleared (scroll detected)
   
-Release at/after 100px (or fast swipe)
+Release before thresholds (no scroll, no swipe)
+  └─→ onTap fires after 150ms debounce
+  
+Release after 100px horizontal (or fast swipe)
   └─→ Column move + exit animation
   
-No significant movement (pure tap)
-  └─→ onTap fires after 150ms debounce
+Any release after vertical scroll detected
+  └─→ No onTap, gesture treated as scroll
 ```
 
 ## Platform Standards Compliance
@@ -144,6 +156,8 @@ No significant movement (pure tap)
 - [ ] **NEW**: Verify that tapping a card opens TaskView without triggering column moves
 - [ ] **NEW**: Verify that dragging < 12px horizontally and releasing does NOT open TaskView immediately (150ms debounce)
 - [ ] **NEW**: Verify that vertical scrolling inside a column doesn't accidentally start a swipe
+- [ ] **NEW (Phase 2)**: Fast vertical scroll (e.g., flick up/down) does NOT trigger tap
+- [ ] **NEW (Phase 2)**: Small vertical jitter (< 5px) still allows tap to fire after debounce
 
 ## SSR/Prerender Fix
 
