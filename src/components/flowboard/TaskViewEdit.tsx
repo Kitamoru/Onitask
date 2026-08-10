@@ -227,7 +227,7 @@ export function TaskViewEdit({
               min={1}
               max={30}
               onChange={setStoryPoints}
-              borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+              borderGradient={isView ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.1)'] : ['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
               disabled={isView}
             />
             <Stepper
@@ -236,7 +236,7 @@ export function TaskViewEdit({
               min={1}
               max={10}
               onChange={setCognitiveWeight}
-              borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+              borderGradient={isView ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.1)'] : ['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
               disabled={isView}
             />
           </div>
