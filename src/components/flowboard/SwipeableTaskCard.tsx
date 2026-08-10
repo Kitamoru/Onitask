@@ -150,8 +150,15 @@ export function SwipeableTaskCard({
       const deltaX = touch.clientX - startX.current;
       const deltaY = Math.abs(touch.clientY - startY.current);
 
-      // --- Vertical scroll guard: cancel tap timer immediately ---
-      if (!hasScrolledRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
+      // Track minimum horizontal movement to distinguish swipe from tap
+      if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
+        hasMovedRef.current = true;
+      }
+
+      // --- Vertical scroll guard: cancel tap timer ONLY if we haven't started swiping yet ---
+      // Once hasMovedRef is true, the user is clearly doing a horizontal gesture,
+      // so we should NOT treat vertical drift as a scroll.
+      if (!hasScrolledRef.current && !hasMovedRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
         hasScrolledRef.current = true;
         // Clear tap timer so it won't fire after this scroll gesture
         if (tapTimerRef.current) {
@@ -163,11 +170,6 @@ export function SwipeableTaskCard({
       // If vertical movement dominates early on — ignore it (user scrolling)
       if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
         return;
-      }
-
-      // Track minimum horizontal movement to distinguish swipe from tap
-      if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
-        hasMovedRef.current = true;
       }
 
       // Only enter swipe mode once minimum movement threshold is crossed
@@ -333,8 +335,13 @@ export function SwipeableTaskCard({
         const deltaX = ev.clientX - startX.current;
         const deltaY = Math.abs(ev.clientY - startY.current);
 
-        // --- Vertical scroll guard: cancel tap timer immediately ---
-        if (!hasScrolledRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
+        // Track minimum horizontal movement
+        if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
+          hasMovedRef.current = true;
+        }
+
+        // --- Vertical scroll guard: cancel tap timer ONLY if we haven't started swiping yet ---
+        if (!hasScrolledRef.current && !hasMovedRef.current && deltaY > VERTICAL_SCROLL_THRESHOLD) {
           hasScrolledRef.current = true;
           if (tapTimerRef.current) {
             clearTimeout(tapTimerRef.current);
@@ -345,11 +352,6 @@ export function SwipeableTaskCard({
         // Ignore vertical scrolling gestures
         if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
           return;
-        }
-
-        // Track minimum horizontal movement
-        if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
-          hasMovedRef.current = true;
         }
 
         // Only enter swipe mode once minimum movement threshold is crossed
