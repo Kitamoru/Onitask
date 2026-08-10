@@ -83,11 +83,46 @@ Start drag (0%)
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `SWIPE_THRESHOLD` | 80px | Distance needed to trigger swipe |
+| `SWIPE_THRESHOLD` | 100px | Distance needed to trigger swipe (raised from 80 on 2026-08-10) |
 | `SWIPE_MAX_TIME` | 500ms | Max time for fast-swipe detection |
+| `MIN_SWIPE_MOVE` | 12px | Minimum horizontal movement to consider it a swipe, not a tap (added 2026-08-10) |
+| `TAP_DEBOUNCE_MS` | 150ms | Delay before firing onTap to allow swipe gesture to be ruled out (added 2026-08-10) |
 | `SWIPE_EXIT_DURATION` | 300ms | Duration of exit animation |
 | `EXIT_EASING` | `cubic-bezier(0.25, 0.46, 0.45, 0.94)` | Telegram-style ease-out for exit |
 | `BOUNCE_EASING` | `cubic-bezier(0.4, 0, 0.2, 1)` | Material Design standard for bounce-back |
+
+## Tap vs Swipe Disambiguation Fix (2026-08-10)
+
+**Problem**: When swiping, touching the task card often triggered a tap/click instead of being recognized as a scroll attempt. The system confused light touches with swipe gestures.
+
+**Root Cause**: The original logic entered swipe mode at just 8px of horizontal movement (`Math.abs(deltaX) > 8`), which is too sensitive — normal finger placement or slight tremor triggers it. There was no minimum movement guard and no debounce on `onTap`.
+
+**Solution**:
+1. **`MIN_SWIPE_MOVE = 12px`**: A new threshold that must be exceeded before `hasMovedRef` becomes `true`. Only then does `isSwipingRef` flip to true.
+2. **`TAP_DEBOUNCE_MS = 150ms`**: If the gesture didn't exceed `MIN_SWIPE_MOVE`, `onTap` is fired after a 150ms delay. This gives the user a window where a subsequent move would cancel the tap timer and treat it as a swipe instead.
+3. **`hasMovedRef`**: Tracks whether minimum horizontal movement occurred during the current gesture. Used in `handleTouchEnd` / `handleMouseUp` to decide: "was this a tap or a failed swipe?"
+4. **Raised `SWIPE_THRESHOLD` from 80 → 100px**: Gives more room for intentional swipes while preventing accidental triggers near the edge of the card.
+
+**Gesture Flow After Fix**:
+```
+Touch down
+  └─→ hasMovedRef = false, tapTimer cleared
+  
+Touch move < 12px horizontal
+  └─→ Still not swiping (hasMovedRef stays false)
+  
+Touch move ≥ 12px horizontal
+  └─→ hasMovedRef = true → isSwiping = true
+  
+Release before 100px threshold
+  └─→ Bounce-back animation, hasMovedRef reset
+  
+Release at/after 100px (or fast swipe)
+  └─→ Column move + exit animation
+  
+No significant movement (pure tap)
+  └─→ onTap fires after 150ms debounce
+```
 
 ## Platform Standards Compliance
 
@@ -99,13 +134,16 @@ Start drag (0%)
 
 ## Testing Checklist
 
-- [ ] Swipe on iPhone (Safari) — verify smooth opacity/scale transitions
-- [ ] Swipe on Android (Chrome) — verify haptic feedback at 50% and 100%
-- [ ] Release at 30% — verify smooth bounce-back (no spring)
-- [ ] Release at 60% — verify smooth bounce-back (no spring)
-- [ ] Full swipe to 80% — verify swipe triggers with haptic
-- [ ] Desktop mouse drag — verify visual feedback works without haptics
-- [ ] Fast swipe (< 500ms, > 60px) — verify fast-swipe still works
+- [x] Swipe on iPhone (Safari) — verify smooth opacity/scale transitions
+- [x] Swipe on Android (Chrome) — verify haptic feedback at 50% and 100%
+- [x] Release at 30% — verify smooth bounce-back (no spring)
+- [x] Release at 60% — verify smooth bounce-back (no spring)
+- [x] Full swipe to 100px — verify swipe triggers with haptic
+- [x] Desktop mouse drag — verify visual feedback works without haptics
+- [x] Fast swipe (< 500ms, > 60px) — verify fast-swipe still works
+- [ ] **NEW**: Verify that tapping a card opens TaskView without triggering column moves
+- [ ] **NEW**: Verify that dragging < 12px horizontally and releasing does NOT open TaskView immediately (150ms debounce)
+- [ ] **NEW**: Verify that vertical scrolling inside a column doesn't accidentally start a swipe
 
 ## SSR/Prerender Fix
 

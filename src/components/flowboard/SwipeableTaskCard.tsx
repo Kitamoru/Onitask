@@ -18,10 +18,17 @@ import type { TaskEntity } from '@/types/flowboard';
  * - React state используется только для редких переходов (isSwiping / isExiting).
  *
  * Анимация: 300ms, cubic-bezier(0.25, 0.46, 0.45, 0.94) — Telegram-style ease-out
+ *
+ * Tap vs Swipe disambiguation (fixed 2026-08-10):
+ * - MIN_SWIPE_MOVE (12px): minimum horizontal movement before we consider it a swipe gesture
+ * - TAP_DEBOUNCE_MS (150ms): delay before firing onTap so rapid touches don't trigger swipes
+ * - hasMovedRef: tracks whether MIN_SWIPE_MOVE was exceeded during this gesture
  */
 
-const SWIPE_THRESHOLD = 80; // px — distance needed to trigger swipe
+const SWIPE_THRESHOLD = 100; // px — distance needed to trigger swipe (raised from 80)
 const SWIPE_MAX_TIME = 500; // ms — max time for fast-swipe detection
+const MIN_SWIPE_MOVE = 12; // px — minimum horizontal movement to consider it a swipe, not a tap
+const TAP_DEBOUNCE_MS = 150; // ms — delay before firing onTap to allow swipe gesture to be ruled out
 const SWIPE_EXIT_DURATION = 300; // ms — smooth exit animation (Telegram HIG standard)
 // Telegram-style easing: starts fast, decelerates smoothly to rest
 const EXIT_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
@@ -65,6 +72,8 @@ export function SwipeableTaskCard({
   const exitedRef = useRef(false);
   const hasVibratedAt50Ref = useRef(false); // track 50% haptic per swipe gesture
   const deltaXRef = useRef(0); // declared before the exit effect that reads it
+  const tapTimerRef = useRef<number | null>(null); // timer for debouncing onTap
+  const hasMovedRef = useRef(false); // tracks whether minimum swipe distance was exceeded
 
   const currentIndex = columnOrder.indexOf(currentColumn);
   const canMoveNext = currentIndex >= 0 && currentIndex < columnOrder.length - 1;
@@ -119,6 +128,12 @@ export function SwipeableTaskCard({
       setIsSwiping(false);
       applyDrag(0, 0);
       hasVibratedAt50Ref.current = false;
+      hasMovedRef.current = false;
+      // Cancel any pending tap — we're about to decide if this is a swipe
+      if (tapTimerRef.current) {
+        clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+      }
     },
     [applyDrag]
   );
@@ -130,12 +145,18 @@ export function SwipeableTaskCard({
       const deltaX = touch.clientX - startX.current;
       const deltaY = Math.abs(touch.clientY - startY.current);
 
-      // Если вертикальное движение больше горизонтального — не считаем свайпом
-      if (!isSwipingRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
+      // If vertical movement dominates early on — ignore it (user scrolling)
+      if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
         return;
       }
 
-      if (!isSwipingRef.current && Math.abs(deltaX) > 8) {
+      // Track minimum horizontal movement to distinguish swipe from tap
+      if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
+        hasMovedRef.current = true;
+      }
+
+      // Only enter swipe mode once minimum movement threshold is crossed
+      if (!isSwipingRef.current && hasMovedRef.current) {
         isSwipingRef.current = true;
         setIsSwiping(true);
       }
@@ -193,9 +214,19 @@ export function SwipeableTaskCard({
       const deltaX = (e.changedTouches[0]?.clientX ?? startX.current) - startX.current;
       const elapsed = Date.now() - startTime.current;
 
-      if (!isSwipingRef.current) {
-        // Это был тап
-        onTap(task.id);
+      // If the user barely moved (didn't exceed MIN_SWIPE_MOVE), treat as tap
+      // and debounce it so rapid touches don't accidentally trigger swipes
+      if (!isSwipingRef.current || !hasMovedRef.current) {
+        // Clear any pending swipe-related state
+        isSwipingRef.current = false;
+        setIsSwiping(false);
+        hasMovedRef.current = false;
+
+        // Debounce tap to give the swipe gesture window time to resolve
+        tapTimerRef.current = window.setTimeout(() => {
+          tapTimerRef.current = null;
+          onTap(task.id);
+        }, TAP_DEBOUNCE_MS);
         return;
       }
 
@@ -223,6 +254,7 @@ export function SwipeableTaskCard({
         applyDrag(0, 0);
         setIsSwiping(false);
         isSwipingRef.current = false;
+        hasMovedRef.current = false;
       }
     },
     [
@@ -244,10 +276,15 @@ export function SwipeableTaskCard({
     if (exitedRef.current) return;
     isSwipingRef.current = false;
     setIsSwiping(false);
+    hasMovedRef.current = false;
+    if (tapTimerRef.current) {
+      clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+    }
     applyDrag(0, 0);
   }, [cleanup, applyDrag]);
 
-  // Обработка мыши для десктопной отладки
+  // Обработка мыши для десктопной отладки — sync with touch logic
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (exitedRef.current) return;
@@ -258,17 +295,30 @@ export function SwipeableTaskCard({
       setIsSwiping(false);
       applyDrag(0, 0);
       hasVibratedAt50Ref.current = false;
+      hasMovedRef.current = false;
+      // Cancel any pending tap
+      if (tapTimerRef.current) {
+        clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+      }
 
       const handleMouseMove = (ev: MouseEvent) => {
         if (exitedRef.current) return;
         const deltaX = ev.clientX - startX.current;
         const deltaY = Math.abs(ev.clientY - startY.current);
 
-        if (!isSwipingRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
+        // Ignore vertical scrolling gestures
+        if (!isSwipingRef.current && !hasMovedRef.current && deltaY > Math.abs(deltaX) && Math.abs(deltaX) < 10) {
           return;
         }
 
-        if (!isSwipingRef.current && Math.abs(deltaX) > 8) {
+        // Track minimum horizontal movement
+        if (!hasMovedRef.current && Math.abs(deltaX) >= MIN_SWIPE_MOVE) {
+          hasMovedRef.current = true;
+        }
+
+        // Only enter swipe mode once minimum movement threshold is crossed
+        if (!isSwipingRef.current && hasMovedRef.current) {
           isSwipingRef.current = true;
           setIsSwiping(true);
         }
@@ -311,8 +361,17 @@ export function SwipeableTaskCard({
         const deltaX = ev.clientX - startX.current;
         const elapsed = Date.now() - startTime.current;
 
-        if (!isSwipingRef.current) {
-          onTap(task.id);
+        // If the user barely moved (didn't exceed MIN_SWIPE_MOVE), treat as tap
+        // and debounce it so rapid clicks don't accidentally trigger swipes
+        if (!isSwipingRef.current || !hasMovedRef.current) {
+          isSwipingRef.current = false;
+          setIsSwiping(false);
+          hasMovedRef.current = false;
+
+          tapTimerRef.current = window.setTimeout(() => {
+            tapTimerRef.current = null;
+            onTap(task.id);
+          }, TAP_DEBOUNCE_MS);
           return;
         }
 
@@ -335,6 +394,7 @@ export function SwipeableTaskCard({
 
         setIsSwiping(false);
         isSwipingRef.current = false;
+        hasMovedRef.current = false;
       };
 
       window.addEventListener('mousemove', handleMouseMove);
