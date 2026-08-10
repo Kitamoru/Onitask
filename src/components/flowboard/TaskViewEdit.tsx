@@ -28,6 +28,8 @@ import {
   SectionHeader,
   Card,
 } from '@/components/ui/desk-ui';
+import { SingleDateField } from '@/components/ui/SingleDateField';
+import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
 
@@ -70,7 +72,7 @@ export function TaskViewEdit({
   const [description, setDescription] = useState(task?.description ?? '');
   const [storyPoints, setStoryPoints] = useState(task?.story_points ?? 1);
   const [cognitiveWeight, setCognitiveWeight] = useState(task?.cognitive_weight ?? 1);
-  const [deadline, setDeadline] = useState(task?.deadline ?? '');
+  const [deadline, setDeadline] = useState<Date | null>(task?.deadline ? new Date(task.deadline) : null);
   const [checklistEnabled, setChecklistEnabled] = useState(false);
   const [relatedEnabled, setRelatedEnabled] = useState(false);
   const [dependentEnabled, setDependentEnabled] = useState(false);
@@ -78,6 +80,7 @@ export function TaskViewEdit({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
 
   // Reset internal mode when the sheet opens or the task changes
   useEffect(() => {
@@ -95,7 +98,7 @@ export function TaskViewEdit({
       setDescription(task.description ?? '');
       setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
-      setDeadline(task.deadline ?? '');
+      setDeadline(task.deadline ? new Date(task.deadline) : null);
     }
   }, [task]);
 
@@ -123,7 +126,7 @@ export function TaskViewEdit({
           description: description || undefined,
           column: 'backlog',
           cognitive_weight: cognitiveWeight,
-          deadline: deadline || undefined,
+          deadline: deadline ? deadline.toISOString() : undefined,
         });
 
         if (result.error) {
@@ -140,7 +143,7 @@ export function TaskViewEdit({
           title: title.trim(),
           description: description || undefined,
           cognitive_weight: cognitiveWeight,
-          deadline: deadline || undefined,
+          deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
         });
 
@@ -162,7 +165,7 @@ export function TaskViewEdit({
       setDescription(task.description ?? '');
       setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
-      setDeadline(task.deadline ?? '');
+      setDeadline(task.deadline ? new Date(task.deadline) : null);
     }
     setInternalMode('view');
     onClose();
@@ -205,13 +208,11 @@ export function TaskViewEdit({
               maxLength={5000}
               corner="field"
             />
-            <TextInput
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              placeholder="Дедлайн"
+            <SingleDateField
+              date={deadline}
+              onOpen={() => setIsDateSheetOpen(true)}
+              placeholder="Дата окончания"
               disabled={isView}
-              corner="field"
             />
           </div>
         </section>
@@ -348,6 +349,13 @@ export function TaskViewEdit({
             </Button>
           </div>
         )}
+
+        <SingleDateSheet
+          open={isDateSheetOpen}
+          onClose={() => setIsDateSheetOpen(false)}
+          date={deadline}
+          onConfirm={(d: Date) => setDeadline(d)}
+        />
       </div>
     </BottomSheet>
   );

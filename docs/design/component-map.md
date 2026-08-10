@@ -86,7 +86,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
 | | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
-| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet (Figma 1:663 task-create). Single canvas with sections: Ключевой контекст (название, описание, дедлайн), Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки — каждый toggle в `Card`, как `SprintActivationCard`). Uses `Segments` (Общее/Комментарии), `SectionHeader`, `Card`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`. View mode locks fields + solid "Редактировать" button (like BoardDetail). |
+| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet (Figma 1:663 task-create). Single canvas with sections: Ключевой контекст (название, описание, дедлайн через `SingleDateField`/`SingleDateSheet`), Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки — каждый toggle в `Card`, как `SprintActivationCard`). Uses `Segments` (Общее/Комментарии), `SectionHeader`, `Card`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`, `SingleDateField`, `SingleDateSheet`. View mode locks fields + solid "Редактировать" button (like BoardDetail). |
 
 **Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`, `TaskViewEdit`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`, `TaskViewEditProps`
@@ -128,6 +128,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | BottomSheet | BottomSheet.tsx | open, onClose, children | Slide-up panel with backdrop overlay (portal-based) |
 | | DateRangeField | DateRangeField.tsx | startDate, endDate, onOpen, placeholder | Date range display field |
 | | DateRangeSheet | DateRangeSheet.tsx | open, onClose, startDate, endDate, onConfirm | BottomSheet with react-day-picker for date range selection |
+| | SingleDateField | SingleDateField.tsx | date, onOpen, placeholder, disabled | Single date display field for task deadline |
+| | SingleDateSheet | SingleDateSheet.tsx | open, onClose, date, onConfirm, minDate | BottomSheet with Calendar for picking one date |
 
 **Types**: `SprintFormValue` ({ name, startDate, endDate, goal, capacity }), `SprintStats` ({ completedTasks, totalTasks, daysLeft })
 

@@ -2,6 +2,22 @@
  * Date formatting utilities for sprint components.
  */
 
+/** Родительный падеж названий месяцев для формата "день месяц год" */
+const MONTH_GENITIVE_RU = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+
+/**
+ * Formats a date as "день месяц год", e.g. "10 августа 2026".
+ */
+export function formatDateLong(date: Date | string | null): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return `${d.getDate()} ${MONTH_GENITIVE_RU[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 /**
  * Formats a date as "DD.MM.YYYY".
  */
