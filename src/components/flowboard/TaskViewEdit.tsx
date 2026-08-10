@@ -181,7 +181,7 @@ export function TaskViewEdit({
         <Segments
           value={tab}
           onChange={(v) => setTab(v)}
-          disabled={isView}
+          disabled={isEdit}
           options={[
             { value: 'general', label: 'Общее' },
             { value: 'comments', label: 'Комментарии' },
@@ -354,7 +354,10 @@ export function TaskViewEdit({
           open={isDateSheetOpen}
           onClose={() => setIsDateSheetOpen(false)}
           date={deadline}
-          onConfirm={(d: Date) => setDeadline(d)}
+          onConfirm={(d: Date) => {
+            setDeadline(d);
+            setIsDateSheetOpen(false);
+          }}
         />
       </div>
     </BottomSheet>
