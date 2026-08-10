@@ -34,7 +34,7 @@ export function BottomSheet({
   open,
   onClose,
   children,
-  stacked,
+  stacked = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -198,11 +198,11 @@ export function BottomSheet({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-end transition-opacity duration-300 ${
+      className={`fixed inset-0 flex items-end transition-opacity duration-300 ${
         open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}
       style={{
-        // Backdrop covers the full screen
+        zIndex: stacked ? 9999 : 50,
       }}
       aria-hidden={!open}
     >
@@ -218,13 +218,14 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative z-10 w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
+        className={`relative w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
-          style={
-            {
-              backgroundColor: 'var(--color-surface)',
-              clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
+        style={
+          {
+            zIndex: stacked ? 10000 : 10,
+            backgroundColor: 'var(--color-surface)',
+            clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             overscrollBehavior: 'contain',
             willChange: 'transform',
             // Single source of truth for vertical position:
