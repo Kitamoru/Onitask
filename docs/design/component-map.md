@@ -21,6 +21,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | TextArea | TextArea.tsx | value, onChange, placeholder, disabled | Multiline text input |
 | | ToggleSwitch | ToggleSwitch.tsx | checked, onChange, label, disabled | On/off toggle |
 | | CountBadge | CountBadge.tsx | count | Number badge |
+| | Segments | Segments.tsx | options, value, onChange, disabled | Segmented control (Figma "segments" 441:48462). Used in task-create wizard for "Поэтапно"/"Всё сразу" |
+| | ProgressSteps | ProgressSteps.tsx | current, total | Step progress bar (Figma "progressbar" 439:33993). Active stage amber, inactive amber 20% |
 
 ---
 
@@ -84,7 +86,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
 | | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
-| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet. In `view` mode all fields are locked (read-only) with an "Редактировать" button; in `edit` mode fields are active with save/cancel. Wraps form in `BottomSheet`. Uses desk-ui `TextInput`, `TextArea`, `Button`. Handles title, description, priority, deadline, assignee, reviewer, story points, cognitive weight, metadata (checklist, related tasks, external links). |
+| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 wizard bottom sheet (Figma 1:663 task-create). 3 stages: Ключевой контекст (название, описание, дедлайн) + Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки toggles). Uses `Segments` (Поэтапно/Всё сразу), `ProgressSteps`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`. View mode locks fields + "Редактировать" button. |
 
 **Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`, `TaskViewEdit`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`, `TaskViewEditProps`

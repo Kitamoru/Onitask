@@ -3,16 +3,28 @@
 /**
  * TaskViewEdit — 2-in-1 task component (view/edit modes).
  *
+ * Based on Figma node 1:663 (task-create).
+ *
+ * Wizard with 3 stages:
+ *   1. Ключевой контекст (название, описание, дедлайн) + Стоимость (SP, CW)
+ *   2. Ответственность (соисполнители, наблюдатели)
+ *   3. Дополнительный контекст (чеклист, связанные, зависимые, внешние ссылки)
+ *
  * View mode: all fields are disabled/readonly (like board view).
  * Edit mode: all fields are active with save/cancel actions.
- *
- * Based on: Figma node 1:663 (task-create), component-map.md
- * Design system: desk-ui primitives
  */
 
 import { useState, useEffect } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { TextInput, TextArea, Button } from '@/components/ui/desk-ui';
+import {
+  TextInput,
+  TextArea,
+  Button,
+  Stepper,
+  ToggleSwitch,
+  Segments,
+  ProgressSteps,
+} from '@/components/ui/desk-ui';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
 
@@ -33,6 +45,30 @@ export interface TaskViewEditProps {
   className?: string;
 }
 
+const STAGES = ['Ключевой контекст', 'Ответственность', 'Доп. контекст'] as const;
+type Stage = (typeof STAGES)[number];
+
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <div className="flex w-full items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div style={{ width: 2, height: 18, backgroundColor: '#F59E0B', flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-sm)',
+            lineHeight: '18px',
+            fontWeight: 'var(--font-weight-medium)',
+            color: '#FAFAFA',
+          }}
+        >
+          {title}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function TaskViewEdit({
   open,
   onClose,
@@ -47,24 +83,20 @@ export function TaskViewEdit({
   const isEdit = internalMode === 'edit';
   const isNew = !task?.id;
 
+  // Wizard state
+  const [stage, setStage] = useState(0);
+  const [creationMode, setCreationMode] = useState<'step' | 'all'>('step');
+
   // Form state
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
-  const [storyPoints, setStoryPoints] = useState<number | null>(task?.story_points ?? null);
+  const [storyPoints, setStoryPoints] = useState(task?.story_points ?? 1);
   const [cognitiveWeight, setCognitiveWeight] = useState(task?.cognitive_weight ?? 1);
-  const [assignedTo, setAssignedTo] = useState(task?.assigned_to ?? null);
-  const [reviewerId, setReviewerId] = useState(task?.reviewer_id ?? null);
   const [deadline, setDeadline] = useState(task?.deadline ?? '');
-  const [priority, setPriority] = useState(task?.priority ?? 'medium');
-  const [checklist, setChecklist] = useState<string[]>(
-    (task?.metadata?.checklist as string[]) ?? []
-  );
-  const [relatedTasks, setRelatedTasks] = useState<string[]>(
-    (task?.metadata?.related_tasks as string[]) ?? []
-  );
-  const [externalLinks, setExternalLinks] = useState<{ name: string; url: string }[]>(
-    (task?.metadata?.external_links as { name: string; url: string }[]) ?? []
-  );
+  const [checklistEnabled, setChecklistEnabled] = useState(false);
+  const [relatedEnabled, setRelatedEnabled] = useState(false);
+  const [dependentEnabled, setDependentEnabled] = useState(false);
+  const [linksEnabled, setLinksEnabled] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +105,7 @@ export function TaskViewEdit({
   useEffect(() => {
     if (open) {
       setInternalMode(mode);
+      setStage(0);
       setError(null);
     }
   }, [open, mode]);
@@ -82,15 +115,9 @@ export function TaskViewEdit({
     if (task) {
       setTitle(task.title ?? '');
       setDescription(task.description ?? '');
-      setStoryPoints(task.story_points ?? null);
+      setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
-      setAssignedTo(task.assigned_to ?? null);
-      setReviewerId(task.reviewer_id ?? null);
       setDeadline(task.deadline ?? '');
-      setPriority(task.priority ?? 'medium');
-      setChecklist((task.metadata?.checklist as string[]) ?? []);
-      setRelatedTasks((task.metadata?.related_tasks as string[]) ?? []);
-      setExternalLinks((task.metadata?.external_links as { name: string; url: string }[]) ?? []);
     }
   }, [task]);
 
@@ -106,9 +133,10 @@ export function TaskViewEdit({
     try {
       const metadata: Record<string, unknown> = {
         ...(task?.metadata ?? {}),
-        checklist,
-        related_tasks: relatedTasks,
-        external_links: externalLinks,
+        checklist: checklistEnabled ? (task?.metadata?.checklist ?? []) : [],
+        related_tasks: relatedEnabled ? (task?.metadata?.related_tasks ?? []) : [],
+        dependent_tasks: dependentEnabled ? (task?.metadata?.dependent_tasks ?? []) : [],
+        external_links: linksEnabled ? (task?.metadata?.external_links ?? []) : [],
       };
 
       if (isNew) {
@@ -116,7 +144,6 @@ export function TaskViewEdit({
           title: title.trim(),
           description: description || undefined,
           column: 'backlog',
-          priority,
           cognitive_weight: cognitiveWeight,
           deadline: deadline || undefined,
         });
@@ -134,7 +161,6 @@ export function TaskViewEdit({
         const result = await patchTask(task.id, {
           title: title.trim(),
           description: description || undefined,
-          priority,
           cognitive_weight: cognitiveWeight,
           deadline: deadline || undefined,
           metadata,
@@ -156,268 +182,143 @@ export function TaskViewEdit({
     if (task) {
       setTitle(task.title ?? '');
       setDescription(task.description ?? '');
-      setStoryPoints(task.story_points ?? null);
+      setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
-      setAssignedTo(task.assigned_to ?? null);
-      setReviewerId(task.reviewer_id ?? null);
       setDeadline(task.deadline ?? '');
-      setPriority(task.priority ?? 'medium');
     }
     setInternalMode('view');
     onClose();
   };
 
+  const goNext = () => setStage((s) => Math.min(s + 1, STAGES.length - 1));
+  const goPrev = () => setStage((s) => Math.max(s - 1, 0));
+
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className={`flex flex-col gap-4 px-4 pb-6 ${className}`} aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}>
-        {/* Title */}
-        <div className="flex flex-col gap-1">
-          <label
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Название
-          </label>
-          <TextInput
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Введите название задачи..."
-            disabled={isView}
-            maxLength={500}
-            corner="field"
-          />
-        </div>
+      <div
+        className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
+        aria-label={isView ? 'Просмотр задачи' : 'Создание задачи'}
+      >
+        {/* Segments: Поэтапно / Всё сразу */}
+        <Segments
+          value={creationMode}
+          onChange={(v) => setCreationMode(v)}
+          disabled={isView}
+          options={[
+            { value: 'step', label: 'Поэтапно' },
+            { value: 'all', label: 'Всё сразу' },
+          ]}
+        />
 
-        {/* Description */}
-        <div className="flex flex-col gap-1">
-          <label
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Описание
-          </label>
-          <TextArea
-            value={description}
-            onChange={setDescription}
-            placeholder="Описание задачи..."
-            disabled={isView}
-            maxLength={5000}
-            corner="field"
-          />
-        </div>
+        {/* Progress bar */}
+        <ProgressSteps current={stage + 1} total={STAGES.length} />
 
-        {/* Story Points & Cognitive Weight */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Стори пойнты
-            </label>
-            <input
-              type="number"
-              value={storyPoints ?? ''}
-              onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : null)}
-              disabled={isView}
-              min={0}
-              max={100}
-              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-              style={{
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-base)',
-                fontSize: 'var(--text-body-sm)',
-                borderRadius: 'var(--radius-flowboard-section)',
-                opacity: isView ? 0.6 : 1,
-              }}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Когнитивный вес
-            </label>
-            <div className="flex items-center gap-2">
-              {[0, 1, 2, 3].map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setCognitiveWeight(w)}
+        {/* Stage 1: Ключевой контекст + Стоимость */}
+        {stage === 0 && (
+          <div className="flex w-full flex-col gap-5">
+            <div className="flex w-full flex-col gap-3">
+              <SectionHeading title="Ключевой контекст" />
+              <div className="flex w-full flex-col gap-3">
+                <TextInput
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Название задачи"
                   disabled={isView}
-                  className="flex items-center justify-center w-8 h-8 rounded border transition-colors"
-                  style={{
-                    borderColor: cognitiveWeight === w ? 'var(--color-accent-amber)' : 'var(--color-border-default)',
-                    backgroundColor: cognitiveWeight === w ? 'var(--color-accent-amber-subtle)' : 'transparent',
-                    color: 'var(--color-text-primary)',
-                    fontFamily: 'var(--font-family-display)',
-                    fontSize: 'var(--text-body-sm)',
-                    fontWeight: cognitiveWeight === w ? 'var(--font-weight-semibold)' : 'var(--font-weight-medium)',
-                    opacity: isView ? 0.6 : 1,
-                    cursor: isView ? 'not-allowed' : 'pointer',
-                  }}
-                  aria-label={`Вес ${w}`}
-                  aria-pressed={cognitiveWeight === w}
-                >
-                  {w}
-                </button>
-              ))}
+                  maxLength={500}
+                  corner="field"
+                />
+                <TextArea
+                  value={description}
+                  onChange={setDescription}
+                  placeholder="Описание задачи"
+                  disabled={isView}
+                  maxLength={5000}
+                  corner="field"
+                />
+                <TextInput
+                  type="datetime-local"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  placeholder="Дедлайн"
+                  disabled={isView}
+                  corner="field"
+                />
+              </div>
+            </div>
+
+            <div className="flex w-full flex-col gap-3">
+              <SectionHeading title="Стоимость" />
+              <div className="flex w-full flex-col gap-3">
+                <Stepper
+                  value={storyPoints}
+                  unitLabel={(n) => `${n} SP`}
+                  min={1}
+                  max={30}
+                  onChange={setStoryPoints}
+                  borderGradient={['#F59E0B', '#F59E0B']}
+                  disabled={isView}
+                />
+                <Stepper
+                  value={cognitiveWeight}
+                  unitLabel={(n) => `${n} CW`}
+                  min={1}
+                  max={10}
+                  onChange={setCognitiveWeight}
+                  borderGradient={['#F59E0B', '#F59E0B']}
+                  disabled={isView}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Assigned To & Reviewer */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Исполнитель
-            </label>
-            <select
-              value={assignedTo ?? ''}
-              onChange={(e) => setAssignedTo(e.target.value || null)}
-              disabled={isView}
-              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-              style={{
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-base)',
-                fontSize: 'var(--text-body-sm)',
-                borderRadius: 'var(--radius-flowboard-section)',
-                opacity: isView ? 0.6 : 1,
-              }}
-            >
-              <option value="">— Не назначен —</option>
-              {workers.map((worker) => (
-                <option key={worker.id} value={worker.id}>
-                  {worker.displayName}
-                </option>
-              ))}
-            </select>
+        {/* Stage 2: Ответственность */}
+        {stage === 1 && (
+          <div className="flex w-full flex-col gap-3">
+            <SectionHeading title="Ответственность" />
+            <div className="flex w-full flex-col gap-3">
+              <Button variant="outline" disabled={isView} className="w-full">
+                Добавить соисполнителей
+              </Button>
+              <Button variant="outline" disabled={isView} className="w-full">
+                Добавить наблюдателей
+              </Button>
+            </div>
           </div>
+        )}
 
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Наблюдатель
-            </label>
-            <select
-              value={reviewerId ?? ''}
-              onChange={(e) => setReviewerId(e.target.value || null)}
-              disabled={isView}
-              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-              style={{
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-base)',
-                fontSize: 'var(--text-body-sm)',
-                borderRadius: 'var(--radius-flowboard-section)',
-                opacity: isView ? 0.6 : 1,
-              }}
-            >
-              <option value="">— Не назначен —</option>
-              {workers.map((worker) => (
-                <option key={worker.id} value={worker.id}>
-                  {worker.displayName}
-                </option>
-              ))}
-            </select>
+        {/* Stage 3: Дополнительный контекст */}
+        {stage === 2 && (
+          <div className="flex w-full flex-col gap-3">
+            <SectionHeading title="Дополнительный контекст" />
+            <div className="flex w-full flex-col gap-3">
+              <ToggleSwitch
+                checked={checklistEnabled}
+                onChange={setChecklistEnabled}
+                label="Чеклист задачи"
+                disabled={isView}
+              />
+              <ToggleSwitch
+                checked={relatedEnabled}
+                onChange={setRelatedEnabled}
+                label="Связанные задачи"
+                disabled={isView}
+              />
+              <ToggleSwitch
+                checked={dependentEnabled}
+                onChange={setDependentEnabled}
+                label="Зависимые задачи"
+                disabled={isView}
+              />
+              <ToggleSwitch
+                checked={linksEnabled}
+                onChange={setLinksEnabled}
+                label="Внешние ссылки"
+                disabled={isView}
+              />
+            </div>
           </div>
-        </div>
-
-        {/* Deadline & Priority */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Дедлайн
-            </label>
-            <input
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              disabled={isView}
-              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-              style={{
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-base)',
-                fontSize: 'var(--text-body-sm)',
-                borderRadius: 'var(--radius-flowboard-section)',
-                opacity: isView ? 0.6 : 1,
-              }}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Приоритет
-            </label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              disabled={isView}
-              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-              style={{
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-base)',
-                fontSize: 'var(--text-body-sm)',
-                borderRadius: 'var(--radius-flowboard-section)',
-                opacity: isView ? 0.6 : 1,
-              }}
-            >
-              <option value="low">Низкий</option>
-              <option value="medium">Средний</option>
-              <option value="high">Высокий</option>
-              <option value="critical">Критический</option>
-            </select>
-          </div>
-        </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -426,7 +327,7 @@ export function TaskViewEdit({
             style={{
               backgroundColor: 'rgba(239, 68, 68, 0.1)',
               color: 'var(--color-priority-red-text)',
-              border: `1px solid var(--color-priority-red-border)`,
+              border: '1px solid var(--color-priority-red-border)',
               borderRadius: 'var(--radius-flowboard-section)',
             }}
             role="alert"
@@ -437,29 +338,31 @@ export function TaskViewEdit({
 
         {/* Actions */}
         {isView && !isNew && (
-          <div className="flex items-center gap-2 mt-2">
-            <Button
-              onClick={() => setInternalMode('edit')}
-              className="flex-1"
-            >
+          <div className="mt-2 flex items-center gap-2">
+            <Button onClick={() => setInternalMode('edit')} className="flex-1">
               Редактировать
             </Button>
           </div>
         )}
         {isEdit && (
-          <div className="flex items-center gap-2 mt-2">
-            <Button
-              onClick={handleSave}
-              disabled={loading || !title.trim()}
-              className="flex-1"
-            >
-              {loading ? 'Сохранение...' : 'Сохранить'}
-            </Button>
-            <Button
-              onClick={handleCancel}
-              variant="outline"
-              className="flex-1"
-            >
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              {stage > 0 && (
+                <Button onClick={goPrev} variant="outline" className="flex-1">
+                  Назад
+                </Button>
+              )}
+              {stage < STAGES.length - 1 ? (
+                <Button onClick={goNext} className="flex-1">
+                  Далее
+                </Button>
+              ) : (
+                <Button onClick={handleSave} disabled={loading || !title.trim()} className="flex-1">
+                  {loading ? 'Сохранение...' : 'Сохранить'}
+                </Button>
+              )}
+            </div>
+            <Button onClick={handleCancel} variant="outline" className="w-full">
               Отмена
             </Button>
           </div>

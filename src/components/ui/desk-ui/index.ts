@@ -7,3 +7,5 @@ export { Stepper } from './Stepper';
 export { CountBadge } from './CountBadge';
 export { SectionHeader } from './SectionHeader';
 export { TextArea } from './TextArea';
+export { Segments } from './Segments';
+export { ProgressSteps } from './ProgressSteps';
