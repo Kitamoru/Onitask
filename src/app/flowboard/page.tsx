@@ -315,7 +315,7 @@ function FlowBoardPageContent() {
           loadStatus="Свободен"
           loading={isSwitchingWorkspace}
           error={dataError}
-          onRefresh={(options) => refreshMetrics(options ?? { force: true })}
+          onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
         />
       ) : (
         <FlowBoard
@@ -332,7 +332,7 @@ function FlowBoardPageContent() {
           error={dataError}
           onAddWorker={() => setShowInviteModal(true)}
           onAddAgent={() => console.log('Add agent clicked')}
-          onRefresh={(options) => refreshMetrics(options ?? { force: true })}
+          onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
           isNewUser={isNewUser}
           onBoardCreate={handleBoardCreate}
           initData={tgInitData}
