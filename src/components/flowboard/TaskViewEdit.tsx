@@ -26,6 +26,7 @@ import {
   ToggleSwitch,
   Segments,
   SectionHeader,
+  Card,
 } from '@/components/ui/desk-ui';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
@@ -257,30 +258,50 @@ export function TaskViewEdit({
         <section>
           <SectionHeader title="Дополнительный контекст" />
           <div className="flex flex-col gap-3">
-            <ToggleSwitch
-              checked={checklistEnabled}
-              onChange={setChecklistEnabled}
-              label="Чеклист задачи"
-              disabled={isView}
-            />
-            <ToggleSwitch
-              checked={relatedEnabled}
-              onChange={setRelatedEnabled}
-              label="Связанные задачи"
-              disabled={isView}
-            />
-            <ToggleSwitch
-              checked={dependentEnabled}
-              onChange={setDependentEnabled}
-              label="Зависимые задачи"
-              disabled={isView}
-            />
-            <ToggleSwitch
-              checked={linksEnabled}
-              onChange={setLinksEnabled}
-              label="Внешние ссылки"
-              disabled={isView}
-            />
+            <Card>
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-medium text-text">Чеклист задачи</span>
+                <ToggleSwitch
+                  checked={checklistEnabled}
+                  onChange={setChecklistEnabled}
+                  label="Чеклист задачи"
+                  disabled={isView}
+                />
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-medium text-text">Связанные задачи</span>
+                <ToggleSwitch
+                  checked={relatedEnabled}
+                  onChange={setRelatedEnabled}
+                  label="Связанные задачи"
+                  disabled={isView}
+                />
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-medium text-text">Зависимые задачи</span>
+                <ToggleSwitch
+                  checked={dependentEnabled}
+                  onChange={setDependentEnabled}
+                  label="Зависимые задачи"
+                  disabled={isView}
+                />
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-medium text-text">Внешние ссылки</span>
+                <ToggleSwitch
+                  checked={linksEnabled}
+                  onChange={setLinksEnabled}
+                  label="Внешние ссылки"
+                  disabled={isView}
+                />
+              </div>
+            </Card>
           </div>
         </section>
 
