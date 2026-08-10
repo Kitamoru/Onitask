@@ -32,6 +32,7 @@ export function Stepper({
       borderGradient={borderGradient}
       fill="var(--color-surface)"
       contentClassName="flex h-10 items-center justify-between px-2"
+      className={cn('h-full', disabled && 'opacity-40')}
     >
       <StepperButton onClick={dec} disabled={disabled || value <= min} label="Уменьшить">
         <Minus className="h-4 w-4" />
