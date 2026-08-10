@@ -66,6 +66,7 @@ function mapTaskRow(row: any): TaskEntity {
     created_at: row.created_at,
     updated_at: row.updated_at,
     moved_to_column_at: row.moved_to_column_at ?? null,
+    created_by: row.created_by ?? null,
   };
 }
 

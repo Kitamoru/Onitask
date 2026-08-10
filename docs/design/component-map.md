@@ -84,9 +84,10 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
 | | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
+| | TaskViewEdit | TaskViewEdit.tsx | task, mode ('view' \| 'edit'), workers, onSave, onCancel, onClose | Task view/edit 2-in-1 component. In `view` mode all fields are locked (read-only); in `edit` mode fields are active. Uses desk-ui `TextInput`, `TextArea`, `Button`, `ToggleSwitch`, `SectionHeader`. Handles title, description, tags, priority, deadline, assignee, reviewer, story points, cognitive weight, blocked flag, handoff. |
 
-**Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`
-**Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`
+**Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`, `TaskViewEdit`
+**Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`, `TaskViewEditProps`
 
 ---
 

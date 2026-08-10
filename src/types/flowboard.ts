@@ -291,6 +291,8 @@ export interface TaskEntity {
   updated_at: string;
   /** Moved to current column at ISO string */
   moved_to_column_at: string | null;
+  /** Creator worker UUID (постановщик задачи) */
+  created_by: string | null;
 }
 
 /** Request body for PATCH /api/tasks/:id */
@@ -321,6 +323,8 @@ export interface PatchTaskRequest {
   clear_blocked?: boolean;
   /** New position for drag-and-drop ordering */
   position?: number;
+  /** New metadata JSON */
+  metadata?: Record<string, unknown>;
 }
 
 /** Response from PATCH /api/tasks/:id */

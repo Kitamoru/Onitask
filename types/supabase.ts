@@ -1176,6 +1176,7 @@ export type Database = {
           column: string
           complexity: number | null
           created_at: string
+          created_by: string | null
           deadline: string | null
           deadline_urgency: string | null
           description: string | null
@@ -1212,6 +1213,7 @@ export type Database = {
           column?: string
           complexity?: number | null
           created_at?: string
+          created_by?: string | null
           deadline?: string | null
           deadline_urgency?: string | null
           description?: string | null
@@ -1248,6 +1250,7 @@ export type Database = {
           column?: string
           complexity?: number | null
           created_at?: string
+          created_by?: string | null
           deadline?: string | null
           deadline_urgency?: string | null
           description?: string | null

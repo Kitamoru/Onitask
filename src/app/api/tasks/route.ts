@@ -162,7 +162,8 @@ export async function POST(request: NextRequest) {
     const supabase = createServerClient();
 
     // Build insert payload with only known columns
-    const insertPayload: Database['public']['Tables']['tasks']['Insert'] = {
+    // Note: created_by is temporarily cast until types are regenerated after migration 023
+    const insertPayload = {
       workspace_id: workspaceId,
       title: title.trim(),
       description: description ?? null,
@@ -175,7 +176,8 @@ export async function POST(request: NextRequest) {
       is_inbox: !column, // auto-set inbox if no explicit column
       tags: tags ?? [],
       source: source ?? 'manual',
-    };
+      created_by: worker.id,
+    } as Database['public']['Tables']['tasks']['Insert'] & { created_by: string };
 
     const { data, error } = await supabase
       .from('tasks')
