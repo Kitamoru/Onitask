@@ -11,11 +11,16 @@
  */
 
 import { useState, useEffect } from 'react';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 import { TextInput, TextArea, Button } from '@/components/ui/desk-ui';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
 
 export interface TaskViewEditProps {
+  /** Whether the bottom sheet is open */
+  open: boolean;
+  /** Callback when the bottom sheet is closed */
+  onClose: () => void;
   /** Task data (empty for new task) */
   task?: Partial<TaskEntity> | null;
   /** Available workers for assignment */
@@ -24,22 +29,22 @@ export interface TaskViewEditProps {
   mode?: 'view' | 'edit';
   /** Callback on save */
   onSave?: (task: TaskEntity) => void;
-  /** Callback on cancel */
-  onCancel?: () => void;
   /** Custom className */
   className?: string;
 }
 
 export function TaskViewEdit({
+  open,
+  onClose,
   task,
   workers,
   mode = 'view',
   onSave,
-  onCancel,
   className = '',
 }: TaskViewEditProps) {
-  const isView = mode === 'view';
-  const isEdit = mode === 'edit';
+  const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
+  const isView = internalMode === 'view';
+  const isEdit = internalMode === 'edit';
   const isNew = !task?.id;
 
   // Form state
@@ -63,6 +68,14 @@ export function TaskViewEdit({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset internal mode when the sheet opens or the task changes
+  useEffect(() => {
+    if (open) {
+      setInternalMode(mode);
+      setError(null);
+    }
+  }, [open, mode]);
 
   // Sync state when task changes
   useEffect(() => {
@@ -115,6 +128,7 @@ export function TaskViewEdit({
 
         if (result.task) {
           onSave?.(result.task);
+          onClose();
         }
       } else if (task?.id) {
         const result = await patchTask(task.id, {
@@ -128,6 +142,7 @@ export function TaskViewEdit({
 
         if (result.task) {
           onSave?.(result.task);
+          onClose();
         }
       }
     } catch (err) {
@@ -148,57 +163,14 @@ export function TaskViewEdit({
       setDeadline(task.deadline ?? '');
       setPriority(task.priority ?? 'medium');
     }
-    onCancel?.();
+    setInternalMode('view');
+    onClose();
   };
 
   return (
-    <div className={`flex flex-col gap-4 ${className}`} aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}>
-      {/* Title */}
-      <div className="flex flex-col gap-1">
-        <label
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-sm)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
-          }}
-        >
-          Название
-        </label>
-        <TextInput
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Введите название задачи..."
-          disabled={isView}
-          maxLength={500}
-          corner="field"
-        />
-      </div>
-
-      {/* Description */}
-      <div className="flex flex-col gap-1">
-        <label
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-sm)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
-          }}
-        >
-          Описание
-        </label>
-        <TextArea
-          value={description}
-          onChange={setDescription}
-          placeholder="Описание задачи..."
-          disabled={isView}
-          maxLength={5000}
-          corner="field"
-        />
-      </div>
-
-      {/* Story Points & Cognitive Weight */}
-      <div className="grid grid-cols-2 gap-3">
+    <BottomSheet open={open} onClose={onClose}>
+      <div className={`flex flex-col gap-4 px-4 pb-6 ${className}`} aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}>
+        {/* Title */}
         <div className="flex flex-col gap-1">
           <label
             style={{
@@ -208,27 +180,19 @@ export function TaskViewEdit({
               color: 'var(--color-text-primary)',
             }}
           >
-            Стори пойнты
+            Название
           </label>
-          <input
-            type="number"
-            value={storyPoints ?? ''}
-            onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : null)}
+          <TextInput
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Введите название задачи..."
             disabled={isView}
-            min={0}
-            max={100}
-            className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-base)',
-              fontSize: 'var(--text-body-sm)',
-              borderRadius: 'var(--radius-flowboard-section)',
-              opacity: isView ? 0.6 : 1,
-            }}
+            maxLength={500}
+            corner="field"
           />
         </div>
 
+        {/* Description */}
         <div className="flex flex-col gap-1">
           <label
             style={{
@@ -238,197 +202,259 @@ export function TaskViewEdit({
               color: 'var(--color-text-primary)',
             }}
           >
-            Когнитивный вес
+            Описание
           </label>
-          <div className="flex items-center gap-2">
-            {[0, 1, 2, 3].map((w) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => setCognitiveWeight(w)}
-                disabled={isView}
-                className="flex items-center justify-center w-8 h-8 rounded border transition-colors"
-                style={{
-                  borderColor: cognitiveWeight === w ? 'var(--color-accent-amber)' : 'var(--color-border-default)',
-                  backgroundColor: cognitiveWeight === w ? 'var(--color-accent-amber-subtle)' : 'transparent',
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-body-sm)',
-                  fontWeight: cognitiveWeight === w ? 'var(--font-weight-semibold)' : 'var(--font-weight-medium)',
-                  opacity: isView ? 0.6 : 1,
-                  cursor: isView ? 'not-allowed' : 'pointer',
-                }}
-                aria-label={`Вес ${w}`}
-                aria-pressed={cognitiveWeight === w}
-              >
-                {w}
-              </button>
-            ))}
+          <TextArea
+            value={description}
+            onChange={setDescription}
+            placeholder="Описание задачи..."
+            disabled={isView}
+            maxLength={5000}
+            corner="field"
+          />
+        </div>
+
+        {/* Story Points & Cognitive Weight */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Стори пойнты
+            </label>
+            <input
+              type="number"
+              value={storyPoints ?? ''}
+              onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : null)}
+              disabled={isView}
+              min={0}
+              max={100}
+              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
+              style={{
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-base)',
+                fontSize: 'var(--text-body-sm)',
+                borderRadius: 'var(--radius-flowboard-section)',
+                opacity: isView ? 0.6 : 1,
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Когнитивный вес
+            </label>
+            <div className="flex items-center gap-2">
+              {[0, 1, 2, 3].map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setCognitiveWeight(w)}
+                  disabled={isView}
+                  className="flex items-center justify-center w-8 h-8 rounded border transition-colors"
+                  style={{
+                    borderColor: cognitiveWeight === w ? 'var(--color-accent-amber)' : 'var(--color-border-default)',
+                    backgroundColor: cognitiveWeight === w ? 'var(--color-accent-amber-subtle)' : 'transparent',
+                    color: 'var(--color-text-primary)',
+                    fontFamily: 'var(--font-family-display)',
+                    fontSize: 'var(--text-body-sm)',
+                    fontWeight: cognitiveWeight === w ? 'var(--font-weight-semibold)' : 'var(--font-weight-medium)',
+                    opacity: isView ? 0.6 : 1,
+                    cursor: isView ? 'not-allowed' : 'pointer',
+                  }}
+                  aria-label={`Вес ${w}`}
+                  aria-pressed={cognitiveWeight === w}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Assigned To & Reviewer */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <label
+        {/* Assigned To & Reviewer */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Исполнитель
+            </label>
+            <select
+              value={assignedTo ?? ''}
+              onChange={(e) => setAssignedTo(e.target.value || null)}
+              disabled={isView}
+              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
+              style={{
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-base)',
+                fontSize: 'var(--text-body-sm)',
+                borderRadius: 'var(--radius-flowboard-section)',
+                opacity: isView ? 0.6 : 1,
+              }}
+            >
+              <option value="">— Не назначен —</option>
+              {workers.map((worker) => (
+                <option key={worker.id} value={worker.id}>
+                  {worker.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Наблюдатель
+            </label>
+            <select
+              value={reviewerId ?? ''}
+              onChange={(e) => setReviewerId(e.target.value || null)}
+              disabled={isView}
+              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
+              style={{
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-base)',
+                fontSize: 'var(--text-body-sm)',
+                borderRadius: 'var(--radius-flowboard-section)',
+                opacity: isView ? 0.6 : 1,
+              }}
+            >
+              <option value="">— Не назначен —</option>
+              {workers.map((worker) => (
+                <option key={worker.id} value={worker.id}>
+                  {worker.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Deadline & Priority */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Дедлайн
+            </label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              disabled={isView}
+              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
+              style={{
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-base)',
+                fontSize: 'var(--text-body-sm)',
+                borderRadius: 'var(--radius-flowboard-section)',
+                opacity: isView ? 0.6 : 1,
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Приоритет
+            </label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              disabled={isView}
+              className="w-full px-3 py-2 rounded border bg-transparent text-sm"
+              style={{
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-base)',
+                fontSize: 'var(--text-body-sm)',
+                borderRadius: 'var(--radius-flowboard-section)',
+                opacity: isView ? 0.6 : 1,
+              }}
+            >
+              <option value="low">Низкий</option>
+              <option value="medium">Средний</option>
+              <option value="high">Высокий</option>
+              <option value="critical">Критический</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div
+            className="px-3 py-2 rounded text-sm"
             style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Исполнитель
-          </label>
-          <select
-            value={assignedTo ?? ''}
-            onChange={(e) => setAssignedTo(e.target.value || null)}
-            disabled={isView}
-            className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-base)',
-              fontSize: 'var(--text-body-sm)',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              color: 'var(--color-priority-red-text)',
+              border: `1px solid var(--color-priority-red-border)`,
               borderRadius: 'var(--radius-flowboard-section)',
-              opacity: isView ? 0.6 : 1,
             }}
+            role="alert"
           >
-            <option value="">— Не назначен —</option>
-            {workers.map((worker) => (
-              <option key={worker.id} value={worker.id}>
-                {worker.displayName}
-              </option>
-            ))}
-          </select>
-        </div>
+            {error}
+          </div>
+        )}
 
-        <div className="flex flex-col gap-1">
-          <label
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Наблюдатель
-          </label>
-          <select
-            value={reviewerId ?? ''}
-            onChange={(e) => setReviewerId(e.target.value || null)}
-            disabled={isView}
-            className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-base)',
-              fontSize: 'var(--text-body-sm)',
-              borderRadius: 'var(--radius-flowboard-section)',
-              opacity: isView ? 0.6 : 1,
-            }}
-          >
-            <option value="">— Не назначен —</option>
-            {workers.map((worker) => (
-              <option key={worker.id} value={worker.id}>
-                {worker.displayName}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Deadline & Priority */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <label
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Дедлайн
-          </label>
-          <input
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            disabled={isView}
-            className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-base)',
-              fontSize: 'var(--text-body-sm)',
-              borderRadius: 'var(--radius-flowboard-section)',
-              opacity: isView ? 0.6 : 1,
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Приоритет
-          </label>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-            disabled={isView}
-            className="w-full px-3 py-2 rounded border bg-transparent text-sm"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-base)',
-              fontSize: 'var(--text-body-sm)',
-              borderRadius: 'var(--radius-flowboard-section)',
-              opacity: isView ? 0.6 : 1,
-            }}
-          >
-            <option value="low">Низкий</option>
-            <option value="medium">Средний</option>
-            <option value="high">Высокий</option>
-            <option value="critical">Критический</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div
-          className="px-3 py-2 rounded text-sm"
-          style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            color: 'var(--color-priority-red-text)',
-            border: `1px solid var(--color-priority-red-border)`,
-            borderRadius: 'var(--radius-flowboard-section)',
-          }}
-          role="alert"
-        >
-          {error}
-        </div>
-      )}
-
-      {/* Actions */}
-      {isEdit && (
-        <div className="flex items-center gap-2 mt-2">
-          <Button
-            onClick={handleSave}
-            disabled={loading || !title.trim()}
-            className="flex-1"
-          >
-            {loading ? 'Сохранение...' : 'Сохранить'}
-          </Button>
-          {onCancel && (
+        {/* Actions */}
+        {isView && !isNew && (
+          <div className="flex items-center gap-2 mt-2">
+            <Button
+              onClick={() => setInternalMode('edit')}
+              className="flex-1"
+            >
+              Редактировать
+            </Button>
+          </div>
+        )}
+        {isEdit && (
+          <div className="flex items-center gap-2 mt-2">
+            <Button
+              onClick={handleSave}
+              disabled={loading || !title.trim()}
+              className="flex-1"
+            >
+              {loading ? 'Сохранение...' : 'Сохранить'}
+            </Button>
             <Button
               onClick={handleCancel}
               variant="outline"
@@ -436,9 +462,9 @@ export function TaskViewEdit({
             >
               Отмена
             </Button>
-          )}
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+      </div>
+    </BottomSheet>
   );
 }

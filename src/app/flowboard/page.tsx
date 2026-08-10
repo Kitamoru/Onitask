@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
@@ -41,6 +41,7 @@ function FlowBoardPageContent() {
     label: '',
     accentColor: 'var(--color-accent-amber)',
   });
+  const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -142,6 +143,11 @@ function FlowBoardPageContent() {
   const handleColumnSheetClose = useCallback(() => {
     setColumnSheet((prev) => ({ ...prev, open: false }));
   }, []);
+
+  const handleTaskTap = useCallback((taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    setSelectedTask(task ?? null);
+  }, [tasks]);
 
   const refreshMetrics = useCallback(async (options?: { force?: boolean }) => {
     const force = options?.force ?? false;
@@ -361,6 +367,20 @@ function FlowBoardPageContent() {
           tasks={tasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
+          onTaskTap={handleTaskTap}
+        />
+
+        {/* Task view/edit bottom sheet */}
+        <TaskViewEdit
+          open={!!selectedTask}
+          onClose={() => setSelectedTask(null)}
+          task={selectedTask}
+          workers={workers}
+          mode="view"
+          onSave={(updatedTask) => {
+            dispatch({ type: 'PATCH_TASK', payload: updatedTask });
+            setSelectedTask(null);
+          }}
         />
     </>
   );
