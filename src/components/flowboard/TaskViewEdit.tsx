@@ -247,6 +247,9 @@ export function TaskViewEdit({
           <SectionHeader title="Ответственность" />
           <div className="flex flex-col gap-3">
             <Button variant="outline" disabled={isView} className="w-full">
+              Добавить исполнителя
+            </Button>
+            <Button variant="outline" disabled={isView} className="w-full">
               Добавить соисполнителей
             </Button>
             <Button variant="outline" disabled={isView} className="w-full">
