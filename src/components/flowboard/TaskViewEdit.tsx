@@ -32,6 +32,7 @@ import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
+import ParticipantCard from './ParticipantCard';
 
 export interface TaskViewEditProps {
   /** Whether the bottom sheet is open */
@@ -246,6 +247,19 @@ export function TaskViewEdit({
         <section>
           <SectionHeader title="Ответственность" />
           <div className="flex flex-col gap-3">
+            {/* Карточка постановщика */}
+            {task?.created_by && (() => {
+              const creatorWorker = workers.find(w => w.id === task.created_by);
+              if (!creatorWorker) return null;
+              return (
+                <ParticipantCard
+                  id={creatorWorker.id}
+                  displayName={creatorWorker.displayName}
+                  avatarUrl={creatorWorker.avatarUrl}
+                  role="Постановщик"
+                />
+              );
+            })()}
             <Button variant="outline" disabled={isView} className="w-full">
               Добавить исполнителя
             </Button>
