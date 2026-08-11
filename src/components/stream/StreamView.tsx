@@ -39,7 +39,7 @@ export interface StreamViewProps {
 
 // ─── Column grouping helpers ─────────────────────────────────────────────────
 
-export const COLUMN_ORDER: string[] = ['in_progress', 'review', 'backlog', 'done'];
+export const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
 
 const COLUMN_LABELS: Record<string, string> = {
   in_progress: 'В работе',
@@ -235,9 +235,9 @@ export function StreamView({
 
   const columns = useMemo(
     () => [
+      { key: 'backlog', label: 'В очереди', items: backlogTasks, defaultOpen: true },
       { key: 'in_progress', label: 'В работе', items: inProgressTasks, defaultOpen: true },
       { key: 'review', label: 'На проверке', items: reviewTasks, defaultOpen: true },
-      { key: 'backlog', label: 'В очереди', items: backlogTasks, defaultOpen: true },
       { key: 'done', label: 'Сделано', items: doneTasks, defaultOpen: false },
     ],
     [inProgressTasks, reviewTasks, backlogTasks, doneTasks],
