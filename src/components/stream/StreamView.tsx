@@ -1,16 +1,11 @@
 ﻿'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import React, { useMemo } from 'react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { SectionHeader } from '@/components/ui/desk-ui/SectionHeader';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import type { TaskEntity } from '@/types/flowboard';
-
-// Lazy-load SwipeableTaskCard to avoid SSR serialization issues with useRef
-const SwipeableTaskCard = lazy(() =>
-  import('@/components/flowboard/SwipeableTaskCard').then((mod) => ({ default: mod.SwipeableTaskCard })),
-);
 
 /**
  * StreamView — "Стрим задач" (Figma node 98:6093 "desks-stream").
@@ -18,11 +13,7 @@ const SwipeableTaskCard = lazy(() =>
  * Layout (depth ≤ 5):
  *   - Header: layout-list icon + "Стрим задач" + current date
  *   - Cognitive weight summary (Нагрузка + indicator + status)
- *   - Focused tasks: grouped by column → swipeable task cards
- *   - Backlog sections: accordion header + expandable task list + "ЕЩЕ задачи"
- *
- * Optimistic UI: при свайпе задачи она мгновенно перемещается между колонками
- * на клиенте (через swappedTasks), не дожидаясь ответа сервера.
+ *   - Focused tasks: grouped by column → task cards
  *
  * All values are relative (clamp / % / gap) for adaptive design.
  * Design tokens from src/styles/tokens.css + src/app/globals.css.
@@ -84,32 +75,6 @@ function LayoutListIcon() {
       <rect x="4" y="4" width="3.5" height="12" rx="0.5" fill="var(--color-bg-primary-dark)" />
       <rect x="8.5" y="4" width="3.5" height="12" rx="0.5" fill="var(--color-bg-primary-dark)" />
       <rect x="13" y="4" width="3.5" height="12" rx="0.5" fill="var(--color-bg-primary-dark)" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      style={{
-        transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-        transition: 'transform var(--transition-fast)',
-        marginLeft: 'auto',
-      }}
-    >
-      <path
-        d="M4 6l4 4 4-4"
-        stroke="var(--color-text-muted)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -248,129 +213,6 @@ export function TaskCard({ task }: { task: TaskEntity }) {
   );
 }
 
-/**
- * CollapsibleTaskGroup — section with amber accent line + title + task list.
- * Supports collapse/expand with chevron arrow.
- * Integrates SwipeableTaskCard with optimistic UI state from parent.
- */
-function CollapsibleTaskGroup({
-  title,
-  tasks,
-  defaultOpen = true,
-  columnKey,
-  swappedTasks,
-  pendingExit,
-  handleMoveNext,
-  handleMovePrev,
-  handleTap,
-  handleSwipeAway,
-}: {
-  title: string;
-  tasks: TaskEntity[];
-  defaultOpen?: boolean;
-  columnKey: string;
-  swappedTasks: Map<string, { targetColumn: string; originalTask: TaskEntity }>;
-  pendingExit: Map<string, string>;
-  handleMoveNext: (taskId: string) => void;
-  handleMovePrev: (taskId: string) => void;
-  handleTap: (taskId: string) => void;
-  handleSwipeAway: (taskId: string) => void;
-}) {
-  // Cast COLUMN_ORDER to string[] for SwipeableTaskCard compatibility
-  const cardColumnOrder: string[] = COLUMN_ORDER;
-  const [open, setOpen] = useState(defaultOpen);
-
-  if (tasks.length === 0) return null;
-
-  // Compute display tasks with optimistic moves
-  const incomingTasks = tasks.filter((t) => {
-    const swapped = swappedTasks.get(t.id);
-    return swapped && swapped.targetColumn === columnKey;
-  });
-
-  const stayedTasks = tasks.filter((t) => {
-    const swapped = swappedTasks.get(t.id);
-    if (swapped && swapped.targetColumn !== columnKey) return false;
-    if (swapped && swapped.targetColumn === columnKey) return false;
-    if (pendingExit.get(t.id) === columnKey) return true;
-    return t.column === columnKey;
-  });
-
-  const displayTasks = [...incomingTasks, ...stayedTasks];
-
-  return (
-    <div className="flex w-full flex-col gap-4">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 text-left"
-        aria-expanded={open}
-        aria-label={open ? `Свернуть ${title}` : `Развернуть ${title}`}
-      >
-        <div className="flex items-center gap-2">
-          <span
-            className="shrink-0 rounded-full"
-            style={{
-              width: 'var(--size-accent-line-width)',
-              height: 'var(--size-accent-line-height)',
-              backgroundColor: 'var(--color-accent-amber)',
-            }}
-            aria-hidden="true"
-          />
-          <h3
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: '17px',
-              lineHeight: '22px',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-              margin: 0,
-            }}
-          >
-            {title}
-          </h3>
-          <span
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: '17px',
-              lineHeight: '22px',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-muted)',
-            }}
-          >
-            {displayTasks.length}
-          </span>
-        </div>
-        <ChevronIcon open={open} />
-      </button>
-      {open && (
-        <div className="flex w-full flex-col gap-3">
-          {displayTasks.map((task) => {
-            const wasSwapped = swappedTasks.has(task.id);
-            const actualColumn = wasSwapped
-              ? swappedTasks.get(task.id)?.targetColumn ?? task.column
-              : task.column;
-
-            return (
-              <Suspense key={task.id} fallback={<div className="h-24 rounded bg-white/5" />}>
-                <SwipeableTaskCard
-                  task={task}
-                  columnOrder={cardColumnOrder}
-                  currentColumn={actualColumn as typeof cardColumnOrder[number]}
-                  onMoveNext={handleMoveNext}
-                  onMovePrev={handleMovePrev}
-                  onTap={handleTap}
-                  onSwipeAway={handleSwipeAway}
-                />
-              </Suspense>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function StreamView({
@@ -391,107 +233,14 @@ export function StreamView({
   const backlogTasks = useMemo(() => grouped.get('backlog') ?? [], [grouped]);
   const doneTasks = useMemo(() => grouped.get('done') ?? [], [grouped]);
 
-  // Ref for tracking swipe direction (must be inside component to avoid SSR issues)
-  const swipeDirectionRef = useRef<number>(1);
-
-  // Оптимистичные перемещения: taskId -> { targetColumn, originalTask }
-  const [swappedTasks, setSwappedTasks] = useState<Map<string, { targetColumn: string; originalTask: TaskEntity }>>(new Map());
-
-  // Задачи, которые сейчас в exit-анимации: taskId -> fromColumn.
-  // Нужно, чтобы карточка оставалась видимой в старой колонке, пока летит
-  // за экран (300ms), даже если tasks.column уже мгновенно обновлён PATCH_TASK.
-  const [pendingExit, setPendingExit] = useState<Map<string, string>>(new Map());
-
-  // Cleanup swappedTasks: как только задача подтверждена (task.column === targetColumn —
-  // через realtime или оптимистичный PATCH_TASK), удаляем запись из Map.
-  useEffect(() => {
-    if (swappedTasks.size === 0) return;
-    setSwappedTasks((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (const [taskId, swapped] of prev) {
-        const task = tasks.find((t) => t.id === taskId);
-        if (task && task.column === swapped.targetColumn) {
-          next.delete(taskId);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [tasks, swappedTasks]);
-
-  const handleMoveNext = useCallback(
-    (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task || !task.column) return;
-      const currentIndex = COLUMN_ORDER.indexOf(task.column);
-      if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
-      const nextColumn = COLUMN_ORDER[currentIndex + 1];
-      swipeDirectionRef.current = 1;
-      // Удерживаем задачу в старой колонке через swappedTasks — groupByColumn
-      // уже переместил задачу в новую колонку оптимистично, но stayedTasks
-      // исключит её (swapped.targetColumn !== columnKey), а pendingExit
-      // удержит видимой в старой колонке во время exit-анимации.
-      setSwappedTasks((prev) => new Map(prev).set(taskId, { targetColumn: nextColumn, originalTask: task }));
-      setPendingExit((prev) => new Map(prev).set(taskId, task.column));
-      onMoveTask?.(taskId, nextColumn);
-    },
-    [tasks, onMoveTask]
-  );
-
-  const handleMovePrev = useCallback(
-    (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task || !task.column) return;
-      const currentIndex = COLUMN_ORDER.indexOf(task.column);
-      if (currentIndex <= 0) return;
-      const prevColumn = COLUMN_ORDER[currentIndex - 1];
-      swipeDirectionRef.current = -1;
-      setSwappedTasks((prev) => new Map(prev).set(taskId, { targetColumn: prevColumn, originalTask: task }));
-      setPendingExit((prev) => new Map(prev).set(taskId, task.column));
-      onMoveTask?.(taskId, prevColumn);
-    },
-    [tasks, onMoveTask]
-  );
-
-  const handleTap = useCallback(
-    (taskId: string) => {
-      onTaskTap?.(taskId);
-    },
-    [onTaskTap]
-  );
-
-  const handleSwipeAway = useCallback(
-    (taskId: string) => {
-      // Находим задачу в swappedTasks или в исходном списке
-      const swapped = swappedTasks.get(taskId);
-      const sourceTask = swapped?.originalTask ?? tasks.find((t) => t.id === taskId);
-      if (!sourceTask) return;
-
-      // Определяем целевую колонку по направлению свайпа
-      const currentIndex = COLUMN_ORDER.indexOf(sourceTask.column);
-      const direction = swipeDirectionRef.current;
-      const targetColumn =
-        direction > 0
-          ? COLUMN_ORDER[Math.min(currentIndex + 1, COLUMN_ORDER.length - 1)]
-          : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
-
-      // Обновляем swappedTasks с целевой колонкой — это нужно, чтобы задача
-      // появилась в incomingTasks новой колонки после завершения exit-анимации.
-      setSwappedTasks((prev) => {
-        const next = new Map(prev);
-        next.set(taskId, { targetColumn, originalTask: sourceTask });
-        return next;
-      });
-      // Exit-анимация завершена — убираем из pendingExit
-      setPendingExit((prev) => {
-        if (!prev.has(taskId)) return prev;
-        const next = new Map(prev);
-        next.delete(taskId);
-        return next;
-      });
-    },
-    [tasks, swappedTasks],
+  const columns = useMemo(
+    () => [
+      { key: 'in_progress', label: 'В работе', items: inProgressTasks, defaultOpen: true },
+      { key: 'review', label: 'На проверке', items: reviewTasks, defaultOpen: true },
+      { key: 'backlog', label: 'В очереди', items: backlogTasks, defaultOpen: true },
+      { key: 'done', label: 'Сделано', items: doneTasks, defaultOpen: false },
+    ],
+    [inProgressTasks, reviewTasks, backlogTasks, doneTasks],
   );
 
   if (loading) {
@@ -629,61 +378,28 @@ export function StreamView({
         </span>
       </NotchedPanel>
 
-      {/* Column: В работе */}
-      <CollapsibleTaskGroup
-        title="В работе"
-        tasks={inProgressTasks}
-        defaultOpen={true}
-        columnKey="in_progress"
-        swappedTasks={swappedTasks}
-        pendingExit={pendingExit}
-        handleMoveNext={handleMoveNext}
-        handleMovePrev={handleMovePrev}
-        handleTap={handleTap}
-        handleSwipeAway={handleSwipeAway}
-      />
-
-      {/* Column: На проверке */}
-      <CollapsibleTaskGroup
-        title="На проверке"
-        tasks={reviewTasks}
-        defaultOpen={true}
-        columnKey="review"
-        swappedTasks={swappedTasks}
-        pendingExit={pendingExit}
-        handleMoveNext={handleMoveNext}
-        handleMovePrev={handleMovePrev}
-        handleTap={handleTap}
-        handleSwipeAway={handleSwipeAway}
-      />
-
-      {/* Column: В очереди */}
-      <CollapsibleTaskGroup
-        title="В очереди"
-        tasks={backlogTasks}
-        defaultOpen={true}
-        columnKey="backlog"
-        swappedTasks={swappedTasks}
-        pendingExit={pendingExit}
-        handleMoveNext={handleMoveNext}
-        handleMovePrev={handleMovePrev}
-        handleTap={handleTap}
-        handleSwipeAway={handleSwipeAway}
-      />
-
-      {/* Column: Сделано */}
-      <CollapsibleTaskGroup
-        title="Сделано"
-        tasks={doneTasks}
-        defaultOpen={false}
-        columnKey="done"
-        swappedTasks={swappedTasks}
-        pendingExit={pendingExit}
-        handleMoveNext={handleMoveNext}
-        handleMovePrev={handleMovePrev}
-        handleTap={handleTap}
-        handleSwipeAway={handleSwipeAway}
-      />
+      {/* Columns */}
+      {columns.map(({ key, label, items, defaultOpen }) => (
+        <div key={key} className="flex w-full flex-col gap-4">
+          <h3
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: '17px',
+              lineHeight: '22px',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-text-primary)',
+              margin: 0,
+            }}
+          >
+            {label}
+          </h3>
+          <div className="flex w-full flex-col gap-3">
+            {items.map((task) => (
+              <TaskCard key={task.id} task={task} />
+            ))}
+          </div>
+        </div>
+      ))}
 
       {/* Empty state */}
       {tasks.length === 0 && (
