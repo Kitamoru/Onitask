@@ -8,6 +8,8 @@ import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { Button } from '@/components/ui/desk-ui/Button';
 import { Field } from '@/components/sprint/Field';
 import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
+// DataContext provides the current list of tasks loaded from the backend.
+import { useData } from '@/contexts/DataContext';
 import type { SprintFormValue } from '@/components/sprint/types';
 
 export function SprintCreateSheet({
@@ -19,6 +21,22 @@ export function SprintCreateSheet({
   onClose: () => void;
   onSubmit: (value: SprintFormValue) => void;
 }) {
+  // Pull tasks from the global DataContext. These tasks are already normalized
+  // into the `TaskEntity` shape used throughout the app.
+  const { state } = useData();
+  const taskEntities = state.tasks.items;
+
+  // Derive a simple list compatible with TasksAccordionRow. The component only
+  // needs an `id`, a human‑readable `title`, and the `full_id` used for display.
+  const taskList = taskEntities.map((t) => ({
+    id: t.id,
+    title: t.title ?? '(без названия)',
+    full_id: t.full_id ?? t.id.slice(0, 8),
+  }));
+
+  // The count shown in the accordion header should reflect the number of
+  // available tasks.
+  const taskCount = taskList.length;
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -78,7 +96,8 @@ export function SprintCreateSheet({
             />
           </Field>
 
-          <TasksAccordionRow taskCount={0} />
+          {/* Pass the actual task count and list of tasks to the accordion */}
+          <TasksAccordionRow taskCount={taskCount} tasks={taskList} />
 
           <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
             Создать спринт
