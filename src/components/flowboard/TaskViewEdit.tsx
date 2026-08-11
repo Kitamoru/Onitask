@@ -204,9 +204,15 @@ export function TaskViewEdit({
   const assigneeWorker = findWorker(assignedTo);
   const reviewerWorker = findWorker(reviewerId);
 
-  // Filter out already-assigned workers (exclude current assignee/reviewer from options)
-  const availableForAssignee = workers.filter(w => w.id !== reviewerId && w.type === 'human');
-  const availableForReviewer = workers.filter(w => w.id !== assignedTo && w.type === 'human');
+  // Filter out already-assigned workers:
+  // - Assignee list excludes current reviewer (and current assignee can't be re-selected as assignee)
+  // - Reviewer list excludes current assignee (and current reviewer can't be re-selected as reviewer)
+  const availableForAssignee = workers.filter(
+    w => w.id !== reviewerId && w.type === 'human',
+  );
+  const availableForReviewer = workers.filter(
+    w => w.id !== assignedTo && w.type === 'human',
+  );
 
   return (
     <BottomSheet open={open} onClose={onClose}>
@@ -445,36 +451,38 @@ export function TaskViewEdit({
           }}
         />
 
-        {/* Worker select sheets */}
-        <WorkerSelectSheet
-          open={assigneeSheetOpen}
-          onClose={() => setAssigneeSheetOpen(false)}
-          workers={availableForAssignee}
-          selectedId={assignedTo}
-          onSelect={(id) => {
-            setAssignedTo(id);
-            // If this worker was the reviewer, clear reviewer
-            if (reviewerId === id) {
-              setReviewerId(null);
-            }
-          }}
-          title="Выберите исполнителя"
-        />
+        {/* Worker select sheets — rendered at root level with high z-index */}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
+          <WorkerSelectSheet
+            open={assigneeSheetOpen}
+            onClose={() => setAssigneeSheetOpen(false)}
+            workers={availableForAssignee}
+            selectedId={assignedTo}
+            onSelect={(id) => {
+              setAssignedTo(id);
+              // If this worker was the reviewer, clear reviewer
+              if (reviewerId === id) {
+                setReviewerId(null);
+              }
+            }}
+            title="Выберите исполнителя"
+          />
 
-        <WorkerSelectSheet
-          open={reviewerSheetOpen}
-          onClose={() => setReviewerSheetOpen(false)}
-          workers={availableForReviewer}
-          selectedId={reviewerId}
-          onSelect={(id) => {
-            setReviewerId(id);
-            // If this worker was the assignee, clear assignee
-            if (assignedTo === id) {
-              setAssignedTo(null);
-            }
-          }}
-          title="Выберите проверяющего"
-        />
+          <WorkerSelectSheet
+            open={reviewerSheetOpen}
+            onClose={() => setReviewerSheetOpen(false)}
+            workers={availableForReviewer}
+            selectedId={reviewerId}
+            onSelect={(id) => {
+              setReviewerId(id);
+              // If this worker was the assignee, clear assignee
+              if (assignedTo === id) {
+                setAssignedTo(null);
+              }
+            }}
+            title="Выберите проверяющего"
+          />
+        </div>
       </div>
     </BottomSheet>
   );
