@@ -215,6 +215,7 @@ export function TaskViewEdit({
   );
 
   return (
+    <>
     <BottomSheet open={open} onClose={onClose}>
       <div
         className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
@@ -450,40 +451,43 @@ export function TaskViewEdit({
             setIsDateSheetOpen(false);
           }}
         />
-
-        {/* Worker select sheets — rendered at root level with high z-index */}
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
-          <WorkerSelectSheet
-            open={assigneeSheetOpen}
-            onClose={() => setAssigneeSheetOpen(false)}
-            workers={availableForAssignee}
-            selectedId={assignedTo}
-            onSelect={(id) => {
-              setAssignedTo(id);
-              // If this worker was the reviewer, clear reviewer
-              if (reviewerId === id) {
-                setReviewerId(null);
-              }
-            }}
-            title="Выберите исполнителя"
-          />
-
-          <WorkerSelectSheet
-            open={reviewerSheetOpen}
-            onClose={() => setReviewerSheetOpen(false)}
-            workers={availableForReviewer}
-            selectedId={reviewerId}
-            onSelect={(id) => {
-              setReviewerId(id);
-              // If this worker was the assignee, clear assignee
-              if (assignedTo === id) {
-                setAssignedTo(null);
-              }
-            }}
-            title="Выберите проверяющего"
-          />
-        </div>
       </div>
     </BottomSheet>
+
+      {/* Worker select sheets — rendered OUTSIDE BottomSheet because they also use
+          createPortal. Nesting portals causes them to render as siblings at
+          document.body level instead of visually stacking. */}
+      <WorkerSelectSheet
+        open={assigneeSheetOpen}
+        onClose={() => setAssigneeSheetOpen(false)}
+        workers={availableForAssignee}
+        selectedId={assignedTo}
+        onSelect={(id) => {
+          setAssignedTo(id);
+          // If this worker was the reviewer, clear reviewer
+          if (reviewerId === id) {
+            setReviewerId(null);
+          }
+        }}
+        title="Выберите исполнителя"
+        stacked
+      />
+
+      <WorkerSelectSheet
+        open={reviewerSheetOpen}
+        onClose={() => setReviewerSheetOpen(false)}
+        workers={availableForReviewer}
+        selectedId={reviewerId}
+        onSelect={(id) => {
+          setReviewerId(id);
+          // If this worker was the assignee, clear assignee
+          if (assignedTo === id) {
+            setAssignedTo(null);
+          }
+        }}
+        title="Выберите проверяющего"
+        stacked
+      />
+    </>
   );
 }

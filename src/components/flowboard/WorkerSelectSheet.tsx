@@ -25,6 +25,8 @@ export interface WorkerSelectSheetProps {
   onSelect: (workerId: string | null) => void;
   /** Sheet title */
   title?: string;
+  /** Render as a stacked portal (higher z-index, for overlaying another BottomSheet) */
+  stacked?: boolean;
 }
 
 export function WorkerSelectSheet({
@@ -34,6 +36,7 @@ export function WorkerSelectSheet({
   selectedId,
   onSelect,
   title = 'Выберите участника',
+  stacked = false,
 }: WorkerSelectSheetProps) {
   const handleSelect = (id: string) => {
     if (selectedId === id) {
@@ -45,7 +48,7 @@ export function WorkerSelectSheet({
   };
 
   return (
-    <BottomSheet open={open} onClose={onClose}>
+    <BottomSheet open={open} onClose={onClose} stacked={stacked}>
       <div className="flex flex-col gap-4 px-4 pb-6">
         {/* Title */}
         <h3 className="text-[17px] font-semibold text-text">{title}</h3>
