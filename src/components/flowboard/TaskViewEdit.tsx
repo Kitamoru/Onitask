@@ -249,7 +249,9 @@ export function TaskViewEdit({
           <div className="flex flex-col gap-3">
             {/* Карточка постановщика */}
             {task?.created_by && (() => {
-              const creatorWorker = workers.find(w => w.id === task.created_by);
+              // created_by может быть UUID (worker.id) или display_name
+              const creatorWorker = workers.find(w => w.id === task.created_by)
+                ?? workers.find(w => w.displayName === task.created_by);
               if (!creatorWorker) return null;
               return (
                 <ParticipantCard

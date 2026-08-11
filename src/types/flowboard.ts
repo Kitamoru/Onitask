@@ -187,6 +187,8 @@ export interface ColumnHealthData {
 
 /** Worker metric data */
 export interface WorkerMetricData {
+  /** Worker UUID (references workers.id) */
+  id: string;
   /** Worker display name */
   display_name: string;
   /** Worker type: human or agent */

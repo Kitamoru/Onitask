@@ -100,9 +100,9 @@ function FlowBoardPageContent() {
     return metrics.workers
       .filter(w => w.type === 'human')
       .map(w => {
-        const workerTasks = tasks.filter(t => t.assigned_to === w.display_name);
+        const workerTasks = tasks.filter(t => t.assigned_to === w.id);
         return {
-          id: w.display_name,
+          id: w.id,
           displayName: w.display_name,
           cognitiveWeight: w.cognitive_load,
           spPerDay: 3.5,
@@ -121,9 +121,9 @@ function FlowBoardPageContent() {
     return metrics.workers
       .filter(w => w.type === 'agent')
       .map(w => {
-        const workerTasks = tasks.filter(t => t.assigned_to === w.display_name);
+        const workerTasks = tasks.filter(t => t.assigned_to === w.id);
         return {
-          id: w.display_name,
+          id: w.id,
           name: w.display_name,
           cognitiveWeight: w.cognitive_load,
           spPerDay: 5.0,

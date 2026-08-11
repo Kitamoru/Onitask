@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
     const workersMetrics: any[] = ((workersData ?? []) as WorkersRow[]).map((w) => {
       const cognitive_load = w.type === 'human' ? Math.min(3, 1) : 0;
       return {
+        id: w.id,
         display_name: w.display_name || w.id.slice(0, 8),
         type: w.type as 'human' | 'agent',
         cognitive_load,

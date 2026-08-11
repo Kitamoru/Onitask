@@ -39,6 +39,7 @@ export interface FlowMetrics {
     health: 'green' | 'yellow' | 'red';
   }>;
   workers: Array<{
+    id: string;
     display_name: string;
     type: 'human' | 'agent';
     status: 'ok' | 'overloaded';
