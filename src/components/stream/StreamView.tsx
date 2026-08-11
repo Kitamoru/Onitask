@@ -428,6 +428,11 @@ export function StreamView({
       if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
       const nextColumn = COLUMN_ORDER[currentIndex + 1];
       swipeDirectionRef.current = 1;
+      // Удерживаем задачу в старой колонке через swappedTasks — groupByColumn
+      // уже переместил задачу в новую колонку оптимистично, но stayedTasks
+      // исключит её (swapped.targetColumn !== columnKey), а pendingExit
+      // удержит видимой в старой колонке во время exit-анимации.
+      setSwappedTasks((prev) => new Map(prev).set(taskId, { targetColumn: nextColumn, originalTask: task }));
       setPendingExit((prev) => new Map(prev).set(taskId, task.column));
       onMoveTask?.(taskId, nextColumn);
     },
@@ -442,6 +447,7 @@ export function StreamView({
       if (currentIndex <= 0) return;
       const prevColumn = COLUMN_ORDER[currentIndex - 1];
       swipeDirectionRef.current = -1;
+      setSwappedTasks((prev) => new Map(prev).set(taskId, { targetColumn: prevColumn, originalTask: task }));
       setPendingExit((prev) => new Map(prev).set(taskId, task.column));
       onMoveTask?.(taskId, prevColumn);
     },
@@ -455,31 +461,21 @@ export function StreamView({
     [onTaskTap]
   );
 
-  const handleSwipeAway = useCallback(
-    (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task || !task.column) return;
-
-      const currentIndex = COLUMN_ORDER.indexOf(task.column);
-      const direction = swipeDirectionRef.current;
-      const targetColumn = direction > 0
-        ? COLUMN_ORDER[Math.min(currentIndex + 1, COLUMN_ORDER.length - 1)]
-        : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
-
-      setSwappedTasks((prev) => {
-        const next = new Map(prev);
-        next.set(taskId, { targetColumn, originalTask: task });
-        return next;
-      });
-      setPendingExit((prev) => {
-        if (!prev.has(taskId)) return prev;
-        const next = new Map(prev);
-        next.delete(taskId);
-        return next;
-      });
-    },
-    [tasks]
-  );
+  const handleSwipeAway = useCallback((taskId: string) => {
+    // Оптимистичный PATCH_TASK уже обновил task.column на сервере и в локальном state.
+    // Задача автоматически появилась в новой колонке через groupByColumn.
+    // pendingExit удерживал её в старой колонке во время exit-анимации.
+    // Когда анимация завершена — просто убираем из pendingExit, чтобы задача
+    // отобразилась в новой колонке (где она уже есть благодаря оптимистичному обновлению).
+    // swappedTasks НЕ используем — он нужен только для "incoming" задач из других колонок,
+    // но в StreamView задачи перемещаются через обновление task.column, а не через swapped.
+    setPendingExit((prev) => {
+      if (!prev.has(taskId)) return prev;
+      const next = new Map(prev);
+      next.delete(taskId);
+      return next;
+    });
+  }, []);
 
   if (loading) {
     return (
