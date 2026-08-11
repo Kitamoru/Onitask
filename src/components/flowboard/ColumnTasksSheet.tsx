@@ -33,7 +33,7 @@ export interface ColumnTasksSheetProps {
   onTaskTap?: (taskId: string) => void;
 }
 
-const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
+const COLUMN_ORDER: string[] = ['in_progress', 'review', 'backlog', 'done'];
 
 const COLUMN_ACCENTS: Record<string, string> = {
   in_progress: 'var(--color-accent-amber)',

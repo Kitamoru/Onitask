@@ -23,7 +23,7 @@ export interface TaskFormProps {
 }
 
 const COLUMNS = [
-  { value: 'backlog', label: 'Бэклог' },
+  { value: 'backlog', label: 'В очереди' },
   { value: 'in_progress', label: 'В работе' },
   { value: 'review', label: 'На проверке' },
 ];

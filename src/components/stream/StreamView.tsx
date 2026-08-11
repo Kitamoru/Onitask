@@ -3,7 +3,6 @@
 import React, { useMemo, useState } from 'react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { SectionHeader } from '@/components/ui/desk-ui/SectionHeader';
-import { Button } from '@/components/ui/desk-ui/Button';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import type { TaskEntity } from '@/types/flowboard';
@@ -41,7 +40,7 @@ const COLUMN_ORDER = ['in_progress', 'review', 'backlog', 'done'] as const;
 const COLUMN_LABELS: Record<string, string> = {
   in_progress: 'В работе',
   review: 'На проверке',
-  backlog: 'Бэклог',
+  backlog: 'В очереди',
   done: 'Сделано',
 };
 
@@ -79,8 +78,8 @@ function LayoutListIcon() {
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
-      width="16"
-      height="16"
+      width="17"
+      height="17"
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -253,6 +252,7 @@ function CollapsibleTaskGroup({ title, tasks, defaultOpen = true }: { title: str
         aria-expanded={open}
         aria-label={open ? `Свернуть ${title}` : `Развернуть ${title}`}
       >
+        <ChevronIcon open={open} />
         <span
           className="shrink-0 rounded-full"
           style={{
@@ -265,8 +265,8 @@ function CollapsibleTaskGroup({ title, tasks, defaultOpen = true }: { title: str
         <h3
           style={{
             fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
+            fontSize: '17px',
+            lineHeight: '22px',
             fontWeight: 'var(--font-weight-medium)',
             color: 'var(--color-text-primary)',
             margin: 0,
@@ -277,15 +277,14 @@ function CollapsibleTaskGroup({ title, tasks, defaultOpen = true }: { title: str
         <span
           style={{
             fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-xs)',
-            lineHeight: 'var(--text-body-xs-line)',
+            fontSize: '17px',
+            lineHeight: '22px',
             fontWeight: 'var(--font-weight-medium)',
             color: 'var(--color-text-muted)',
           }}
         >
           {tasks.length}
         </span>
-        <ChevronIcon open={open} />
       </button>
       {open && (
         <div className="flex w-full flex-col gap-3">
@@ -311,15 +310,10 @@ export function StreamView({
 }: StreamViewProps) {
   const grouped = useMemo(() => groupByColumn(tasks), [tasks]);
 
-  // Focused tasks: in_progress + review (active work)
-  const focused = useMemo(() => {
-    const inProgress = grouped.get('in_progress') ?? [];
-    const review = grouped.get('review') ?? [];
-    return [...inProgress, ...review];
-  }, [grouped]);
-
-  const backlog = useMemo(() => grouped.get('backlog') ?? [], [grouped]);
-  const done = useMemo(() => grouped.get('done') ?? [], [grouped]);
+  const inProgressTasks = useMemo(() => grouped.get('in_progress') ?? [], [grouped]);
+  const reviewTasks = useMemo(() => grouped.get('review') ?? [], [grouped]);
+  const backlogTasks = useMemo(() => grouped.get('backlog') ?? [], [grouped]);
+  const doneTasks = useMemo(() => grouped.get('done') ?? [], [grouped]);
 
   if (loading) {
     return (
@@ -456,26 +450,34 @@ export function StreamView({
         </span>
       </NotchedPanel>
 
-      {/* Focused tasks — active work (in_progress + review) */}
-      {focused.length > 0 && (
-        <div className="flex w-full flex-col gap-4">
-          <SectionHeader title="Фокус" />
-          <div className="flex w-full flex-col gap-3">
-            {focused.map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </div>
+      {/* Column: В работе */}
+      {inProgressTasks.length > 0 && (
+        <div className="flex w-full flex-col gap-3">
+          <SectionHeader title="В работе" />
+          {inProgressTasks.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
         </div>
       )}
 
-      {/* Backlog group */}
-      {backlog.length > 0 && (
-        <CollapsibleTaskGroup title="Бэклог" tasks={backlog} defaultOpen={true} />
+      {/* Column: На проверке */}
+      {reviewTasks.length > 0 && (
+        <div className="flex w-full flex-col gap-3">
+          <SectionHeader title="На проверке" />
+          {reviewTasks.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
       )}
 
-      {/* Done group */}
-      {done.length > 0 && (
-        <CollapsibleTaskGroup title="Сделано" tasks={done} defaultOpen={false} />
+      {/* Column: В очереди */}
+      {backlogTasks.length > 0 && (
+        <CollapsibleTaskGroup title="В очереди" tasks={backlogTasks} defaultOpen={true} />
+      )}
+
+      {/* Column: Сделано */}
+      {doneTasks.length > 0 && (
+        <CollapsibleTaskGroup title="Сделано" tasks={doneTasks} defaultOpen={false} />
       )}
 
       {/* Empty state */}
