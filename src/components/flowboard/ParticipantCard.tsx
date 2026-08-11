@@ -20,7 +20,7 @@ export interface ParticipantCardProps {
   /** Optional avatar URL */
   avatarUrl?: string;
   /** Role label shown as badge */
-  role: 'Постановщик' | 'Исполнитель' | 'Соисполнитель' | 'Наблюдатель';
+  role: 'Постановщик' | 'Исполнитель' | 'Проверяющий';
   /** Optional extra CSS classes */
   className?: string;
 }
@@ -28,8 +28,7 @@ export interface ParticipantCardProps {
 const ROLE_COLORS: Record<ParticipantCardProps['role'], string> = {
   Постановщик: 'var(--color-primary)',
   Исполнитель: 'var(--color-priority-yellow-text)',
-  Соисполнитель: 'var(--color-priority-blue-text)',
-  Наблюдатель: 'var(--color-text-secondary)',
+  Проверяющий: 'var(--color-priority-green-text)',
 };
 
 export default function ParticipantCard({

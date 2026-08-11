@@ -10,7 +10,7 @@
  * Layout: single canvas (no wizard steps) with sections:
  *   - Ключевой контекст (название, описание, дедлайн)
  *   - Стоимость (SP/CW steppers)
- *   - Ответственность (соисполнители, наблюдатели)
+ *   - Ответственность (исполнитель, проверяющий)
  *   - Дополнительный контекст (чеклист, связанные, зависимые, внешние ссылки)
  *
  * Segments: "Общее" (active) / "Комментарии" (inactive — later).
@@ -33,6 +33,7 @@ import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
+import { WorkerSelectSheet } from './WorkerSelectSheet';
 
 export interface TaskViewEditProps {
   /** Whether the bottom sheet is open */
@@ -79,6 +80,14 @@ export function TaskViewEdit({
   const [dependentEnabled, setDependentEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
 
+  // Assignment state
+  const [assignedTo, setAssignedTo] = useState<string | null>(task?.assigned_to ?? null);
+  const [reviewerId, setReviewerId] = useState<string | null>(task?.reviewer_id ?? null);
+
+  // Worker select sheets
+  const [assigneeSheetOpen, setAssigneeSheetOpen] = useState(false);
+  const [reviewerSheetOpen, setReviewerSheetOpen] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
@@ -100,6 +109,8 @@ export function TaskViewEdit({
       setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
       setDeadline(task.deadline ? new Date(task.deadline) : null);
+      setAssignedTo(task.assigned_to ?? null);
+      setReviewerId(task.reviewer_id ?? null);
     }
   }, [task]);
 
@@ -140,13 +151,23 @@ export function TaskViewEdit({
           onClose();
         }
       } else if (task?.id) {
-        const result = await patchTask(task.id, {
+        const patch: Parameters<typeof patchTask>[1] = {
           title: title.trim(),
           description: description || undefined,
           cognitive_weight: cognitiveWeight,
           deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
-        });
+        };
+
+        // Only include assignment changes for existing tasks
+        if (assignedTo !== task.assigned_to) {
+          patch.assigned_to = assignedTo;
+        }
+        if (reviewerId !== task.reviewer_id) {
+          patch.reviewer_id = reviewerId;
+        }
+
+        const result = await patchTask(task.id, patch);
 
         if (result.task) {
           onSave?.(result.task);
@@ -167,10 +188,25 @@ export function TaskViewEdit({
       setStoryPoints(task.story_points ?? 1);
       setCognitiveWeight(task.cognitive_weight ?? 1);
       setDeadline(task.deadline ? new Date(task.deadline) : null);
+      setAssignedTo(task.assigned_to ?? null);
+      setReviewerId(task.reviewer_id ?? null);
     }
     setInternalMode('view');
     onClose();
   };
+
+  // Helper: find worker by ID
+  const findWorker = (id: string | null): WorkerCardData | undefined => {
+    if (!id) return undefined;
+    return workers.find(w => w.id === id);
+  };
+
+  const assigneeWorker = findWorker(assignedTo);
+  const reviewerWorker = findWorker(reviewerId);
+
+  // Filter out already-assigned workers (exclude current assignee/reviewer from options)
+  const availableForAssignee = workers.filter(w => w.id !== reviewerId && w.type === 'human');
+  const availableForReviewer = workers.filter(w => w.id !== assignedTo && w.type === 'human');
 
   return (
     <BottomSheet open={open} onClose={onClose}>
@@ -249,7 +285,6 @@ export function TaskViewEdit({
           <div className="flex flex-col gap-3">
             {/* Карточка постановщика */}
             {task?.created_by && (() => {
-              // created_by может быть UUID (worker.id) или display_name
               const creatorWorker = workers.find(w => w.id === task.created_by)
                 ?? workers.find(w => w.displayName === task.created_by);
               if (!creatorWorker) return null;
@@ -262,15 +297,46 @@ export function TaskViewEdit({
                 />
               );
             })()}
-            <Button variant="outline" disabled={isView} className="w-full">
-              Добавить исполнителя
-            </Button>
-            <Button variant="outline" disabled={isView} className="w-full">
-              Добавить соисполнителей
-            </Button>
-            <Button variant="outline" disabled={isView} className="w-full">
-              Добавить наблюдателей
-            </Button>
+
+            {/* Карточка исполнителя */}
+            {assigneeWorker && (
+              <ParticipantCard
+                id={assigneeWorker.id}
+                displayName={assigneeWorker.displayName}
+                avatarUrl={assigneeWorker.avatarUrl}
+                role="Исполнитель"
+              />
+            )}
+
+            {/* Карточка проверяющего */}
+            {reviewerWorker && (
+              <ParticipantCard
+                id={reviewerWorker.id}
+                displayName={reviewerWorker.displayName}
+                avatarUrl={reviewerWorker.avatarUrl}
+                role="Проверяющий"
+              />
+            )}
+
+            {/* Buttons (only in edit mode) */}
+            {!isView && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setAssigneeSheetOpen(true)}
+                  className="w-full"
+                >
+                  {assigneeWorker ? `Исполнитель: ${assigneeWorker.displayName}` : 'Добавить исполнителя'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReviewerSheetOpen(true)}
+                  className="w-full"
+                >
+                  {reviewerWorker ? `Проверяющий: ${reviewerWorker.displayName}` : 'Добавить проверяющего'}
+                </Button>
+              </>
+            )}
           </div>
         </section>
 
@@ -377,6 +443,37 @@ export function TaskViewEdit({
             setDeadline(d);
             setIsDateSheetOpen(false);
           }}
+        />
+
+        {/* Worker select sheets */}
+        <WorkerSelectSheet
+          open={assigneeSheetOpen}
+          onClose={() => setAssigneeSheetOpen(false)}
+          workers={availableForAssignee}
+          selectedId={assignedTo}
+          onSelect={(id) => {
+            setAssignedTo(id);
+            // If this worker was the reviewer, clear reviewer
+            if (reviewerId === id) {
+              setReviewerId(null);
+            }
+          }}
+          title="Выберите исполнителя"
+        />
+
+        <WorkerSelectSheet
+          open={reviewerSheetOpen}
+          onClose={() => setReviewerSheetOpen(false)}
+          workers={availableForReviewer}
+          selectedId={reviewerId}
+          onSelect={(id) => {
+            setReviewerId(id);
+            // If this worker was the assignee, clear assignee
+            if (assignedTo === id) {
+              setAssignedTo(null);
+            }
+          }}
+          title="Выберите проверяющего"
         />
       </div>
     </BottomSheet>
