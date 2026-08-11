@@ -461,21 +461,38 @@ export function StreamView({
     [onTaskTap]
   );
 
-  const handleSwipeAway = useCallback((taskId: string) => {
-    // Оптимистичный PATCH_TASK уже обновил task.column на сервере и в локальном state.
-    // Задача автоматически появилась в новой колонке через groupByColumn.
-    // pendingExit удерживал её в старой колонке во время exit-анимации.
-    // Когда анимация завершена — просто убираем из pendingExit, чтобы задача
-    // отобразилась в новой колонке (где она уже есть благодаря оптимистичному обновлению).
-    // swappedTasks НЕ используем — он нужен только для "incoming" задач из других колонок,
-    // но в StreamView задачи перемещаются через обновление task.column, а не через swapped.
-    setPendingExit((prev) => {
-      if (!prev.has(taskId)) return prev;
-      const next = new Map(prev);
-      next.delete(taskId);
-      return next;
-    });
-  }, []);
+  const handleSwipeAway = useCallback(
+    (taskId: string) => {
+      // Находим задачу в swappedTasks или в исходном списке
+      const swapped = swappedTasks.get(taskId);
+      const sourceTask = swapped?.originalTask ?? tasks.find((t) => t.id === taskId);
+      if (!sourceTask) return;
+
+      // Определяем целевую колонку по направлению свайпа
+      const currentIndex = COLUMN_ORDER.indexOf(sourceTask.column);
+      const direction = swipeDirectionRef.current;
+      const targetColumn =
+        direction > 0
+          ? COLUMN_ORDER[Math.min(currentIndex + 1, COLUMN_ORDER.length - 1)]
+          : COLUMN_ORDER[Math.max(currentIndex - 1, 0)];
+
+      // Обновляем swappedTasks с целевой колонкой — это нужно, чтобы задача
+      // появилась в incomingTasks новой колонки после завершения exit-анимации.
+      setSwappedTasks((prev) => {
+        const next = new Map(prev);
+        next.set(taskId, { targetColumn, originalTask: sourceTask });
+        return next;
+      });
+      // Exit-анимация завершена — убираем из pendingExit
+      setPendingExit((prev) => {
+        if (!prev.has(taskId)) return prev;
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
+    },
+    [tasks, swappedTasks],
+  );
 
   if (loading) {
     return (
