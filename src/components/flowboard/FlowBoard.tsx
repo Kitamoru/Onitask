@@ -117,6 +117,8 @@ export interface FlowBoardProps {
   workspaceId?: string;
   /** Called when a task status card (column) is clicked — opens task bottom sheet */
   onColumnClick?: (column: string, label: string, accentColor: string) => void;
+  /** Toggle between flowboard and stream views */
+  onToggleView?: () => void;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -135,6 +137,29 @@ function KanbanIcon() {
       <rect x="4" y="4" width="3.5" height="12" rx="0.5" fill="var(--color-bg-primary-dark)" />
       <rect x="8.5" y="4" width="3.5" height="8" rx="0.5" fill="var(--color-bg-primary-dark)" />
       <rect x="13" y="4" width="3.5" height="10" rx="0.5" fill="var(--color-bg-primary-dark)" />
+    </svg>
+  );
+}
+
+/** Chevron icon for accordion toggle */
+function ChevronDownIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 17 17"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+      aria-hidden="true"
+    >
+      <path
+        d="M4.25 6.25L8.5 10.5L12.75 6.25"
+        stroke="var(--color-text-muted)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -622,6 +647,7 @@ export function FlowBoard({
   initData,
   workspaceId,
   onColumnClick,
+  onToggleView,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -842,37 +868,44 @@ export function FlowBoard({
       }}
       aria-label="Флоу задач"
     >
-       {/* Header row — icon + title + date */}
+       {/* Header row — icon + clickable title + date */}
        <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--spacing-2)' }}>
-        <div className="flex items-center gap-2">
-          <KanbanIcon />
-          <h1
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'clamp(20px, 3vw, 24px)',
-              lineHeight: '24px',
-              fontWeight: 'var(--font-weight-medium)',
-              letterSpacing: '-0.025em',
-              color: 'var(--color-text-primary)',
-              margin: 0,
-            }}
-          >
-            {title}
-          </h1>
-        </div>
-        <p
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-md)',
-            lineHeight: 'var(--text-body-md-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-muted)',
-            margin: 0,
-          }}
-        >
-          {currentDate}
-        </p>
-      </div>
+         <div
+           className="flex cursor-pointer select-none items-center gap-2 transition-opacity hover:opacity-80 active:opacity-60"
+           onClick={onToggleView}
+           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleView?.(); } }}
+           role="button"
+           tabIndex={0}
+           aria-label="Переключить на стрим задач"
+         >
+           <KanbanIcon />
+           <h1
+             style={{
+               fontFamily: 'var(--font-family-display)',
+               fontSize: 'clamp(20px, 3vw, 24px)',
+               lineHeight: '24px',
+               fontWeight: 'var(--font-weight-medium)',
+               letterSpacing: '-0.025em',
+               color: 'var(--color-text-primary)',
+               margin: 0,
+             }}
+           >
+             {title}
+           </h1>
+         </div>
+         <p
+           style={{
+             fontFamily: 'var(--font-family-display)',
+             fontSize: 'var(--text-body-md)',
+             lineHeight: 'var(--text-body-md-line)',
+             fontWeight: 'var(--font-weight-medium)',
+             color: 'var(--color-text-muted)',
+             margin: 0,
+           }}
+         >
+           {currentDate}
+         </p>
+       </div>
 
       {sprintEnabled && (
         <div onClick={handleSprintClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSprintClick(); } }} role="button" tabIndex={0} aria-label={sprint ? `Открыть спринт ${sprint.name}` : 'Создать спринт'}>

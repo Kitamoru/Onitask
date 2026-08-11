@@ -1,8 +1,8 @@
 ﻿'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
+import { IconChevronDown } from '@tabler/icons-react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
-import { SectionHeader } from '@/components/ui/desk-ui/SectionHeader';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import type { TaskEntity } from '@/types/flowboard';
@@ -13,7 +13,7 @@ import type { TaskEntity } from '@/types/flowboard';
  * Layout (depth ≤ 5):
  *   - Header: layout-list icon + "Стрим задач" + current date
  *   - Cognitive weight summary (Нагрузка + indicator + status)
- *   - Focused tasks: grouped by column → task cards
+ *   - Focused tasks: grouped by column → task cards (accordion)
  *
  * All values are relative (clamp / % / gap) for adaptive design.
  * Design tokens from src/styles/tokens.css + src/app/globals.css.
@@ -35,6 +35,8 @@ export interface StreamViewProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
+  /** Toggle between flowboard and stream views */
+  onToggleView?: () => void;
 }
 
 // ─── Column grouping helpers ─────────────────────────────────────────────────
@@ -213,6 +215,91 @@ export function TaskCard({ task }: { task: TaskEntity }) {
   );
 }
 
+/**
+ * AccordionSection — collapsible column header with amber line, label, count, chevron.
+ * Layout: [amber line] [label 17px] [count 17px] ... [chevron 17×17]
+ */
+function AccordionSection({
+  label,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full cursor-pointer select-none items-center gap-2 py-1 transition-opacity hover:opacity-80 active:opacity-60"
+        style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left' }}
+        aria-expanded={open}
+        aria-label={`${label}: ${count} задач${count === 1 ? 'а' : count < 5 ? 'и' : ''}. ${open ? 'Свернуть' : 'Развернуть'}`}
+      >
+        {/* Amber accent line — 3px wide */}
+        <div
+          className="shrink-0"
+          style={{
+            width: '3px',
+            height: '17px',
+            borderRadius: '1.5px',
+            backgroundColor: 'var(--color-accent-amber)',
+          }}
+          aria-hidden="true"
+        />
+        {/* Label */}
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: '17px',
+            lineHeight: '22px',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
+            margin: 0,
+          }}
+        >
+          {label}
+        </span>
+        {/* Count */}
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: '17px',
+            lineHeight: '22px',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-muted)',
+            margin: 0,
+          }}
+        >
+          {count}
+        </span>
+        {/* Spacer */}
+        <div className="flex-1" />
+        {/* Chevron — rightmost, 17×17 */}
+        <IconChevronDown
+          size={17}
+          stroke={1.5}
+          className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-hidden="true"
+        />
+      </button>
+      {/* Tasks list — visible only when expanded */}
+      {open && (
+        <div className="flex w-full flex-col gap-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function StreamView({
@@ -225,6 +312,7 @@ export function StreamView({
   onRefresh,
   onMoveTask,
   onTaskTap,
+  onToggleView,
 }: StreamViewProps) {
   const grouped = useMemo(() => groupByColumn(tasks), [tasks]);
 
@@ -233,15 +321,17 @@ export function StreamView({
   const backlogTasks = useMemo(() => grouped.get('backlog') ?? [], [grouped]);
   const doneTasks = useMemo(() => grouped.get('done') ?? [], [grouped]);
 
-  const columns = useMemo(
-    () => [
-      { key: 'backlog', label: 'В очереди', items: backlogTasks, defaultOpen: true },
-      { key: 'in_progress', label: 'В работе', items: inProgressTasks, defaultOpen: true },
-      { key: 'review', label: 'На проверке', items: reviewTasks, defaultOpen: true },
-      { key: 'done', label: 'Сделано', items: doneTasks, defaultOpen: false },
-    ],
-    [inProgressTasks, reviewTasks, backlogTasks, doneTasks],
-  );
+  // Accordion state: all columns expanded by default, "done" collapsed
+  const [expandedColumns, setExpandedColumns] = useState<Record<string, boolean>>({
+    backlog: true,
+    in_progress: true,
+    review: true,
+    done: false,
+  });
+
+  const toggleColumn = useCallback((key: string) => {
+    setExpandedColumns((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   if (loading) {
     return (
@@ -308,9 +398,16 @@ export function StreamView({
       }}
       aria-label="Стрим задач"
     >
-      {/* Header row — icon + title + date */}
+      {/* Header row — icon + clickable title + date */}
       <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--spacing-2)' }}>
-        <div className="flex items-center gap-2">
+        <div
+          className="flex cursor-pointer select-none items-center gap-2 transition-opacity hover:opacity-80 active:opacity-60"
+          onClick={onToggleView}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleView?.(); } }}
+          role="button"
+          tabIndex={0}
+          aria-label="Переключить на флоу задач"
+        >
           <LayoutListIcon />
           <h1
             style={{
@@ -378,28 +475,50 @@ export function StreamView({
         </span>
       </NotchedPanel>
 
-      {/* Columns */}
-      {columns.map(({ key, label, items, defaultOpen }) => (
-        <div key={key} className="flex w-full flex-col gap-4">
-          <h3
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: '17px',
-              lineHeight: '22px',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
-              margin: 0,
-            }}
-          >
-            {label}
-          </h3>
-          <div className="flex w-full flex-col gap-3">
-            {items.map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Columns — accordion sections */}
+      <AccordionSection
+        label={COLUMN_LABELS.in_progress}
+        count={inProgressTasks.length}
+        open={!!expandedColumns.in_progress}
+        onToggle={() => toggleColumn('in_progress')}
+      >
+        {inProgressTasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </AccordionSection>
+
+      <AccordionSection
+        label={COLUMN_LABELS.backlog}
+        count={backlogTasks.length}
+        open={!!expandedColumns.backlog}
+        onToggle={() => toggleColumn('backlog')}
+      >
+        {backlogTasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </AccordionSection>
+
+      <AccordionSection
+        label={COLUMN_LABELS.review}
+        count={reviewTasks.length}
+        open={!!expandedColumns.review}
+        onToggle={() => toggleColumn('review')}
+      >
+        {reviewTasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </AccordionSection>
+
+      <AccordionSection
+        label={COLUMN_LABELS.done}
+        count={doneTasks.length}
+        open={!!expandedColumns.done}
+        onToggle={() => toggleColumn('done')}
+      >
+        {doneTasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </AccordionSection>
 
       {/* Empty state */}
       {tasks.length === 0 && (

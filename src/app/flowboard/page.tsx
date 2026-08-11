@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
@@ -32,8 +32,18 @@ function FlowBoardPageContent() {
   const searchParams = useSearchParams();
   const view = searchParams.get('view');
   const isStreamView = view === 'stream';
+  const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, dispatch, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+
+  // Toggle between flowboard and stream views
+  const toggleView = useCallback(() => {
+    if (isStreamView) {
+      router.push('/flowboard');
+    } else {
+      router.push('/flowboard?view=stream');
+    }
+  }, [isStreamView, router]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [columnSheet, setColumnSheet] = useState<{ open: boolean; column: string | null; label: string; accentColor: string }>({
     open: false,
@@ -317,6 +327,7 @@ function FlowBoardPageContent() {
           error={dataError}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
           onMoveTask={handleMoveTask}
+          onToggleView={toggleView}
         />
       ) : (
         <FlowBoard
@@ -339,6 +350,7 @@ function FlowBoardPageContent() {
           initData={tgInitData}
           workspaceId={state.activeWorkspaceId ?? undefined}
           onColumnClick={handleColumnClick}
+          onToggleView={toggleView}
         />
       )}
 
