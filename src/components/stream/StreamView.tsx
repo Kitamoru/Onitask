@@ -402,14 +402,6 @@ export function StreamView({
   // за экран (300ms), даже если tasks.column уже мгновенно обновлён PATCH_TASK.
   const [pendingExit, setPendingExit] = useState<Map<string, string>>(new Map());
 
-  // Сброс при закрытии — чтобы Map не копил устаревшие записи
-  useEffect(() => {
-    if (swappedTasks.size === 0 && pendingExit.size === 0) return;
-    // Cleanup on unmount or when tasks prop significantly changes
-    setSwappedTasks(new Map());
-    setPendingExit(new Map());
-  }, [tasks.length]);
-
   // Cleanup swappedTasks: как только задача подтверждена (task.column === targetColumn —
   // через realtime или оптимистичный PATCH_TASK), удаляем запись из Map.
   useEffect(() => {
