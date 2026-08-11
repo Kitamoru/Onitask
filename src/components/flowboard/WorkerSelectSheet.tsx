@@ -39,12 +39,9 @@ export function WorkerSelectSheet({
   stacked = false,
 }: WorkerSelectSheetProps) {
   const handleSelect = (id: string) => {
-    if (selectedId === id) {
-      // Deselect if already selected
-      onSelect(null);
-    } else {
-      onSelect(id);
-    }
+    // Immediately select and close — no visual feedback needed
+    onSelect(id);
+    onClose();
   };
 
   return (
@@ -57,46 +54,39 @@ export function WorkerSelectSheet({
         {workers.length === 0 ? (
           <p className="text-sm text-text-secondary">Нет доступных участников</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {workers.map((w) => {
-              const isSelected = w.id === selectedId;
-              return (
-                <Button
-                  key={w.id}
-                  variant={isSelected ? 'solid' : 'outline'}
-                  onClick={() => handleSelect(w.id)}
-                  className={`w-full justify-between ${isSelected ? 'ring-2 ring-primary' : ''}`}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Avatar */}
-                    <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-secondary"
-                      aria-hidden="true"
-                    >
-                      {w.avatarUrl ? (
-                        <img
-                          src={w.avatarUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-sm font-medium text-text-secondary">
-                          {w.displayName.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                    {/* Name */}
-                    <span className="truncate text-[15px] font-medium text-text">
-                      {w.displayName}
-                    </span>
+        <div className="flex flex-col gap-2">
+            {workers.map((w) => (
+              <Button
+                key={w.id}
+                variant="outline"
+                onClick={() => handleSelect(w.id)}
+                className="w-full justify-start"
+              >
+                <div className="flex items-center gap-3">
+                  {/* Avatar */}
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-secondary"
+                    aria-hidden="true"
+                  >
+                    {w.avatarUrl ? (
+                      <img
+                        src={w.avatarUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-medium text-text-secondary">
+                        {w.displayName.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </div>
-                  {/* Checkmark */}
-                  {isSelected && (
-                    <span className="text-lg text-primary">✓</span>
-                  )}
-                </Button>
-              );
-            })}
+                  {/* Name */}
+                  <span className="truncate text-[15px] font-medium text-text">
+                    {w.displayName}
+                  </span>
+                </div>
+              </Button>
+            ))}
           </div>
         )}
 

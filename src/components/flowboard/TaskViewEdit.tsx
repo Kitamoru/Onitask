@@ -333,14 +333,14 @@ export function TaskViewEdit({
                   onClick={() => setAssigneeSheetOpen(true)}
                   className="w-full"
                 >
-                  {assigneeWorker ? `Исполнитель: ${assigneeWorker.displayName}` : 'Добавить исполнителя'}
+                  {assigneeWorker ? 'Сменить исполнителя' : 'Добавить исполнителя'}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setReviewerSheetOpen(true)}
                   className="w-full"
                 >
-                  {reviewerWorker ? `Проверяющий: ${reviewerWorker.displayName}` : 'Добавить проверяющего'}
+                  {reviewerWorker ? 'Сменить проверяющего' : 'Добавить проверяющего'}
                 </Button>
               </>
             )}
