@@ -87,6 +87,7 @@ function ChevronIcon({ open }: { open: boolean }) {
       style={{
         transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
         transition: 'transform var(--transition-fast)',
+        marginLeft: 'auto',
       }}
     >
       <path
@@ -248,43 +249,45 @@ function CollapsibleTaskGroup({ title, tasks, defaultOpen = true }: { title: str
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-center justify-between gap-2 text-left"
         aria-expanded={open}
         aria-label={open ? `Свернуть ${title}` : `Развернуть ${title}`}
       >
+        <div className="flex items-center gap-2">
+          <span
+            className="shrink-0 rounded-full"
+            style={{
+              width: 'var(--size-accent-line-width)',
+              height: 'var(--size-accent-line-height)',
+              backgroundColor: 'var(--color-accent-amber)',
+            }}
+            aria-hidden="true"
+          />
+          <h3
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: '17px',
+              lineHeight: '22px',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-text-primary)',
+              margin: 0,
+            }}
+          >
+            {title}
+          </h3>
+          <span
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: '17px',
+              lineHeight: '22px',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            {tasks.length}
+          </span>
+        </div>
         <ChevronIcon open={open} />
-        <span
-          className="shrink-0 rounded-full"
-          style={{
-            width: 'var(--size-accent-line-width)',
-            height: 'var(--size-accent-line-height)',
-            backgroundColor: 'var(--color-accent-amber)',
-          }}
-          aria-hidden="true"
-        />
-        <h3
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: '17px',
-            lineHeight: '22px',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-primary)',
-            margin: 0,
-          }}
-        >
-          {title}
-        </h3>
-        <span
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: '17px',
-            lineHeight: '22px',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          {tasks.length}
-        </span>
       </button>
       {open && (
         <div className="flex w-full flex-col gap-3">
@@ -452,22 +455,12 @@ export function StreamView({
 
       {/* Column: В работе */}
       {inProgressTasks.length > 0 && (
-        <div className="flex w-full flex-col gap-3">
-          <SectionHeader title="В работе" />
-          {inProgressTasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-        </div>
+        <CollapsibleTaskGroup title="В работе" tasks={inProgressTasks} defaultOpen={true} />
       )}
 
       {/* Column: На проверке */}
       {reviewTasks.length > 0 && (
-        <div className="flex w-full flex-col gap-3">
-          <SectionHeader title="На проверке" />
-          {reviewTasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-        </div>
+        <CollapsibleTaskGroup title="На проверке" tasks={reviewTasks} defaultOpen={true} />
       )}
 
       {/* Column: В очереди */}
