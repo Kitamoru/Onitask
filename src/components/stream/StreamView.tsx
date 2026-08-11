@@ -428,26 +428,6 @@ export function StreamView({
     });
   }, [tasks, swappedTasks]);
 
-  // Cleanup pendingExit: как только задача появилась в новой колонке (task.column !== oldCol),
-  // удаляем запись, чтобы карточка отобразилась в новой колонке после exit-анимации.
-  useEffect(() => {
-    if (pendingExit.size === 0) return;
-    setPendingExit((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (const [taskId, oldCol] of prev) {
-        const task = tasks.find((t) => t.id === taskId);
-        if (task && task.column !== oldCol) {
-          // Колонка задачи обновилась на сервере — задача перемещена,
-          // можно убрать её из pendingExit, чтобы она появилась в новой колонке.
-          next.delete(taskId);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [tasks, pendingExit]);
-
   const handleMoveNext = useCallback(
     (taskId: string) => {
       const task = tasks.find((t) => t.id === taskId);
