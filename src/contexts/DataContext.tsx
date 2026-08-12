@@ -7,6 +7,18 @@ import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { buildFullId } from '@/lib/realtime/tasks';
 
+/**
+ * Defensive helper: гарантирует наличие full_id/workspace_prefix в TaskEntity.
+ * Сервер — источник правды, но если какой-либо endpoint вернёт задачу без
+ * этих полей (баг, будущий роут), клиент не упадёт — вычисляем fallback.
+ */
+function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
+  if (task.full_id && task.workspace_prefix) return task;
+  const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
+  const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id);
+  return { ...task, full_id: fullId, workspace_prefix: prefix };
+}
+
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Worker = Database['public']['Tables']['workers']['Row'];
@@ -147,24 +159,25 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       return {
         ...state,
         tasks: {
-          items: action.payload,
+          items: action.payload.map((t) => ensureFullId(t)),
           lastUpdated: Date.now(),
         },
       };
 
     case 'PATCH_TASK': {
-      const idx = state.tasks.items.findIndex(t => t.id === action.payload.id);
+      const safeTask = ensureFullId(action.payload);
+      const idx = state.tasks.items.findIndex(t => t.id === safeTask.id);
       if (idx === -1) {
         return {
           ...state,
           tasks: {
-            items: [...state.tasks.items, action.payload],
+            items: [...state.tasks.items, safeTask],
             lastUpdated: Date.now(),
           },
         };
       }
       const next = [...state.tasks.items];
-      next[idx] = action.payload;
+      next[idx] = safeTask;
       return {
         ...state,
         tasks: {
