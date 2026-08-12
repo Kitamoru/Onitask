@@ -561,15 +561,56 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [loadBoardsData]);
 
   // Subscribe to realtime task changes
+  // Use refs to avoid recreating the channel on every render
+  const workspacesRef = useRef(state.workspaces.items);
+  useEffect(() => {
+    workspacesRef.current = state.workspaces.items;
+  }, [state.workspaces.items]);
+
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
 
     // Resolve prefix once — prefer stored workspaces, fallback to 'TASK'
-    const ws = state.workspaces.items.find(w => w.id === workspaceId);
-    const prefix = ws?.task_prefix ?? 'TASK';
+    const getPrefix = (wsId: string) => {
+      const items = workspacesRef.current;
+      const ws = items.find(w => w.id === wsId);
+      return ws?.task_prefix ?? 'TASK';
+    };
+
+    const prefix = getPrefix(workspaceId);
 
     const supabase = getClient();
+    
+    // Wrap callback in ref to avoid stale closures
+    const callbackRef = useRef<(payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => void>();
+    callbackRef.current = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const raw = payload.new as TasksRow | null;
+        if (!raw) return;
+        // Use shared buildFullId for consistency with API and useTasksRealtime
+        const fullId = buildFullId(prefix, raw.task_number, raw.id);
+        const taskEntity: TaskEntity = {
+          ...raw,
+          full_id: fullId,
+          workspace_prefix: prefix,
+          ai_hint: null,
+          story_points: null,
+        } as TaskEntity;
+        dispatch({ type: 'PATCH_TASK', payload: taskEntity });
+      } else if (payload.eventType === 'DELETE') {
+        const oldTask = payload.old as TasksRow;
+        if (!oldTask) return;
+        // For DELETE, try to resolve prefix from old task's workspace_id
+        const oldPrefix = getPrefix(oldTask.workspace_id);
+        const fullId = buildFullId(oldPrefix, oldTask.task_number, oldTask.id);
+        // Remove by UUID (primary key) — this is the correct identifier
+        dispatch({ type: 'REMOVE_TASK', payload: oldTask.id });
+        // Log for debugging: show the full_id that was removed
+        console.debug('[DataContext] REMOVE_TASK:', oldTask.id, '(full_id:', fullId, ')');
+      }
+    };
+
     const channel = supabase
       .channel(`global-tasks-${workspaceId}`)
       .on(
@@ -580,40 +621,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           table: 'tasks',
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const raw = payload.new as TasksRow | null;
-            if (!raw) return;
-            // Use shared buildFullId for consistency with API and useTasksRealtime
-            const fullId = buildFullId(prefix, raw.task_number, raw.id);
-            const taskEntity: TaskEntity = {
-              ...raw,
-              full_id: fullId,
-              workspace_prefix: prefix,
-              ai_hint: null,
-              story_points: null,
-            } as TaskEntity;
-            dispatch({ type: 'PATCH_TASK', payload: taskEntity });
-          } else if (payload.eventType === 'DELETE') {
-            const oldTask = payload.old as TasksRow;
-            if (!oldTask) return;
-            // For DELETE, try to resolve prefix from old task's workspace_id
-            const oldWs = state.workspaces.items.find(w => w.id === oldTask.workspace_id);
-            const oldPrefix = oldWs?.task_prefix ?? prefix;
-            const fullId = buildFullId(oldPrefix, oldTask.task_number, oldTask.id);
-            // Remove by UUID (primary key) — this is the correct identifier
-            dispatch({ type: 'REMOVE_TASK', payload: oldTask.id });
-            // Log for debugging: show the full_id that was removed
-            console.debug('[DataContext] REMOVE_TASK:', oldTask.id, '(full_id:', fullId, ')');
-          }
-        },
+        callbackRef.current,
       )
-      .subscribe();
+      .subscribe({
+        status: 'SUBSCRIBED',
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [state.activeWorkspaceId, state.workspaces.items]);
+  }, [state.activeWorkspaceId]);
 
   // Load boards data when active workspace changes (e.g., user selects different board)
   // Initial load is handled in the auth useEffect above or by the parallel load effect.
