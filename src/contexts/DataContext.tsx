@@ -13,6 +13,9 @@ import { buildFullId } from '@/lib/realtime/tasks';
  * этих полей (баг, будущий роут), клиент не упадёт — вычисляем fallback.
  */
 function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
+  // Guard: если payload не объект или нет id — возвращаем как есть,
+  // чтобы не упасть на buildFullId(prefix, task_number, undefined).slice()
+  if (!task || typeof task !== 'object' || !task.id) return task;
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
   const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id);
@@ -159,12 +162,14 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       return {
         ...state,
         tasks: {
-          items: action.payload.map((t) => ensureFullId(t)),
+          items: action.payload.filter((t) => t && t.id).map((t) => ensureFullId(t)),
           lastUpdated: Date.now(),
         },
       };
 
     case 'PATCH_TASK': {
+      // Guard: невалидный payload (undefined/null/без id) не должен ронять reducer
+      if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) return state;
       const safeTask = ensureFullId(action.payload);
       const idx = state.tasks.items.findIndex(t => t.id === safeTask.id);
       if (idx === -1) {
@@ -641,7 +646,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch (err) {
+        // Realtime cleanup не должен ронять UI при размонтировании
+        console.warn('[DataContext] Failed to remove realtime channel:', err);
+      }
     };
   }, [state.activeWorkspaceId]);
 

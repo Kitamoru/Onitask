@@ -24,7 +24,8 @@ function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
   return tasks.slice(0, 3).map((t) => {
     // Use task.full_id if available (already computed), otherwise fallback
     const fullId = t.full_id ?? (t.task_number ? `${t.workspace_prefix ?? 'TASK'}-${t.task_number}` : t.id.slice(0, 8));
-    return `${fullId} · ${t.title.slice(0, 30)}${t.title.length > 30 ? '…' : ''}`;
+    const title = t.title ?? 'Без названия';
+    return `${fullId} · ${title.slice(0, 30)}${title.length > 30 ? '…' : ''}`;
   });
 }
 
@@ -209,8 +210,12 @@ function FlowBoardPageContent() {
       // Optimistic local update: move the task in the shared `tasks` array immediately
       // so column counters and the bottom sheet stay consistent without waiting for realtime.
       if (task) {
-        // Preserve full_id and workspace_prefix during optimistic update
+        // Preserve full_id and workspace_prefix during optimistic update.
+        // Guard: если задача не найдена в сторе — не диспатчим PATCH_TASK,
+        // чтобы не ронять reducer невалидным payload.
         dispatch({ type: 'PATCH_TASK', payload: { ...task, column: newColumn, full_id: task.full_id, workspace_prefix: task.workspace_prefix } });
+      } else {
+        console.warn('[Optimistic Swipe] Task not found in store, skipping optimistic update:', taskId);
       }
       try {
         const res = await fetch(`/api/tasks/${taskId}`, {
