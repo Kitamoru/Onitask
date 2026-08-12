@@ -7,6 +7,51 @@ import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import type { TaskEntity } from '@/types/flowboard';
 
+// ─── Avatar placeholder helper ────────────────────────────────────────────────
+function AvatarPlaceholder({ userId, size = 24 }: { userId: string | null; size?: number }) {
+  if (!userId) return null;
+  // Use a colored circle with initials
+  const initials = userId.slice(0, 2).toUpperCase();
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-full"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: 'var(--color-accent-amber)',
+        color: 'var(--color-bg-primary-dark)',
+        fontSize: size * 0.375,
+        fontWeight: 600,
+      }}
+      aria-hidden="true"
+    >
+      {initials}
+    </div>
+  );
+}
+
+// ─── Arrow icon ───────────────────────────────────────────────────────────────
+function ArrowRightIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M6 3L11 8L6 13"
+        stroke="var(--color-text-muted)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * StreamView — "Стрим задач" (Figma node 98:6093 "desks-stream").
  *
@@ -83,7 +128,16 @@ function LayoutListIcon() {
 
 /**
  * TaskCard — single task in the stream.
- * Figma "task-card" (10:10763): padding 16px, gap 12px, radius 4, notch 16.
+ * Figma "task-card" (node 240-27222): padding 16px, gap 12px, radius 4, notch 16.
+ *
+ * Layout:
+ *   1. main-info (row, gap 6px): [Title] [cognitive_weight badge] — same line
+ *   2. prop-list (row, wrap, gap 4px): [priority badge] [workspace badge] [tags] [urgency badge]
+ *   3. footer (row, space-between):
+ *      - Left: [avatar created_by] → [arrow] → [avatar assigned_to]
+ *      - Right: "до ДД ММ • WORKSPACE-NUM"
+ *   4. svetofor-accent-light SVG decoration (bottom)
+ *   5. ref-bg-shape-inner SVG decoration (bottom)
  */
 export function TaskCard({ task }: { task: TaskEntity }) {
   const priorityColor =
@@ -102,6 +156,22 @@ export function TaskCard({ task }: { task: TaskEntity }) {
           ? 'Средний'
           : 'Низкий';
 
+  // Format deadline for display: "до Вт 27 мая"
+  const formattedDeadline = task.deadline
+    ? (() => {
+        const d = new Date(task.deadline);
+        const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const months = ['янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.'];
+        const dayName = days[d.getDay()];
+        const day = d.getDate();
+        const month = months[d.getMonth()];
+        return `до ${dayName} ${day} ${month}`;
+      })()
+    : null;
+
+  // Workspace prefix from full_id (e.g. "ALPHA-45" → "ALPHA")
+  const workspacePrefix = task.full_id.split('-')[0] ?? '';
+
   return (
     <NotchedPanel
       corner="action"
@@ -113,60 +183,97 @@ export function TaskCard({ task }: { task: TaskEntity }) {
       contentClassName="flex flex-col gap-3 p-4"
       aria-label={`Задача ${task.full_id}: ${task.title}`}
     >
-      {/* main-info — title + priority */}
-      <div className="flex w-full items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-1">
+      {/* 1. main-info — title + cognitive weight badge on same line (gap 6px) */}
+      <div className="flex w-full items-start justify-between gap-[6px]">
+        <span
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: 'var(--text-body-md)',
+            lineHeight: 'var(--text-body-md-line)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--color-text-primary)',
+            flex: '1 1 0',
+            minWidth: 0,
+          }}
+          className="truncate"
+        >
+          {task.title}
+        </span>
+        {/* Cognitive weight point badge */}
+        {task.cognitive_weight > 0 && (
           <span
+            className="flex shrink-0 items-center justify-center rounded-full"
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-md)',
-              lineHeight: 'var(--text-body-md-line)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
+              fontSize: 'var(--text-body-xs)',
+              lineHeight: 'var(--text-body-xs-line)',
+              fontWeight: 700,
+              width: 20,
+              height: 20,
+              backgroundColor: 'var(--color-accent-amber)',
+              color: 'var(--color-bg-primary-dark)',
             }}
+            aria-label={`Cognitive weight: ${task.cognitive_weight}`}
           >
-            {task.title}
+            {task.cognitive_weight}
           </span>
+        )}
+      </div>
+
+      {/* 2. prop-list — badges row (wrap, gap 4px) */}
+      <div className="flex w-full flex-wrap items-center gap-1">
+        {/* Priority badge */}
+        <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
+
+        {/* Workspace name badge */}
+        {workspacePrefix && (
           <span
+            className="rounded px-1.5 py-0.5"
             style={{
               fontFamily: 'var(--font-family-display)',
               fontSize: 'var(--text-body-xs)',
               lineHeight: 'var(--text-body-xs-line)',
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
+              backgroundColor: 'var(--color-bg-surface-hover)',
             }}
           >
-            {task.full_id}
+            {workspacePrefix}
           </span>
-        </div>
-        <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
+        )}
+
+        {/* Tags */}
+        {(task.tags ?? []).slice(0, 3).map((tag) => (
+          <span
+            key={tag}
+            className="rounded px-1.5 py-0.5"
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-body-xs)',
+              lineHeight: 'var(--text-body-xs-line)',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-text-muted)',
+              backgroundColor: 'var(--color-bg-surface-hover)',
+            }}
+          >
+            {tag}
+          </span>
+        ))}
+
+        {/* Urgency badge */}
+        {task.deadline && <UrgencyBadge deadline={task.deadline} size="sm" />}
       </div>
 
-      {/* prop-list — tags + urgency */}
-      {(task.tags?.length > 0 || task.deadline) && (
-        <div className="flex w-full flex-wrap items-center gap-1">
-          {(task.tags ?? []).slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="rounded px-1.5 py-0.5"
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-xs)',
-                lineHeight: 'var(--text-body-xs-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-muted)',
-                backgroundColor: 'var(--color-bg-surface-hover)',
-              }}
-            >
-              {tag}
-            </span>
-          ))}
-          {task.deadline && <UrgencyBadge deadline={task.deadline} size="sm" />}
-        </div>
-      )}
-
-      {/* footer — assignee + blocked/human flags */}
+      {/* 3. footer — avatars left, deadline right (space-between) */}
       <div className="flex w-full items-center justify-between gap-2">
+        {/* Left: avatar created_by → arrow → avatar assigned_to */}
+        <div className="flex items-center gap-1">
+          <AvatarPlaceholder userId={task.created_by} size={24} />
+          <ArrowRightIcon size={16} />
+          <AvatarPlaceholder userId={task.assigned_to} size={24} />
+        </div>
+
+        {/* Right: deadline + task number */}
         <span
           style={{
             fontFamily: 'var(--font-family-display)',
@@ -174,42 +281,37 @@ export function TaskCard({ task }: { task: TaskEntity }) {
             lineHeight: 'var(--text-body-xs-line)',
             fontWeight: 'var(--font-weight-medium)',
             color: 'var(--color-text-muted)',
+            whiteSpace: 'nowrap',
           }}
         >
-          {task.assigned_to || 'Не назначено'}
+          {formattedDeadline} • {task.full_id}
         </span>
-        <div className="flex items-center gap-1">
-          {task.is_blocked && (
-            <span
-              className="rounded px-1.5 py-0.5"
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-xs)',
-                lineHeight: 'var(--text-body-xs-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-signal-red)',
-                backgroundColor: 'var(--color-priority-red-bg)',
-              }}
-            >
-              Заблокировано
-            </span>
-          )}
-          {task.needs_human && (
-            <span
-              className="rounded px-1.5 py-0.5"
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-xs)',
-                lineHeight: 'var(--text-body-xs-line)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-signal-cyan)',
-                backgroundColor: 'var(--color-priority-cyan-bg)',
-              }}
-            >
-              Нужен человек
-            </span>
-          )}
-        </div>
+      </div>
+
+      {/* 4. svetofor-accent-light SVG decoration (bottom) */}
+      <div className="relative mt-1 h-10 w-full overflow-hidden" aria-hidden="true">
+        <img
+          src="/icons/svetofor-accent-light.svg"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover opacity-30"
+          onError={(e) => {
+            // Hide if SVG not found
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      </div>
+
+      {/* 5. ref-bg-shape-inner SVG decoration (bottom) */}
+      <div className="relative -mt-4 h-14 w-full overflow-hidden" aria-hidden="true">
+        <img
+          src="/icons/ref-bg-shape-inner.svg"
+          alt=""
+          className="absolute bottom-0 left-1/2 h-full -translate-x-1/2 object-contain opacity-20"
+          onError={(e) => {
+            // Hide if SVG not found
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+        />
       </div>
     </NotchedPanel>
   );
