@@ -50,8 +50,6 @@ async function getAuthenticatedWorker(request: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-// Re-export for other routes that need it
-export { enrichTaskRow };
 
 // ─── PATCH /api/tasks/[id] — Update task ─────────────────────────────────────
 

@@ -51,10 +51,6 @@ async function getAuthenticatedProfile(req: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-// Re-export for other routes that need it
-export { enrichTaskRow };
-export type { EnrichedTask };
-
 // ─── GET /api/tasks — List tasks ─────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
