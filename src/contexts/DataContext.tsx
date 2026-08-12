@@ -5,6 +5,7 @@ import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { buildFullId } from '@/lib/realtime/tasks';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
@@ -564,6 +565,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
 
+    // Resolve prefix once — prefer stored workspaces, fallback to 'TASK'
+    const ws = state.workspaces.items.find(w => w.id === workspaceId);
+    const prefix = ws?.task_prefix ?? 'TASK';
+
     const supabase = getClient();
     const channel = supabase
       .channel(`global-tasks-${workspaceId}`)
@@ -579,10 +584,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const raw = payload.new as TasksRow | null;
             if (!raw) return;
-            // Resolve prefix from stored workspaces
-            const ws = state.workspaces.items.find(w => w.id === raw.workspace_id);
-            const prefix = ws?.task_prefix ?? 'TASK';
-            const fullId = prefix && raw.task_number ? `${prefix}-${raw.task_number}` : raw.id.slice(0, 8);
+            // Use shared buildFullId for consistency with API and useTasksRealtime
+            const fullId = buildFullId(prefix, raw.task_number, raw.id);
             const taskEntity: TaskEntity = {
               ...raw,
               full_id: fullId,
@@ -592,7 +595,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             } as TaskEntity;
             dispatch({ type: 'PATCH_TASK', payload: taskEntity });
           } else if (payload.eventType === 'DELETE') {
-            dispatch({ type: 'REMOVE_TASK', payload: (payload.old as TasksRow).id });
+            const oldTask = payload.old as TasksRow;
+            if (!oldTask) return;
+            // For DELETE, try to resolve prefix from old task's workspace_id
+            const oldWs = state.workspaces.items.find(w => w.id === oldTask.workspace_id);
+            const oldPrefix = oldWs?.task_prefix ?? prefix;
+            const fullId = buildFullId(oldPrefix, oldTask.task_number, oldTask.id);
+            // Remove by UUID (primary key) — this is the correct identifier
+            dispatch({ type: 'REMOVE_TASK', payload: oldTask.id });
+            // Log for debugging: show the full_id that was removed
+            console.debug('[DataContext] REMOVE_TASK:', oldTask.id, '(full_id:', fullId, ')');
           }
         },
       )
@@ -601,7 +613,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [state.activeWorkspaceId]);
+  }, [state.activeWorkspaceId, state.workspaces.items]);
 
   // Load boards data when active workspace changes (e.g., user selects different board)
   // Initial load is handled in the auth useEffect above or by the parallel load effect.

@@ -273,6 +273,53 @@ Toast не требует действия — сигнал что цепочк�
 
 ---
 
+## 13.1. Full ID в Realtime-подписках
+
+**Проблема:** Realtime-события содержат сырой `TasksRow` из БД (`id` = UUID, `task_number` = число). UI отображает задачи по `full_id` (например, `TASK-42`). Без согласованного преобразования клиент получает данные по старому идентификатору, что приводит к предупреждению `Realtime send() is automatically falling back to REST API` и ошибкам после свайпа.
+
+**Решение:** Единая функция `buildFullId()` в `src/lib/realtime/tasks.ts`:
+
+```typescript
+/**
+ * Build full_id from workspace prefix and task_number.
+ * Consistent with mapTaskRow() in /api/tasks/[id]/route.ts and DataContext.
+ */
+export function buildFullId(
+  prefix: string | null | undefined,
+  taskNumber: number | null | undefined,
+  fallbackId: string
+): string {
+  if (prefix && taskNumber) return `${prefix}-${taskNumber}`;
+  return fallbackId.slice(0, 8);
+}
+```
+
+**Три точки обогащения (все используют один `buildFullId`):**
+
+| Точка | Файл | Что делает |
+|---|---|---|
+| **API** | `/api/tasks/[id]/route.ts` `mapTaskRow()` | Возвращает `full_id` в HTTP-ответе |
+| **DataContext** | `src/contexts/DataContext.tsx` (inline Realtime) | Обогащает `PATCH_TASK` / `REMOVE_TASK` события |
+| **useTasksRealtime** | `src/lib/realtime/tasks.ts` | Хук для будущего использования — принимает `workspacePrefix` параметр |
+
+**Формат full_id:**
+
+```
+full_id = ${workspace_prefix}-${task_number}
+пример: TASK-42, FEAT-15, BUG-3
+```
+
+**Fallback:** Если `prefix` или `task_number` отсутствует → первые 8 символов UUID.
+
+**INV-проверка:**
+- **INV-01** tasks.assigned_to → REFERENCES workers(id) — без изменений
+- **A-07** Tenant Isolation — канал Realtime фильтруется по `workspace_id`, префикс берётся из `workspaces.task_prefix` текущего воркспейса
+
+**Удаление задач через Realtime (DELETE):**
+При DELETE событии `payload.old` содержит полный старый объект задачи. Удаление происходит по UUID (`oldTask.id`), а не по `full_id`. Логирование `console.debug` показывает оба идентификатора для отладки.
+
+---
+
 ## 14. Инварианты Flow
 
 Аксиомы **A-8** (Flow Access Control), **A-9** (Cognitive Budget), **A-10** (Layered Metrics Cache),
@@ -614,6 +661,13 @@ SQL — см. [onitask_team_tab.md §2.7](onitask_team_tab.md#27-operator-queue)
 ---
 
 ## Changelog (кратко)
+
+**v3.7.0 — август 2026**
+
+*Realtime full_id enrichment:*
+- §13.1: добавлен раздел «Full ID в Realtime-подписках» — единая функция `buildFullId()`, три точки обогащения (API, DataContext, useTasksRealtime), формат full_id, fallback-логика, INV/Axiom проверка
+- `src/lib/realtime/tasks.ts`: добавлена `buildFullId()` утилита, `useTasksRealtime` теперь принимает `workspacePrefix` и обогащает события TaskEntity с full_id
+- `src/contexts/DataContext.tsx`: inline Realtime подписка использует `buildFullId()` вместо инлайн-логики, добавлено логирование для DELETE событий
 
 **v3.6.0 — июнь 2026**
 
