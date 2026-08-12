@@ -53,6 +53,8 @@ interface TaskRow {
   version: number;
   updated_at: string;
   cognitive_weight: number | null;
+  embedding: number[] | null;
+  embedding_hash: string | null;
 }
 
 interface WorkspaceSettings {
@@ -114,6 +116,18 @@ const DATA_UUID = crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase
 
 function wrapData(label: string, content: string): string {
   return `<data-${DATA_UUID}-${label}>\n${content}\n</data-${DATA_UUID}-${label}>`;
+}
+
+/**
+ * Compute SHA-256 hash of task content for embedding cache validation.
+ * ai_.md §2.2 шаг 2: SHA-256 от (title + '\0' + description).
+ */
+async function computeContentHash(title: string, description: string | null): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${title}\0${description ?? ''}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -262,7 +276,7 @@ async function buildRagContext(
     const queryText = `${task.title} ${task.description ?? ''}`.trim();
     const embedding = await generateEmbedding(queryText, apiKey);
 
-    const [tasksRes, docRes, memoryRes] = await Promise.all([
+    const [tasksRes, docRes] = await Promise.all([
       supabase.rpc('match_tasks', {
         query_embedding: embedding,
         match_count: matchCount,
@@ -276,18 +290,40 @@ async function buildRagContext(
         min_similarity: RAG_MIN_SIMILARITY,
         p_workspace_id: task.workspace_id,
       }),
-      supabase.rpc('match_agent_memory', {
-        query_embedding: embedding,
-        match_count: RAG_MATCH_COUNT,
-        min_similarity: RAG_MIN_SIMILARITY,
-        p_workspace_id: task.workspace_id,
-      }),
     ]);
 
-    if (tasksRes.data && tasksRes.data.length > 0) {
+    // ─── F03-05: Implicit calibration via assignment_history ──────────────
+    // Обогащаем семантически похожие задачи историческими данными выполнения.
+    // avg_completion_days передаётся в промпт — LLM самостоятельно калибрует story_points.
+    // Условие активации: ≥ 3 завершённых записи в assignment_history для конкретной задачи.
+    const relatedWithHistory = await Promise.all(
+      (tasksRes.data ?? []).map(async (t: any) => {
+        const { data: history } = await supabase
+          .from('assignment_history')
+          .select('assigned_at, resolved_at')
+          .eq('task_id', t.task_id)
+          .eq('outcome_status', 'completed_on_time')
+          .not('resolved_at', 'is', null)
+          .limit(5);
+
+        let avgDays: number | null = null;
+        if (history && history.length >= 3) {
+          const totalDays = history.reduce((acc: number, h: any) => {
+            const days = (new Date(h.resolved_at).getTime() -
+                          new Date(h.assigned_at).getTime())
+                         / (1000 * 60 * 60 * 24);
+            return acc + days;
+          }, 0);
+          avgDays = Math.round((totalDays / history.length) * 10) / 10; // 1 decimal
+        }
+
+        return { ...t, avg_completion_days: avgDays };
+      })
+    );
+
+    if (relatedWithHistory.length > 0) {
       // v0.11.0: резолюция UUID → full_id + title для semantic related.
-      // Модель должна видеть человекочитаемые ссылки (ALPHA-7), а не UUID.
-      const relatedIds = (tasksRes.data as any[]).map((t: any) => t.task_id).filter(Boolean);
+      const relatedIds = relatedWithHistory.map((t: any) => t.task_id).filter(Boolean);
       const taskRefMap = new Map();
       if (relatedIds.length > 0) {
         const { data: refs } = await supabase
@@ -301,13 +337,14 @@ async function buildRagContext(
       }
 
       ctx.related = JSON.stringify(
-        (tasksRes.data as any[]).map((t: any) => ({
+        relatedWithHistory.map((t: any) => ({
           ...t,
           full_id: taskRefMap.get(t.task_id)?.full_id ?? t.task_id,
           title: taskRefMap.get(t.task_id)?.title ?? null,
         }))
       );
     }
+
     if (docRes.data && docRes.data.length > 0) {
       ctx.doc = docRes.data.map((c: any) =>
         wrapData('doc',
@@ -315,29 +352,49 @@ async function buildRagContext(
         )
       ).join('\n\n');
     }
-    if (memoryRes.data && memoryRes.data.length > 0) {
-      // v0.11.0: резолюция task_id → full_id в LTM memoryContext.
-      // Ранее модель получала сырой UUID в атрибуте task_id — нечитаемо.
-      const memIds = (memoryRes.data as any[]).map((m: any) => m.task_id).filter(Boolean);
-      const memRefMap = new Map();
-      if (memIds.length > 0) {
-        const { data: refs } = await supabase
-          .from('tasks')
-          .select('id, title, task_number')
-          .in('id', memIds)
-          .eq('workspace_id', task.workspace_id);
-        for (const r of refs ?? []) {
-          memRefMap.set(r.id, { title: r.title, full_id: `${taskPrefix}-${r.task_number}` });
+
+    // ─── F03-07: LTM RAG threshold ≥500 done tasks ───────────────────────
+    // 'minimal': LTM пропускается
+    // 'standard'/'full': порог ≥500 done задач
+    if (sharingLevel !== 'minimal') {
+      const { count } = await supabase
+        .from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', task.workspace_id)
+        .eq('column', 'done');
+
+      if ((count ?? 0) >= 500) {
+        const { data: memories } = await supabase.rpc('match_agent_memory', {
+          query_embedding: embedding,
+          match_count: RAG_MATCH_COUNT,
+          min_similarity: RAG_MIN_SIMILARITY,
+          p_workspace_id: task.workspace_id,
+        });
+
+        if (memories && memories.length > 0) {
+          // v0.11.0: резолюция task_id → full_id в LTM memoryContext.
+          const memIds = memories.map((m: any) => m.task_id).filter(Boolean);
+          const memRefMap = new Map();
+          if (memIds.length > 0) {
+            const { data: refs } = await supabase
+              .from('tasks')
+              .select('id, title, task_number')
+              .in('id', memIds)
+              .eq('workspace_id', task.workspace_id);
+            for (const r of refs ?? []) {
+              memRefMap.set(r.id, { title: r.title, full_id: `${taskPrefix}-${r.task_number}` });
+            }
+          }
+
+          ctx.memory = memories.map((m: any) => {
+            const ref = memRefMap.get(m.task_id);
+            const label = ref?.full_id ?? m.task_id;
+            return wrapData('memory',
+              `<past_experience task_id="${label}" period="${m.period_start?.slice(0, 10) ?? ''}">\n${m.summary_text ?? ''}\n</past_experience>`
+            );
+          }).join('\n\n');
         }
       }
-
-      ctx.memory = (memoryRes.data as any[]).map((m: any) => {
-        const ref = memRefMap.get(m.task_id);
-        const label = ref?.full_id ?? m.task_id;
-        return wrapData('memory',
-          `<past_experience task_id="${label}" period="${m.period_start?.slice(0, 10) ?? ''}">\n${m.summary_text ?? ''}\n</past_experience>`
-        );
-      }).join('\n\n');
     }
   } catch (err) {
     console.error('enrich-task: RAG context build failed (degraded mode)', err);
@@ -395,7 +452,7 @@ serve(async (req: Request) => {
     // ── 3. Load task ────────────────────────────────────────
     const { data: task, error: taskError } = await supabase
       .from('tasks')
-      .select('id, workspace_id, title, description, deadline_urgency, sprint_id, task_number, version, updated_at, cognitive_weight')
+      .select('id, workspace_id, title, description, deadline_urgency, sprint_id, task_number, version, updated_at, cognitive_weight, embedding, embedding_hash')
       .eq('id', taskId)
       .single() as { data: TaskRow | null; error: unknown };
 
@@ -442,13 +499,42 @@ serve(async (req: Request) => {
       .single();
     const taskPrefix = workspaceRow?.task_prefix ?? '???';
 
-    // ── 5. Build RAG context (standard only) ────────────────
+    // ── 5. Embedding с кэшированием (F03-03, ai_.md §2.2 шаг 2) ──
+    // SHA-256 от (title + '\0' + description) — Web Crypto API (доступен в Deno).
+    // Кэш бессрочен, инвалидируется только при изменении title/description.
+    let embedding: number[];
+    let cacheHit = false;
+
+    const contentHash = await computeContentHash(task.title, task.description);
+
+    if (task.embedding_hash === contentHash && task.embedding) {
+      // Cache-hit: пропускаем вызов NeuralDeep
+      embedding = task.embedding;
+      cacheHit = true;
+    } else {
+      // Cache-miss: вызываем NeuralDeep Hub
+      const queryText = `${task.title} ${task.description ?? ''}`.trim();
+      embedding = await generateEmbedding(queryText, neuralDeepKey);
+
+      // Сохраняем эмбеддинг и хэш
+      await supabase
+        .from('tasks')
+        .update({
+          embedding,
+          embedding_hash: contentHash,
+          embedding_updated_at: new Date().toISOString(),
+        })
+        .eq('id', task.id);
+    }
+    // model_used при cache-hit = 'cached' (обязательно, не опционально)
+
+    // ── 6. Build RAG context (standard only) ────────────────
     let rag = { structural: '', doc: '', memory: '', related: '' };
     if (mode === 'standard') {
       rag = await buildRagContext(supabase, task, neuralDeepKey, sharingLevel, taskPrefix);
     }
 
-    // ── 6. Build system prompt (onitask_ai_.md §2.3) ────────
+    // ── 7. Build system prompt (onitask_ai_.md §2.3) ────────
     const workspaceContextBlock = settings?.workspace_context
       ? `КОНТЕКСТ КОМАНДЫ И ПРОЕКТА:\n${JSON.stringify(settings.workspace_context)}\n\n` +
         `Используй этот контекст для точной оценки сложности, формулировки ai_hint ` +
@@ -559,7 +645,7 @@ ${rag.related || '[]'}
    · Простая задача, нет аномалий: ai_hint: null
 `.trim();
 
-    // ── 7. Call NeuralDeep (JSON mode) ──────────────────────
+    // ── 8. Call NeuralDeep (JSON mode) ──────────────────────
     let result: EnrichmentResult;
     try {
       result = await callNeuralDeep(systemPrompt, neuralDeepKey);
@@ -572,7 +658,7 @@ ${rag.related || '[]'}
       );
     }
 
-    // ── 8. Idempotency (onitask_ai_.md §2.7) ────────────────
+    // ── 9. Idempotency (onitask_ai_.md §2.7) ────────────────
     const { data: currentTask } = await supabase
       .from('tasks')
       .select('version, updated_at, sprint_id, task_number')
@@ -603,7 +689,7 @@ ${rag.related || '[]'}
       );
     }
 
-    // ── 9. Update tasks.cognitive_weight + upsert task_enrichments ──
+    // ── 10. Update tasks.cognitive_weight + upsert task_enrichments ──
     await supabase.from('tasks')
       .update({ cognitive_weight: result.cognitive_weight })
       .eq('id', taskId)
@@ -619,11 +705,11 @@ ${rag.related || '[]'}
       anomaly: result.anomaly,
       suggested_tags: result.suggested_tags,
       enrichment_status: 'done',
-      model_used: MODEL,
+      model_used: cacheHit ? 'cached' : MODEL,
       enriched_at: new Date().toISOString(),
     });
 
-    // ── 10. Realtime push (enrichment_done) ─────────────────
+    // ── 11. Realtime push (enrichment_done) ─────────────────
     const sprintId = currentTask?.sprint_id ?? null;
     const spChanged = sprintId !== null && prevStoryPoints !== (result.story_points ?? null);
     const workspace = await supabase.from('workspaces').select('task_prefix').eq('id', task.workspace_id).single();
@@ -639,7 +725,7 @@ ${rag.related || '[]'}
       story_points_changed: spChanged,
     });
 
-    // ── 11. Mark job done ───────────────────────────────────
+    // ── 12. Mark job done ───────────────────────────────────
     await supabase
       .from('enrichment_queue')
       .update({ status: 'done', processed_at: new Date().toISOString() })
@@ -651,6 +737,7 @@ ${rag.related || '[]'}
         task_id: taskId,
         mode,
         cognitive_weight: result.cognitive_weight,
+        cache_hit: cacheHit,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
@@ -663,8 +750,35 @@ ${rag.related || '[]'}
   }
 });
 
+// ═══════════════════════════════════════════════════════
+// F03-10: Retry backoff helpers
+// ═══════════════════════════════════════════════════════
+
 /**
- * Error handling (onitask_ai_.md §2.8): retry до 3 попыток, затем failed + realtime push.
+ * Calculate backoff delay in milliseconds based on attempt number.
+ * Schedule: attempt 1 → 0s, attempt 2 → 60s, attempt 3 → 5min, attempt 4 → 30min.
+ * After 4 attempts the job is marked as failed.
+ * ai_.md §2.8, F03-10.
+ */
+function getBackoffDelay(attempts: number): number {
+  if (attempts === 1) return 0;
+  if (attempts === 2) return 60_000;          // 60 s
+  if (attempts === 3) return 5 * 60_000;     // 5 min
+  return 30 * 60_000;                         // 30 min (четвёртая попытка)
+}
+
+/**
+ * Apply ±10% jitter to prevent thundering-herd effect when multiple jobs retry simultaneously.
+ */
+function applyJitter(ms: number): number {
+  const jitter = Math.floor(Math.random() * ms * 0.1); // ±10%
+  return ms + jitter;
+}
+
+/**
+ * Error handling (onitask_ai_.md §2.8): retry до 4 попыток с экспоненциальным backoff, затем failed + realtime push.
+ * Backoff schedule: 0s → 60s → 5min → 30min (F03-10).
+ * После 4-й неудачной попытки задача помечается как failed.
  */
 async function handleFailure(
   supabase: ReturnType<typeof createClient>,
@@ -679,8 +793,15 @@ async function handleFailure(
     .single();
   const attempts = (existing?.attempts ?? 0) + 1;
 
-  if (attempts < MAX_RETRIES) {
-    // Re-queue for retry
+  if (attempts <= MAX_RETRIES) {
+    // Re-queue for retry with exponential backoff + jitter (F03-10)
+    const baseDelay = getBackoffDelay(attempts);
+    const finalDelay = applyJitter(baseDelay);
+    console.warn(
+      `enrich-task: attempt ${attempts}/${MAX_RETRIES} failed, scheduling retry in ${finalDelay / 1000}s`,
+    );
+
+    // Обновляем запись в task_enrichments (attempts, last_attempt_at)
     await supabase.from('task_enrichments').upsert({
       task_id: task.id,
       workspace_id: task.workspace_id,
@@ -688,12 +809,19 @@ async function handleFailure(
       attempts,
       last_attempt_at: new Date().toISOString(),
     });
+
+    // Переназначаем задачу в очереди enrichment_queue с новым scheduled_at
     await supabase
       .from('enrichment_queue')
-      .update({ status: 'pending', locked_at: null, scheduled_at: new Date(Date.now() + 60_000).toISOString() })
+      .update({
+        status: 'pending',
+        locked_at: null,
+        scheduled_at: new Date(Date.now() + finalDelay).toISOString(),
+      })
       .eq('id', jobId);
   } else {
-    // Mark failed
+    // После 4-й неудачи — помечаем как failed
+    console.error(`enrich-task: all ${MAX_RETRIES} attempts exhausted for task ${task.id}`);
     await supabase.from('task_enrichments').upsert({
       task_id: task.id,
       workspace_id: task.workspace_id,

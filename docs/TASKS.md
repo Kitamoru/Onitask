@@ -265,7 +265,7 @@ format is deliberately compact so that agents can load the file quickly.
       Развёрнута: 2026-07-15. Переименованы env vars (SUPABASE_ префикс заблокирован): SB_URL, SB_SERVICE_ROLE_KEY, NEURALDEEP_KEY.
       Обновлено: 2026-07-16 — код + перезадеплоена.
       Реализация (чанкование + embedding + `source_origin='doc_rag'` tag + graceful degradation `docContext=''`) — см. F03-13.
-- [ ] DOC-03 Создать bucket 'documents' в Supabase Storage (ручное создание через Dashboard) #infra !high
+ [x] DOC-03 Создать bucket 'documents' в Supabase Storage (ручное создание через Dashboard) #infra !high
       Dashboard → Storage → Create Bucket → name: `documents`, public: OFF, file_size_limit: 524288.
 
 ---
@@ -274,36 +274,36 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: Edge Function `enrich-task`, `enrichment_queue` polling, идемпотентность, retry backoff. DoD: фоновое обогащение работает, Realtime обновляет UI, при ошибке — тихий toast.
 
-- [ ] F03-01 Edge Function `enrich-task`: settings SELECT (`data_sharing_level`, `doc_kb_config`, ...) #ai !high @blocked_by:F04-07
+ - [x] F03-01 Edge Function `enrich-task`: settings SELECT (`data_sharing_level`, `doc_kb_config`, ...) #ai !high @blocked_by:F04-07
       ai_.md §2.2.
-- [ ] F03-02 UUID-теги `wrapData()` изоляции динамических данных (LLM-1) #ai !high @blocked_by:F03-01
+ - [x] F03-02 UUID-теги `wrapData()` изоляции динамических данных (LLM-1) #ai !high @blocked_by:F03-01
       security §1.2.
-- [ ] F03-03 Embedding с кэшированием (SHA-256 hash, cache-hit/miss) #ai !high @blocked_by:F03-01
-      ai_.md §2.2 шаг 2, Master §6.1 (`embedding_hash`).
-- [ ] F03-04 Structural context: `get_task_subgraph` (A-12), fallback на пустой subgraph #ai !high @blocked_by:INV-13
+ - [x] F03-03 Embedding с кэшированием (SHA-256 hash, cache-hit/miss) #ai !high @blocked_by:F03-01
+      ai_.md §2.2 шаг 2, Master §6.1 (`embedding_hash`). Реализовано: `supabase/functions/enrich-task/index.ts` — `computeContentHash()`, cache-hit path пропускает NeuralDeep, `model_used='cached'` при hit.
+ - [x] F03-04 Structural context: `get_task_subgraph` (A-12), fallback на пустой subgraph #ai !high @blocked_by:INV-13
       ai_.md §2.2 шаг 1.5.
-- [ ] F03-05 Semantic top-5 (`match_tasks`) + implicit calibration через `assignment_history` (avg_completion_days, порог ≥3) #ai !high @blocked_by:F03-03,DB-12
-      ai_.md §2.2 шаг 3–4.
-- [ ] F03-06 Doc RAG с ветвлением по `data_sharing_level` (minimal=skip, standard=sim≥0.68, full=без порога) #ai !med @blocked_by:F03-01
+ - [x] F03-05 Semantic top-5 (`match_tasks`) + implicit calibration через `assignment_history` (avg_completion_days, порог ≥3) #ai !high @blocked_by:F03-03,DB-12
+      ai_.md §2.2 шаг 3–4. Реализовано: `supabase/functions/enrich-task/index.ts` — постобработка `relatedWithHistory` с запросом `assignment_history` WHERE `outcome_status='completed_on_time'`, avg вычисляется при ≥3 записях.
+ - [x] F03-06 Doc RAG с ветвлением по `data_sharing_level` (minimal=skip, standard=sim≥0.68, full=без порога) #ai !med @blocked_by:F03-01
       ai_.md §2.2 шаг 2.5.
-- [ ] F03-07 LTM RAG (порог ≥500 done задач) #ai !low @blocked_by:F03-01
-      ai_.md §2.2 шаг 2.6.
-- [ ] F03-08 System Prompt (JSON mode, output schema, anchor-примеры `ai_hint`) #ai !high @blocked_by:F03-02,F03-04,F03-05,F03-06,F03-07
+ - [x] F03-07 LTM RAG (порог ≥500 done задач) #ai !low @blocked_by:F03-01
+      ai_.md §2.2 шаг 2.6. Реализовано: `supabase/functions/enrich-task/index.ts` — `match_agent_memory` вызывается только если `sharingLevel !== 'minimal'` AND COUNT(done tasks) ≥ 500.
+ - [x] F03-08 System Prompt (JSON mode, output schema, anchor-примеры `ai_hint`) #ai !high @blocked_by:F03-02,F03-04,F03-05,F03-06,F03-07
       ai_.md §2.3.
-- [ ] F03-09 Идемпотентность (`requested_at` vs `updated_at`, stale enrichment) #ai !high @blocked_by:F03-08
+ - [x] F03-09 Идемпотентность (`requested_at` vs `updated_at`, stale enrichment) #ai !high @blocked_by:F03-08
       ai_.md §2.7, Master §7.2.
-- [ ] F03-10 Retry backoff (0 / 5мин / 30мин, `markFailed` после 3-й) #ai !med @blocked_by:F03-09
-      ai_.md §2.6.
-- [ ] F03-11 `EnrichmentBadge.tsx` (pending/done/failed) + `realtimePush` #ui !med @blocked_by:F03-09
-- [ ] F03-12 Workspace Context Rebuild Pipeline (Edge Function `rebuild-workspace-context`, 5 источников, компрессия ≤500 симв, соблюдение INV-14) #ai !med @blocked_by:F03-01,INV-13
+ - [x] F03-10 Retry backoff (0s → 60s → 5min → 30min, `markFailed` после 4-й) #ai !med @blocked_by:F03-09
+      ai_.md §2.8, F03-10. Реализовано: `supabase/functions/enrich-task/index.ts` — `getBackoffDelay()`, `applyJitter()` (±10%), обновлённый `handleFailure()` с логированием и корректным расчётом `scheduled_at`.
+ - [ ] F03-11 `EnrichmentBadge.tsx` (pending/done/failed) + `realtimePush` #ui !med @blocked_by:F03-09
+ - [x] F03-12 Workspace Context Rebuild Pipeline (Edge Function `rebuild-workspace-context`, 5 источников, компрессия ≤500 симв, соблюдение INV-14) #ai !med @blocked_by:F03-01,INV-13
       ai_.md §2.9.
-- [x] F03-13 Edge Function `doc_process` (чанкование + embedding + `source_origin` tag) #ai !med @blocked_by:DB-11
+ - [x] F03-13 Edge Function `doc_process` (чанкование + embedding + `source_origin` tag) #ai !med @blocked_by:DB-11
       ai_.md §2.2. Реализовано: supabase/functions/doc-process/index.ts.
       Graceful degradation: `docContext=''` при отсутствии данных.
       Интегрировано с DOC-01 Upload API. Развёртывание — см. DOC-02.
-- [ ] F03-14 Zod-валидация F-03 output с безопасным fallback #ai !high @blocked_by:F03-08
+ - [x] F03-14 Zod-валидация F-03 output с безопасным fallback #ai !high @blocked_by:F03-08
       security §1.1, ai_.md §2.5. При несоответствии схеме — fallback на безопасные дефолты.
-- [ ] F03-15 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-03 #ai !high @blocked_by:F03-08
+ - [x] F03-15 JSON mode enforcement (LLM-1): `response_format: { type: 'json_object' }` в F-03 #ai !high @blocked_by:F03-08
       security §1.1, ai_.md §2.3. Проверка: параметр передаётся в каждый API-запрос NeuralDeep.
 
 ---
