@@ -583,7 +583,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const supabase = getClient();
     
     // Wrap callback in ref to avoid stale closures
-    const callbackRef = useRef<(payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => void>();
+    const callbackRef = useRef<(payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => void>(null);
     callbackRef.current = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const raw = payload.new as TasksRow | null;
