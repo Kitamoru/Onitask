@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
+import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -49,98 +50,8 @@ async function getAuthenticatedWorker(request: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-/** Cache workspace prefixes by ID for batch queries */
-const prefixCache = new Map<string, string>();
-
-async function getPrefix(workspaceId: string): Promise<string | null> {
-  if (prefixCache.has(workspaceId)) return prefixCache.get(workspaceId) ?? null;
-  const supabase = createServerClient();
-  const { data } = await supabase
-    .from('workspaces')
-    .select('task_prefix')
-    .eq('id', workspaceId)
-    .single();
-  const prefix = (data as any)?.task_prefix ?? null;
-  prefixCache.set(workspaceId, prefix);
-  return prefix;
-}
-
-async function mapTaskRow(row: TasksRow): Promise<{
-  id: string;
-  full_id: string;
-  workspace_prefix: string;
-  task_number: number;
-  title: string;
-  description: string | null;
-  tags: string[];
-  column: string;
-  priority: string;
-  deadline: string | null;
-  deadline_urgency: string | null;
-  is_inbox: boolean;
-  is_blocked: boolean;
-  needs_human: boolean;
-  escalation_reason: string | null;
-  assigned_to: string | null;
-  reviewer_id: string | null;
-  handoff_to: string | null;
-  handoff_notes: string | null;
-  sprint_id: string | null;
-  cognitive_weight: number;
-  raw_input: string | null;
-  clarity_score: number | null;
-  complexity: number | null;
-  enrichment_strategy: string | null;
-  version: number;
-  moved_to_column_at: string | null;
-  position: number;
-  source: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  created_by: string | null;
-}> {
-  const prefix = await getPrefix(row.workspace_id);
-  const fullId = prefix && row.task_number
-    ? `${prefix}-${row.task_number}`
-    : row.id.slice(0, 8);
-
-  return {
-    id: row.id,
-    full_id: fullId,
-    workspace_prefix: prefix ?? 'TASK',
-    task_number: row.task_number ?? 0,
-      title: row.title,
-      description: row.description,
-      tags: row.tags,
-      column: row.column,
-      priority: row.priority,
-      deadline: row.deadline,
-      deadline_urgency: row.deadline_urgency,
-      is_inbox: row.is_inbox,
-      is_blocked: row.is_blocked,
-      needs_human: row.needs_human,
-      escalation_reason: row.escalation_reason,
-      assigned_to: row.assigned_to,
-      reviewer_id: row.reviewer_id,
-      handoff_to: row.handoff_to,
-      handoff_notes: row.handoff_notes,
-      sprint_id: row.sprint_id,
-      cognitive_weight: row.cognitive_weight,
-      raw_input: row.raw_input,
-      clarity_score: row.clarity_score,
-      complexity: row.complexity,
-      enrichment_strategy: row.enrichment_strategy,
-      version: row.version,
-      moved_to_column_at: row.moved_to_column_at,
-      position: row.position,
-      source: row.source,
-      metadata: (row.metadata as Record<string, unknown>) ?? {},
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      created_by: row.created_by ?? null,
-    };
-}
+// Re-export for other routes that need it
+export { enrichTaskRow };
 
 // ─── PATCH /api/tasks/[id] — Update task ─────────────────────────────────────
 
@@ -231,7 +142,7 @@ export async function PATCH(
     }
 
     return NextResponse.json({
-      task: mapTaskRow(data as TasksRow),
+      task: await enrichTaskRow(data as TasksRow),
       ...(versionWarning ? { warning: versionWarning } : {}),
     });
   } catch (err) {

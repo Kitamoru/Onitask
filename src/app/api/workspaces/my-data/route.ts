@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
+import { enrichTaskRow, type EnrichedTask } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -147,8 +148,15 @@ export async function POST(req: NextRequest) {
 
     const allWorkspaceWorkers = allWorkspaceWorkersResult.data || [];
     const workspaces = wsResult.data || [];
-    const tasks = taskResult.data || [];
-    const relevantTasks = metricsWorkspaceId ? tasks.filter((t: any) => t.workspace_id === metricsWorkspaceId) : tasks;
+    const rawTasks = taskResult.data || [];
+    
+    // Enrich tasks with workspace_name, created_by_name, assigned_to_name
+    const tasks: EnrichedTask[] = [];
+    for (const row of rawTasks as TasksRow[]) {
+      tasks.push(await enrichTaskRow(row));
+    }
+    
+    const relevantTasks = metricsWorkspaceId ? tasks.filter((t: EnrichedTask) => t.workspace_id === metricsWorkspaceId) : tasks;
 
     // 3. Compute metrics from ALL workspace workers (not just current user's workers)
     // This ensures FlowBoard shows all colleagues, including those who joined via invite links
@@ -183,9 +191,9 @@ export async function POST(req: NextRequest) {
  */
 function computeMetricsFromData(
   workers: WorkersRow[],
-  tasks: TasksRow[],
+  tasks: EnrichedTask[],
   workspaceId: string | null,
-  relevantTasks: TasksRow[],
+  relevantTasks: EnrichedTask[],
   settingsData: any,
   sprintData: any,
 ): FlowMetricsResponse {

@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
 import { authenticateRequest } from '../../../../lib/api-auth';
+import { enrichTaskRow, type EnrichedTask } from '../../../../lib/taskEnrichment';
 import type { Database } from '../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -50,129 +51,9 @@ async function getAuthenticatedProfile(req: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-/** Cache workspace info by ID for batch queries */
-const workspaceCache = new Map<string, { task_prefix: string; name: string }>();
-
-async function getWorkspaceInfo(workspaceId: string): Promise<{ task_prefix: string; name: string }> {
-  if (workspaceCache.has(workspaceId)) return workspaceCache.get(workspaceId)!;
-  const supabase = createServerClient();
-  const { data } = await supabase
-    .from('workspaces')
-    .select('task_prefix, name')
-    .eq('id', workspaceId)
-    .single();
-  const info = {
-    task_prefix: (data as any)?.task_prefix ?? 'TASK',
-    name: (data as any)?.name ?? (data as any)?.task_prefix ?? 'TASK',
-  };
-  workspaceCache.set(workspaceId, info);
-  return info;
-}
-
-/** Cache worker display names by ID for batch queries */
-const workerNameCache = new Map<string, string>();
-
-async function getWorkerName(workerId: string): Promise<string | null> {
-  if (workerNameCache.has(workerId)) return workerNameCache.get(workerId) ?? null;
-  const supabase = createServerClient();
-  const { data } = await supabase
-    .from('workers')
-    .select('display_name')
-    .eq('id', workerId)
-    .single();
-  const name = ((data as any)?.display_name as string) ?? null;
-  workerNameCache.set(workerId, name);
-  return name;
-}
-
-async function mapTaskRow(row: TasksRow): Promise<{
-  id: string;
-  full_id: string;
-  workspace_prefix: string;
-  workspace_name: string;
-  task_number: number;
-  title: string;
-  description: string | null;
-  tags: string[];
-  column: string;
-  priority: string;
-  deadline: string | null;
-  deadline_urgency: string | null;
-  is_inbox: boolean;
-  is_blocked: boolean;
-  needs_human: boolean;
-  escalation_reason: string | null;
-  assigned_to: string | null;
-  assigned_to_name?: string;
-  reviewer_id: string | null;
-  handoff_to: string | null;
-  handoff_notes: string | null;
-  sprint_id: string | null;
-  cognitive_weight: number;
-  raw_input: string | null;
-  clarity_score: number | null;
-  complexity: number | null;
-  enrichment_strategy: string | null;
-  version: number;
-  moved_to_column_at: string | null;
-  position: number;
-  source: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  created_by: string | null;
-  created_by_name?: string;
-}> {
-  const workspaceInfo = await getWorkspaceInfo(row.workspace_id);
-  const fullId = workspaceInfo.task_prefix && row.task_number
-    ? `${workspaceInfo.task_prefix}-${row.task_number}`
-    : row.id.slice(0, 8);
-
-  // Fetch worker display names
-  const [createdByName, assignedToName] = await Promise.all([
-    row.created_by ? getWorkerName(row.created_by) : Promise.resolve(null),
-    row.assigned_to ? getWorkerName(row.assigned_to) : Promise.resolve(null),
-  ]);
-
-  return {
-    id: row.id,
-    full_id: fullId,
-    workspace_prefix: workspaceInfo.task_prefix,
-    workspace_name: workspaceInfo.name,
-    task_number: row.task_number ?? 0,
-    title: row.title,
-    description: row.description,
-    tags: row.tags,
-    column: row.column,
-    priority: row.priority,
-    deadline: row.deadline,
-    deadline_urgency: row.deadline_urgency,
-    is_inbox: row.is_inbox,
-    is_blocked: row.is_blocked,
-    needs_human: row.needs_human,
-    escalation_reason: row.escalation_reason,
-    assigned_to: row.assigned_to,
-    assigned_to_name: assignedToName ?? undefined,
-    reviewer_id: row.reviewer_id,
-    handoff_to: row.handoff_to,
-    handoff_notes: row.handoff_notes,
-    sprint_id: row.sprint_id,
-    cognitive_weight: row.cognitive_weight,
-    raw_input: row.raw_input,
-    clarity_score: row.clarity_score,
-    complexity: row.complexity,
-    enrichment_strategy: row.enrichment_strategy,
-    version: row.version,
-    moved_to_column_at: row.moved_to_column_at,
-    position: row.position,
-    source: row.source,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    created_by: row.created_by ?? null,
-    created_by_name: createdByName ?? undefined,
-  };
-}
+// Re-export for other routes that need it
+export { enrichTaskRow };
+export type { EnrichedTask };
 
 // ─── GET /api/tasks — List tasks ─────────────────────────────────────────────
 
@@ -216,10 +97,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Handle async mapping properly
-    const finalTasks: Awaited<ReturnType<typeof mapTaskRow>>[] = [];
+    // Handle async enrichment
+    const finalTasks: EnrichedTask[] = [];
     for (const task of (data ?? []) as TasksRow[]) {
-      finalTasks.push(await mapTaskRow(task));
+      finalTasks.push(await enrichTaskRow(task));
     }
 
     return NextResponse.json({
@@ -281,7 +162,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ task: await mapTaskRow(data as TasksRow) }, { status: 201 });
+    return NextResponse.json({ task: await enrichTaskRow(data as TasksRow) }, { status: 201 });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
