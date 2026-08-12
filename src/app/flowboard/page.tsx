@@ -209,7 +209,8 @@ function FlowBoardPageContent() {
       // Optimistic local update: move the task in the shared `tasks` array immediately
       // so column counters and the bottom sheet stay consistent without waiting for realtime.
       if (task) {
-        dispatch({ type: 'PATCH_TASK', payload: { ...task, column: newColumn } });
+        // Preserve full_id and workspace_prefix during optimistic update
+        dispatch({ type: 'PATCH_TASK', payload: { ...task, column: newColumn, full_id: task.full_id, workspace_prefix: task.workspace_prefix } });
       }
       try {
         const res = await fetch(`/api/tasks/${taskId}`, {
@@ -237,7 +238,7 @@ function FlowBoardPageContent() {
         console.error('[Optimistic Swipe] Move task failed:', err);
         // Rollback: return task to its original column so UI stays truthful.
         if (task && originalColumn) {
-          dispatch({ type: 'PATCH_TASK', payload: { ...task, column: originalColumn } });
+          dispatch({ type: 'PATCH_TASK', payload: { ...task, column: originalColumn, full_id: task.full_id, workspace_prefix: task.workspace_prefix } });
         }
       }
     },
