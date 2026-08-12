@@ -50,12 +50,66 @@ async function getAuthenticatedProfile(req: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-function mapTaskRow(row: TasksRow) {
-  const fullId = row.task_number ? `TASK-${row.task_number}` : row.id.slice(0, 8);
+/** Cache workspace prefixes by ID for batch queries */
+const prefixCache = new Map<string, string>();
+
+async function getPrefix(workspaceId: string): Promise<string | null> {
+  if (prefixCache.has(workspaceId)) return prefixCache.get(workspaceId) ?? null;
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('workspaces')
+    .select('task_prefix')
+    .eq('id', workspaceId)
+    .single();
+  const prefix = (data as any)?.task_prefix ?? null;
+  prefixCache.set(workspaceId, prefix);
+  return prefix;
+}
+
+async function mapTaskRow(row: TasksRow): Promise<{
+  id: string;
+  full_id: string;
+  workspace_prefix: string;
+  task_number: number;
+  title: string;
+  description: string | null;
+  tags: string[];
+  column: string;
+  priority: string;
+  deadline: string | null;
+  deadline_urgency: string | null;
+  is_inbox: boolean;
+  is_blocked: boolean;
+  needs_human: boolean;
+  escalation_reason: string | null;
+  assigned_to: string | null;
+  reviewer_id: string | null;
+  handoff_to: string | null;
+  handoff_notes: string | null;
+  sprint_id: string | null;
+  cognitive_weight: number;
+  raw_input: string | null;
+  clarity_score: number | null;
+  complexity: number | null;
+  enrichment_strategy: string | null;
+  version: number;
+  moved_to_column_at: string | null;
+  position: number;
+  source: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}> {
+  const prefix = await getPrefix(row.workspace_id);
+  const fullId = prefix && row.task_number
+    ? `${prefix}-${row.task_number}`
+    : row.id.slice(0, 8);
 
   return {
     id: row.id,
     full_id: fullId,
+    workspace_prefix: prefix ?? 'TASK',
     task_number: row.task_number ?? 0,
     title: row.title,
     description: row.description,
@@ -82,7 +136,7 @@ function mapTaskRow(row: TasksRow) {
     moved_to_column_at: row.moved_to_column_at,
     position: row.position,
     source: row.source,
-    metadata: row.metadata,
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
     created_by: row.created_by ?? null,
@@ -131,8 +185,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Handle async mapping properly
+    const finalTasks: Awaited<ReturnType<typeof mapTaskRow>>[] = [];
+    for (const task of (data ?? []) as TasksRow[]) {
+      finalTasks.push(await mapTaskRow(task));
+    }
+
     return NextResponse.json({
-      tasks: ((data ?? []) as TasksRow[]).map(mapTaskRow),
+      tasks: finalTasks,
       count,
     });
   } catch (err) {
