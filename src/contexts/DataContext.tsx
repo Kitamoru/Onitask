@@ -581,10 +581,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const prefix = getPrefix(workspaceId);
 
     const supabase = getClient();
-    
-    // Wrap callback in ref to avoid stale closures
-    const callbackRef = useRef<(payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => void>(null);
-    callbackRef.current = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
+
+    // Realtime callback — plain function (no useRef inside useEffect, which
+    // violates Rules of Hooks and crashes at runtime).
+    const handleRealtime = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const raw = payload.new as TasksRow | null;
         if (!raw) return;
@@ -621,7 +621,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           table: 'tasks',
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        callbackRef.current,
+        handleRealtime,
       )
       .subscribe({
         status: 'SUBSCRIBED',

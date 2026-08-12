@@ -143,9 +143,9 @@ export function TaskCard({ task }: { task: TaskEntity }) {
       </div>
 
       {/* prop-list — tags + urgency */}
-      {(task.tags.length > 0 || task.deadline) && (
+      {(task.tags?.length > 0 || task.deadline) && (
         <div className="flex w-full flex-wrap items-center gap-1">
-          {task.tags.slice(0, 3).map((tag) => (
+          {(task.tags ?? []).slice(0, 3).map((tag) => (
             <span
               key={tag}
               className="rounded px-1.5 py-0.5"
