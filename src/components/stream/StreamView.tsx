@@ -8,24 +8,41 @@ import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import type { TaskEntity } from '@/types/flowboard';
 
 // ─── Avatar placeholder helper ────────────────────────────────────────────────
-function AvatarPlaceholder({ userId, size = 24 }: { userId: string | null; size?: number }) {
-  if (!userId) return null;
-  // Use a colored circle with initials
-  const initials = userId.slice(0, 2).toUpperCase();
+// Square avatar: gray border, dark bg, first letter of worker display name
+// Matches ParticipantCard pattern: displayName.charAt(0).toUpperCase()
+function AvatarPlaceholder({ workerName, size = '1.5rem' }: { workerName: string | null | undefined; size?: string }) {
+  if (!workerName) {
+    // Empty avatar: square with gray border and dark background
+    return (
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{
+          width: size,
+          height: size,
+          border: '1px solid var(--color-line)',
+          backgroundColor: 'var(--color-bg-primary-dark)',
+        }}
+        aria-hidden="true"
+      />
+    );
+  }
+  // First letter of display name (same as ParticipantCard)
+  const initial = workerName.charAt(0).toUpperCase();
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-full"
+      className="flex shrink-0 items-center justify-center overflow-hidden"
       style={{
         width: size,
         height: size,
-        backgroundColor: 'var(--color-accent-amber)',
-        color: 'var(--color-bg-primary-dark)',
-        fontSize: size * 0.375,
-        fontWeight: 600,
+        border: '1px solid var(--color-line)',
+        backgroundColor: 'var(--color-bg-primary-dark)',
+        fontSize: `calc(${size} * 0.4)`,
+        fontWeight: 500,
+        color: 'var(--color-text-muted)',
       }}
       aria-hidden="true"
     >
-      {initials}
+      {initial}
     </div>
   );
 }
@@ -169,8 +186,8 @@ export function TaskCard({ task }: { task: TaskEntity }) {
       })()
     : null;
 
-  // Workspace prefix from full_id (e.g. "ALPHA-45" → "ALPHA")
-  const workspacePrefix = task.full_id.split('-')[0] ?? '';
+  // Workspace display name (or fallback to prefix)
+  const workspaceDisplayName = task.workspace_name ?? task.workspace_prefix;
 
   return (
     <NotchedPanel
@@ -199,24 +216,27 @@ export function TaskCard({ task }: { task: TaskEntity }) {
         >
           {task.title}
         </span>
-        {/* Cognitive weight point badge */}
+        {/* Cognitive weight — 3 squares for counting (filled = amber, empty = gray border) */}
         {task.cognitive_weight > 0 && (
-          <span
-            className="flex shrink-0 items-center justify-center rounded-full"
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-xs)',
-              lineHeight: 'var(--text-body-xs-line)',
-              fontWeight: 700,
-              width: 20,
-              height: 20,
-              backgroundColor: 'var(--color-accent-amber)',
-              color: 'var(--color-bg-primary-dark)',
-            }}
-            aria-label={`Cognitive weight: ${task.cognitive_weight}`}
-          >
-            {task.cognitive_weight}
-          </span>
+          <div className="flex shrink-0 items-center gap-[3px]" aria-label={`Cognitive weight: ${task.cognitive_weight}`}>
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="shrink-0"
+                style={{
+                  width: '0.625rem',   // 10px → relative
+                  height: '0.625rem',  // 10px → relative
+                  backgroundColor: i <= task.cognitive_weight
+                    ? 'var(--color-accent-amber)'
+                    : 'transparent',
+                  border: i <= task.cognitive_weight
+                    ? 'none'
+                    : '1px solid var(--color-line)',
+                  borderRadius: '1px',
+                }}
+              />
+            ))}
+          </div>
         )}
       </div>
 
@@ -226,7 +246,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
         <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
 
         {/* Workspace name badge */}
-        {workspacePrefix && (
+        {workspaceDisplayName && (
           <span
             className="rounded px-1.5 py-0.5"
             style={{
@@ -238,7 +258,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
               backgroundColor: 'var(--color-bg-surface-hover)',
             }}
           >
-            {workspacePrefix}
+            {workspaceDisplayName}
           </span>
         )}
 
@@ -268,9 +288,9 @@ export function TaskCard({ task }: { task: TaskEntity }) {
       <div className="flex w-full items-center justify-between gap-2">
         {/* Left: avatar created_by → arrow → avatar assigned_to */}
         <div className="flex items-center gap-1">
-          <AvatarPlaceholder userId={task.created_by} size={24} />
+          <AvatarPlaceholder workerName={task.created_by_name} size="1.5rem" />
           <ArrowRightIcon size={16} />
-          <AvatarPlaceholder userId={task.assigned_to} size={24} />
+          <AvatarPlaceholder workerName={task.assigned_to_name} size="1.5rem" />
         </div>
 
         {/* Right: deadline + task number */}

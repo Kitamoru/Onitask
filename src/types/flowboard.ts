@@ -231,6 +231,8 @@ export interface TaskEntity {
   full_id: string;
   /** Workspace prefix, e.g. "ALPHA" */
   workspace_prefix: string;
+  /** Workspace display name, e.g. "Alpha Project" */
+  workspace_name?: string;
   /** Task number within workspace */
   task_number: number;
   /** Title */
@@ -295,6 +297,10 @@ export interface TaskEntity {
   moved_to_column_at: string | null;
   /** Creator worker UUID (постановщик задачи) */
   created_by: string | null;
+  /** Creator worker display name */
+  created_by_name?: string;
+  /** Assigned worker display name */
+  assigned_to_name?: string;
 }
 
 /** Request body for PATCH /api/tasks/:id */
