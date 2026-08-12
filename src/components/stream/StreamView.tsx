@@ -401,7 +401,7 @@ export function StreamView({
       {/* Header row — icon + clickable title + date */}
       <div className="flex w-full shrink-0" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--spacing-2)' }}>
         <div
-          className="flex cursor-pointer select-none items-center gap-2"
+          className="flex cursor-pointer select-none items-center gap-2 transition-opacity hover:opacity-80 active:opacity-60"
           onClick={onToggleView}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleView?.(); } }}
           role="button"
