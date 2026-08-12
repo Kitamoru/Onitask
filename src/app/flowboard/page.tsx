@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, SwipeDebugPanel } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
@@ -396,6 +396,11 @@ function FlowBoardPageContent() {
             setSelectedTask(null);
           }}
         />
+
+        {/* Debug panel for swipe logging (development only) */}
+        {process.env.NODE_ENV === 'development' && (
+          <SwipeDebugPanel compact />
+        )}
     </>
   );
 }

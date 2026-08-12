@@ -3,6 +3,7 @@ export { OnboardingModal } from './OnboardingModal';
 export { InviteModal } from './InviteModal';
 export { ColumnTasksSheet } from './ColumnTasksSheet';
 export { TaskViewEdit } from './TaskViewEdit';
+export { SwipeDebugPanel } from './SwipeDebugPanel';
 export type {
   FlowBoardProps,
   SprintInfo,
