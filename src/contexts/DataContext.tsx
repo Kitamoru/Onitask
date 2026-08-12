@@ -338,12 +338,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
+      const wsById = new Map<string, string>((wsData ?? []).map((w: any) => [w.id, w.task_prefix ?? 'TASK']));
       const taskEntities: TaskEntity[] = tasksList.map((task: any) => {
-        const fullId = task.task_number ? `TASK-${task.task_number}` : task.id.slice(0, 8);
+        const prefix = wsById.get(task.workspace_id) ?? 'TASK';
+        const fullId = prefix && task.task_number ? `${prefix}-${task.task_number}` : task.id.slice(0, 8);
         return {
           ...task,
           full_id: fullId,
-          workspace_prefix: 'TASK',
+          workspace_prefix: prefix,
           ai_hint: null,
           story_points: null,
         } as TaskEntity;
@@ -577,11 +579,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const raw = payload.new as TasksRow | null;
             if (!raw) return;
-            const fullId = raw.task_number ? `TASK-${raw.task_number}` : raw.id.slice(0, 8);
+            // Resolve prefix from stored workspaces
+            const ws = state.workspaces.items.find(w => w.id === raw.workspace_id);
+            const prefix = ws?.task_prefix ?? 'TASK';
+            const fullId = prefix && raw.task_number ? `${prefix}-${raw.task_number}` : raw.id.slice(0, 8);
             const taskEntity: TaskEntity = {
               ...raw,
               full_id: fullId,
-              workspace_prefix: 'TASK',
+              workspace_prefix: prefix,
               ai_hint: null,
               story_points: null,
             } as TaskEntity;

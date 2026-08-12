@@ -29,12 +29,14 @@ function getTelegramInitData(): string {
 
 /** Convert DB task row to our TaskEntity */
 function mapTaskRow(row: any): TaskEntity {
-  const fullId = row.task_number ? `TASK-${row.task_number}` : row.id.slice(0, 8);
+  // Use server-computed full_id/workspace_prefix if available, otherwise fallback
+  const fullId = row.full_id ?? (row.task_number ? `${row.workspace_prefix ?? 'TASK'}-${row.task_number}` : row.id.slice(0, 8));
+  const prefix = row.workspace_prefix ?? (fullId.includes('-') ? fullId.split('-')[0] : 'TASK');
   
   return {
     id: row.id,
     full_id: fullId,
-    workspace_prefix: 'TASK',
+    workspace_prefix: prefix,
     task_number: row.task_number ?? 0,
     title: row.title,
     description: row.description,

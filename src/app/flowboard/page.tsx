@@ -22,7 +22,8 @@ function useScrollReset() {
 
 function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
   return tasks.slice(0, 3).map((t) => {
-    const fullId = t.task_number ? `TASK-${t.task_number}` : t.id.slice(0, 8);
+    // Use task.full_id if available (already computed), otherwise fallback
+    const fullId = t.full_id ?? (t.task_number ? `${t.workspace_prefix ?? 'TASK'}-${t.task_number}` : t.id.slice(0, 8));
     return `${fullId} · ${t.title.slice(0, 30)}${t.title.length > 30 ? '…' : ''}`;
   });
 }
