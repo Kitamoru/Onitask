@@ -190,9 +190,18 @@ function dataReducer(state: DataStore, action: Action): DataStore {
     case 'PATCH_TASK': {
       // Guard: невалидный payload (undefined/null/без id) не должен ронять reducer
       if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) {
-        // Диагностика: показываем точный объект, который прилетел в reducer
+        // Диагностика: показываем точный объект, который прилетел в reducer.
+        // JSON.stringify — чтобы payload не обрезался в консоли ({…}).
+        let serialized = 'N/A';
+        try {
+          serialized = JSON.stringify(action.payload);
+        } catch (e) {
+          serialized = `[unserializable: ${e instanceof Error ? e.message : String(e)}]`;
+        }
         console.error('[DataContext] PATCH_TASK: ignored invalid payload:', {
           payload: action.payload,
+          serialized,
+          keys: action.payload && typeof action.payload === 'object' ? Object.keys(action.payload) : undefined,
           stack: new Error('PATCH_TASK guard').stack,
         });
         return state;
@@ -630,9 +639,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Realtime callback — plain function (no useRef inside useEffect, which
     // violates Rules of Hooks and crashes at runtime).
     const handleRealtime = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
+      // Диагностика: логируем сырой realtime-payload, чтобы увидеть, что именно
+      // приходит от Supabase (и почему _updatePostgresBindings падает).
+      try {
+        console.debug('[DataContext] realtime event:', {
+          eventType: payload.eventType,
+          newKeys: payload.new && typeof payload.new === 'object' ? Object.keys(payload.new) : undefined,
+          newSerialized: payload.new ? JSON.stringify(payload.new).slice(0, 500) : null,
+          oldKeys: payload.old && typeof payload.old === 'object' ? Object.keys(payload.old) : undefined,
+        });
+      } catch (e) {
+        console.debug('[DataContext] realtime event (log failed):', e);
+      }
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const raw = payload.new as TasksRow | null;
-        if (!raw) return;
+        // Guard: realtime может прислать malformed payload (пустой объект {}),
+        // который проходит `if (!raw)` (пустой объект truthy), но не имеет id.
+        // Это и есть корневая причина PATCH_TASK с пустым payload.
+        if (!raw || typeof raw !== 'object' || !raw.id) {
+          console.warn('[DataContext] realtime: skipped malformed task payload:', {
+            eventType: payload.eventType,
+            raw,
+            rawKeys: raw && typeof raw === 'object' ? Object.keys(raw) : undefined,
+          });
+          return;
+        }
         // Use shared buildFullId for consistency with API and useTasksRealtime
         const fullId = buildFullId(prefix, raw.task_number, raw.id);
         const taskEntity: TaskEntity = {
