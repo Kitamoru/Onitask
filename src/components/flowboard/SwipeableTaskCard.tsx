@@ -540,8 +540,8 @@ export function SwipeableTaskCard({
   );
 
   // Progressive visual feedback via CSS variables — no JS recompute per frame.
-  // At 0% progress: opacity 0.6, scale 0.97 (card "dims" at start of drag)
-  // At 100% progress: opacity 1.0, scale 1.0 (card "wakes up" near threshold)
+  // At 0% progress: opacity 1.0, scale 1.0 (card is fully bright at rest)
+  // At 100% progress: opacity 0.6, scale 0.97 (card "dims" during drag)
   const cardStyle: React.CSSProperties = {
     transform: isExiting
       ? `translateX(${translateX}px) scale(1)`
@@ -555,7 +555,7 @@ export function SwipeableTaskCard({
         : `transform 0.3s ${BOUNCE_EASING}, opacity 0.3s ${BOUNCE_EASING}`,
     touchAction: 'pan-y',
     cursor: 'pointer',
-    opacity: isExiting ? 0 : 'calc(0.6 + var(--swipe-progress, 0) * 0.4)',
+    opacity: isExiting ? 0 : 'calc(1.0 - var(--swipe-progress, 0) * 0.4)',
     pointerEvents: isExiting ? 'none' : 'auto',
     willChange: 'transform, opacity',
   };

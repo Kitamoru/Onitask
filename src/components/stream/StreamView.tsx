@@ -245,7 +245,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
         {/* Priority badge */}
         <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
 
-        {/* Workspace name badge — matches PriorityBadge style */}
+        {/* Workspace name badge — matches PriorityBadge style with border */}
         {workspaceDisplayName && (
           <span
             className="rounded px-1 py-0.5"
@@ -256,6 +256,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
               backgroundColor: 'var(--color-bg-surface-hover)',
+              border: '1px solid var(--color-text-muted)',
               borderRadius: 'var(--radius-flowboard-section)',
             }}
           >
@@ -263,7 +264,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
           </span>
         )}
 
-        {/* Tags — matches PriorityBadge style */}
+        {/* Tags — matches PriorityBadge style with border */}
         {(task.tags ?? []).slice(0, 3).map((tag) => (
           <span
             key={tag}
@@ -275,6 +276,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
               backgroundColor: 'var(--color-bg-surface-hover)',
+              border: '1px solid var(--color-text-muted)',
               borderRadius: 'var(--radius-flowboard-section)',
             }}
           >
