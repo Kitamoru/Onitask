@@ -50,26 +50,46 @@ async function getAuthenticatedProfile(req: NextRequest) {
   return workers?.[0] ?? null;
 }
 
-/** Cache workspace prefixes by ID for batch queries */
-const prefixCache = new Map<string, string>();
+/** Cache workspace info by ID for batch queries */
+const workspaceCache = new Map<string, { task_prefix: string; name: string }>();
 
-async function getPrefix(workspaceId: string): Promise<string | null> {
-  if (prefixCache.has(workspaceId)) return prefixCache.get(workspaceId) ?? null;
+async function getWorkspaceInfo(workspaceId: string): Promise<{ task_prefix: string; name: string }> {
+  if (workspaceCache.has(workspaceId)) return workspaceCache.get(workspaceId)!;
   const supabase = createServerClient();
   const { data } = await supabase
     .from('workspaces')
-    .select('task_prefix')
+    .select('task_prefix, name')
     .eq('id', workspaceId)
     .single();
-  const prefix = (data as any)?.task_prefix ?? null;
-  prefixCache.set(workspaceId, prefix);
-  return prefix;
+  const info = {
+    task_prefix: (data as any)?.task_prefix ?? 'TASK',
+    name: (data as any)?.name ?? (data as any)?.task_prefix ?? 'TASK',
+  };
+  workspaceCache.set(workspaceId, info);
+  return info;
+}
+
+/** Cache worker display names by ID for batch queries */
+const workerNameCache = new Map<string, string>();
+
+async function getWorkerName(workerId: string): Promise<string | null> {
+  if (workerNameCache.has(workerId)) return workerNameCache.get(workerId) ?? null;
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('workers')
+    .select('display_name')
+    .eq('id', workerId)
+    .single();
+  const name = ((data as any)?.display_name as string) ?? null;
+  workerNameCache.set(workerId, name);
+  return name;
 }
 
 async function mapTaskRow(row: TasksRow): Promise<{
   id: string;
   full_id: string;
   workspace_prefix: string;
+  workspace_name: string;
   task_number: number;
   title: string;
   description: string | null;
@@ -83,6 +103,7 @@ async function mapTaskRow(row: TasksRow): Promise<{
   needs_human: boolean;
   escalation_reason: string | null;
   assigned_to: string | null;
+  assigned_to_name?: string;
   reviewer_id: string | null;
   handoff_to: string | null;
   handoff_notes: string | null;
@@ -100,16 +121,24 @@ async function mapTaskRow(row: TasksRow): Promise<{
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  created_by_name?: string;
 }> {
-  const prefix = await getPrefix(row.workspace_id);
-  const fullId = prefix && row.task_number
-    ? `${prefix}-${row.task_number}`
+  const workspaceInfo = await getWorkspaceInfo(row.workspace_id);
+  const fullId = workspaceInfo.task_prefix && row.task_number
+    ? `${workspaceInfo.task_prefix}-${row.task_number}`
     : row.id.slice(0, 8);
+
+  // Fetch worker display names
+  const [createdByName, assignedToName] = await Promise.all([
+    row.created_by ? getWorkerName(row.created_by) : Promise.resolve(null),
+    row.assigned_to ? getWorkerName(row.assigned_to) : Promise.resolve(null),
+  ]);
 
   return {
     id: row.id,
     full_id: fullId,
-    workspace_prefix: prefix ?? 'TASK',
+    workspace_prefix: workspaceInfo.task_prefix,
+    workspace_name: workspaceInfo.name,
     task_number: row.task_number ?? 0,
     title: row.title,
     description: row.description,
@@ -123,6 +152,7 @@ async function mapTaskRow(row: TasksRow): Promise<{
     needs_human: row.needs_human,
     escalation_reason: row.escalation_reason,
     assigned_to: row.assigned_to,
+    assigned_to_name: assignedToName ?? undefined,
     reviewer_id: row.reviewer_id,
     handoff_to: row.handoff_to,
     handoff_notes: row.handoff_notes,
@@ -140,6 +170,7 @@ async function mapTaskRow(row: TasksRow): Promise<{
     created_at: row.created_at,
     updated_at: row.updated_at,
     created_by: row.created_by ?? null,
+    created_by_name: createdByName ?? undefined,
   };
 }
 
@@ -250,7 +281,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ task: mapTaskRow(data as TasksRow) }, { status: 201 });
+    return NextResponse.json({ task: await mapTaskRow(data as TasksRow) }, { status: 201 });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
