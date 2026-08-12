@@ -288,31 +288,6 @@ export function TaskCard({ task }: { task: TaskEntity }) {
         </span>
       </div>
 
-      {/* 4. svetofor-accent-light SVG decoration (bottom) */}
-      <div className="relative mt-1 h-10 w-full overflow-hidden" aria-hidden="true">
-        <img
-          src="/icons/svetofor-accent-light.svg"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover opacity-30"
-          onError={(e) => {
-            // Hide if SVG not found
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      </div>
-
-      {/* 5. ref-bg-shape-inner SVG decoration (bottom) */}
-      <div className="relative -mt-4 h-14 w-full overflow-hidden" aria-hidden="true">
-        <img
-          src="/icons/ref-bg-shape-inner.svg"
-          alt=""
-          className="absolute bottom-0 left-1/2 h-full -translate-x-1/2 object-contain opacity-20"
-          onError={(e) => {
-            // Hide if SVG not found
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      </div>
     </NotchedPanel>
   );
 }
