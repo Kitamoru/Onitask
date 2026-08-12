@@ -20,7 +20,7 @@ export interface BadgeProps {
  *   - gap: 8px
  *   - Background: rgba(128, 128, 128, 0.2)
  *   - Stroke: #808080, 1px
- *   - borderRadius: 4px
+ *   - borderRadius: full (pill shape)
  *   - Text: Inter Display, Medium, 12px, lineHeight: 14px
  *   - Text color: #808080
  *   - letterSpacing: -0.0313em
@@ -30,8 +30,8 @@ export function Badge({ children, icon, className = '' }: BadgeProps) {
     <span
       className={`
         inline-flex items-center justify-center
-        px-1 py-0.5
-        rounded-[4px]
+        px-2 py-0.5
+        rounded-full
         bg-[rgba(128,128,128,0.2)]
         border border-[#808080]
         text-[#808080]

@@ -245,35 +245,37 @@ export function TaskCard({ task }: { task: TaskEntity }) {
         {/* Priority badge */}
         <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
 
-        {/* Workspace name badge */}
+        {/* Workspace name badge — matches PriorityBadge style */}
         {workspaceDisplayName && (
           <span
-            className="rounded px-1.5 py-0.5"
+            className="rounded px-1 py-0.5"
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-xs)',
-              lineHeight: 'var(--text-body-xs-line)',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
               backgroundColor: 'var(--color-bg-surface-hover)',
+              borderRadius: 'var(--radius-flowboard-section)',
             }}
           >
             {workspaceDisplayName}
           </span>
         )}
 
-        {/* Tags */}
+        {/* Tags — matches PriorityBadge style */}
         {(task.tags ?? []).slice(0, 3).map((tag) => (
           <span
             key={tag}
-            className="rounded px-1.5 py-0.5"
+            className="rounded px-1 py-0.5"
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-xs)',
-              lineHeight: 'var(--text-body-xs-line)',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
               fontWeight: 'var(--font-weight-medium)',
               color: 'var(--color-text-muted)',
               backgroundColor: 'var(--color-bg-surface-hover)',
+              borderRadius: 'var(--radius-flowboard-section)',
             }}
           >
             {tag}

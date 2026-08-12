@@ -61,7 +61,7 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
 
   return (
     <div
-      className="inline-flex items-center gap-1 rounded-full border transition-colors"
+      className="inline-flex items-center gap-1 rounded border transition-colors"
       style={{
         backgroundColor: c.bg,
         borderColor: c.border,
@@ -69,6 +69,7 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
         paddingRight: s.paddingX,
         paddingTop: 'var(--spacing-0\\.5)',
         paddingBottom: 'var(--spacing-0\\.5)',
+        borderRadius: 'var(--radius-flowboard-section)',
       }}
       aria-label={`Срочность: ${label}`}
       role="status"
