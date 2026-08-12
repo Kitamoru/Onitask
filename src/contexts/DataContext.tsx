@@ -15,7 +15,17 @@ import { buildFullId } from '@/lib/realtime/tasks';
 function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
   // Guard: если payload не объект или нет id — возвращаем как есть,
   // чтобы не упасть на buildFullId(prefix, task_number, undefined).slice()
-  if (!task || typeof task !== 'object' || !task.id) return task;
+  if (!task || typeof task !== 'object' || !task.id) {
+    // Диагностика: показываем точный источник мусорного объекта, чтобы найти
+    // корневую причину (realtime / optimistic / server) вместо маскировки симптома.
+    console.error('[DataContext] ensureFullId: task without id received:', {
+      task,
+      fallbackPrefix,
+      keys: task && typeof task === 'object' ? Object.keys(task) : undefined,
+      stack: new Error('ensureFullId guard').stack,
+    });
+    return task;
+  }
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
   const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id);
@@ -158,7 +168,16 @@ const initialState: DataStore = {
 
 function dataReducer(state: DataStore, action: Action): DataStore {
   switch (action.type) {
-    case 'SET_TASKS':
+    case 'SET_TASKS': {
+      const invalid = action.payload.filter((t) => !t || !t.id);
+      if (invalid.length > 0) {
+        // Диагностика: часть задач от сервера пришла без id
+        console.error('[DataContext] SET_TASKS: ignored tasks without id:', {
+          count: invalid.length,
+          sample: invalid.slice(0, 3),
+          stack: new Error('SET_TASKS guard').stack,
+        });
+      }
       return {
         ...state,
         tasks: {
@@ -166,10 +185,18 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
+    }
 
     case 'PATCH_TASK': {
       // Guard: невалидный payload (undefined/null/без id) не должен ронять reducer
-      if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) return state;
+      if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) {
+        // Диагностика: показываем точный объект, который прилетел в reducer
+        console.error('[DataContext] PATCH_TASK: ignored invalid payload:', {
+          payload: action.payload,
+          stack: new Error('PATCH_TASK guard').stack,
+        });
+        return state;
+      }
       const safeTask = ensureFullId(action.payload);
       const idx = state.tasks.items.findIndex(t => t.id === safeTask.id);
       if (idx === -1) {
