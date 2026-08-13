@@ -53,6 +53,8 @@ interface FlowMetricsResponse {
     doneTasks?: number;
     /** Total number of tasks in this sprint */
     totalTasks?: number;
+    /** IDs of tasks assigned to this sprint (for edit sheet pre-selection) */
+    taskIds?: string[];
   } | null;
   columns: Array<{
     name: string;
@@ -264,6 +266,8 @@ function computeMetricsFromData(
         capacity: sp.capacity != null ? String(sp.capacity) : null,
         doneTasks,
         totalTasks,
+        // IDs of tasks assigned to this sprint (for edit sheet pre-selection)
+        taskIds: sprintTasks.map((t: any) => t.id),
       };
     }
   }

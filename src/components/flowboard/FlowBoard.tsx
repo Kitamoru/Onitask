@@ -49,6 +49,8 @@ export interface SprintInfo {
   capacity?: string | null;
   /** Number of completed tasks in this sprint */
   doneTasks?: number;
+  /** IDs of tasks assigned to this sprint (for edit sheet pre-selection) */
+  taskIds?: string[];
 }
 
 export interface SignalData {
@@ -795,8 +797,7 @@ export function FlowBoard({
         endDate: new Date(sprint.endDate),
         goal: sprint.topic,
         capacity: sprint.capacity ?? '',
-        // taskIds will be populated from the backend via DataContext
-        taskIds: [],
+        taskIds: sprint.taskIds ?? [],
       }
     : undefined;
 

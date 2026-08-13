@@ -36,6 +36,8 @@ export interface SprintInfo {
   onReview: number;
   /** Whether the sprint is active */
   isActive: boolean;
+  /** IDs of tasks assigned to this sprint (for edit sheet pre-selection) */
+  taskIds?: string[];
 }
 
 // ─── Signals (Risk Pulse) ────────────────────────────────────────────────────

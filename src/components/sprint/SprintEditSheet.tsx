@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { TextInput } from '@/components/ui/desk-ui/TextInput';
 import { DateRangeField } from '@/components/ui/DateRangeField';
@@ -8,6 +8,7 @@ import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { Button } from '@/components/ui/desk-ui/Button';
 import { Field } from '@/components/sprint/Field';
 import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
+import { useData } from '@/contexts/DataContext';
 import type { SprintFormValue } from '@/components/sprint/types';
 
 export function SprintEditSheet({
@@ -21,18 +22,39 @@ export function SprintEditSheet({
   initialValue: SprintFormValue;
   onSubmit: (value: SprintFormValue) => void;
 }) {
+  // Pull tasks from the global DataContext — same pattern as SprintCreateSheet
+  const { state } = useData();
+  const taskEntities = state.tasks.items;
+
+  // Derive a simple list compatible with TasksAccordionRow
+  const taskList = taskEntities.map((t) => ({
+    id: t.id,
+    title: t.title ?? '(без названия)',
+    full_id: t.full_id ?? t.id.slice(0, 8),
+  }));
+
+  const taskCount = taskList.length;
+
+  // Sync local state when initialValue changes (e.g., sprint data refreshed from backend)
   const [name, setName] = useState(initialValue.name);
-  const [startDate, setStartDate] = useState<Date | null>(
-    initialValue.startDate,
-  );
+  const [startDate, setStartDate] = useState<Date | null>(initialValue.startDate);
   const [endDate, setEndDate] = useState<Date | null>(initialValue.endDate);
   const [goal, setGoal] = useState(initialValue.goal);
   const [capacity, setCapacity] = useState(initialValue.capacity ?? '');
-  const [dateSheetOpen, setDateSheetOpen] = useState(false);
-  // Controlled selection state for tasks assigned to this sprint, initialized from initialValue
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>(
     initialValue.taskIds ?? [],
   );
+  const [dateSheetOpen, setDateSheetOpen] = useState(false);
+
+  // Reset local state when initialValue changes (e.g., different sprint selected)
+  useEffect(() => {
+    setName(initialValue.name);
+    setStartDate(initialValue.startDate);
+    setEndDate(initialValue.endDate);
+    setGoal(initialValue.goal);
+    setCapacity(initialValue.capacity ?? '');
+    setSelectedTaskIds(initialValue.taskIds ?? []);
+  }, [initialValue]);
 
   const canSubmit =
     name.trim().length > 0 && startDate !== null && endDate !== null;
@@ -99,9 +121,10 @@ export function SprintEditSheet({
             />
           </Field>
 
-          {/* Controlled accordion with selected IDs and toggle callback */}
+          {/* Pass actual task list, count, selected IDs, and toggle callback */}
           <TasksAccordionRow
-            taskCount={selectedTaskIds.length}
+            taskCount={taskCount}
+            tasks={taskList}
             selectedIds={selectedTaskIds}
             onToggle={handleToggleTask}
           />
