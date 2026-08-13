@@ -102,16 +102,7 @@ export function SprintCreateSheet({
             />
           </Field>
 
-          <Field label="Ёмкость спринта">
-            <TextInput
-              value={capacity}
-              onChange={(e) =>
-                setCapacity(e.target.value.replace(/[^\d]/g, ''))
-              }
-              placeholder="0"
-              inputMode="numeric"
-            />
-          </Field>
+          {/* Capacity field removed per new requirements */}
 
           {/* Pass the actual task count, list, selected IDs, and toggle callback */}
           <TasksAccordionRow

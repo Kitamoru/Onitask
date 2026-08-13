@@ -129,10 +129,10 @@ function TaskCheckboxItem({
           </svg>
         )}
       </span>
-      <div className="flex flex-col">
-        <span className="text-sm font-medium text-text">{task.full_id}</span>
-        <span className="text-xs text-text-muted">{task.title}</span>
-      </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-text">{task.title}</span>
+          <span className="text-xs text-text-muted">{task.full_id}</span>
+        </div>
     </label>
   );
 }
