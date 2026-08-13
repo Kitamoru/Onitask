@@ -8,7 +8,6 @@ import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { Button } from '@/components/ui/desk-ui/Button';
 import { Field } from '@/components/sprint/Field';
 import { TasksAccordionRow } from '@/components/sprint/TasksAccordionRow';
-// DataContext provides the current list of tasks loaded from the backend.
 import { useData } from '@/contexts/DataContext';
 import type { SprintFormValue } from '@/components/sprint/types';
 
@@ -21,29 +20,21 @@ export function SprintCreateSheet({
   onClose: () => void;
   onSubmit: (value: SprintFormValue) => void;
 }) {
-  // Pull tasks from the global DataContext. These tasks are already normalized
-  // into the `TaskEntity` shape used throughout the app.
   const { state } = useData();
   const taskEntities = state.tasks.items;
 
-  // Derive a simple list compatible with TasksAccordionRow. The component only
-  // needs an `id`, a human‑readable `title`, and the `full_id` used for display.
   const taskList = taskEntities.map((t) => ({
     id: t.id,
     title: t.title ?? '(без названия)',
     full_id: t.full_id ?? t.id.slice(0, 8),
   }));
 
-  // The count shown in the accordion header should reflect the number of
-  // available tasks.
   const taskCount = taskList.length;
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [goal, setGoal] = useState('');
-  const [capacity, setCapacity] = useState('');
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
-  // Controlled selection state for tasks assigned to this sprint
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
 
   const canSubmit =
@@ -55,8 +46,7 @@ export function SprintCreateSheet({
       name,
       startDate,
       endDate,
-      goal,
-      capacity,
+      goal: goal || undefined,
       taskIds: selectedTaskIds.length > 0 ? selectedTaskIds : undefined,
     });
   };
@@ -102,9 +92,6 @@ export function SprintCreateSheet({
             />
           </Field>
 
-          {/* Capacity field removed per new requirements */}
-
-          {/* Pass the actual task count, list, selected IDs, and toggle callback */}
           <TasksAccordionRow
             taskCount={taskCount}
             tasks={taskList}

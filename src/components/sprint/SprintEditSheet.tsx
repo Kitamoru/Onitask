@@ -22,11 +22,9 @@ export function SprintEditSheet({
   initialValue: SprintFormValue;
   onSubmit: (value: SprintFormValue) => void;
 }) {
-  // Pull tasks from the global DataContext — same pattern as SprintCreateSheet
   const { state } = useData();
   const taskEntities = state.tasks.items;
 
-  // Derive a simple list compatible with TasksAccordionRow
   const taskList = taskEntities.map((t) => ({
     id: t.id,
     title: t.title ?? '(без названия)',
@@ -35,24 +33,20 @@ export function SprintEditSheet({
 
   const taskCount = taskList.length;
 
-  // Sync local state when initialValue changes (e.g., sprint data refreshed from backend)
   const [name, setName] = useState(initialValue.name);
   const [startDate, setStartDate] = useState<Date | null>(initialValue.startDate);
   const [endDate, setEndDate] = useState<Date | null>(initialValue.endDate);
-  const [goal, setGoal] = useState(initialValue.goal);
-  const [capacity, setCapacity] = useState(initialValue.capacity ?? '');
+  const [goal, setGoal] = useState(initialValue.goal ?? '');
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>(
     initialValue.taskIds ?? [],
   );
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
 
-  // Reset local state when initialValue changes (e.g., different sprint selected)
   useEffect(() => {
     setName(initialValue.name);
     setStartDate(initialValue.startDate);
     setEndDate(initialValue.endDate);
-    setGoal(initialValue.goal);
-    setCapacity(initialValue.capacity ?? '');
+    setGoal(initialValue.goal ?? '');
     setSelectedTaskIds(initialValue.taskIds ?? []);
   }, [initialValue]);
 
@@ -65,8 +59,7 @@ export function SprintEditSheet({
       name,
       startDate,
       endDate,
-      goal,
-      capacity,
+      goal: goal || undefined,
       taskIds: selectedTaskIds.length > 0 ? selectedTaskIds : undefined,
     });
   };
@@ -112,9 +105,6 @@ export function SprintEditSheet({
             />
           </Field>
 
-          {/* Capacity field removed per new requirements */}
-
-          {/* Pass actual task list, count, selected IDs, and toggle callback */}
           <TasksAccordionRow
             taskCount={taskCount}
             tasks={taskList}

@@ -273,11 +273,11 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
     );
   }
 
-  // Progress is computed from completed tasks vs capacity in the sprint
-  const capacityNum = parseInt(sprint.capacity ?? '0', 10) || 0;
+  // Progress is computed from completed tasks vs total selected tasks in the sprint
+  const totalSelected = sprint.taskIds?.length ?? 0;
   const doneTasks = sprint.doneTasks ?? 0;
   const progressPercent =
-    capacityNum > 0 ? Math.round((doneTasks / capacityNum) * 100) : 0;
+    totalSelected > 0 ? Math.round((doneTasks / totalSelected) * 100) : 0;
 
   // Short date format: "19-28 мая"
   const shortDateRange = (() => {
@@ -368,11 +368,11 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
       </svg>
 
-      {/* Stats row: Готово: doneTasks/capacity (both numbers gray) */}
+      {/* Stats row: Готово: doneTasks/totalSelected (both numbers gray) */}
       <div className="relative flex items-center gap-1 mt-2" aria-label="Статистика спринта">
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{doneTasks}</span>
-        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {capacityNum || '-'}</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {totalSelected || '-'}</span>
       </div>
     </NotchedPanel>
   );
@@ -686,7 +686,6 @@ export function FlowBoard({
             start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
-            capacity: value.capacity || undefined,
             task_ids: value.taskIds,
             workspace_id: workspaceId,
           }),
@@ -720,7 +719,6 @@ export function FlowBoard({
             start_date: value.startDate ? value.startDate.toISOString().split('T')[0] : undefined,
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
-            capacity: value.capacity || undefined,
             task_ids: value.taskIds,
           }),
         });
@@ -796,7 +794,6 @@ export function FlowBoard({
         startDate: new Date(sprint.startDate),
         endDate: new Date(sprint.endDate),
         goal: sprint.topic,
-        capacity: sprint.capacity ?? '',
         taskIds: sprint.taskIds ?? [],
       }
     : undefined;
@@ -804,7 +801,7 @@ export function FlowBoard({
   const stats: SprintStats | undefined = sprint
     ? {
         completedTasks: sprint.doneTasks ?? 0,
-        totalTasks: parseInt(sprint.capacity ?? '0', 10) || 0,
+        totalTasks: sprint.taskIds?.length ?? 0,
         daysLeft: computeDaysLeft(sprint.endDate),
       }
     : undefined;
