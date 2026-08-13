@@ -23,11 +23,10 @@ export function UserProfileCard({
     <div className="flex flex-col items-center gap-4 w-full">
       {/* Avatar circle */}
       <div
-        className="flex items-center justify-center rounded bg-surface"
+        className="flex items-center justify-center bg-surface"
         style={{ width: 104, height: 104, borderRadius: 4 }}
         aria-label="Аватар пользователя"
       >
-        {/* Placeholder avatar — in production this would be user image */}
         <span
           className="text-[32px] font-medium text-text-muted"
           style={{ fontFamily: 'var(--font-family-display)' }}
@@ -49,49 +48,42 @@ export function UserProfileCard({
 
       {/* Status row */}
       {statusLabel && (
-        <StatusRow label="Статус" value={statusLabel} />
+        <SettingsRow label="Статус" value={statusLabel} />
       )}
     </div>
   );
 }
 
-function StatusRow({ label, value }: { label: string; value: string }) {
+function SettingsRow({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex items-center justify-between w-full px-3 py-[14px]"
+      className="flex items-center justify-between w-full px-3 py-[14px] cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
       style={{
         backgroundColor: 'var(--color-surface)',
         borderRadius: 6,
+        border: '1px solid var(--color-line)',
+        // Chamfered corners: top-left + bottom-right (action style)
+        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
       }}
       role="button"
       tabIndex={0}
       aria-label={`${label}: ${value}`}
     >
-      {/* Left decorative line */}
-      <div
-        className="h-[18px] w-[2px]"
-        style={{ backgroundColor: '#F59E0B' }}
-        aria-hidden="true"
-      />
       <span
-        className="text-base font-medium leading-5 text-amber"
-        style={{
-          fontFamily: 'var(--font-family-display)',
-          fontWeight: 'var(--font-weight-medium)',
-        }}
+        className="text-base font-medium leading-5 text-white"
+        style={{ fontFamily: 'var(--font-family-display)' }}
       >
         {label}
       </span>
-      <span
-        className="text-base font-medium leading-5 text-white"
-        style={{
-          fontFamily: 'var(--font-family-display)',
-          fontWeight: 'var(--font-weight-medium)',
-        }}
-      >
-        {value}
-      </span>
-      <ChevronRight className="h-5 w-5 text-text-secondary" />
+      <div className="flex items-center gap-2">
+        <span
+          className="text-base font-medium leading-5 text-white"
+          style={{ fontFamily: 'var(--font-family-display)' }}
+        >
+          {value}
+        </span>
+        <ChevronRight className="h-5 w-5 text-text-secondary shrink-0" />
+      </div>
     </div>
   );
 }

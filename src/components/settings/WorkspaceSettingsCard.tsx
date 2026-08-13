@@ -3,49 +3,20 @@
 import { ChevronRight } from 'lucide-react';
 
 /**
- * SectionHeading — заголовок секции с жёлтой линией слева.
- * Figma: frame "heading" #414:33059 / #414:33065
+ * SettingsRow — строка настроек с текстом слева и чевроном справа.
+ * Серый бордер + chamfered corners (top-left + bottom-right).
  */
-function SectionHeading({ title }: { title: string }) {
-  return (
-    <div className="flex items-center gap-2 w-full px-3 py-[14px]">
-      {/* Yellow accent line */}
-      <div
-        className="h-[18px] w-[2px]"
-        style={{ backgroundColor: '#F59E0B' }}
-        aria-hidden="true"
-      />
-      <span
-        className="text-sm font-medium leading-[18px] text-white"
-        style={{
-          fontFamily: 'var(--font-family-display)',
-          fontWeight: 'var(--font-weight-medium)',
-        }}
-      >
-        {title}
-      </span>
-    </div>
-  );
-}
-
-/**
- * SettingsRow — строка настроек с текстом и chevron.
- * Figma: template EL-15e74083 (frame with padding 12px)
- */
-function SettingsRow({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick?: () => void;
-}) {
+function SettingsRow({ label, onClick }: { label: string; onClick?: () => void }) {
   const Interactive = onClick ? 'button' : 'div';
   return (
     <Interactive
-      className="flex items-center justify-between w-full px-3 py-3 rounded cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+      className="flex items-center justify-between w-full px-3 py-[14px] cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
       style={{
         backgroundColor: 'var(--color-surface)',
-        borderRadius: 4,
+        borderRadius: 6,
+        border: '1px solid var(--color-line)',
+        // Chamfered corners: top-left + bottom-right (action style)
+        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
       }}
       onClick={onClick}
       tabIndex={onClick ? 0 : undefined}
@@ -63,11 +34,8 @@ function SettingsRow({
       aria-label={label}
     >
       <span
-        className="text-sm font-medium leading-[18px] text-white"
-        style={{
-          fontFamily: 'var(--font-family-display)',
-          fontWeight: 'var(--font-weight-medium)',
-        }}
+        className="text-base font-medium leading-5 text-white"
+        style={{ fontFamily: 'var(--font-family-display)' }}
       >
         {label}
       </span>
@@ -77,9 +45,26 @@ function SettingsRow({
 }
 
 /**
- * WorkspaceSettingsCard — секция "workspace-settings".
- * Содержит heading "Рабочее пространство" и кнопки: MCP, Тарифы, Коллеги.
- * Figma: frame "workspace-settings" #375:30389
+ * SectionHeading — заголовок секции с жёлтой линией.
+ * Размер шрифта как у "Статус" — text-base (16px).
+ */
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 w-full px-3 py-[14px]">
+      <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+      <span
+        className="text-base font-medium leading-5 text-white"
+        style={{ fontFamily: 'var(--font-family-display)' }}
+      >
+        {title}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * WorkspaceSettingsCard — секция workspace settings.
+ * Figma: frame "workspace-settings" #375:30461
  */
 export function WorkspaceSettingsCard({
   onMcpClick,
@@ -93,10 +78,10 @@ export function WorkspaceSettingsCard({
   return (
     <div className="flex flex-col gap-3 w-full">
       <SectionHeading title="Рабочее пространство" />
-      <div className="flex flex-col gap-2 w-full">
-        <SettingsRow label="Интеграции MCP" onClick={onMcpClick} />
+      <div className="flex flex-col gap-3 w-full">
+        <SettingsRow label="MCP" onClick={onMcpClick} />
         <SettingsRow label="Тарифы" onClick={onPlansClick} />
-        <SettingsRow label="Мои коллеги" onClick={onColleaguesClick} />
+        <SettingsRow label="Коллеги" onClick={onColleaguesClick} />
       </div>
     </div>
   );
