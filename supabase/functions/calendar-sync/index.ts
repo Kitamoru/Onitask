@@ -1,11 +1,10 @@
 /**
  * Supabase Edge Function: calendar_sync
  *
- * Модуль «Календарь» v0.14.0 — синхронизация событий из внешних календарей.
- * Поддерживаемые провайдеры: Yandex CalDAV, Outlook Graph API.
+ * Модуль «Календарь» v0.14.0 — синхронизация событий из Yandex CalDAV.
  *
  * Архитектура:
- * - OAuth flow: пользователь авторизуется через провайдера → код обмена на токены
+ * - OAuth flow: пользователь авторизуется через Yandex → код обмена на токены
  *   → шифрование AES-256-GCM (INV-17) → сохранение в calendar_connections
  * - Синхронизация: дешифрование токенов → fetch событий → upsert в calendar_events
  * - Все вызовы к внешним API — Cold Path в Supabase Edge Functions (A-1)
@@ -27,7 +26,7 @@ interface CalendarConnection {
   id: string;
   workspace_id: string;
   worker_id: string;
-  provider: 'yandex' | 'outlook';
+  provider: 'yandex';
   provider_account_email: string;
   encrypted_oauth_tokens: Uint8Array;
   token_expires_at: string | null;
@@ -37,7 +36,7 @@ interface CalendarConnection {
 
 interface CalendarEventPayload {
   workspace_id: string;
-  provider: 'yandex' | 'outlook';
+  provider: 'yandex';
   remote_event_id: string;
   title: string;
   description: string | null;
@@ -299,68 +298,6 @@ async function syncYandex(
   return { synced, errors };
 }
 
-/**
- * Outlook Graph API adapter.
- * Uses /me/calendarView endpoint to fetch events.
- */
-async function syncOutlook(
-  supabase: ReturnType<typeof createClient>,
-  connection: CalendarConnection,
-  tokens: OAuthTokens
-): Promise<{ synced: number; errors: string[] }> {
-  const errors: string[] = [];
-  let synced = 0;
-
-  try {
-    const now = new Date();
-    const since = new Date(now.getTime() - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    const until = new Date(now.getTime() + SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-    // Microsoft Graph API endpoint
-    const graphUrl = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${formatDateForQuery(since)}&endDateTime=${formatDateForQuery(until)}&$top=${MAX_EVENTS_PER_SYNC}`;
-
-    const response = await fetch(graphUrl, {
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Outlook Graph API failed: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    const events = data.value || [];
-
-    for (const event of events) {
-      try {
-        const startAt = new Date(event.start.dateTime || event.start.dateTime).toISOString();
-        const endAt = new Date(event.end.dateTime || event.end.dateTime).toISOString();
-
-        await upsertCalendarEvent(supabase, {
-          workspace_id: connection.workspace_id,
-          provider: 'outlook',
-          remote_event_id: event.id,
-          title: event.subject || event.title || 'Без названия',
-          description: event.body?.content ?? null,
-          start_at: startAt,
-          end_at: endAt,
-          reminder_minutes_before: REMINDER_DEFAULT_MINUTES,
-        });
-
-        synced++;
-      } catch (parseErr) {
-        errors.push(`parse_error: ${parseErr instanceof Error ? parseErr.message : 'unknown'}`);
-      }
-    }
-  } catch (syncErr) {
-    errors.push(`sync_error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`);
-  }
-
-  return { synced, errors };
-}
-
 // ═══════════════════════════════════════════════════════
 // OAuth Token Exchange Helpers
 // ═══════════════════════════════════════════════════════
@@ -419,64 +356,6 @@ async function exchangeYandexTokens(
 }
 
 /**
- * Exchange authorization code for Outlook Graph API tokens.
- * 
- * POST https://login.microsoftonline.com/common/oauth2/v2.0/token
- * Body: client_id=...&scope=...&code=...&grant_type=authorization_code&redirect_uri=...
- */
-async function exchangeOutlookTokens(
-  code: string,
-  _encryptionKey: string // kept for future secret rotation
-): Promise<OAuthTokens> {
-  const clientId = Deno.env.get('OUTLOOK_OAUTH_CLIENT_ID') || '';
-  const clientSecret = Deno.env.get('OUTLOOK_OAUTH_CLIENT_SECRET') || '';
-  const redirectUri = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:3000'}/api/calendar/callback/outlook`;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('OUTLOOK_OAUTH_CLIENT_ID and OUTLOOK_OAUTH_CLIENT_SECRET must be configured');
-  }
-
-  const response = await fetch(
-    'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        scope: 'Cal.Read offline_access',
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-        client_secret: clientSecret,
-      }).toString(),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Outlook token exchange failed: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json() as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-
-  if (!data.access_token) {
-    throw new Error('Outlook token exchange returned no access_token');
-  }
-
-  return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token || '',
-    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
-  };
-}
-
-/**
  * Get Yandex account email using user info API.
  */
 async function getYandexAccountEmail(accessToken: string): Promise<string> {
@@ -496,28 +375,6 @@ async function getYandexAccountEmail(accessToken: string): Promise<string> {
   }
 
   return data.email;
-}
-
-/**
- * Get Outlook account email using Microsoft Graph /me endpoint.
- */
-async function getOutlookAccountEmail(accessToken: string): Promise<string> {
-  const response = await fetch('https://graph.microsoft.com/v1.0/me/$select=id,displayName,userPrincipalName', {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Outlook get account email failed: ${response.status}`);
-  }
-
-  const data = await response.json() as { userPrincipalName?: string; displayName?: string };
-  if (!data.userPrincipalName) {
-    throw new Error('Outlook returned no userPrincipalName');
-  }
-
-  return data.userPrincipalName;
 }
 
 /**
@@ -571,61 +428,6 @@ async function refreshYandexTokens(
   };
 }
 
-/**
- * Refresh Outlook OAuth tokens using refresh_token.
- * 
- * POST https://login.microsoftonline.com/common/oauth2/v2.0/token
- */
-async function refreshOutlookTokens(
-  refreshToken: string,
-  encryptionKey: string
-): Promise<OAuthTokens> {
-  const clientId = Deno.env.get('OUTLOOK_OAUTH_CLIENT_ID') || '';
-  const clientSecret = Deno.env.get('OUTLOOK_OAUTH_CLIENT_SECRET') || '';
-
-  if (!clientId || !clientSecret) {
-    throw new Error('OUTLOOK_OAUTH_CLIENT_ID and OUTLOOK_OAUTH_CLIENT_SECRET must be configured');
-  }
-
-  const response = await fetch(
-    'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        scope: 'Cal.Read offline_access',
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-        client_secret: clientSecret,
-      }).toString(),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Outlook token refresh failed: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json() as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-
-  if (!data.access_token) {
-    throw new Error('Outlook token refresh returned no access_token');
-  }
-
-  return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token || refreshToken,
-    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
-  };
-}
-
 // ═══════════════════════════════════════════════════════
 // Main Handler
 // ═══════════════════════════════════════════════════════
@@ -675,7 +477,7 @@ serve(async (req: Request) => {
     const body = await req.json();
     const { workspace_id, provider, action = 'sync' } = body as {
       workspace_id?: string;
-      provider?: 'yandex' | 'outlook';
+      provider?: 'yandex';
       action?: 'sync' | 'connect' | 'disconnect';
     };
 
@@ -686,9 +488,9 @@ serve(async (req: Request) => {
       );
     }
 
-    if (!['yandex', 'outlook'].includes(provider)) {
+    if (provider !== 'yandex') {
       return new Response(
-        JSON.stringify({ error: 'Invalid provider. Must be yandex or outlook.' }),
+        JSON.stringify({ error: 'Invalid provider. Must be yandex.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -719,13 +521,9 @@ serve(async (req: Request) => {
       // Step 1: Exchange authorization code for tokens
       let tokens: OAuthTokens;
       try {
-        if (provider === 'yandex') {
-          tokens = await exchangeYandexTokens(code, encryptionKey);
-        } else {
-          tokens = await exchangeOutlookTokens(code, encryptionKey);
-        }
+        tokens = await exchangeYandexTokens(code, encryptionKey);
       } catch (tokenErr) {
-        console.error(`calendar_sync: token exchange failed for ${provider}`, tokenErr);
+        console.error('calendar_sync: token exchange failed for yandex', tokenErr);
         return new Response(
           JSON.stringify({
             error: 'token_exchange_failed',
@@ -754,14 +552,10 @@ serve(async (req: Request) => {
       if (!accountEmail) {
         // Try to get email from provider API
         try {
-          if (provider === 'yandex') {
-            accountEmail = await getYandexAccountEmail(tokens.access_token);
-          } else {
-            accountEmail = await getOutlookAccountEmail(tokens.access_token);
-          }
+          accountEmail = await getYandexAccountEmail(tokens.access_token);
         } catch (emailErr) {
-          console.error(`calendar_sync: failed to get account email`, emailErr);
-          accountEmail = `${provider}_user`;
+          console.error('calendar_sync: failed to get account email', emailErr);
+          accountEmail = 'yandex_user';
         }
       }
 
@@ -810,31 +604,17 @@ serve(async (req: Request) => {
       // Step 5: Trigger initial sync
       let syncResult: { synced: number; errors: string[] };
       try {
-        if (provider === 'yandex') {
-          syncResult = await syncYandex(supabase, {
-            id: existingConnection?.id || '',
-            workspace_id,
-            worker_id,
-            provider,
-            provider_account_email: accountEmail,
-            encrypted_oauth_tokens: encryptedTokens,
-            token_expires_at: expiresAt,
-            is_active: true,
-            last_sync_at: null,
-          } as CalendarConnection, tokens);
-        } else {
-          syncResult = await syncOutlook(supabase, {
-            id: existingConnection?.id || '',
-            workspace_id,
-            worker_id,
-            provider,
-            provider_account_email: accountEmail,
-            encrypted_oauth_tokens: encryptedTokens,
-            token_expires_at: expiresAt,
-            is_active: true,
-            last_sync_at: null,
-          } as CalendarConnection, tokens);
-        }
+        syncResult = await syncYandex(supabase, {
+          id: existingConnection?.id || '',
+          workspace_id,
+          worker_id,
+          provider,
+          provider_account_email: accountEmail,
+          encrypted_oauth_tokens: encryptedTokens,
+          token_expires_at: expiresAt,
+          is_active: true,
+          last_sync_at: null,
+        } as CalendarConnection, tokens);
       } catch (syncErr) {
         console.error('calendar_sync: initial sync failed', syncErr);
         syncResult = { synced: 0, errors: [syncErr instanceof Error ? syncErr.message : 'unknown'] };
@@ -907,16 +687,18 @@ serve(async (req: Request) => {
     }
 
     // Check token expiry — attempt refresh before giving up
-    // Refresh threshold: 5 minutes before actual expiry
-    const now = Math.floor(Date.now() / 1000);
-    const tokenExpiryMs = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-    const needsRefresh = tokenExpiryMs > 0 && (now + 300) > (tokenExpiryMs / 1000);
+    // Refresh threshold: 5 minutes (300 seconds) before actual expiry
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const tokenExpirySeconds = connection.token_expires_at 
+      ? Math.floor(new Date(connection.token_expires_at).getTime() / 1000)
+      : 0;
+    const needsRefresh = tokenExpirySeconds > 0 && (nowSeconds + 300) > tokenExpirySeconds;
 
     let tokens: OAuthTokens;
 
     if (needsRefresh) {
       // Token is expired or about to expire — try to refresh
-      console.log(`calendar_sync: token expiring soon, attempting refresh for ${provider}`);
+      console.log('calendar_sync: token expiring soon, attempting refresh for yandex');
 
       try {
         // Decrypt to get refresh_token
@@ -927,12 +709,7 @@ serve(async (req: Request) => {
         }
 
         // Exchange refresh_token for new access_token
-        let refreshedTokens: OAuthTokens;
-        if (provider === 'yandex') {
-          refreshedTokens = await refreshYandexTokens(decrypted.refresh_token, encryptionKey);
-        } else {
-          refreshedTokens = await refreshOutlookTokens(decrypted.refresh_token, encryptionKey);
-        }
+        const refreshedTokens = await refreshYandexTokens(decrypted.refresh_token, encryptionKey);
 
         // Encrypt and save new tokens
         const newEncrypted = await encryptOauthTokens(refreshedTokens, encryptionKey);
@@ -947,9 +724,9 @@ serve(async (req: Request) => {
           .eq('id', connection.id);
 
         tokens = refreshedTokens;
-        console.log(`calendar_sync: token refreshed successfully for ${provider}`);
+        console.log('calendar_sync: token refreshed successfully for yandex');
       } catch (refreshErr) {
-        console.error(`calendar_sync: token refresh failed for ${provider}`, refreshErr);
+        console.error('calendar_sync: token refresh failed for yandex', refreshErr);
         return new Response(
           JSON.stringify({
             error: 'token_refresh_failed',
@@ -972,12 +749,7 @@ serve(async (req: Request) => {
     }
 
     // Route to provider-specific sync
-    let result: { synced: number; errors: string[] };
-    if (provider === 'yandex') {
-      result = await syncYandex(supabase, connection, tokens);
-    } else {
-      result = await syncOutlook(supabase, connection, tokens);
-    }
+    const result = await syncYandex(supabase, connection, tokens);
 
     // Update last_sync_at
     await supabase

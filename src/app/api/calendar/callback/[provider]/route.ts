@@ -1,14 +1,14 @@
 'use server';
 
 /**
- * GET /api/calendar/callback/[provider] — OAuth callback handler
+ * GET /api/calendar/callback/yandex — OAuth callback handler for Yandex CalDAV
  * 
- * Handles the OAuth redirect from the provider after user authorization.
+ * Handles the OAuth redirect from Yandex after user authorization.
  * Exchanges the authorization code for tokens via the calendar_sync Edge Function,
  * which encrypts and stores them in `calendar_connections`.
  * 
  * Flow:
- * 1. Provider redirects with ?code=...&state=...
+ * 1. Yandex redirects with ?code=...&state=...
  * 2. Validate state (workspace_id, worker_id)
  * 3. Call calendar_sync Edge Function with action='connect' & code
  * 4. Redirect to success/failure page
@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-type CalendarProvider = 'yandex' | 'outlook';
+type CalendarProvider = 'yandex';
 
 interface StatePayload {
   workspace_id: string;
@@ -61,8 +61,8 @@ export async function GET(
   try {
     const provider = (await params).provider as CalendarProvider;
 
-    // Validate provider
-    if (!['yandex', 'outlook'].includes(provider)) {
+    // Validate provider - only yandex supported
+    if (provider !== 'yandex') {
       const errorUrl = new URL('/calendar', req.url);
       errorUrl.searchParams.set('error', 'invalid_provider');
       return NextResponse.redirect(errorUrl);
@@ -111,16 +111,16 @@ export async function GET(
     // Exchange code for tokens via Edge Function
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     
-    // Get user session token for authentication
-    // In TWA, we use the stored session or re-authenticate
+    // Get user session token for authentication via cookie
+    // Next.js 14+ app router: req.cookies is a getter returning RequestCookies
     const cookies = req.cookies;
-    const sessionToken = cookies.get('sb-' + supabaseUrl.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-') + '-auth-token-standalone')?.value 
-      || cookies.get('__session')?.value 
+    const sessionToken = cookies.get('sb-init-auth-token')?.value 
+      || cookies.get('sb-middleware-cookie')?.value
       || '';
 
     const edgeFunctionUrl = `${supabaseUrl}/functions/v1/calendar-sync`;
     
-    const response = await fetch(edgeFunctionUrl, {
+    const edgeResponse = await fetch(edgeFunctionUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,23 +135,25 @@ export async function GET(
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error(`[Calendar Callback] Edge function error (${response.status}):`, errorData);
+    if (!edgeResponse.ok) {
+      const errorData = await edgeResponse.json().catch(() => ({}));
+      console.error(`[Calendar Callback] Edge function error (${edgeResponse.status}):`, errorData);
       
       const errorMsg = errorData.error || 'connection_failed';
       return NextResponse.redirect(
-        new URL(`/calendar?error=${encodeURIComponent(errorMsg)}`, url.origin)
+        new URL(`/calendar?error=${encodeURIComponent(errorMsg)}`, req.url)
       );
     }
 
-    const result = await response.json();
+    const result = await edgeResponse.json();
     console.log(`[Calendar Callback] ${provider} connected successfully:`, result);
 
     // Redirect to calendar page with success message
-    return NextResponse.redirect(
-      new URL(`/calendar?connected=${provider}&synced=${result.synced || 0}`, url.origin)
-    );
+    const redirectUrl = new URL('/calendar', req.url);
+    redirectUrl.searchParams.set('connected', provider);
+    redirectUrl.searchParams.set('synced', String(result.synced || 0));
+    return NextResponse.redirect(redirectUrl);
+
   } catch (err) {
     console.error('[Calendar Callback] Unexpected error:', err);
     

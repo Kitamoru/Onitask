@@ -2,7 +2,7 @@
  * Calendar Module Types — onitask v0.14.0
  */
 
-export type CalendarProvider = 'yandex' | 'outlook';
+export type CalendarProvider = 'yandex';
 
 /**
  * Calendar view mode for the TWA mobile interface.

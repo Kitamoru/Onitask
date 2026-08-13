@@ -8,9 +8,9 @@ import { CalendarView } from '@/components/calendar/CalendarView';
 function useScrollReset() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 }
-import { getCalendarEvents, getCalendarConnections } from '@/lib/api/calendar';
+import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
-import type { CalendarEvent, CalendarConnection } from '@/types/calendar';
+import type { CalendarEvent, CalendarConnection, CalendarProvider } from '@/types/calendar';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -44,17 +44,20 @@ function CalendarContent() {
         getCalendarConnections(workspaceId || 'placeholder'),
       ]);
 
-      if (eventsRes.error) {
+      // Handle connections result
+      if (connectionsRes.error) {
+        console.error('Failed to load calendar connections:', connectionsRes.error);
+        // Don't show error for connections — just log it
+      } else {
+        setConnections(connectionsRes.data ?? []);
+      }
+
+      // Handle events result — only show error if connections exist
+      if (eventsRes.error && (connectionsRes.data?.length ?? 0) > 0) {
         console.error('Failed to load calendar events:', eventsRes.error);
         setError('Не удалось загрузить события календаря');
       } else {
         setEvents(eventsRes.data ?? []);
-      }
-
-      if (connectionsRes.error) {
-        console.error('Failed to load calendar connections:', connectionsRes.error);
-      } else {
-        setConnections(connectionsRes.data ?? []);
       }
     } catch (err) {
       console.error('Calendar page error:', err);
@@ -64,11 +67,50 @@ function CalendarContent() {
     }
   }
 
-  async function handleSync(provider: CalendarEvent['provider']) {
+  async function handleConnect(provider: CalendarProvider) {
+    try {
+      if (!workspaceId) {
+        throw new Error('workspace_id is required');
+      }
+
+      // Call connect API to get OAuth URL
+      const response = await fetch(`/api/calendar/connect/${provider}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to get OAuth URL');
+      }
+
+      const data = await response.json();
+      if (data.success && data.url) {
+        // Open OAuth flow in new window
+        window.open(data.url, '_blank');
+      }
+    } catch (err) {
+      console.error(`Connect failed for ${provider}:`, err);
+      setError(`Ошибка подключения: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
+  async function handleSync(provider: CalendarProvider) {
     setIsSyncing(true);
     setSyncStatus('syncing');
 
     try {
+      if (!workspaceId) {
+        throw new Error('workspace_id is required');
+      }
+      
+      await syncCalendar({
+        workspace_id: workspaceId,
+        provider,
+        action: 'sync',
+      });
+      
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
       await loadData();
@@ -82,7 +124,11 @@ function CalendarContent() {
 
   async function handleReminderUpdate(eventId: string, minutes: number | null) {
     try {
-      console.log('Reminder updated:', eventId, minutes);
+      const { updateReminderSettings } = await import('@/lib/api/calendar');
+      const result = await updateReminderSettings(eventId, minutes);
+      if (!result.success) {
+        console.error('Failed to update reminder:', result.error);
+      }
       await loadData();
     } catch (err) {
       console.error('Failed to update reminder:', err);
@@ -125,6 +171,7 @@ function CalendarContent() {
         </div>
       </header>
 
+      {/* Connections bar with sync buttons */}
       {connections.length > 0 && (
         <div
           className="flex items-center gap-2 px-4 py-2 border-b overflow-x-auto"
@@ -165,15 +212,35 @@ function CalendarContent() {
         </div>
       )}
 
+      {/* No connections state — show connect button */}
       {connections.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-          <span className="mb-2 text-4xl">📭</span>
-          <p className="text-heading-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          <span className="mb-3 text-5xl">📭</span>
+          <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
             Календари не подключены
           </p>
-          <p className="text-body-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Подключите Yandex Календарь или Outlook для синхронизации событий
+          <p className="text-body-sm mb-4 max-w-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Подключите Яндекс Календарь для синхронизации событий
           </p>
+          
+          {/* Connect Yandex button */}
+          <button
+            onClick={() => handleConnect('yandex')}
+            className="
+              rounded-card px-4 py-2
+              text-body-sm font-medium
+              transition-all duration-fast
+              hover:opacity-90 active:scale-95
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+            "
+            style={{
+              backgroundColor: 'var(--color-accent-amber)',
+              color: '#000',
+            }}
+            aria-label="Подключить Яндекс Календарь"
+          >
+            🟡 Подключить Яндекс Календарь
+          </button>
         </div>
       )}
 
@@ -195,6 +262,7 @@ function CalendarContent() {
             selectedDate={selectedDate}
             onDateSelect={setSelectedDate}
             isLoading={isLoading}
+            onEventClick={() => {}}
           />
         </div>
       )}

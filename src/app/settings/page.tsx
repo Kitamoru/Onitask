@@ -1,18 +1,32 @@
 'use client';
 
+import React from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   UserProfileCard,
   WorkspaceSettingsCard,
   OtherSettingsCard,
+  CalendarSettingsCard,
 } from '@/components/settings';
+
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const workspaceId = searchParams.get('workspace_id') ?? '';
+
+  return <SettingsInner workspaceId={workspaceId} />;
+}
+
+interface SettingsInnerProps {
+  workspaceId: string;
+}
 
 /**
  * Settings page — Figma node 65:14537 "settings".
- * Displays user profile, workspace settings, and other preferences.
+ * Displays user profile, workspace settings, calendar integrations, and other preferences.
  *
  * Layout matches board/desk pages: main container with safe area padding.
  */
-export default function SettingsPage() {
+function SettingsInner({ workspaceId }: SettingsInnerProps) {
   const handleMcpClick = () => {
     // TODO: navigate to MCP integrations
     console.log('Navigate to MCP integrations');
@@ -62,6 +76,11 @@ export default function SettingsPage() {
           onColleaguesClick={handleColleaguesClick}
         />
 
+        {/* Calendar integrations section */}
+        {workspaceId && (
+          <CalendarSettingsCard workspaceId={workspaceId} />
+        )}
+
         {/* Other section */}
         <OtherSettingsCard
           language="🇷🇺 Русский"
@@ -70,5 +89,22 @@ export default function SettingsPage() {
         />
       </div>
     </main>
+  );
+}
+
+/**
+ * Settings page with Suspense boundary for useSearchParams().
+ */
+export default function SettingsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-dvh">
+          <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+        </div>
+      }
+    >
+      <SettingsContent />
+    </React.Suspense>
   );
 }

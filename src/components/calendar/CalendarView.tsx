@@ -632,8 +632,11 @@ export function CalendarView({
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
           onEditReminder={async (eventId, minutes) => {
-            // TODO: Call API to update reminder
-            console.log('Update reminder:', eventId, minutes);
+            const { updateReminderSettings } = await import('@/lib/api/calendar');
+            const result = await updateReminderSettings(eventId, minutes);
+            if (!result.success) {
+              console.error('Failed to update reminder:', result.error);
+            }
             setSelectedEvent(null);
           }}
         />

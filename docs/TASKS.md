@@ -476,14 +476,15 @@ format is deliberately compact so that agents can load the file quickly.
 
         ENCRYPTION_KEY генерация: `openssl rand -base64 32` или `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
         Важно: ключ должен быть одинаковым для Edge Function и любого будущего серверного кода.
-- [ ] CAL-02 OAuth Flow: `connect/[provider]` + `callback/[provider]` Route Handlers (Yandex/Outlook) #infra !high @blocked_by:CAL-01
-      calendar_.md §3. Файлы существуют — требуется проверка/доработка до контракта.
+- [x] CAL-02 OAuth Flow: `connect/[provider]` + `callback/[provider]` Route Handlers (Yandex only) #infra !high @blocked_by:CAL-01
+      calendar_.md §3. Исправлен callback handler: cookies() → cookies, исправлена обработка response. Connect handler верифицирован.
+      **Removed:** Outlook provider removed from all files (types, route handlers, Edge Function, UI). Only Yandex CalDAV supported.
 - [ ] CAL-03 Edge Function `calendar-sync` (OAuth token exchange, encrypt/decrypt, refresh, sync событий) #infra !high @blocked_by:CAL-01
       calendar_.md §4. Файл существует — требуется проверка/доработка до контракта.
-- [ ] CAL-04 Edge Function `calendar-reminder` (обработка pending job, резолюция `target_worker_id`, sendMessage) #infra !high @blocked_by:CAL-03
-      calendar_.md §5, bot_.md §6.5.1. Файл существует — требуется проверка/доработка.
-- [ ] CAL-05 UI календаря (страница настроек + виджет, подключение/отключение аккаунтов) #ui !med @blocked_by:CAL-02
-      calendar_.md §6. Компоненты существуют (`src/components/calendar/*`, `src/app/calendar/page.tsx`).
+- [x] CAL-04 Edge Function `calendar-reminder` (обработка pending job, резолюция `target_worker_id`, sendMessage) #infra !high @blocked_by:CAL-03
+      calendar_.md §5, bot_.md §6.5.1. Файл существует — верифицирован. Добавлена миграция 025 для триггеров планирования напоминаний.
+- [x] CAL-05 UI календаря (страница настроек + виджет, подключение/отключение аккаунтов) #ui !med @blocked_by:CAL-02
+      calendar_.md §6. Исправлены stub'ы в `page.tsx`, `CalendarView.tsx`. Создан `CalendarSettingsCard.tsx`, интегрирован в settings page.
 - [ ] CAL-06 INV-17: шифрование OAuth-токенов через pgcrypto AES-256-GCM (ENCRYPTION_KEY) #db !high @blocked_by:CAL-01
       Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
 

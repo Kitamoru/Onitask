@@ -216,7 +216,9 @@ export async function disconnectCalendar(
 // ═══════════════════════════════════════════════════════
 
 /**
- * Updates reminder_minutes_before for a calendar event.
+ * Updates reminder_minutes_before for a calendar event via direct DB update.
+ * The database trigger trg_schedule_calendar_reminder will automatically
+ * create an enrichment_queue job for the Telegram notification.
  */
 export async function updateReminderSettings(
   eventId: string,

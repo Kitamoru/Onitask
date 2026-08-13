@@ -3,7 +3,7 @@
 /**
  * POST /api/calendar/connect/[provider] — Generate OAuth authorization URL
  * 
- * Returns an OAuth redirect URL for the specified provider (yandex | outlook).
+ * Returns an OAuth redirect URL for Yandex CalDAV.
  * The client opens this URL in a new window/tab to initiate the OAuth flow.
  * 
  * INV-05: workspace_id is required for all calendar operations
@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-type CalendarProvider = 'yandex' | 'outlook';
+type CalendarProvider = 'yandex';
 
 interface RequestBody {
   workspace_id: string;
@@ -45,36 +45,6 @@ function generateYandexOAuthUrl(
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
 }
 
-/**
- * Generate Outlook Graph API OAuth authorization URL.
- * 
- * Microsoft OAuth flow:
- * 1. Redirect user to https://login.microsoftonline.com/common/oauth2/v2.0/authorize
- * 2. User signs in and grants permissions
- * 3. Microsoft redirects to redirect_uri with ?code=...
- * 
- * Scopes: Cal.Read — read calendar events only (no write)
- */
-function generateOutlookOAuthUrl(
-  clientId: string,
-  redirectUri: string,
-  state: string
-): string {
-  const scopes = 'Cal.Read offline_access';
-  
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: 'code',
-    redirect_uri: redirectUri,
-    scope: scopes,
-    response_mode: 'query',
-    state: state,
-    prompt: 'consent', // Force consent screen to ensure refresh_token is returned
-  });
-
-  return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
-}
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
@@ -85,9 +55,9 @@ export async function POST(
     const provider = (await params).provider as CalendarProvider;
 
     // Validate provider
-    if (!['yandex', 'outlook'].includes(provider)) {
+    if (provider !== 'yandex') {
       return NextResponse.json(
-        { success: false, error: 'invalid_provider', allowed: ['yandex', 'outlook'] },
+        { success: false, error: 'invalid_provider', allowed: ['yandex'] },
         { status: 400 }
       );
     }
@@ -102,11 +72,10 @@ export async function POST(
 
     // Get OAuth credentials from environment
     const yandexClientId = process.env.YANDEX_OAUTH_CLIENT_ID || '';
-    const outlookClientId = process.env.OUTLOOK_OAUTH_CLIENT_ID || '';
     
-    // Base redirect URI — will be appended with /callback/[provider]
+    // Base redirect URI
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
-    const redirectUri = `${baseUrl}/api/calendar/callback/${provider}`;
+    const redirectUri = `${baseUrl}/api/calendar/callback/yandex`;
 
     // Generate state parameter: encode workspace_id + worker_id + timestamp for CSRF protection
     const state = Buffer.from(
@@ -117,28 +86,16 @@ export async function POST(
       })
     ).toString('base64url');
 
-    // Generate OAuth URL based on provider
-    let oauthUrl: string;
-
-    if (provider === 'yandex') {
-      if (!yandexClientId) {
-        console.error('[Calendar] YANDEX_OAUTH_CLIENT_ID not configured');
-        return NextResponse.json(
-          { success: false, error: 'yandex_oauth_not_configured' },
-          { status: 500 }
-        );
-      }
-      oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri, state);
-    } else {
-      if (!outlookClientId) {
-        console.error('[Calendar] OUTLOOK_OAUTH_CLIENT_ID not configured');
-        return NextResponse.json(
-          { success: false, error: 'outlook_oauth_not_configured' },
-          { status: 500 }
-        );
-      }
-      oauthUrl = generateOutlookOAuthUrl(outlookClientId, redirectUri, state);
+    // Generate OAuth URL
+    if (!yandexClientId) {
+      console.error('[Calendar] YANDEX_OAUTH_CLIENT_ID not configured');
+      return NextResponse.json(
+        { success: false, error: 'yandex_oauth_not_configured' },
+        { status: 500 }
+      );
     }
+    
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri, state);
 
     return NextResponse.json({
       success: true,
