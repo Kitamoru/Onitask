@@ -10,6 +10,18 @@ import {
   IconSettings2,
 } from '@tabler/icons-react';
 
+// CSS keyframes for the flip animation — injected once via <style>
+const FLIP_ANIMATION_CSS = `
+@keyframes board-icon-flip {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+  100% { transform: rotate(0deg); }
+}
+.board-icon-flip {
+  animation: board-icon-flip 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+`;
+
 /**
  * BottomMenu — Fixed bottom navigation bar.
  *
@@ -66,7 +78,19 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showNotice, setShowNotice] = useState(false);
+  const [iconFlipKey, setIconFlipKey] = useState(0);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Inject animation CSS once
+  useEffect(() => {
+    const id = 'board-icon-flip-style';
+    if (!document.getElementById(id)) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = FLIP_ANIMATION_CSS;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   // Clear timer on unmount
   useEffect(() => {
@@ -105,6 +129,8 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
       // Already on flowboard — toggle between stream and flowboard views
       const isStream = new URLSearchParams(window.location.search).get('view') === 'stream';
       router.push(isStream ? '/flowboard' : '/flowboard?view=stream');
+      // Trigger flip animation on each click
+      setIconFlipKey((prev) => prev + 1);
     },
     [isOnFlowboard, router],
   );
@@ -147,7 +173,12 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
             marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
-          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} onClick={handleFlowboardClick} />
+          <NavButton
+            item={MENU_ITEMS[0]}
+            currentPath={pathname}
+            onClick={handleFlowboardClick}
+            flipKey={iconFlipKey}
+          />
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
@@ -242,13 +273,20 @@ function NavButton({
   item,
   currentPath,
   onClick,
+  flipKey,
 }: {
   item: MenuItem;
   currentPath: string;
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  flipKey?: number;
 }) {
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
+
+  // Determine if the icon should appear rotated (stream view = rotated 90°)
+  const isStreamView = item.id === 'flowboard'
+    && currentPath === '/flowboard'
+    && new URLSearchParams(window.location.search).get('view') === 'stream';
 
   return (
     <Link
@@ -278,15 +316,27 @@ function NavButton({
       aria-label={item.label}
       aria-current={isActive ? 'page' : undefined}
     >
-      <IconComponent
-        size={20}
-        stroke={isActive ? 2 : 1.5}
+      <div
+        key={`icon-${flipKey ?? 'static'}`}
+        className={flipKey !== undefined ? 'board-icon-flip' : ''}
         style={{
-          width: 'var(--size-bottom-menu-icon)',
-          height: 'var(--size-bottom-menu-icon)',
-          color: isActive ? 'var(--color-text-white)' : 'var(--color-text-muted)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: isStreamView ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: flipKey !== undefined ? 'none' : 'transform 0.3s ease',
         }}
-      />
+      >
+        <IconComponent
+          size={20}
+          stroke={isActive ? 2 : 1.5}
+          style={{
+            width: 'var(--size-bottom-menu-icon)',
+            height: 'var(--size-bottom-menu-icon)',
+            color: isActive ? 'var(--color-text-white)' : 'var(--color-text-muted)',
+          }}
+        />
+      </div>
       <span
         className={isActive ? 'font-semibold' : ''}
         style={{
