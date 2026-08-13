@@ -111,34 +111,55 @@ function CalendarContent() {
   }
 
   async function handleStoreToken() {
-    if (!oauthToken.trim() || !workspaceId) return;
+    // Calendar connections are per-user (worker), not per-workspace
+    // Use the authenticated worker's ID from InitResponse
+    const workerId = authData?.worker?.id;
+    
+    console.log('[Calendar] handleStoreToken called');
+    console.log('[Calendar] oauthToken length:', oauthToken?.length);
+    console.log('[Calendar] workerId:', workerId);
+    
+    if (!oauthToken?.trim()) {
+      setError('Токен не введен');
+      return;
+    }
+    
+    if (!workerId) {
+      setError('Пользователь не авторизован');
+      return;
+    }
 
     setTokenSubmitting(true);
     try {
+      console.log('[Calendar] Sending token to /api/calendar/callback/yandex...');
       const response = await fetch('/api/calendar/callback/yandex', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: oauthToken.trim(),
-          workspace_id: workspaceId,
+          worker_id: workerId,
         }),
       });
 
+      console.log('[Calendar] Response status:', response.status);
       const result = await response.json();
+      console.log('[Calendar] Response body:', result);
 
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Token storage failed');
       }
 
       // Success — close modal and reload data
+      console.log('[Calendar] Token stored successfully');
       setShowTokenModal(false);
       setOauthToken('');
       await loadData();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
     } catch (err) {
-      console.error('Token storage failed:', err);
-      setError(`Ошибка сохранения токена: ${err instanceof Error ? err.message : 'unknown'}`);
+      console.error('[Calendar] Token storage error:', err);
+      const errMsg = err instanceof Error ? err.message : 'unknown';
+      setError(`Ошибка сохранения токена: ${errMsg}`);
     } finally {
       setTokenSubmitting(false);
     }
