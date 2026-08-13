@@ -28,13 +28,13 @@ interface RequestBody {
 /**
  * Generate Yandex CalDAV OAuth authorization URL with implicit token flow.
  * 
- * Scopes: caldav — access to CalDAV calendars
+ * Scope `calendar:read_all` запрашивает полный доступ к календарю Яндекса.
  */
 function generateYandexOAuthUrl(clientId: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
-    response_type: 'token', // implicit grant — returns token in URL hash
-    scope: 'caldav', // CalDAV access only
+    response_type: 'token',
+    scope: 'calendar:read_all', // обязательный scope для доступа к календарю
   });
 
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
