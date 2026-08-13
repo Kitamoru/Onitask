@@ -20,10 +20,10 @@ function CalendarContent() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
 
-  // Verification code modal state
-  const [showCodeModal, setShowCodeModal] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
-  const [codeSubmitting, setCodeSubmitting] = useState(false);
+  // OAuth token modal state
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [oauthToken, setOauthToken] = useState('');
+  const [tokenSubmitting, setTokenSubmitting] = useState(false);
   const [oauthInstructions, setOauthInstructions] = useState('');
 
   // Use active workspace from DataContext (like flowboard does)
@@ -99,10 +99,10 @@ function CalendarContent() {
       if (data.success && data.url) {
         // Open OAuth authorization in new window
         window.open(data.url, '_blank', 'noopener,noreferrer');
-        // Show verification code modal with instructions
-        setOauthInstructions(data.instructions || 'После авторизации перейдите на https://oauth.yandex.ru/verification_code и введите полученный код');
-        setShowCodeModal(true);
-        setVerificationCode('');
+        // Show token input modal with instructions
+        setOauthInstructions(data.instructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX');
+        setShowTokenModal(true);
+        setOauthToken('');
       }
     } catch (err) {
       console.error(`Connect failed for ${provider}:`, err);
@@ -110,16 +110,16 @@ function CalendarContent() {
     }
   }
 
-  async function handleVerifyCode() {
-    if (!verificationCode.trim() || !workspaceId) return;
+  async function handleStoreToken() {
+    if (!oauthToken.trim() || !workspaceId) return;
 
-    setCodeSubmitting(true);
+    setTokenSubmitting(true);
     try {
       const response = await fetch('/api/calendar/callback/yandex', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code: verificationCode.trim(),
+          token: oauthToken.trim(),
           workspace_id: workspaceId,
         }),
       });
@@ -127,20 +127,20 @@ function CalendarContent() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Verification failed');
+        throw new Error(result.error || 'Token storage failed');
       }
 
       // Success — close modal and reload data
-      setShowCodeModal(false);
-      setVerificationCode('');
+      setShowTokenModal(false);
+      setOauthToken('');
       await loadData();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
     } catch (err) {
-      console.error('Code verification failed:', err);
-      setError(`Ошибка верификации: ${err instanceof Error ? err.message : 'unknown'}`);
+      console.error('Token storage failed:', err);
+      setError(`Ошибка сохранения токена: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally {
-      setCodeSubmitting(false);
+      setTokenSubmitting(false);
     }
   }
 
@@ -337,8 +337,8 @@ function CalendarContent() {
         </div>
       )}
 
-      {/* Verification Code Modal */}
-      {showCodeModal && (
+      {/* OAuth Token Modal */}
+      {showTokenModal && (
         <div
           className="
             fixed inset-x-0 z-modal flex items-end justify-center
@@ -348,12 +348,12 @@ function CalendarContent() {
           style={{ paddingBottom: Math.max(0, 16) + 'px' }}
           role="dialog"
           aria-modal="true"
-          aria-label="Ввод кода подтверждения"
+          aria-label="Ввод OAuth токена"
         >
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60"
-            onClick={!codeSubmitting ? () => setShowCodeModal(false) : undefined}
+            onClick={!tokenSubmitting ? () => setShowTokenModal(false) : undefined}
             aria-hidden="true"
           />
 
@@ -387,10 +387,10 @@ function CalendarContent() {
                 "
                 style={{ color: 'var(--color-text-primary)' }}
               >
-                🔐 Код подтверждения
+                🔐 OAuth токен
               </h2>
               <button
-                onClick={() => !codeSubmitting && setShowCodeModal(false)}
+                onClick={() => !tokenSubmitting && setShowTokenModal(false)}
                 className="
                   rounded-sm p-1
                   transition-colors duration-fast
@@ -425,27 +425,27 @@ function CalendarContent() {
                   className="text-body-sm"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  {oauthInstructions || 'После авторизации перейдите на https://oauth.yandex.ru/verification_code и введите полученный код ниже.'}
+                  {oauthInstructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX'}
                 </p>
               </div>
 
-              {/* Code input */}
+              {/* Token input */}
               <div className="space-y-2">
                 <label
                   className="text-body-sm font-medium"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  Код подтверждения
+                  OAuth токен
                 </label>
                 <input
                   type="text"
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9a-zA-Z]/g, '').slice(0, 10))}
-                  placeholder="Введите код"
+                  value={oauthToken}
+                  onChange={(e) => setOauthToken(e.target.value)}
+                  placeholder="Вставьте токен после access_token="
                   className="
                     w-full rounded-md px-3 py-2
                     border
-                    text-body-md
+                    text-body-sm
                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
                   "
                   style={{
@@ -454,19 +454,19 @@ function CalendarContent() {
                     backgroundColor: 'var(--color-bg-surface)',
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !codeSubmitting) {
-                      handleVerifyCode();
+                    if (e.key === 'Enter' && !tokenSubmitting) {
+                      handleStoreToken();
                     }
                   }}
-                  disabled={codeSubmitting}
-                  aria-label="Код подтверждения из Yandex"
+                  disabled={tokenSubmitting}
+                  aria-label="OAuth токен из Yandex"
                 />
               </div>
 
               {/* Submit button */}
               <button
-                onClick={handleVerifyCode}
-                disabled={codeSubmitting || !verificationCode.trim()}
+                onClick={handleStoreToken}
+                disabled={tokenSubmitting || !oauthToken.trim()}
                 className="
                   w-full rounded-card px-4 py-2
                   text-body-sm font-medium
@@ -479,9 +479,9 @@ function CalendarContent() {
                   backgroundColor: 'var(--color-accent-amber)',
                   color: '#000',
                 }}
-                aria-label="Подтвердить"
+                aria-label="Сохранить токен"
               >
-                {codeSubmitting ? 'Проверка...' : '✓ Подтвердить'}
+                {tokenSubmitting ? 'Сохранение...' : '✓ Сохранить токен'}
               </button>
 
               {/* Link to verification code page */}
@@ -496,7 +496,7 @@ function CalendarContent() {
                 "
                 style={{ color: 'var(--color-accent-amber)' }}
               >
-                Открыть страницу кода →
+                Открыть страницу токена →
               </a>
             </div>
           </div>
