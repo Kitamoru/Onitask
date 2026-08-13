@@ -498,18 +498,15 @@ serve(async (req: Request) => {
     // ── 4. Handle actions ──────────────────────────────────
     if (action === 'connect') {
       // OAuth callback: exchange code for tokens, encrypt, save
-      const { code, worker_id, provider_account_email } = body as {
+      // Supports two flows:
+      // 1. Authorization code flow: { code, worker_id } → exchange via OAuth
+      // 2. Implicit token flow: { access_token, worker_id } → use directly
+      const { code, access_token: incomingToken, worker_id, provider_account_email } = body as {
         code?: string;
+        access_token?: string;
         worker_id?: string;
         provider_account_email?: string;
       };
-
-      if (!code) {
-        return new Response(
-          JSON.stringify({ error: 'authorization_code required for connect action' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
 
       if (!worker_id) {
         return new Response(
@@ -518,17 +515,37 @@ serve(async (req: Request) => {
         );
       }
 
-      // Step 1: Exchange authorization code for tokens
+      // Determine which flow to use
       let tokens: OAuthTokens;
-      try {
-        tokens = await exchangeYandexTokens(code, encryptionKey);
-      } catch (tokenErr) {
-        console.error('calendar_sync: token exchange failed for yandex', tokenErr);
+      
+      if (incomingToken) {
+        // Implicit token flow — use the provided access_token directly
+        console.log('calendar_sync: implicit token flow (direct access_token)');
+        
+        tokens = {
+          access_token: incomingToken,
+          refresh_token: '', // No refresh_token in implicit flow
+          expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour default
+        };
+      } else if (code) {
+        // Authorization code flow — exchange code for tokens
+        console.log('calendar_sync: authorization code flow');
+        
+        try {
+          tokens = await exchangeYandexTokens(code, encryptionKey);
+        } catch (tokenErr) {
+          console.error('calendar_sync: token exchange failed for yandex', tokenErr);
+          return new Response(
+            JSON.stringify({
+              error: 'token_exchange_failed',
+              details: tokenErr instanceof Error ? tokenErr.message : 'unknown',
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
         return new Response(
-          JSON.stringify({
-            error: 'token_exchange_failed',
-            details: tokenErr instanceof Error ? tokenErr.message : 'unknown',
-          }),
+          JSON.stringify({ error: 'code or access_token required for connect action' }),
           { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
       }
