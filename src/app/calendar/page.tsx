@@ -1,22 +1,17 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { CalendarView } from '@/components/calendar/CalendarView';
-
-// Сброс скролла при переходе на страницу
-function useScrollReset() {
-  useEffect(() => { window.scrollTo(0, 0); }, []);
-}
 import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { useData } from '@/contexts/DataContext';
 import type { CalendarEvent, CalendarConnection, CalendarProvider } from '@/types/calendar';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 function CalendarContent() {
-  useScrollReset();
-  const searchParams = useSearchParams();
+  const { isLoading: authLoading, data: authData } = useTelegramAuth();
+  const { state, loadBoardsData } = useData();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,29 +20,42 @@ function CalendarContent() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
 
-  const workspaceId = searchParams.get('workspace_id') ?? '';
+  // Use active workspace from DataContext (like flowboard does)
+  const workspaceId = state.activeWorkspaceId;
 
   useEffect(() => {
-    loadData();
-  }, [workspaceId]);
+    if (!authLoading && !workspaceId) {
+      // Try to load workspace data
+      loadBoardsData(undefined).catch(() => {});
+    }
+  }, [authLoading, workspaceId, loadBoardsData]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      loadData();
+    } else if (!authLoading && !workspaceId) {
+      setIsLoading(false);
+    }
+  }, [workspaceId, authLoading]);
 
   async function loadData() {
+    if (!workspaceId) return;
+    
     setIsLoading(true);
     setError(null);
 
     try {
       const [eventsRes, connectionsRes] = await Promise.all([
-        getCalendarEvents(workspaceId || 'placeholder', {
+        getCalendarEvents(workspaceId, {
           startDate: new Date(new Date().getFullYear(), 0, 1),
           endDate: new Date(new Date().getFullYear(), 11, 31),
         }),
-        getCalendarConnections(workspaceId || 'placeholder'),
+        getCalendarConnections(workspaceId),
       ]);
 
       // Handle connections result
       if (connectionsRes.error) {
         console.error('Failed to load calendar connections:', connectionsRes.error);
-        // Don't show error for connections — just log it
       } else {
         setConnections(connectionsRes.data ?? []);
       }
@@ -70,7 +78,7 @@ function CalendarContent() {
   async function handleConnect(provider: CalendarProvider) {
     try {
       if (!workspaceId) {
-        throw new Error('workspace_id is required');
+        throw new Error('Сначала выберите рабочую область');
       }
 
       // Call connect API to get OAuth URL
@@ -97,14 +105,12 @@ function CalendarContent() {
   }
 
   async function handleSync(provider: CalendarProvider) {
+    if (!workspaceId) return;
+    
     setIsSyncing(true);
     setSyncStatus('syncing');
 
     try {
-      if (!workspaceId) {
-        throw new Error('workspace_id is required');
-      }
-      
       await syncCalendar({
         workspace_id: workspaceId,
         provider,
@@ -133,6 +139,30 @@ function CalendarContent() {
     } catch (err) {
       console.error('Failed to update reminder:', err);
     }
+  }
+
+  // Loading state while auth or workspace is loading
+  if (authLoading || (!workspaceId && !state.tasks.items.length)) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-dvh">
+        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+      </div>
+    );
+  }
+
+  // No workspace selected
+  if (!workspaceId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4">
+        <span className="mb-3 text-5xl">🏢</span>
+        <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
+          Рабочая область не выбрана
+        </p>
+        <p className="text-body-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Перейдите на доску задач, чтобы подключить календарь
+        </p>
+      </div>
+    );
   }
 
   return (
