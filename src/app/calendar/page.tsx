@@ -20,12 +20,17 @@ function CalendarContent() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
 
+  // Verification code modal state
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [codeSubmitting, setCodeSubmitting] = useState(false);
+  const [oauthInstructions, setOauthInstructions] = useState('');
+
   // Use active workspace from DataContext (like flowboard does)
   const workspaceId = state.activeWorkspaceId;
 
   useEffect(() => {
     if (!authLoading && !workspaceId) {
-      // Try to load workspace data
       loadBoardsData(undefined).catch(() => {});
     }
   }, [authLoading, workspaceId, loadBoardsData]);
@@ -53,14 +58,12 @@ function CalendarContent() {
         getCalendarConnections(workspaceId),
       ]);
 
-      // Handle connections result
       if (connectionsRes.error) {
         console.error('Failed to load calendar connections:', connectionsRes.error);
       } else {
         setConnections(connectionsRes.data ?? []);
       }
 
-      // Handle events result — only show error if connections exist
       if (eventsRes.error && (connectionsRes.data?.length ?? 0) > 0) {
         console.error('Failed to load calendar events:', eventsRes.error);
         setError('Не удалось загрузить события календаря');
@@ -81,7 +84,6 @@ function CalendarContent() {
         throw new Error('Сначала выберите рабочую область');
       }
 
-      // Call connect API to get OAuth URL
       const response = await fetch(`/api/calendar/connect/${provider}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,12 +97,50 @@ function CalendarContent() {
 
       const data = await response.json();
       if (data.success && data.url) {
-        // Open OAuth flow in new window
-        window.open(data.url, '_blank');
+        // Open OAuth authorization in new window
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+        // Show verification code modal with instructions
+        setOauthInstructions(data.instructions || 'После авторизации перейдите на https://oauth.yandex.ru/verification_code и введите полученный код');
+        setShowCodeModal(true);
+        setVerificationCode('');
       }
     } catch (err) {
       console.error(`Connect failed for ${provider}:`, err);
       setError(`Ошибка подключения: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
+  async function handleVerifyCode() {
+    if (!verificationCode.trim() || !workspaceId) return;
+
+    setCodeSubmitting(true);
+    try {
+      const response = await fetch('/api/calendar/callback/yandex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: verificationCode.trim(),
+          workspace_id: workspaceId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Verification failed');
+      }
+
+      // Success — close modal and reload data
+      setShowCodeModal(false);
+      setVerificationCode('');
+      await loadData();
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Code verification failed:', err);
+      setError(`Ошибка верификации: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally {
+      setCodeSubmitting(false);
     }
   }
 
@@ -294,6 +334,172 @@ function CalendarContent() {
             isLoading={isLoading}
             onEventClick={() => {}}
           />
+        </div>
+      )}
+
+      {/* Verification Code Modal */}
+      {showCodeModal && (
+        <div
+          className="
+            fixed inset-x-0 z-modal flex items-end justify-center
+            sm:items-center
+            pb-safe-bottom pt-safe-top
+          "
+          style={{ paddingBottom: Math.max(0, 16) + 'px' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ввод кода подтверждения"
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={!codeSubmitting ? () => setShowCodeModal(false) : undefined}
+            aria-hidden="true"
+          />
+
+          {/* Panel */}
+          <div
+            className="
+              relative w-full max-w-md
+              rounded-t-card sm:rounded-card
+              bg-primary-dark
+              border border-border-default
+              animate-slide-up
+            "
+            style={{
+              maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - 16px)',
+              overflowY: 'auto',
+              backgroundColor: 'var(--color-bg-primary-dark)',
+            }}
+          >
+            {/* Header */}
+            <div
+              className="
+                flex items-center justify-between
+                px-4 py-3
+                border-b
+              "
+              style={{ borderColor: 'var(--color-border-default)' }}
+            >
+              <h2
+                className="
+                  truncate text-heading-sm font-semibold
+                "
+                style={{ color: 'var(--color-text-primary)' }}
+              >
+                🔐 Код подтверждения
+              </h2>
+              <button
+                onClick={() => !codeSubmitting && setShowCodeModal(false)}
+                className="
+                  rounded-sm p-1
+                  transition-colors duration-fast
+                  hover:bg-surface/50
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  active:scale-95
+                "
+                aria-label="Закрыть"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M4 4L12 12M12 4L4 12"
+                    stroke="var(--color-text-muted)"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-4 py-3 space-y-3">
+              {/* Instructions */}
+              <div
+                className="
+                  rounded-md px-3 py-2
+                  bg-surface
+                "
+                style={{ backgroundColor: 'var(--color-bg-surface)' }}
+              >
+                <p
+                  className="text-body-sm"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  {oauthInstructions || 'После авторизации перейдите на https://oauth.yandex.ru/verification_code и введите полученный код ниже.'}
+                </p>
+              </div>
+
+              {/* Code input */}
+              <div className="space-y-2">
+                <label
+                  className="text-body-sm font-medium"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  Код подтверждения
+                </label>
+                <input
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9a-zA-Z]/g, '').slice(0, 10))}
+                  placeholder="Введите код"
+                  className="
+                    w-full rounded-md px-3 py-2
+                    border
+                    text-body-md
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  "
+                  style={{
+                    color: 'var(--color-text-primary)',
+                    borderColor: 'var(--color-border-default)',
+                    backgroundColor: 'var(--color-bg-surface)',
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !codeSubmitting) {
+                      handleVerifyCode();
+                    }
+                  }}
+                  disabled={codeSubmitting}
+                  aria-label="Код подтверждения из Yandex"
+                />
+              </div>
+
+              {/* Submit button */}
+              <button
+                onClick={handleVerifyCode}
+                disabled={codeSubmitting || !verificationCode.trim()}
+                className="
+                  w-full rounded-card px-4 py-2
+                  text-body-sm font-medium
+                  transition-all duration-fast
+                  hover:opacity-90 active:scale-95
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  disabled:opacity-50
+                "
+                style={{
+                  backgroundColor: 'var(--color-accent-amber)',
+                  color: '#000',
+                }}
+                aria-label="Подтвердить"
+              >
+                {codeSubmitting ? 'Проверка...' : '✓ Подтвердить'}
+              </button>
+
+              {/* Link to verification code page */}
+              <a
+                href="https://oauth.yandex.ru/verification_code"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="
+                  block text-center text-body-sm
+                  transition-colors duration-fast
+                  hover:underline
+                "
+                style={{ color: 'var(--color-accent-amber)' }}
+              >
+                Открыть страницу кода →
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>

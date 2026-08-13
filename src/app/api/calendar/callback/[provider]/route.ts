@@ -54,6 +54,89 @@ function verifyState(state: string): StatePayload | null {
   }
 }
 
+/**
+ * POST /api/calendar/callback/yandex — Exchange verification code for tokens
+ * 
+ * Called from the client after user enters verification code received at
+ * https://oauth.yandex.ru/verification_code
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ provider: string }> }
+) {
+  try {
+    const provider = (await params).provider as CalendarProvider;
+
+    if (provider !== 'yandex') {
+      return NextResponse.json(
+        { success: false, error: 'invalid_provider' },
+        { status: 400 }
+      );
+    }
+
+    const body = await req.json();
+    const { code, workspace_id, worker_id } = body;
+
+    // Validate required fields
+    if (!code) {
+      return NextResponse.json(
+        { success: false, error: 'missing_code' },
+        { status: 400 }
+      );
+    }
+
+    if (!workspace_id) {
+      return NextResponse.json(
+        { success: false, error: 'missing_workspace_id' },
+        { status: 400 }
+      );
+    }
+
+    // Exchange verification code for tokens via Edge Function
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    
+    const edgeFunctionUrl = `${supabaseUrl}/functions/v1/calendar-sync`;
+    
+    const edgeResponse = await fetch(edgeFunctionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        workspace_id,
+        worker_id,
+        provider,
+        action: 'connect',
+        code,
+      }),
+    });
+
+    if (!edgeResponse.ok) {
+      const errorData = await edgeResponse.json().catch(() => ({}));
+      console.error(`[Calendar Callback] Edge function error (${edgeResponse.status}):`, errorData);
+      return NextResponse.json(
+        { success: false, error: errorData.error || 'connection_failed' },
+        { status: edgeResponse.status }
+      );
+    }
+
+    const result = await edgeResponse.json();
+    console.log(`[Calendar Callback] ${provider} connected successfully via verification code:`, result);
+
+    return NextResponse.json({
+      success: true,
+      synced: result.synced || 0,
+    });
+
+  } catch (err) {
+    console.error('[Calendar Callback] Unexpected error:', err);
+    return NextResponse.json(
+      { success: false, error: 'internal_error' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }

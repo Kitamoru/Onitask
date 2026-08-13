@@ -1,10 +1,11 @@
 'use server';
 
 /**
- * POST /api/calendar/connect/[provider] — Generate OAuth authorization URL
+ * POST /api/calendar/connect/[provider] — Generate OAuth authorization URL (Verification Code Flow)
  * 
- * Returns an OAuth redirect URL for Yandex CalDAV.
- * The client opens this URL in a new window/tab to initiate the OAuth flow.
+ * Returns an OAuth redirect URL for Yandex CalDAV using verification_code flow.
+ * The user opens this URL, authorizes, and receives a verification code on
+ * https://oauth.yandex.ru/verification_code which they enter in the app.
  * 
  * INV-05: workspace_id is required for all calendar operations
  * onitask_calendar_.md §3
@@ -20,23 +21,23 @@ interface RequestBody {
 }
 
 /**
- * Generate Yandex CalDAV OAuth authorization URL.
+ * Generate Yandex CalDAV OAuth authorization URL with verification_code flow.
  * 
- * Yandex OAuth flow:
+ * Yandex OAuth verification_code flow:
  * 1. Redirect user to https://oauth.yandex.ru/authorize
  * 2. User grants permissions
- * 3. Yandex redirects to redirect_uri with ?code=...
+ * 3. Yandex shows verification code at https://oauth.yandex.ru/verification_code
+ * 4. User enters the code in the app
+ * 5. App exchanges code for tokens via POST /api/calendar/callback/yandex
  * 
  * Scopes: caldav — access to CalDAV calendars
  */
 function generateYandexOAuthUrl(
   clientId: string,
-  redirectUri: string,
   state: string
 ): string {
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: redirectUri,
     response_type: 'code',
     state: state,
     scope: 'caldav', // CalDAV access only
@@ -72,10 +73,6 @@ export async function POST(
 
     // Get OAuth credentials from environment
     const yandexClientId = process.env.YANDEX_OAUTH_CLIENT_ID || '';
-    
-    // Base redirect URI
-    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
-    const redirectUri = `${baseUrl}/api/calendar/callback/yandex`;
 
     // Generate state parameter: encode workspace_id + worker_id + timestamp for CSRF protection
     const state = Buffer.from(
@@ -86,7 +83,7 @@ export async function POST(
       })
     ).toString('base64url');
 
-    // Generate OAuth URL
+    // Generate OAuth URL (no redirect_uri needed for verification_code flow)
     if (!yandexClientId) {
       console.error('[Calendar] YANDEX_OAUTH_CLIENT_ID not configured');
       return NextResponse.json(
@@ -95,12 +92,14 @@ export async function POST(
       );
     }
     
-    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri, state);
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, state);
 
     return NextResponse.json({
       success: true,
       url: oauthUrl,
       provider,
+      // Instructions for the user
+      instructions: 'После авторизации перейдите на https://oauth.yandex.ru/verification_code и введите полученный код в приложение',
     });
   } catch (err) {
     console.error('[Calendar] connect error:', err);
