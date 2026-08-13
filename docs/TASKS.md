@@ -312,25 +312,33 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: `/api/mcp/*`, `mcpAuth.ts`, atomic quota, Memento, `auto_create_agent_worker`, undo. DoD: Cursor/Claude Code создают и двигают задачи, `agent_events` пишутся корректно, undo работает в окне 5 мин.
 
-- [ ] MCP-01 `lib/mcpAuth.ts`: `timingSafeEqual` (INV-06 повторно, теперь для MCP-ключей) + Tenant Isolation через `mcp_api_keys` #mcp !high @blocked_by:DB-06
-      mcp_contract §2, security §3.1.
-- [ ] MCP-02 Allowed Tools enforcement (`getKeyPermissions`/`isToolAllowed`, legacy mode `{}`) #mcp !high @blocked_by:MCP-01
-      security §3.1.
-- [ ] INV-07 Atomic Quota RPC (`check_and_decrement_quota`) #mcp !high @blocked_by:DB-06
-      ai_.md §4.2, Master A-3, INV-07.
-- [ ] MCP-03 `create_task` + Rate Limit (50/мин, `max_tasks_per_minute`) + DFS Cycle Check (`blocked_by`, `409 circular_dependency`) #mcp !high @blocked_by:MCP-01,MCP-02,INV-07,INV-13
-      mcp_contract §4, security §5.1.
-- [ ] INV-09 `move_task` — версионная проверка (`WHERE version=$expected`) + `claim` + `unblocked_ids` из `trg_cascade_unblock` #mcp !high @blocked_by:MCP-03
-      mcp_contract §4, Master §7.1, INV-09.
-- [ ] MCP-04 `escalate_task` + `handoff_task` #mcp !high @blocked_by:INV-09
-      mcp_contract §4. Alert-триггеры уже созданы в DB-14.
-- [ ] MCP-05 `get_tasks_by_column` (+ `sort_by_blocking_value` Smart Backlog) #mcp !med @blocked_by:MCP-01
-- [ ] MCP-06 `get_workspace_settings` + `get_task_context` (subgraph, `relevant_docs` по `data_sharing_level`) #mcp !high @blocked_by:MCP-01,F03-04
-- [ ] MCP-07 `send_message_to_chat` + HTML sanitization (`sanitizeOutput`, whitelist тегов) #mcp !med @blocked_by:MCP-02
-      security §4.1.
-- [ ] MCP-08 `undo/:event_id` (`state_before` Memento, окно 5 мин) #mcp !med @blocked_by:MCP-03
-- [ ] MCP-09 `state_before` Memento + INSERT `agent_events` + шаблонная генерация summary #mcp !high @blocked_by:MCP-03
-- [ ] MCP-10 Error handling matrix (все HTTP-коды §6 mcp_contract) #mcp !med @blocked_by:MCP-03,INV-09,MCP-04,MCP-05,MCP-06,MCP-07,MCP-08
+- [x] MCP-01 `lib/mcpAuth.ts`: `timingSafeEqual` (INV-06 повторно, теперь для MCP-ключей) + Tenant Isolation через `mcp_api_keys` #mcp !high @blocked_by:DB-06
+      mcp_contract §2, security §3.1. Реализовано: `src/lib/mcpAuth.ts`.
+- [x] MCP-02 Allowed Tools enforcement (`getKeyPermissions`/`isToolAllowed`, legacy mode `{}`) #mcp !high @blocked_by:MCP-01
+      security §3.1. Встроено в `mcpAuth.ts`.
+- [x] INV-07 Atomic Quota RPC (`check_and_decrement_quota`) #mcp !high @blocked_by:DB-06
+      ai_.md §4.2, Master A-3, INV-07. Миграция: `024_mcp_router_support.sql` Part 3.
+- [x] MCP-03 `create_task` + Rate Limit (50/мин, `max_tasks_per_minute`) + DFS Cycle Check (`blocked_by`, `409 circular_dependency`) #mcp !high @blocked_by:MCP-01,MCP-02,INV-07,INV-13
+      mcp_contract §4, security §5.1. Файл: `src/app/api/mcp/create_task/route.ts`.
+- [x] INV-09 `move_task` — версионная проверка (`WHERE version=$expected`) + `claim` + `unblocked_ids` из `trg_cascade_unblock` #mcp !high @blocked_by:MCP-03
+      mcp_contract §4, Master §7.1, INV-09. Файл: `src/app/api/mcp/move_task/route.ts`.
+- [x] MCP-04 `escalate_task` + `handoff_task` #mcp !high @blocked_by:INV-09
+      mcp_contract §4. Alert-триггеры уже созданы в DB-14. Файлы: `escalate_task/route.ts`, `handoff_task/route.ts`.
+- [x] MCP-05 `get_tasks_by_column` (+ `sort_by_blocking_value` Smart Backlog) #mcp !med @blocked_by:MCP-01
+      Файл: `src/app/api/mcp/get_tasks_by_column/route.ts`.
+- [x] MCP-06 `get_workspace_settings` + `get_task_context` (subgraph, `relevant_docs` по `data_sharing_level`) #mcp !high @blocked_by:MCP-01,F03-04
+      Файлы: `get_workspace_settings/route.ts`, `get_task_context/route.ts`.
+- [x] MCP-07 `send_message_to_chat` + HTML sanitization (`sanitizeOutput`, whitelist тегов) #mcp !med @blocked_by:MCP-02
+      security §4.1. Файл: `src/app/api/mcp/send_message_to_chat/route.ts`.
+- [x] MCP-08 `undo/:event_id` (`state_before` Memento, окно 5 мин) #mcp !med @blocked_by:MCP-03
+      Файл: `src/app/api/mcp/undo/[eventId]/route.ts`.
+- [x] MCP-09 `state_before` Memento + INSERT `agent_events` + шаблонная генерация summary #mcp !high @blocked_by:MCP-03
+      Встроено во все handler'ы через `logAgentEvent()` в `mcpAuth.ts`.
+- [x] MCP-10 Error handling matrix (все HTTP-коды §6 mcp_contract) #mcp !med @blocked_by:MCP-03,INV-09,MCP-04,MCP-05,MCP-06,MCP-07,MCP-08
+      Все handler'ы возвращают стандартизированные ошибки с HTTP-кодами согласно §6 mcp_contract.
+- [x] MIGRATION-024 SQL migration `024_mcp_router_support.sql` (RPC, tables, indexes, triggers) #db !high
+      Применена через Supabase MCP. Содержит: `check_and_decrement_quota`, `telegram_message_queue`, `is_undone`,
+      `next_task_number`, `detect_circular_dependency`, `resolve_agent_worker_id`, триггеры, RLS policies.
 
 ---
 
