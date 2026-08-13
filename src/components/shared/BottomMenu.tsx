@@ -10,14 +10,10 @@ import {
   IconSettings2,
 } from '@tabler/icons-react';
 
-// CSS keyframes animation — fires on every mount/remount of the icon wrapper
-const ANIMATION_CSS = `
-@keyframes board-icon-rotate-in {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(var(--target-deg, 90deg)); }
-}
-.board-icon-animate {
-  animation: board-icon-rotate-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+// CSS for smooth rotation transition — injected once via <style>
+const ROTATION_CSS = `
+.board-icon-rotate {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 `;
 
@@ -79,13 +75,13 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const [showNotice, setShowNotice] = useState(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Inject animation CSS once
+  // Inject rotation CSS once
   useEffect(() => {
-    const id = 'board-icon-animation-style';
+    const id = 'board-icon-rotation-style';
     if (!document.getElementById(id)) {
       const style = document.createElement('style');
       style.id = id;
-      style.textContent = ANIMATION_CSS;
+      style.textContent = ROTATION_CSS;
       document.head.appendChild(style);
     }
   }, []);
@@ -278,12 +274,21 @@ function NavButton({
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('view') === 'stream';
 
-  // Target rotation angle for the CSS animation
-  const targetDeg = isStreamView ? '90deg' : '0deg';
+  // Rotation state — controlled via useEffect + force reflow so transition
+  // fires reliably on every toggle, including the very first one.
+  const [rotation, setRotation] = useState(0);
+  const iconRef = useRef<HTMLDivElement>(null);
 
-  // Unique key forces React to remount the div on each toggle,
-  // which triggers the CSS animation from scratch every time
-  const iconKey = isStreamView ? 'stream' : 'flow';
+  useEffect(() => {
+    const targetDeg = isStreamView ? 90 : 0;
+    if (rotation === targetDeg) return;
+
+    // Force reflow on the current value before changing it.
+    // This ensures the browser sees an intermediate state and the
+    // CSS transition fires even on the first click.
+    void iconRef.current?.offsetWidth;
+    setRotation(targetDeg);
+  }, [isStreamView, rotation]);
 
   return (
     <Link
@@ -314,14 +319,14 @@ function NavButton({
       aria-current={isActive ? 'page' : undefined}
     >
       <div
-        key={iconKey}
-        className="board-icon-animate"
+        ref={iconRef}
+        className="board-icon-rotate"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          '--target-deg': targetDeg,
-        } as React.CSSProperties}
+          transform: `rotate(${rotation}deg)`,
+        }}
       >
         <IconComponent
           size={20}
