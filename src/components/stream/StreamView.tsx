@@ -211,8 +211,14 @@ export function TaskCard({ task }: { task: TaskEntity }) {
             color: 'var(--color-text-primary)',
             flex: '1 1 0',
             minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
           }}
-          className="truncate"
         >
           {task.title}
         </span>
