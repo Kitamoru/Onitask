@@ -75,6 +75,33 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const [showNotice, setShowNotice] = useState(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Stream view state — managed in React so the component re-renders
+  // reliably when toggling between /flowboard and /flowboard?view=stream.
+  // (Reading window.location.search during render would NOT trigger a
+  // re-render when only the query string changes, because usePathname()
+  // only updates on pathname changes.)
+  const [isStreamView, setIsStreamView] = useState(false);
+
+  // Sync state from the URL on mount and when pathname changes
+  useEffect(() => {
+    setIsStreamView(
+      pathname === '/flowboard' &&
+        new URLSearchParams(window.location.search).get('view') === 'stream',
+    );
+  }, [pathname]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const onPopState = () => {
+      setIsStreamView(
+        pathname === '/flowboard' &&
+          new URLSearchParams(window.location.search).get('view') === 'stream',
+      );
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [pathname]);
+
   // Inject rotation CSS once
   useEffect(() => {
     const id = 'board-icon-rotation-style';
@@ -105,9 +132,6 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   }, [onCenterClick]);
 
   // Toggle between flowboard and stream views when already on /flowboard.
-  // Reads the query string from window.location at click-time instead of
-  // useSearchParams — this component is mounted globally (root layout) and
-  // useSearchParams would break static prerendering of /404 and /_not-found.
   const isOnFlowboard = pathname === '/flowboard';
 
   const handleFlowboardClick = useCallback(
@@ -120,11 +144,14 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
         router.push('/flowboard');
         return;
       }
-      // Already on flowboard — toggle between stream and flowboard views
-      const isStream = new URLSearchParams(window.location.search).get('view') === 'stream';
-      router.push(isStream ? '/flowboard' : '/flowboard?view=stream');
+      // Already on flowboard — toggle between stream and flowboard views.
+      // Update React state synchronously so the icon transition fires
+      // reliably on every toggle, including the very first one.
+      const nextIsStream = !isStreamView;
+      setIsStreamView(nextIsStream);
+      router.push(nextIsStream ? '/flowboard?view=stream' : '/flowboard');
     },
-    [isOnFlowboard, router],
+    [isOnFlowboard, isStreamView, router],
   );
 
   return (
@@ -165,7 +192,12 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
             marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
-          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} onClick={handleFlowboardClick} />
+          <NavButton
+            item={MENU_ITEMS[0]}
+            currentPath={pathname}
+            onClick={handleFlowboardClick}
+            isStreamView={isStreamView}
+          />
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
@@ -260,35 +292,18 @@ function NavButton({
   item,
   currentPath,
   onClick,
+  isStreamView,
 }: {
   item: MenuItem;
   currentPath: string;
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  isStreamView?: boolean;
 }) {
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
 
-  // Client-only: read query string directly during render (safe in 'use client')
-  const isStreamView = item.id === 'flowboard'
-    && currentPath === '/flowboard'
-    && typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('view') === 'stream';
-
-  // Rotation state — controlled via useEffect + force reflow so transition
-  // fires reliably on every toggle, including the very first one.
-  const [rotation, setRotation] = useState(0);
-  const iconRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const targetDeg = isStreamView ? 90 : 0;
-    if (rotation === targetDeg) return;
-
-    // Force reflow on the current value before changing it.
-    // This ensures the browser sees an intermediate state and the
-    // CSS transition fires even on the first click.
-    void iconRef.current?.offsetWidth;
-    setRotation(targetDeg);
-  }, [isStreamView, rotation]);
+  // Only the flowboard item rotates; other items stay at 0°
+  const shouldRotate = item.id === 'flowboard' && isStreamView;
 
   return (
     <Link
@@ -319,13 +334,12 @@ function NavButton({
       aria-current={isActive ? 'page' : undefined}
     >
       <div
-        ref={iconRef}
         className="board-icon-rotate"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transform: `rotate(${rotation}deg)`,
+          transform: shouldRotate ? 'rotate(90deg)' : 'rotate(0deg)',
         }}
       >
         <IconComponent
