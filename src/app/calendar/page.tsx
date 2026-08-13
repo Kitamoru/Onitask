@@ -98,9 +98,15 @@ function CalendarContent() {
       const data = await response.json();
       if (data.success && data.url) {
         // Open OAuth authorization in new window
+        // After user grants permissions, Yandex redirects to https://oauth.yandex.ru/verification_code#access_token=XXX
         window.open(data.url, '_blank', 'noopener,noreferrer');
         // Show token input modal with instructions
-        setOauthInstructions(data.instructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX');
+        setOauthInstructions(
+          '1. Авторизуйтесь в аккаунте Яндекса\n' +
+          '2. Разрешите доступ к Календарю\n' +
+          '3. На странице oauth.yandex.ru/verification_code скопируйте токен из адресной строки (после access_token=)\n' +
+          '4. Вставьте токен в поле ниже'
+        );
         setShowTokenModal(true);
         setOauthToken('');
       }
@@ -384,9 +390,9 @@ function CalendarContent() {
             {/* Content */}
             <div className="px-4 py-3 space-y-3">
               {/* Instructions */}
-              <div className="rounded-md px-3 py-2 bg-surface" style={{ backgroundColor: 'var(--color-bg-surface)' }}>
+              <div className="rounded-md px-3 py-2 bg-surface whitespace-pre-line" style={{ backgroundColor: 'var(--color-bg-surface)' }}>
                 <p className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
-                  {oauthInstructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX'}
+                  {oauthInstructions}
                 </p>
               </div>
 
@@ -398,8 +404,8 @@ function CalendarContent() {
                 <input
                   type="text"
                   value={oauthToken}
-                  onChange={(e) => setOauthToken(e.target.value)}
-                  placeholder="Вставьте токен после access_token="
+                  onChange={(e) => setOauthToken(e.target.value.replace(/[^a-zA-Z0-9_\-]/g, ''))}
+                  placeholder="Вставьте токен..."
                   className="w-full rounded-md px-3 py-2 border text-body-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
                   style={{
                     color: 'var(--color-text-primary)',
