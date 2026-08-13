@@ -124,7 +124,7 @@ export default function BoardDetailPage() {
           } else {
             const docsJson = await docsRes.json();
             if (docsJson.success) {
-              serverDocuments = (docsJson.data ?? []).map((d: any) => ({
+              serverDocuments = (docsJson.data?.documents ?? []).map((d: any) => ({
                 id: d.id,
                 filename: d.filename,
                 file_type: d.file_type,

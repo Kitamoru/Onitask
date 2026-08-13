@@ -172,39 +172,45 @@ export function DocumentsCard({
                   fill="var(--color-surface)"
                   contentClassName="flex items-center justify-between px-4 py-3"
                 >
+                  {/* Left side: status icon + filename + size */}
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    {renderStatusIcon(doc.status)}
+                    {!readOnly && renderStatusIcon(doc.status)}
                     <span className="truncate text-[14px] text-text">
                       {doc.filename}
                     </span>
-                    <span className="shrink-0 text-[12px] text-text-faint">
-                      ({Math.round(doc.size_bytes / 1024)} KB)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] text-text-muted">
-                      {renderStatusLabel(doc.status)}
-                    </span>
-                    {!readOnly && onDeleteServerDocument && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteServerDocument(doc.id)}
-                        aria-label={`Удалить ${doc.filename}`}
-                        disabled={deletingId === doc.id}
-                        className={`ml-2 shrink-0 ${
-                          deletingId === doc.id
-                            ? 'cursor-not-allowed opacity-40'
-                            : 'text-text-muted hover:text-text'
-                        }`}
-                      >
-                        {deletingId === doc.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <X className="h-4 w-4" />
-                        )}
-                      </button>
+                    {!readOnly && (
+                      <span className="shrink-0 text-[12px] text-text-faint">
+                        ({Math.round(doc.size_bytes / 1024)} KB)
+                      </span>
                     )}
                   </div>
+                  {/* Right side: status label + delete button (edit mode only) */}
+                  {!readOnly && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] text-text-muted">
+                        {renderStatusLabel(doc.status)}
+                      </span>
+                      {onDeleteServerDocument && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteServerDocument(doc.id)}
+                          aria-label={`Удалить ${doc.filename}`}
+                          disabled={deletingId === doc.id}
+                          className={`ml-2 shrink-0 ${
+                            deletingId === doc.id
+                              ? 'cursor-not-allowed opacity-40'
+                              : 'text-text-muted hover:text-text'
+                          }`}
+                        >
+                          {deletingId === doc.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <X className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </NotchedPanel>
               </li>
             ))}
