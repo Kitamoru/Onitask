@@ -73,7 +73,6 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showNotice, setShowNotice] = useState(false);
-  const [iconFlipKey, setIconFlipKey] = useState(0);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inject rotation CSS once
@@ -166,11 +165,7 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
             marginRight: 'calc(var(--spacing-bottom-menu-gap) * 4)',
           }}
         >
-          <NavButton
-            item={MENU_ITEMS[0]}
-            currentPath={pathname}
-            onClick={handleFlowboardClick}
-          />
+          <NavButton item={MENU_ITEMS[0]} currentPath={pathname} onClick={handleFlowboardClick} />
           <NavButton item={MENU_ITEMS[1]} currentPath={pathname} />
         </div>
 
@@ -273,18 +268,12 @@ function NavButton({
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
 
-  // Client-only state for rotation angle (avoids SSR window access)
-  const [rotationDeg, setRotationDeg] = useState(0);
-
-  useEffect(() => {
-    if (item.id === 'flowboard' && currentPath === '/flowboard') {
-      const params = new URLSearchParams(window.location.search);
-      // 0° for flowboard, 90° for stream
-      setRotationDeg(params.get('view') === 'stream' ? 90 : 0);
-    } else {
-      setRotationDeg(0);
-    }
-  }, [item.id, currentPath]);
+  // Client-only: read query string directly during render (safe in 'use client')
+  // This always reflects the current URL without needing state updates
+  const isStreamView = item.id === 'flowboard'
+    && currentPath === '/flowboard'
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('view') === 'stream';
 
   return (
     <Link
@@ -320,7 +309,7 @@ function NavButton({
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transform: `rotate(${rotationDeg}deg)`,
+          transform: isStreamView ? 'rotate(90deg)' : 'rotate(0deg)',
         }}
       >
         <IconComponent
