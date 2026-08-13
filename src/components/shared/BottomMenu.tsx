@@ -10,10 +10,14 @@ import {
   IconSettings2,
 } from '@tabler/icons-react';
 
-// CSS for smooth rotation transition — injected once via <style>
-const ROTATION_CSS = `
-.board-icon-rotate {
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+// CSS keyframes animation — fires on every mount/remount of the icon wrapper
+const ANIMATION_CSS = `
+@keyframes board-icon-rotate-in {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(var(--target-deg, 90deg)); }
+}
+.board-icon-animate {
+  animation: board-icon-rotate-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 `;
 
@@ -75,13 +79,13 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
   const [showNotice, setShowNotice] = useState(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Inject rotation CSS once
+  // Inject animation CSS once
   useEffect(() => {
-    const id = 'board-icon-rotation-style';
+    const id = 'board-icon-animation-style';
     if (!document.getElementById(id)) {
       const style = document.createElement('style');
       style.id = id;
-      style.textContent = ROTATION_CSS;
+      style.textContent = ANIMATION_CSS;
       document.head.appendChild(style);
     }
   }, []);
@@ -269,11 +273,17 @@ function NavButton({
   const IconComponent = item.icon;
 
   // Client-only: read query string directly during render (safe in 'use client')
-  // This always reflects the current URL without needing state updates
   const isStreamView = item.id === 'flowboard'
     && currentPath === '/flowboard'
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('view') === 'stream';
+
+  // Target rotation angle for the CSS animation
+  const targetDeg = isStreamView ? '90deg' : '0deg';
+
+  // Unique key forces React to remount the div on each toggle,
+  // which triggers the CSS animation from scratch every time
+  const iconKey = isStreamView ? 'stream' : 'flow';
 
   return (
     <Link
@@ -304,13 +314,14 @@ function NavButton({
       aria-current={isActive ? 'page' : undefined}
     >
       <div
-        className="board-icon-rotate"
+        key={iconKey}
+        className="board-icon-animate"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transform: isStreamView ? 'rotate(90deg)' : 'rotate(0deg)',
-        }}
+          '--target-deg': targetDeg,
+        } as React.CSSProperties}
       >
         <IconComponent
           size={20}
