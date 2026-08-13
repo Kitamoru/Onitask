@@ -43,13 +43,30 @@ export function SprintCreateSheet({
   const [goal, setGoal] = useState('');
   const [capacity, setCapacity] = useState('');
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
+  // Controlled selection state for tasks assigned to this sprint
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
 
   const canSubmit =
     name.trim().length > 0 && startDate !== null && endDate !== null;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ name, startDate, endDate, goal, capacity });
+    onSubmit({
+      name,
+      startDate,
+      endDate,
+      goal,
+      capacity,
+      taskIds: selectedTaskIds.length > 0 ? selectedTaskIds : undefined,
+    });
+  };
+
+  const handleToggleTask = (taskId: string) => {
+    setSelectedTaskIds((prev) =>
+      prev.includes(taskId)
+        ? prev.filter((id) => id !== taskId)
+        : [...prev, taskId],
+    );
   };
 
   return (
@@ -96,8 +113,13 @@ export function SprintCreateSheet({
             />
           </Field>
 
-          {/* Pass the actual task count and list of tasks to the accordion */}
-          <TasksAccordionRow taskCount={taskCount} tasks={taskList} />
+          {/* Pass the actual task count, list, selected IDs, and toggle callback */}
+          <TasksAccordionRow
+            taskCount={taskCount}
+            tasks={taskList}
+            selectedIds={selectedTaskIds}
+            onToggle={handleToggleTask}
+          />
 
           <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>
             Создать спринт

@@ -8,6 +8,8 @@ export type SprintFormValue = {
    *  number-input spinner arrows, which don't match this design system's
    *  custom field chrome. */
   capacity: string;
+  /** Task IDs assigned to this sprint (sent as `task_ids` to the API) */
+  taskIds?: string[];
 };
 
 export type SprintStats = {

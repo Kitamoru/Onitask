@@ -5,17 +5,23 @@ import { useState } from 'react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 
 /**
- * TasksAccordionRow — accordion row showing task count and expandable list.
- * Used in SprintCreateSheet to pick tasks for the sprint.
+ * TasksAccordionRow — controlled accordion row showing task count and expandable list.
+ * Used in SprintCreateSheet / SprintEditSheet to pick tasks for the sprint.
  * Matches the Figma "sprint-tasks" component: header with chevron + badge,
  * wrapped in a NotchedPanel (ref-bg-shape-outer equivalent).
  */
 export function TasksAccordionRow({
   taskCount,
   tasks = [],
+  selectedIds = [],
+  onToggle,
 }: {
   taskCount: number;
   tasks?: Array<{ id: string; title: string; full_id: string }>;
+  /** IDs of currently selected tasks */
+  selectedIds?: string[];
+  /** Toggle callback: called with the task ID when a checkbox is clicked */
+  onToggle?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -59,7 +65,12 @@ export function TasksAccordionRow({
             </p>
           ) : (
             tasks.map((task) => (
-              <TaskCheckboxItem key={task.id} task={task} />
+              <TaskCheckboxItem
+                key={task.id}
+                task={task}
+                checked={selectedIds.includes(task.id)}
+                onToggle={onToggle}
+              />
             ))
           )}
         </div>
@@ -81,17 +92,22 @@ function pluralize(count: number): string {
 
 function TaskCheckboxItem({
   task,
+  checked,
+  onToggle,
 }: {
   task: { id: string; title: string; full_id: string };
+  checked: boolean;
+  onToggle?: (id: string) => void;
 }) {
-  const [checked, setChecked] = useState(false);
-
   return (
     <label className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5">
       <input
         type="checkbox"
         checked={checked}
-        onChange={(e) => setChecked(e.target.checked)}
+        onChange={(e) => {
+          e.stopPropagation();
+          onToggle?.(task.id);
+        }}
         className="sr-only"
       />
       <span

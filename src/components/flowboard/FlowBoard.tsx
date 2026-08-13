@@ -685,6 +685,7 @@ export function FlowBoard({
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
             capacity: value.capacity || undefined,
+            task_ids: value.taskIds,
             workspace_id: workspaceId,
           }),
         });
@@ -718,6 +719,7 @@ export function FlowBoard({
             end_date: value.endDate ? value.endDate.toISOString().split('T')[0] : undefined,
             goal: value.goal || null,
             capacity: value.capacity || undefined,
+            task_ids: value.taskIds,
           }),
         });
         const result = await res.json();
@@ -793,6 +795,8 @@ export function FlowBoard({
         endDate: new Date(sprint.endDate),
         goal: sprint.topic,
         capacity: sprint.capacity ?? '',
+        // taskIds will be populated from the backend via DataContext
+        taskIds: [],
       }
     : undefined;
 
