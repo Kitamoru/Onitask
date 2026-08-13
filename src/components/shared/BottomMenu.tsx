@@ -283,10 +283,17 @@ function NavButton({
   const isActive = currentPath === item.href;
   const IconComponent = item.icon;
 
-  // Determine if the icon should appear rotated (stream view = rotated 90°)
-  const isStreamView = item.id === 'flowboard'
-    && currentPath === '/flowboard'
-    && new URLSearchParams(window.location.search).get('view') === 'stream';
+  // Client-only state for stream view detection (avoids SSR window access)
+  const [isStreamView, setIsStreamView] = useState(false);
+
+  useEffect(() => {
+    if (item.id === 'flowboard' && currentPath === '/flowboard') {
+      const params = new URLSearchParams(window.location.search);
+      setIsStreamView(params.get('view') === 'stream');
+    } else {
+      setIsStreamView(false);
+    }
+  }, [item.id, currentPath]);
 
   return (
     <Link
