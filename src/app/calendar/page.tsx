@@ -98,15 +98,9 @@ function CalendarContent() {
       const data = await response.json();
       if (data.success && data.url) {
         // Open OAuth authorization in new window
-        // After user grants permissions, Yandex redirects to https://oauth.yandex.ru/verification_code#access_token=XXX
         window.open(data.url, '_blank', 'noopener,noreferrer');
         // Show token input modal with instructions
-        setOauthInstructions(
-          '1. Авторизуйтесь в аккаунте Яндекса\n' +
-          '2. Разрешите доступ к Календарю\n' +
-          '3. На странице oauth.yandex.ru/verification_code скопируйте токен из адресной строки (после access_token=)\n' +
-          '4. Вставьте токен в поле ниже'
-        );
+        setOauthInstructions(data.instructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX');
         setShowTokenModal(true);
         setOauthToken('');
       }
@@ -346,7 +340,11 @@ function CalendarContent() {
       {/* OAuth Token Modal */}
       {showTokenModal && (
         <div
-          className="fixed inset-x-0 z-modal flex items-end justify-center sm:items-center pb-safe-bottom pt-safe-top"
+          className="
+            fixed inset-x-0 z-modal flex items-end justify-center
+            sm:items-center
+            pb-safe-bottom pt-safe-top
+          "
           style={{ paddingBottom: Math.max(0, 16) + 'px' }}
           role="dialog"
           aria-modal="true"
@@ -361,7 +359,13 @@ function CalendarContent() {
 
           {/* Panel */}
           <div
-            className="relative w-full max-w-md rounded-t-card sm:rounded-card bg-primary-dark border border-border-default animate-slide-up"
+            className="
+              relative w-full max-w-md
+              rounded-t-card sm:rounded-card
+              bg-primary-dark
+              border border-border-default
+              animate-slide-up
+            "
             style={{
               maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - 16px)',
               overflowY: 'auto',
@@ -370,19 +374,39 @@ function CalendarContent() {
           >
             {/* Header */}
             <div
-              className="flex items-center justify-between px-4 py-3 border-b"
+              className="
+                flex items-center justify-between
+                px-4 py-3
+                border-b
+              "
               style={{ borderColor: 'var(--color-border-default)' }}
             >
-              <h2 className="truncate text-heading-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              <h2
+                className="
+                  truncate text-heading-sm font-semibold
+                "
+                style={{ color: 'var(--color-text-primary)' }}
+              >
                 🔐 OAuth токен
               </h2>
               <button
                 onClick={() => !tokenSubmitting && setShowTokenModal(false)}
-                className="rounded-sm p-1 transition-colors duration-fast hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber active:scale-95"
+                className="
+                  rounded-sm p-1
+                  transition-colors duration-fast
+                  hover:bg-surface/50
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  active:scale-95
+                "
                 aria-label="Закрыть"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M4 4L12 12M12 4L4 12" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" />
+                  <path
+                    d="M4 4L12 12M12 4L4 12"
+                    stroke="var(--color-text-muted)"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
                 </svg>
               </button>
             </div>
@@ -390,23 +414,40 @@ function CalendarContent() {
             {/* Content */}
             <div className="px-4 py-3 space-y-3">
               {/* Instructions */}
-              <div className="rounded-md px-3 py-2 bg-surface whitespace-pre-line" style={{ backgroundColor: 'var(--color-bg-surface)' }}>
-                <p className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
-                  {oauthInstructions}
+              <div
+                className="
+                  rounded-md px-3 py-2
+                  bg-surface
+                "
+                style={{ backgroundColor: 'var(--color-bg-surface)' }}
+              >
+                <p
+                  className="text-body-sm"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  {oauthInstructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX'}
                 </p>
               </div>
 
               {/* Token input */}
               <div className="space-y-2">
-                <label className="text-body-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                <label
+                  className="text-body-sm font-medium"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
                   OAuth токен
                 </label>
                 <input
                   type="text"
                   value={oauthToken}
-                  onChange={(e) => setOauthToken(e.target.value.replace(/[^a-zA-Z0-9_\-]/g, ''))}
-                  placeholder="Вставьте токен..."
-                  className="w-full rounded-md px-3 py-2 border text-body-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                  onChange={(e) => setOauthToken(e.target.value)}
+                  placeholder="Вставьте токен после access_token="
+                  className="
+                    w-full rounded-md px-3 py-2
+                    border
+                    text-body-sm
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  "
                   style={{
                     color: 'var(--color-text-primary)',
                     borderColor: 'var(--color-border-default)',
@@ -426,7 +467,14 @@ function CalendarContent() {
               <button
                 onClick={handleStoreToken}
                 disabled={tokenSubmitting || !oauthToken.trim()}
-                className="w-full rounded-card px-4 py-2 text-body-sm font-medium transition-all duration-fast hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
+                className="
+                  w-full rounded-card px-4 py-2
+                  text-body-sm font-medium
+                  transition-all duration-fast
+                  hover:opacity-90 active:scale-95
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                  disabled:opacity-50
+                "
                 style={{
                   backgroundColor: 'var(--color-accent-amber)',
                   color: '#000',
@@ -441,7 +489,11 @@ function CalendarContent() {
                 href="https://oauth.yandex.ru/verification_code"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center text-body-sm transition-colors duration-fast hover:underline"
+                className="
+                  block text-center text-body-sm
+                  transition-colors duration-fast
+                  hover:underline
+                "
                 style={{ color: 'var(--color-accent-amber)' }}
               >
                 Открыть страницу токена →
