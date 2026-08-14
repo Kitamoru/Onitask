@@ -59,6 +59,7 @@ export async function POST(
     // Store token via Edge Function (handles encryption + DB storage)
     // worker_id is required; workspace_id is optional (used for filtering events)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     
     const edgeFunctionUrl = `${supabaseUrl}/functions/v1/calendar-sync`;
     
@@ -66,6 +67,8 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAnonKey,
       },
       body: JSON.stringify({
         worker_id,
