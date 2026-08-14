@@ -24,12 +24,13 @@ interface RequestBody {
   profile_id: string;
 }
 
-function generateYandexOAuthUrl(clientId: string, redirectUri: string): string {
+function generateYandexOAuthUrl(clientId: string, redirectUri: string, profileId: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
     scope: 'calendar:all',
     redirect_uri: redirectUri,
+    state: profileId, // передаем profile_id через state
   });
 
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
@@ -73,7 +74,7 @@ export async function POST(
     }
 
     const redirectUri = `${supabaseUrl}/api/calendar/callback/yandex`;
-    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri);
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri, profile_id);
 
     return NextResponse.json({
       success: true,

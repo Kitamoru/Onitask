@@ -45,9 +45,10 @@ export async function GET(
       return NextResponse.redirect(new URL('/settings?calendar_error=no_code', req.url));
     }
 
-    const profileId = url.searchParams.get('profile_id');
+    // profile_id передается через state параметр OAuth
+    const profileId = url.searchParams.get('state');
     if (!profileId) {
-      console.error('[Calendar Callback] Missing profile_id parameter');
+      console.error('[Calendar Callback] Missing state (profile_id) parameter');
       return NextResponse.redirect(new URL('/settings?calendar_error=no_profile', req.url));
     }
 
