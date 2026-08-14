@@ -81,15 +81,15 @@ export async function POST(
 
     if (!edgeResponse.ok) {
       const errorData = await edgeResponse.json().catch(() => ({}));
-      console.error(`[Calendar Callback] Edge function error (${edgeResponse.status}):`, errorData);
+      console.error(`[Calendar Callback] Edge function error (${edgeResponse.status}):`, JSON.stringify(errorData));
       return NextResponse.json(
-        { success: false, error: errorData.error || 'connection_failed' },
+        { success: false, error: errorData.error || 'connection_failed', details: errorData.details },
         { status: edgeResponse.status }
       );
     }
 
     const result = await edgeResponse.json();
-    console.log(`[Calendar Callback] ${provider} connected successfully via token:`, result);
+    console.log(`[Calendar Callback] ${provider} connected successfully via token:`, JSON.stringify(result));
 
     return NextResponse.json({
       success: true,
