@@ -1,18 +1,22 @@
 'use server';
 
 /**
- * POST /api/calendar/connect/[provider] — Generate OAuth authorization URL
+ * POST /api/calendar/connect/yandex — Generate Yandex CalDAV OAuth URL
  * 
  * Returns an OAuth authorization URL for Yandex CalDAV using authorization code flow.
  * 
- * Flow:
- * 1. User opens https://oauth.yandex.ru/authorize?response_type=code&client_id=XXX&redirect_uri=YYY
- * 2. User grants permissions → Yandex redirects to redirect_uri?code=XXX
- * 3. Backend exchanges code for access_token + refresh_token
- * 4. Tokens are encrypted and stored in calendar_connections
- * 5. Initial sync happens automatically
+ * IMPORTANT: Yandex requires redirect_uri = https://oauth.yandex.ru/verification_code
+ * This is a special Yandex endpoint used when you cannot set a custom redirect URI
+ * (e.g., in Telegram Web Apps or mobile apps).
  * 
- * INV-05: workspace_id is required for all calendar operations
+ * Flow:
+ * 1. User opens https://oauth.yandex.ru/authorize?response_type=code&client_id=XXX&redirect_uri=https://oauth.yandex.ru/verification_code
+ * 2. User grants permissions → Yandex shows verification_code page with authorization code
+ * 3. User copies the code and pastes it into our app
+ * 4. Our backend exchanges code for access_token + refresh_token via POST https://oauth.yandex.ru/token
+ * 5. Tokens are encrypted and stored in calendar_connections
+ * 6. Initial sync happens automatically
+ * 
  * onitask_calendar_.md §3
  */
 
@@ -24,12 +28,15 @@ interface RequestBody {
   profile_id: string;
 }
 
-function generateYandexOAuthUrl(clientId: string, redirectUri: string, profileId: string): string {
+// Yandex requires this specific redirect URI for verification_code flow
+const YANDEX_VERIFICATION_CODE_URI = 'https://oauth.yandex.ru/verification_code';
+
+function generateYandexOAuthUrl(clientId: string, profileId: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
     scope: 'calendar:all',
-    redirect_uri: redirectUri,
+    redirect_uri: YANDEX_VERIFICATION_CODE_URI,
     state: profileId, // передаем profile_id через state
   });
 
@@ -63,7 +70,6 @@ export async function POST(
 
     // Get OAuth credentials from environment
     const yandexClientId = process.env.YANDEX_OAUTH_CLIENT_ID || '';
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
     if (!yandexClientId) {
       console.error('[Calendar] YANDEX_OAUTH_CLIENT_ID not configured');
@@ -73,13 +79,13 @@ export async function POST(
       );
     }
 
-    const redirectUri = `${supabaseUrl}/api/calendar/callback/yandex`;
-    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri, profile_id);
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, profile_id);
 
     return NextResponse.json({
       success: true,
       url: oauthUrl,
       provider,
+      redirect_uri: YANDEX_VERIFICATION_CODE_URI,
     });
   } catch (err) {
     console.error('[Calendar] connect error:', err);

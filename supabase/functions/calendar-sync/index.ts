@@ -358,20 +358,41 @@ serve(async (req: Request) => {
 
     // ═══ Connect action ═══
     if (action === 'connect') {
-      const { code, access_token: incomingToken, provider_account_email } = body as { code?: string; access_token?: string; provider_account_email?: string };
+      const { 
+        code, 
+        access_token: incomingAccessToken, 
+        refresh_token: incomingRefreshToken,
+        expires_at: incomingExpiresAt,
+        provider_account_email 
+      } = body as { 
+        code?: string; 
+        access_token?: string; 
+        refresh_token?: string;
+        expires_at?: number;
+        provider_account_email?: string 
+      };
+      
       let tokens: OAuthTokens;
       
-      if (incomingToken) {
-        console.log('calendar_sync: implicit token flow (deprecated)');
-        tokens = { access_token: incomingToken, refresh_token: '', expires_at: Math.floor(Date.now() / 1000) + 3600 };
-      } else if (code) {
+      // Case 1: Direct tokens from verify-code endpoint
+      if (incomingAccessToken) {
+        console.log('calendar_sync: direct token flow from verify-code');
+        tokens = { 
+          access_token: incomingAccessToken, 
+          refresh_token: incomingRefreshToken || '', 
+          expires_at: incomingExpiresAt || Math.floor(Date.now() / 1000) + 3600 
+        };
+      } 
+      // Case 2: Authorization code flow (legacy / direct call)
+      else if (code) {
         console.log('calendar_sync: authorization code flow');
         try { tokens = await exchangeYandexTokens(code); }
         catch (tokenErr) { 
           return new Response(JSON.stringify({ error: 'token_exchange_failed', details: tokenErr instanceof Error ? tokenErr.message : 'unknown' }), { status: 400, headers: { 'Content-Type': 'application/json' } }); 
         }
-      } else {
-        return new Response(JSON.stringify({ error: 'code or access_token required for connect action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      } 
+      else {
+        return new Response(JSON.stringify({ error: 'access_token or code required for connect action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
       
       const { data: existingConnection } = await supabase
