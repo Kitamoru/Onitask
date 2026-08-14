@@ -55,7 +55,7 @@ function CalendarContent() {
           startDate: new Date(new Date().getFullYear(), 0, 1),
           endDate: new Date(new Date().getFullYear(), 11, 31),
         }),
-        getCalendarConnections(workspaceId),
+        getCalendarConnections(authData?.worker?.id ?? ''),
       ]);
 
       if (connectionsRes.error) {

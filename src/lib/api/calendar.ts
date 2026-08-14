@@ -141,16 +141,17 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error: unk
 // ═══════════════════════════════════════════════════════
 
 /**
- * Fetches all active calendar connections for a workspace.
+ * Fetches all active calendar connections for a worker (user).
+ * Calendar connections are per-user, not per-workspace.
  */
 export async function getCalendarConnections(
-  workspaceId: string
+  workerId: string
 ): Promise<{ data: CalendarConnection[] | null; error: unknown }> {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('calendar_connections')
     .select('*')
-    .eq('workspace_id', workspaceId)
+    .eq('worker_id', workerId)
     .eq('is_active', true)
     .order('connected_at', { ascending: false }) as {
       data: CalendarConnection[] | null;
