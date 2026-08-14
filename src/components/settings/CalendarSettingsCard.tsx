@@ -192,16 +192,29 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
           )}
 
           {!isConnected('yandex') && (
-            <a
-              href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/calendar-sync?workspace_id=${workspaceId}&provider=yandex&action=connect`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={async () => {
+                if (!profileId) return;
+                try {
+                  const res = await fetch(`${window.location.origin}/api/calendar/connect/yandex`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workspace_id: workspaceId }),
+                  });
+                  const data = await res.json();
+                  if (data.url) {
+                    window.location.href = data.url;
+                  }
+                } catch (err) {
+                  console.error('OAuth error:', err);
+                }
+              }}
               className="rounded-sm px-2 py-1 text-body-xs font-medium transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
               style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000' }}
               aria-label="Подключить Яндекс Календарь"
             >
               Подключить
-            </a>
+            </button>
           )}
         </div>
       </div>

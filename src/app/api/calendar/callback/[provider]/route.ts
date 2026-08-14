@@ -1,16 +1,16 @@
 'use server';
 
 /**
- * POST /api/calendar/callback/yandex — Store OAuth token for Yandex CalDAV
+ * GET/POST /api/calendar/callback/yandex — Exchange OAuth code for tokens
  * 
- * Called from the client after user obtains OAuth token via implicit grant flow.
- * Token is encrypted and stored in `calendar_connections`.
+ * Called by Yandex redirect after user authorizes.
  * 
- * Flow:
- * 1. User opens https://oauth.yandex.ru/authorize?response_type=token&client_id=XXX
- * 2. User authorizes → redirected to https://oauth.yandex.ru/verification_code#access_token=XXX
- * 3. User copies token from URL hash and pastes into app
- * 4. App sends token to this endpoint for storage
+ * Flow (authorization code):
+ * 1. User opens https://oauth.yandex.ru/authorize?response_type=code&client_id=XXX&scope=calendar
+ * 2. User authorizes → Yandex redirects to /api/calendar/callback/yandex?code=XXX
+ * 3. Backend exchanges code for access_token + refresh_token
+ * 4. Tokens are encrypted and stored in calendar_connections
+ * 5. Initial sync happens automatically
  * 
  * onitask_calendar_.md §3.1-3.2
  */
@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 type CalendarProvider = 'yandex';
 
-export async function POST(
+export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
@@ -33,31 +33,29 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
-    const { token, profile_id } = body as {
-      token?: string;
-      profile_id?: string;
-    };
-
-    // Validate required fields
-    // Calendar connections are per-user (profile)
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'missing_token' },
-        { status: 400 }
-      );
+    const url = new URL(req.url);
+    const error = url.searchParams.get('error');
+    if (error) {
+      console.error('[Calendar Callback] Yandex auth error:', url.searchParams.get('error_description'));
+      return NextResponse.redirect(new URL('/settings?calendar_error=auth_failed', req.url));
     }
 
-    if (!profile_id) {
-      return NextResponse.json(
-        { success: false, error: 'missing_profile_id' },
-        { status: 400 }
-      );
+    const code = url.searchParams.get('code');
+    if (!code) {
+      console.error('[Calendar Callback] Missing code parameter');
+      return NextResponse.redirect(new URL('/settings?calendar_error=no_code', req.url));
     }
 
-    // Store token via Edge Function (handles encryption + DB storage)
+    // Get profile_id from query or session
+    const profileId = url.searchParams.get('profile_id');
+    if (!profileId) {
+      console.error('[Calendar Callback] Missing profile_id parameter');
+      return NextResponse.redirect(new URL('/settings?calendar_error=no_profile', req.url));
+    }
+
+    // Exchange code for tokens via Edge Function
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     
     const edgeFunctionUrl = `${supabaseUrl}/functions/v1/calendar-sync`;
     
@@ -65,39 +63,29 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseServiceKey}`,
       },
       body: JSON.stringify({
-        profile_id,
+        profile_id: profileId,
         provider,
         action: 'connect',
-        access_token: token,
+        code,
       }),
     });
 
     if (!edgeResponse.ok) {
       const errorData = await edgeResponse.json().catch(() => ({}));
       console.error(`[Calendar Callback] Edge function error (${edgeResponse.status}):`, JSON.stringify(errorData));
-      return NextResponse.json(
-        { success: false, error: errorData.error || 'connection_failed', details: errorData.details },
-        { status: edgeResponse.status }
-      );
+      return NextResponse.redirect(new URL(`/settings?calendar_error=connect_failed`, req.url));
     }
 
     const result = await edgeResponse.json();
-    console.log(`[Calendar Callback] ${provider} connected successfully via token:`, JSON.stringify(result));
+    console.log(`[Calendar Callback] ${provider} connected successfully:`, JSON.stringify(result));
 
-    return NextResponse.json({
-      success: true,
-      synced: result.synced || 0,
-    });
+    return NextResponse.redirect(new URL(`/settings?calendar_connected=true&synced=${result.synced || 0}`, req.url));
 
   } catch (err) {
     console.error('[Calendar Callback] Unexpected error:', err);
-    return NextResponse.json(
-      { success: false, error: 'internal_error' },
-      { status: 500 }
-    );
+    return NextResponse.redirect(new URL('/settings?calendar_error=internal', req.url));
   }
 }

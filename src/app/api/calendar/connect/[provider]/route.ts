@@ -26,15 +26,21 @@ interface RequestBody {
 }
 
 /**
- * Generate Yandex CalDAV OAuth authorization URL with implicit token flow.
+ * Generate Yandex CalDAV OAuth authorization URL with authorization code flow.
  * 
- * Scope `calendar:read_all` запрашивает полный доступ к календарю Яндекса.
+ * Authorization code flow возвращает И access_token, И refresh_token.
+ * Implicit grant (response_type=token) НЕ возвращает refresh_token,
+ * поэтому истёкший access_token нельзя обновить.
+ * 
+ * Scope `calendar` запрашивает полный доступ к календарю Яндекса.
  */
 function generateYandexOAuthUrl(clientId: string): string {
+  const redirectUri = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:3000'}/api/calendar/callback/yandex`;
   const params = new URLSearchParams({
     client_id: clientId,
-    response_type: 'token',
-    scope: 'calendar:read_all', // обязательный scope для доступа к календарю
+    response_type: 'code',
+    scope: 'calendar',
+    redirect_uri: redirectUri,
   });
 
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
@@ -82,7 +88,7 @@ export async function POST(
       success: true,
       url: oauthUrl,
       provider,
-      instructions: 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX',
+      instructions: 'После авторизации вы будете перенаправлены обратно в приложение.',
     });
   } catch (err) {
     console.error('[Calendar] connect error:', err);
