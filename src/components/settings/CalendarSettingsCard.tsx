@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getCalendarConnections, syncCalendar, disconnectCalendar } from '@/lib/api/calendar';
+import { getClient } from '@/lib/supabase/client';
 import type { CalendarConnection, CalendarProvider } from '@/types/calendar';
 
 // ═══════════════════════════════════════════════════════
@@ -23,19 +24,45 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({});
   const [error, setError] = useState<string | null>(null);
+  const [workerId, setWorkerId] = useState<string | null>(null);
 
   const isConnected = (provider: CalendarProvider) => {
     return connections.some((c) => c.provider === provider && c.is_active);
   };
 
-  React.useEffect(() => {
-    if (!workspaceId) return;
+  // Fetch worker_id from auth
+  useEffect(() => {
+    async function fetchWorkerId() {
+      try {
+        const supabase = getClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: worker } = await supabase
+          .from('workers')
+          .select('id')
+          .eq('source_id', user.id)
+          .single();
+
+        if (worker?.id) {
+          setWorkerId(worker.id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch worker_id:', err);
+      }
+    }
+
+    fetchWorkerId();
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceId || !workerId) return;
 
     async function load() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await getCalendarConnections(workspaceId);
+        const res = await getCalendarConnections(workerId);
         if (res.error) {
           setError('Не удалось загрузить подключения');
         } else {
@@ -49,24 +76,32 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
     }
 
     load();
-  }, [workspaceId]);
+  }, [workspaceId, workerId]);
 
   async function handleSync(provider: CalendarProvider) {
+    if (!workerId) return;
     setSyncStatus((prev) => ({ ...prev, [provider]: 'syncing' }));
     try {
-      await syncCalendar({ workspace_id: workspaceId, provider, action: 'sync' });
+      await syncCalendar({ 
+        workspace_id: workspaceId, 
+        worker_id: workerId,
+        provider, 
+        action: 'sync' 
+      });
       setSyncStatus((prev) => ({ ...prev, [provider]: 'success' }));
       setTimeout(() => setSyncStatus((prev) => ({ ...prev, [provider]: 'idle' })), 2000);
       
       // Reload connections
-      const res = await getCalendarConnections(workspaceId);
+      const res = await getCalendarConnections(workerId);
       if (!res.error) setConnections(res.data ?? []);
     } catch (err) {
+      console.error('Sync error:', err);
       setSyncStatus((prev) => ({ ...prev, [provider]: 'error' }));
     }
   }
 
-  async function handleDisconnect(provider: CalendarProvider, workerId: string) {
+  async function handleDisconnect(provider: CalendarProvider, connWorkerId: string) {
+    if (!workerId) return;
     const result = await disconnectCalendar(workspaceId, provider, workerId);
     if (result.success) {
       setConnections((prev) => prev.filter((c) => !(c.provider === provider)));
@@ -155,6 +190,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
               </button>
               <button
                 onClick={() => yandexConn && handleDisconnect('yandex', yandexConn.worker_id)}
+                disabled={!workerId}
                 className="rounded-sm px-2 py-1 text-body-xs transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error disabled:opacity-50"
                 style={{ color: 'var(--color-error)' }}
                 aria-label="Отключить Яндекс Календарь"

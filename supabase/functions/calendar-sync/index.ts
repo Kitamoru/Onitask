@@ -24,7 +24,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 interface CalendarConnection {
   id: string;
-  workspace_id: string;
   worker_id: string;
   provider: 'yandex';
   provider_account_email: string;
@@ -32,6 +31,8 @@ interface CalendarConnection {
   token_expires_at: string | null;
   is_active: boolean;
   last_sync_at: string | null;
+  // workspace_id resolved from workers table at runtime
+  resolved_workspace_id?: string;
 }
 
 interface CalendarEventPayload {
@@ -276,7 +277,7 @@ async function syncYandex(
         const endAt = parseDate(dtEndMatch[1].trim());
 
         await upsertCalendarEvent(supabase, {
-          workspace_id: connection.workspace_id,
+          workspace_id: connection.resolved_workspace_id || '',
           provider: 'yandex',
           remote_event_id: remoteId,
           title,
@@ -560,12 +561,30 @@ serve(async (req: Request) => {
         );
       }
 
-      // Step 2: Get or create connection record
-      // First, check if a connection already exists for this workspace+worker+provider
+      // Step 2: Resolve workspace_id from workers table (connections are per-worker now)
+      let resolvedWorkspaceId = workspace_id;
+      
+      if (!resolvedWorkspaceId && worker_id) {
+        const { data: workerData } = await supabase
+          .from('workers')
+          .select('workspace_id')
+          .eq('id', worker_id)
+          .maybeSingle();
+        
+        resolvedWorkspaceId = workerData?.workspace_id || '';
+      }
+      
+      if (!resolvedWorkspaceId) {
+        return new Response(
+          JSON.stringify({ error: 'workspace_id not found for worker' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Check if connection already exists for this worker+provider
       const { data: existingConnection } = await supabase
         .from('calendar_connections')
         .select('id, provider_account_email')
-        .eq('workspace_id', workspace_id)
         .eq('worker_id', worker_id)
         .eq('provider', provider)
         .maybeSingle();
@@ -605,11 +624,10 @@ serve(async (req: Request) => {
           })
           .eq('id', existingConnection.id);
       } else {
-        // Create new connection
+        // Create new connection (no workspace_id column in calendar_connections)
         const { error: insertError } = await supabase
           .from('calendar_connections')
           .insert({
-            workspace_id,
             worker_id,
             provider,
             provider_account_email: accountEmail,
@@ -628,12 +646,11 @@ serve(async (req: Request) => {
         }
       }
 
-      // Step 5: Trigger initial sync
+      // Step 5: Trigger initial sync with resolved workspace_id
       let syncResult: { synced: number; errors: string[] };
       try {
         syncResult = await syncYandex(supabase, {
           id: existingConnection?.id || '',
-          workspace_id,
           worker_id,
           provider,
           provider_account_email: accountEmail,
@@ -641,6 +658,7 @@ serve(async (req: Request) => {
           token_expires_at: expiresAt,
           is_active: true,
           last_sync_at: null,
+          resolved_workspace_id: resolvedWorkspaceId,
         } as CalendarConnection, tokens);
       } catch (syncErr) {
         console.error('calendar_sync: initial sync failed', syncErr);
@@ -659,7 +677,7 @@ serve(async (req: Request) => {
     }
 
     if (action === 'disconnect') {
-      // Deactivate connection
+      // Deactivate connection (per-worker, no workspace_id in connections)
       const { worker_id } = body as { worker_id?: string };
       if (!worker_id) {
         return new Response(
@@ -671,7 +689,6 @@ serve(async (req: Request) => {
       const { error: updateError } = await supabase
         .from('calendar_connections')
         .update({ is_active: false })
-        .eq('workspace_id', workspace_id)
         .eq('worker_id', worker_id)
         .eq('provider', provider);
 
@@ -689,11 +706,31 @@ serve(async (req: Request) => {
     }
 
     // ── 5. Sync action ─────────────────────────────────────
-    // Fetch active connection
+    // Resolve workspace_id from workers table (connections are per-worker)
+    let syncWorkspaceId = workspace_id;
+    
+    if (!syncWorkspaceId && worker_id) {
+      const { data: workerData } = await supabase
+        .from('workers')
+        .select('workspace_id')
+        .eq('id', worker_id)
+        .maybeSingle();
+      
+      syncWorkspaceId = workerData?.workspace_id || '';
+    }
+
+    if (!syncWorkspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'workspace_id not found for worker' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch active connection by worker_id
     const { data: connection, error: connError } = await supabase
       .from('calendar_connections')
       .select('*')
-      .eq('workspace_id', workspace_id)
+      .eq('worker_id', worker_id)
       .eq('provider', provider)
       .eq('is_active', true)
       .maybeSingle() as { data: CalendarConnection | null; error: unknown };
@@ -775,8 +812,13 @@ serve(async (req: Request) => {
       }
     }
 
-    // Route to provider-specific sync
-    const result = await syncYandex(supabase, connection, tokens);
+    // Route to provider-specific sync with resolved workspace_id
+    const connectionWithWorkspace = {
+      ...connection,
+      resolved_workspace_id: syncWorkspaceId,
+    } as CalendarConnection;
+    
+    const result = await syncYandex(supabase, connectionWithWorkspace, tokens);
 
     // Update last_sync_at
     await supabase
