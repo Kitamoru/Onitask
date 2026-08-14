@@ -173,30 +173,26 @@ export interface SyncCalendarParams {
 }
 
 /**
- * Initiates OAuth flow by calling calendar_sync Edge Function.
+ * Syncs calendar via our server proxy to avoid CORS issues with direct Edge Function calls.
  */
 export async function syncCalendar(
-  params: SyncCalendarParams
+  params: SyncCalendarParams,
+  initData?: string
 ): Promise<Record<string, unknown>> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const token = localStorage.getItem('sb-token-auth-token');
-
   console.log('[calendar/syncCalendar] START', {
     profile_id: params.profile_id,
     provider: params.provider,
     action: params.action,
-    supabaseUrl,
-    hasToken: !!token,
   });
 
   try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+    const response = await fetch('/api/calendar/sync', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...params,
+        init_data: initData,
+      }),
     });
 
     console.log('[calendar/syncCalendar] Response status:', response.status);
@@ -209,7 +205,7 @@ export async function syncCalendar(
 
     const data = await response.json();
     console.log('[calendar/syncCalendar] Success data:', data);
-    return data as Record<string, unknown>;
+    return data.data ?? data;
   } catch (err) {
     console.error('[calendar/syncCalendar] Exception:', err);
     throw err;

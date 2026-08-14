@@ -180,11 +180,10 @@ function CalendarContent() {
     setSyncStatus('syncing');
 
     try {
-      const result = await syncCalendar({
-        profile_id: authData.profile_id,
-        provider,
-        action: 'sync',
-      });
+      const result = await syncCalendar(
+        { profile_id: authData.profile_id, provider, action: 'sync' },
+        initData
+      );
       
       console.log('[Calendar/handleSync] Success', result);
       setSyncStatus('success');
