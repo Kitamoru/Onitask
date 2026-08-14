@@ -170,22 +170,31 @@ function CalendarContent() {
   async function handleSync(provider: CalendarProvider) {
     if (!workspaceId || !authData?.profile_id) return;
     
+    console.log('[Calendar/handleSync] START', {
+      provider,
+      profile_id: authData.profile_id,
+      workspace_id: workspaceId,
+    });
+    
     setIsSyncing(true);
     setSyncStatus('syncing');
 
     try {
-      await syncCalendar({
+      const result = await syncCalendar({
         profile_id: authData.profile_id,
         provider,
         action: 'sync',
       });
       
+      console.log('[Calendar/handleSync] Success', result);
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
       await loadData();
     } catch (err) {
+      console.error('[Calendar/handleSync] Error:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(`Синхронизация не удалась: ${errMsg}`);
       setSyncStatus('error');
-      console.error(`Sync failed for ${provider}:`, err);
     } finally {
       setIsSyncing(false);
     }

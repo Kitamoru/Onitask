@@ -181,21 +181,39 @@ export async function syncCalendar(
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const token = localStorage.getItem('sb-token-auth-token');
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
+  console.log('[calendar/syncCalendar] START', {
+    profile_id: params.profile_id,
+    provider: params.provider,
+    action: params.action,
+    supabaseUrl,
+    hasToken: !!token,
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Sync failed: ${response.status}`);
-  }
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
 
-  return response.json() as Promise<Record<string, unknown>>;
+    console.log('[calendar/syncCalendar] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[calendar/syncCalendar] Error response:', errorData);
+      throw new Error(errorData.error || `Sync failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[calendar/syncCalendar] Success data:', data);
+    return data as Record<string, unknown>;
+  } catch (err) {
+    console.error('[calendar/syncCalendar] Exception:', err);
+    throw err;
+  }
 }
 
 /**
