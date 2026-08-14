@@ -137,11 +137,11 @@ async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, pa
 }
 
 /**
- * Sync events from Yandex CalDAV using OAuth token.
+ * Sync events from Yandex CalDAV.
  * 
- * Yandex CalDAV accepts Authorization: OAuth <token> for REPORT requests.
- * The www-authenticate: Basic realm="CalDAV" header indicates supported auth methods,
- * but OAuth token also works as documented at https://yandex.ru/dev/caldav/
+ * Yandex CalDAV recommends Basic auth (www-authenticate: Basic realm="CalDAV").
+ * We try OAuth first, then fall back to Basic auth with token as password.
+ * See: https://yandex.ru/dev/caldav/
  */
 async function syncYandex(supabase: ReturnType<typeof createClient>, connection: CalendarConnection, tokens: OAuthTokens): Promise<{ synced: number; errors: string[] }> {
   const errors: string[] = []; let synced = 0;
@@ -161,7 +161,14 @@ async function syncYandex(supabase: ReturnType<typeof createClient>, connection:
     
     const reportXml = `<?xml version="1.0" encoding="utf-8" ?><C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop xmlns:D="DAV:"><C:calendar-data/></D:prop><C:filter><C:time-range start="${formatDateForQuery(since)}" end="${formatDateForQuery(until)}"/></C:filter></C:calendar-query>`;
     
-    const response = await fetch(caldavUrl, { 
+    // Try OAuth first, then Basic auth fallback
+    let responseText = '';
+    let responseStatus = 0;
+    let usedBasic = false;
+    
+    // Attempt 1: OAuth auth header
+    console.log('calendar_sync: attempting OAuth auth...');
+    let response = await fetch(caldavUrl, { 
       method: 'REPORT', 
       headers: { 
         Authorization: `OAuth ${tokens.access_token}`, 
@@ -171,23 +178,44 @@ async function syncYandex(supabase: ReturnType<typeof createClient>, connection:
       body: reportXml 
     });
     
-    console.log('calendar_sync: REPORT response status =', response.status);
-    console.log('calendar_sync: REPORT response headers =', Object.fromEntries(response.headers.entries()));
+    responseStatus = response.status;
+    responseText = await response.text();
     
-    const responseText = await response.text();
-    console.log('calendar_sync: REPORT response body =', responseText.substring(0, 2000));
+    if (!response.ok && response.status === 401) {
+      // Fallback to Basic auth with token as password
+      console.log('calendar_sync: OAuth returned 401, trying Basic auth fallback...');
+      const basicAuth = btoa(`${connection.provider_account_email}:${tokens.access_token}`);
+      
+      response = await fetch(caldavUrl, { 
+        method: 'REPORT', 
+        headers: { 
+          Authorization: `Basic ${basicAuth}`, 
+          'Content-Type': 'application/xml; charset=utf-8', 
+          Depth: '1' 
+        }, 
+        body: reportXml 
+      });
+      
+      responseStatus = response.status;
+      responseText = await response.text();
+      usedBasic = true;
+      console.log('calendar_sync: Basic auth response status =', responseStatus);
+    }
+    
+    console.log('calendar_sync: final response status =', responseStatus, '(used_basic=' + usedBasic + ')');
+    console.log('calendar_sync: response body =', responseText.substring(0, 2000));
     
     if (!response.ok) { 
       console.error('calendar_sync: REPORT error details:', {
-        status: response.status,
+        status: responseStatus,
         statusText: response.statusText,
         body: responseText.substring(0, 2000),
-        auth_method: 'OAuth',
-        token_prefix: tokens.access_token?.substring(0, 30) + '...',
-        has_refresh: !!tokens.refresh_token,
+        auth_methods_tried: ['OAuth', usedBasic ? 'Basic' : null].filter(Boolean),
+        login_used: connection.provider_account_email,
       });
-      throw new Error(`Yandex CalDAV REPORT failed: ${response.status} ${responseText.substring(0, 500)}`); 
+      throw new Error(`Yandex CalDAV REPORT failed: ${responseStatus} ${responseText.substring(0, 500)}`); 
     }
+    responseText = responseText; // already read above
     
     const eventMatches = responseText.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
     console.log('calendar_sync: found', eventMatches.length, 'VEVENT blocks');

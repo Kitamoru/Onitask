@@ -199,10 +199,11 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
                   const res = await fetch(`${window.location.origin}/api/calendar/connect/yandex`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ workspace_id: workspaceId }),
+                    body: JSON.stringify({ profile_id: profileId }),
                   });
                   const data = await res.json();
                   if (data.url) {
+                    // Redirect to Yandex OAuth — after auth, Yandex redirects back to callback
                     window.location.href = data.url;
                   }
                 } catch (err) {

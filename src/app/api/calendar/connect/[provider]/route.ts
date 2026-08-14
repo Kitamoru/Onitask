@@ -3,14 +3,14 @@
 /**
  * POST /api/calendar/connect/[provider] — Generate OAuth authorization URL
  * 
- * Returns an OAuth authorization URL for Yandex CalDAV using implicit token flow.
- * This flow is designed for client-side apps without a backend redirect endpoint.
+ * Returns an OAuth authorization URL for Yandex CalDAV using authorization code flow.
  * 
  * Flow:
- * 1. User opens https://oauth.yandex.ru/authorize?response_type=token&client_id=XXX
- * 2. User grants permissions
- * 3. Yandex redirects to https://oauth.yandex.ru/verification_code#access_token=XXX
- * 4. User copies token from URL hash and pastes into app
+ * 1. User opens https://oauth.yandex.ru/authorize?response_type=code&client_id=XXX&redirect_uri=YYY
+ * 2. User grants permissions → Yandex redirects to redirect_uri?code=XXX
+ * 3. Backend exchanges code for access_token + refresh_token
+ * 4. Tokens are encrypted and stored in calendar_connections
+ * 5. Initial sync happens automatically
  * 
  * INV-05: workspace_id is required for all calendar operations
  * onitask_calendar_.md §3
@@ -21,27 +21,15 @@ import { NextRequest, NextResponse } from 'next/server';
 type CalendarProvider = 'yandex';
 
 interface RequestBody {
-  workspace_id: string;
-  worker_id?: string;
+  profile_id: string;
 }
 
-/**
- * Generate Yandex CalDAV OAuth authorization URL with implicit token flow.
- * 
- * Implicit grant (response_type=token) не требует redirect_uri.
- * Flow:
- * 1. User opens https://oauth.yandex.ru/authorize?response_type=token&client_id=XXX
- * 2. User grants permissions
- * 3. Yandex redirects to https://oauth.yandex.ru/verification_code#access_token=XXX
- * 4. User copies token from URL hash and pastes into app
- * 
- * Scope `calendar:read_all` запрашивает полный доступ к календарю Яндекса.
- */
-function generateYandexOAuthUrl(clientId: string): string {
+function generateYandexOAuthUrl(clientId: string, redirectUri: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
-    response_type: 'token',
-    scope: 'calendar:read_all',
+    response_type: 'code',
+    scope: 'calendar:all',
+    redirect_uri: redirectUri,
   });
 
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
@@ -53,7 +41,7 @@ export async function POST(
 ) {
   try {
     const body = await req.json() as RequestBody;
-    const { workspace_id, worker_id } = body;
+    const { profile_id } = body;
     const provider = (await params).provider as CalendarProvider;
 
     // Validate provider
@@ -64,16 +52,17 @@ export async function POST(
       );
     }
 
-    // Validate workspace_id
-    if (!workspace_id) {
+    // Validate profile_id
+    if (!profile_id) {
       return NextResponse.json(
-        { success: false, error: 'missing_workspace_id' },
+        { success: false, error: 'missing_profile_id' },
         { status: 400 }
       );
     }
 
     // Get OAuth credentials from environment
     const yandexClientId = process.env.YANDEX_OAUTH_CLIENT_ID || '';
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
     if (!yandexClientId) {
       console.error('[Calendar] YANDEX_OAUTH_CLIENT_ID not configured');
@@ -82,14 +71,14 @@ export async function POST(
         { status: 500 }
       );
     }
-    
-    const oauthUrl = generateYandexOAuthUrl(yandexClientId);
+
+    const redirectUri = `${supabaseUrl}/api/calendar/callback/yandex`;
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, redirectUri);
 
     return NextResponse.json({
       success: true,
       url: oauthUrl,
       provider,
-      instructions: 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX',
     });
   } catch (err) {
     console.error('[Calendar] connect error:', err);
