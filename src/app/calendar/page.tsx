@@ -10,7 +10,7 @@ import type { CalendarEvent, CalendarConnection, CalendarProvider } from '@/type
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 function CalendarContent() {
-  const { isLoading: authLoading, data: authData } = useTelegramAuth();
+  const { isLoading: authLoading, data: authData, initData } = useTelegramAuth();
   const { state, loadBoardsData } = useData();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
@@ -53,10 +53,11 @@ function CalendarContent() {
     try {
       const [eventsRes, connectionsRes] = await Promise.all([
         getCalendarEvents(authData?.profile_id ?? '', {
+          initData,
           startDate: new Date(new Date().getFullYear(), 0, 1),
           endDate: new Date(new Date().getFullYear(), 11, 31),
         }),
-        getCalendarConnections(authData?.profile_id ?? ''),
+        getCalendarConnections(authData?.profile_id ?? '', initData),
       ]);
 
       if (connectionsRes.error) {
