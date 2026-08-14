@@ -475,15 +475,25 @@ serve(async (req: Request) => {
 
     // ── 3. Parse request body ──────────────────────────────
     const body = await req.json();
-    const { workspace_id, provider, action = 'sync' } = body as {
+    const { workspace_id, worker_id, provider, action = 'sync' } = body as {
       workspace_id?: string;
+      worker_id?: string;
       provider?: 'yandex';
       action?: 'sync' | 'connect' | 'disconnect';
     };
 
-    if (!workspace_id || !provider) {
+    // Calendar connections are per-user (worker), not per-workspace
+    // workspace_id is optional — used for event filtering, not required for connection
+    if (!worker_id && !workspace_id) {
       return new Response(
-        JSON.stringify({ error: 'workspace_id and provider are required' }),
+        JSON.stringify({ error: 'worker_id or workspace_id is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!provider) {
+      return new Response(
+        JSON.stringify({ error: 'provider is required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
