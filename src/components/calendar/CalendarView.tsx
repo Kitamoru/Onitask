@@ -21,6 +21,7 @@ interface CalendarViewProps {
   selectedDate?: Date;
   onDateSelect?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
+  onSyncClick?: () => void;
   isLoading?: boolean;
 }
 
@@ -483,6 +484,7 @@ export function CalendarView({
   selectedDate,
   onDateSelect,
   onEventClick,
+  onSyncClick,
   isLoading,
 }: CalendarViewProps) {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -558,8 +560,9 @@ export function CalendarView({
           📅 Календарь
         </h1>
         
-        {/* Sync button (Phase 2) */}
+        {/* Sync button */}
         <button
+          onClick={onSyncClick}
           className="
             rounded-sm px-2 py-1
             transition-colors duration-fast
@@ -570,8 +573,8 @@ export function CalendarView({
             fontSize: 'var(--text-body-sm)',
             color: 'var(--color-accent-amber)',
           }}
-          disabled
-          title="Синхронизация (скоро)"
+          disabled={!onSyncClick}
+          aria-label="Синхронизировать календарь"
         >
           ↻ Синхронизировать
         </button>

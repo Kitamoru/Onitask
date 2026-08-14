@@ -167,7 +167,7 @@ function CalendarContent() {
   }
 
   async function handleSync(provider: CalendarProvider) {
-    if (!workspaceId) return;
+    if (!workspaceId || !authData?.worker?.id) return;
     
     setIsSyncing(true);
     setSyncStatus('syncing');
@@ -175,6 +175,7 @@ function CalendarContent() {
     try {
       await syncCalendar({
         workspace_id: workspaceId,
+        worker_id: authData.worker.id,
         provider,
         action: 'sync',
       });
@@ -353,6 +354,7 @@ function CalendarContent() {
             events={events}
             selectedDate={selectedDate}
             onDateSelect={setSelectedDate}
+            onSyncClick={() => connections.length > 0 && handleSync('yandex')}
             isLoading={isLoading}
             onEventClick={() => {}}
           />
