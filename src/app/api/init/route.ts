@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
       // Get all active workers for this profile (source_id matches profile id as text)
       const { data: workersData, error: workersError } = await supabase
         .from('workers')
-        .select('workspace_id, role')
+        .select('id, workspace_id, role')
         .eq('source_id', profileId)
         .eq('is_active', true);
 
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const workers = workersData as Array<{ workspace_id: string; role: string | null }> | null;
+      const workers = workersData as Array<{ id: string; workspace_id: string; role: string | null }> | null;
       const workspaceIds = workers?.map((w) => w.workspace_id) || [];
 
       let workspaces: WorkspaceInfo[] = [];
@@ -169,12 +169,12 @@ export async function POST(req: NextRequest) {
         }));
       }
 
-      // Return primary workspace worker info
+      // Return primary workspace worker info — use actual worker.id, not profileId
       const primaryWorker = workers?.[0] || null;
 
       const response: InitResponse = {
         worker: {
-          id: profileId,
+          id: primaryWorker?.id || profileId,
           display_name: displayName,
           workspace_id: primaryWorker?.workspace_id || '',
           role: primaryWorker?.role || null,
