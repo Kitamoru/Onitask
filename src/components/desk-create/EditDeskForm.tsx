@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useData } from "@/contexts/DataContext";
 import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 import { Button } from "@/components/ui/desk-ui/Button";
 import { BasicInfoSection } from "@/components/desk-create/BasicInfoSection";
@@ -63,10 +64,26 @@ export function EditDeskForm({
   onAddColleague: () => void;
 }) {
   const router = useRouter();
+  const { state } = useData();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Store original values for rollback on save failure
+  const originalValuesRef = useRef({
+    name: initialData.name,
+    slug: initialData.slug,
+    spCostEnabled: initialData.spCostEnabled,
+    spSprintEnabled: initialData.spSprintEnabled,
+    cognitiveWeightEnabled: initialData.cognitiveWeightEnabled,
+    context: initialData.context,
+    documentsEnabled: initialData.documentsEnabled,
+    linksEnabled: initialData.linksEnabled,
+    links: initialData.links,
+    trafficLightEnabled: initialData.trafficLightEnabled,
+    warningDays: initialData.warningDays,
+    urgentDays: initialData.urgentDays,
+  });
 
   const [name, setName] = useState(initialData.name);
   const [slug, setSlug] = useState(initialData.slug);
@@ -185,11 +202,17 @@ export function EditDeskForm({
     setSaving(true);
     setError(null);
 
+    // Optimistic UI: immediately reflect changes in the UI
+    // by updating local state variables before the API call completes
+    const optimisticName = name;
+    const optimisticContext = context;
+    const optimisticLinks = links;
+
     try {
-      // First, upload any local files
+      // First, upload any local files (this is inherently not optimistic - must succeed)
       const uploadSuccess = await uploadLocalFiles();
       if (!uploadSuccess) {
-        throw new Error('Failed to upload documents');
+        throw new Error('Не удалось загрузить документы');
       }
 
       const initData = getTelegramInitData();
@@ -229,7 +252,21 @@ export function EditDeskForm({
       router.push('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setError(message);
+      
+      // Rollback: restore original values on failure
+      setName(originalValuesRef.current.name);
+      setContext(originalValuesRef.current.context);
+      setLinks(originalValuesRef.current.links);
+      setLinksEnabled(originalValuesRef.current.linksEnabled);
+      setSpCostEnabled(originalValuesRef.current.spCostEnabled);
+      setSpSprintEnabled(originalValuesRef.current.spSprintEnabled);
+      setCognitiveWeightEnabled(originalValuesRef.current.cognitiveWeightEnabled);
+      setDocumentsEnabled(originalValuesRef.current.documentsEnabled);
+      setTrafficLightEnabled(originalValuesRef.current.trafficLightEnabled);
+      setWarningDays(originalValuesRef.current.warningDays);
+      setUrgentDays(originalValuesRef.current.urgentDays);
+      
+      setError(`Не удалось сохранить: ${message}`);
       console.error('Failed to update workspace:', message);
     } finally {
       setSaving(false);

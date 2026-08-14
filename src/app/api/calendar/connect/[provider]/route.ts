@@ -35,7 +35,7 @@ function generateYandexOAuthUrl(clientId: string, profileId: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
-    scope: 'calendar:all',
+    scope: 'calendar:read_all',
     redirect_uri: YANDEX_VERIFICATION_CODE_URI,
     state: profileId, // передаем profile_id через state
   });
