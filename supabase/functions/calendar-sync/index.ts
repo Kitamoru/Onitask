@@ -1,15 +1,20 @@
 /**
  * Supabase Edge Function: calendar_sync
  *
- * Модуль «Календарь» v0.16.0 — синхронизация событий из Yandex CalDAV.
+ * Модуль «Календарь» v0.17.0 — синхронизация событий из Yandex CalDAV.
  *
  * Архитектура:
- * - OAuth flow: пользователь авторизуется через Yandex → код обмена на токены
+ * - OAuth flow (authorization code): пользователь авторизуется через Yandex
+ *   → код обмена на access_token + refresh_token
  *   → шифрование AES-256-GCM → сохранение как base64 text в oauth_tokens_b64
- * - Синхронизация: дешифрование токенов → fetch событий → upsert в calendar_events
+ * - Синхронизация: дешифрование токенов → auto-refresh если истёк → fetch событий
+ * - CalDAV использует Authorization: OAuth <token> для REPORT запросов
  * - Все вызовы к внешним API — Cold Path в Supabase Edge Functions (A-1)
  *
- * Изменение v0.16.0: удаление deprecated encrypted_oauth_tokens, упрощение кода.
+ * Изменение v0.17.0: 
+ * - authorization code flow вместо implicit grant
+ * - auto-refresh токенов перед синхронизацией
+ * - детальное логирование для диагностики 401
  *
  * Master Spec §6.19, onitask_calendar_.md §4
  */
@@ -79,8 +84,6 @@ async function decryptOauthTokens(tokensB64: string, key: string): Promise<OAuth
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   
-  console.log('calendar_sync: decrypted tokens, total bytes =', bytes.length);
-  
   if (bytes.length < 28) throw new Error(`Encrypted data too short: ${bytes.length} bytes`);
   
   const iv = bytes.slice(0, 12);
@@ -133,6 +136,13 @@ async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, pa
   }, { onConflict: 'profile_id,provider,remote_event_id', ignoreDuplicates: false });
 }
 
+/**
+ * Sync events from Yandex CalDAV using OAuth token.
+ * 
+ * Yandex CalDAV accepts Authorization: OAuth <token> for REPORT requests.
+ * The www-authenticate: Basic realm="CalDAV" header indicates supported auth methods,
+ * but OAuth token also works as documented at https://yandex.ru/dev/caldav/
+ */
 async function syncYandex(supabase: ReturnType<typeof createClient>, connection: CalendarConnection, tokens: OAuthTokens): Promise<{ synced: number; errors: string[] }> {
   const errors: string[] = []; let synced = 0;
   try {
@@ -145,33 +155,41 @@ async function syncYandex(supabase: ReturnType<typeof createClient>, connection:
     
     console.log('calendar_sync: CalDAV URL =', caldavUrl);
     console.log('calendar_sync: time range =', since.toISOString(), 'to', until.toISOString());
+    console.log('calendar_sync: access_token prefix =', tokens.access_token?.substring(0, 20) + '...');
+    console.log('calendar_sync: has_refresh_token =', !!tokens.refresh_token);
+    console.log('calendar_sync: token_expires_at =', new Date(tokens.expires_at * 1000).toISOString());
     
     const reportXml = `<?xml version="1.0" encoding="utf-8" ?><C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop xmlns:D="DAV:"><C:calendar-data/></D:prop><C:filter><C:time-range start="${formatDateForQuery(since)}" end="${formatDateForQuery(until)}"/></C:filter></C:calendar-query>`;
     
-    console.log('calendar_sync: access_token prefix =', tokens.access_token?.substring(0, 20) + '...');
-    console.log('calendar_sync: sending REPORT request...');
     const response = await fetch(caldavUrl, { 
       method: 'REPORT', 
       headers: { 
-        Authorization: `Bearer ${tokens.access_token}`, 
-        'Content-Type': 'text/xml; charset="utf-8"', 
+        Authorization: `OAuth ${tokens.access_token}`, 
+        'Content-Type': 'application/xml; charset=utf-8', 
         Depth: '1' 
       }, 
       body: reportXml 
     });
     
     console.log('calendar_sync: REPORT response status =', response.status);
+    console.log('calendar_sync: REPORT response headers =', Object.fromEntries(response.headers.entries()));
+    
+    const responseText = await response.text();
+    console.log('calendar_sync: REPORT response body =', responseText.substring(0, 2000));
     
     if (!response.ok) { 
-      const errorText = await response.text(); 
-      console.error('calendar_sync: REPORT error =', errorText.substring(0, 500));
-      throw new Error(`Yandex CalDAV REPORT failed: ${response.status} ${errorText}`); 
+      console.error('calendar_sync: REPORT error details:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText.substring(0, 2000),
+        auth_method: 'OAuth',
+        token_prefix: tokens.access_token?.substring(0, 30) + '...',
+        has_refresh: !!tokens.refresh_token,
+      });
+      throw new Error(`Yandex CalDAV REPORT failed: ${response.status} ${responseText.substring(0, 500)}`); 
     }
     
-    const responseBody = await response.text();
-    console.log('calendar_sync: response body length =', responseBody.length, 'chars');
-    
-    const eventMatches = responseBody.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
+    const eventMatches = responseText.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
     console.log('calendar_sync: found', eventMatches.length, 'VEVENT blocks');
     
     for (let i = 0; i < eventMatches.length; i++) {
@@ -316,7 +334,7 @@ serve(async (req: Request) => {
       let tokens: OAuthTokens;
       
       if (incomingToken) {
-        console.log('calendar_sync: implicit token flow');
+        console.log('calendar_sync: implicit token flow (deprecated)');
         tokens = { access_token: incomingToken, refresh_token: '', expires_at: Math.floor(Date.now() / 1000) + 3600 };
       } else if (code) {
         console.log('calendar_sync: authorization code flow');
@@ -408,6 +426,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'no_active_connection', hint: 'Connect calendar first via OAuth flow' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
 
+    // Auto-refresh token if needed
     const nowSeconds = Math.floor(Date.now() / 1000);
     const tokenExpirySeconds = connection.token_expires_at ? Math.floor(new Date(connection.token_expires_at).getTime() / 1000) : 0;
     const needsRefresh = tokenExpirySeconds > 0 && (nowSeconds + 300) > tokenExpirySeconds;
@@ -417,7 +436,14 @@ serve(async (req: Request) => {
       console.log('calendar_sync: token expiring soon, attempting refresh');
       try {
         const decrypted = await decryptOauthTokens(connection.oauth_tokens_b64, encryptionKey);
-        if (!decrypted.refresh_token) throw new Error('No refresh_token available');
+        if (!decrypted.refresh_token) {
+          console.error('calendar_sync: no refresh_token available, requires re-auth');
+          return new Response(JSON.stringify({ 
+            error: 'token_refresh_failed', 
+            hint: 'Re-connect your calendar account to get a refresh_token.',
+            details: 'The stored token was obtained without refresh_token (implicit grant). Please reconnect via the updated OAuth flow.'
+          }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
         const refreshedTokens = await refreshYandexTokens(decrypted.refresh_token);
         const newEncryptedB64 = await encryptOauthTokens(refreshedTokens, encryptionKey);
         const newExpiresAt = new Date(refreshedTokens.expires_at * 1000).toISOString();
