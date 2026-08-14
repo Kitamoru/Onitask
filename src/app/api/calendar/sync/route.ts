@@ -83,12 +83,18 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await response.json().catch(() => ({}));
-    console.log('[calendar/sync] Edge function response:', response.status, Object.keys(data));
+    console.log('[calendar/sync] Edge function response:', response.status, JSON.stringify(data).substring(0, 200));
 
     if (!response.ok) {
-      console.error('[calendar/sync] Edge function error:', response.status, data);
+      console.error('[calendar/sync] Edge function error:', response.status, JSON.stringify(data));
+      // Return detailed error to client for better UX
       return NextResponse.json(
-        { success: false, error: data.error || `Edge function error: ${response.status}` },
+        { 
+          success: false, 
+          error: data.error || 'Edge function error',
+          hint: data.hint || null,
+          details: data.details || null,
+        },
         { status: response.status }
       );
     }
