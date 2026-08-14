@@ -62,7 +62,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
       setIsLoading(true);
       setError(null);
       try {
-        const res = await getCalendarConnections(workerId);
+        const res = await getCalendarConnections(workerId!);
         if (res.error) {
           setError('Не удалось загрузить подключения');
         } else {
@@ -92,7 +92,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
       setTimeout(() => setSyncStatus((prev) => ({ ...prev, [provider]: 'idle' })), 2000);
       
       // Reload connections
-      const res = await getCalendarConnections(workerId);
+      const res = await getCalendarConnections(workerId!);
       if (!res.error) setConnections(res.data ?? []);
     } catch (err) {
       console.error('Sync error:', err);
