@@ -357,11 +357,10 @@ export type Database = {
           id: string
           is_active: boolean
           last_sync_at: string | null
+          profile_id: string
           provider: string
           provider_account_email: string
           token_expires_at: string | null
-          worker_id: string
-          workspace_id: string
         }
         Insert: {
           connected_at?: string
@@ -369,11 +368,10 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          profile_id: string
           provider: string
           provider_account_email: string
           token_expires_at?: string | null
-          worker_id: string
-          workspace_id: string
         }
         Update: {
           connected_at?: string
@@ -381,39 +379,17 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          profile_id?: string
           provider?: string
           provider_account_email?: string
           token_expires_at?: string | null
-          worker_id?: string
-          workspace_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "calendar_connections_worker_id_fkey"
-            columns: ["worker_id"]
+            foreignKeyName: "calendar_connections_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: "attention_risk_pulse"
-            referencedColumns: ["worker_id"]
-          },
-          {
-            foreignKeyName: "calendar_connections_worker_id_fkey"
-            columns: ["worker_id"]
-            isOneToOne: false
-            referencedRelation: "overloaded_workers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendar_connections_worker_id_fkey"
-            columns: ["worker_id"]
-            isOneToOne: false
-            referencedRelation: "workers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendar_connections_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -425,6 +401,7 @@ export type Database = {
           description: string | null
           end_at: string
           id: string
+          profile_id: string
           provider: string
           reminder_minutes_before: number | null
           remote_event_id: string
@@ -433,7 +410,6 @@ export type Database = {
           title: string
           updated_at: string
           updated_by: string | null
-          workspace_id: string
         }
         Insert: {
           created_at?: string
@@ -441,6 +417,7 @@ export type Database = {
           description?: string | null
           end_at: string
           id?: string
+          profile_id: string
           provider: string
           reminder_minutes_before?: number | null
           remote_event_id: string
@@ -449,7 +426,6 @@ export type Database = {
           title: string
           updated_at?: string
           updated_by?: string | null
-          workspace_id: string
         }
         Update: {
           created_at?: string
@@ -457,6 +433,7 @@ export type Database = {
           description?: string | null
           end_at?: string
           id?: string
+          profile_id?: string
           provider?: string
           reminder_minutes_before?: number | null
           remote_event_id?: string
@@ -465,7 +442,6 @@ export type Database = {
           title?: string
           updated_at?: string
           updated_by?: string | null
-          workspace_id?: string
         }
         Relationships: [
           {
@@ -476,17 +452,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "calendar_events_updated_by_fkey"
-            columns: ["updated_by"]
+            foreignKeyName: "calendar_events_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "calendar_events_workspace_id_fkey"
-            columns: ["workspace_id"]
+            foreignKeyName: "calendar_events_updated_by_fkey"
+            columns: ["updated_by"]
             isOneToOne: false
-            referencedRelation: "workspaces"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

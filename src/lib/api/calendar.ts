@@ -1,47 +1,46 @@
 /**
  * Calendar Module API — onitask v0.14.0
- * Клиентские обёртки для Edge Functions calendar_sync и calendar_reminder.
+ * Клиентские обёртки для календаря. Использует /api/calendar/data endpoint
+ * с Telegram initData для аутентификации.
  */
 
-import { getClient } from '../supabase/client';
 import type {
   CalendarEvent,
   CalendarConnection,
   CalendarProvider,
-  CalendarSyncResponse,
 } from '@/types/calendar';
-
-// ═══════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════
-
-export interface SyncCalendarParams {
-  profile_id: string;
-  provider: CalendarProvider;
-  action?: 'sync' | 'connect' | 'disconnect';
-  code?: string; // для OAuth connect
-}
 
 // ═══════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════
 
 /**
- * Gets the current user's workspace_id from Supabase auth.
+ * Calls /api/calendar/data with the given action and body.
+ * Uses Telegram initData for authentication.
  */
-async function getCurrentWorkspaceId(): Promise<string | null> {
-  const supabase = getClient();
-  // Get current user session
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+async function callCalendarApi(
+  action: string,
+  body: Record<string, unknown>,
+  initData?: string
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const response = await fetch('/api/calendar/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, action, init_data: initData }),
+  });
 
-  const { data: worker } = await supabase
-    .from('workers')
-    .select('workspace_id')
-    .eq('source_id', user.id)
-    .single();
+  if (!response.ok) {
+    return {
+      success: false,
+      error: `HTTP ${response.status}`,
+    };
+  }
 
-  return worker?.workspace_id ?? null;
+  return response.json() as Promise<{
+    success: boolean;
+    data?: unknown;
+    error?: string;
+  }>;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -54,38 +53,28 @@ async function getCurrentWorkspaceId(): Promise<string | null> {
 export async function getCalendarEvents(
   profileId: string,
   options?: {
+    initData?: string;
     startDate?: Date;
     endDate?: Date;
     provider?: CalendarProvider;
     limit?: number;
   }
-): Promise<{ data: CalendarEvent[] | null; error: unknown }> {
-  const supabase = getClient();
-  const { startDate, endDate, provider, limit = 200 } = options ?? {};
+): Promise<{ data: CalendarEvent[] | null; error: string | null }> {
+  const { initData, startDate, endDate, provider, limit = 200 } = options ?? {};
 
-  let query = supabase
-    .from('calendar_events')
-    .select('*')
-    .eq('profile_id', profileId)
-    .order('start_at', { ascending: true })
-    .limit(limit);
+  const result = await callCalendarApi('get_events', {
+    profile_id: profileId,
+    start_date: startDate?.toISOString(),
+    end_date: endDate?.toISOString(),
+    provider,
+    limit,
+  }, initData);
 
-  if (startDate && endDate) {
-    query = query.or(
-      `start_at.gte.${startDate.toISOString()},end_at.lte.${endDate.toISOString()}`
-    );
+  if (!result.success) {
+    return { data: null, error: result.error ?? 'Unknown error' };
   }
 
-  if (provider) {
-    query = query.eq('provider', provider);
-  }
-
-  const { data, error } = await query as {
-    data: CalendarEvent[] | null;
-    error: unknown;
-  };
-
-  return { data, error };
+  return { data: (result.data ?? []) as CalendarEvent[], error: null };
 }
 
 /**
@@ -93,38 +82,35 @@ export async function getCalendarEvents(
  */
 export async function upsertCalendarEvent(
   profileId: string,
-  eventData: Omit<CalendarEvent, 'id' | 'profile_id' | 'created_at' | 'updated_at'>
-): Promise<{ data: CalendarEvent | null; error: unknown }> {
-  const supabase = getClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  eventData: Omit<CalendarEvent, 'id' | 'profile_id' | 'created_at' | 'updated_at'>,
+  initData?: string
+): Promise<{ data: CalendarEvent | null; error: string | null }> {
+  const result = await callCalendarApi('upsert_event', {
+    profile_id: profileId,
+    event_data: eventData,
+  }, initData);
 
-  const { data, error } = await supabase
-    .from('calendar_events')
-    .upsert({
-      ...eventData,
-      profile_id: profileId,
-      updated_by: user?.id ?? null,
-    }, {
-      onConflict: 'profile_id,remote_event_id',
-      ignoreDuplicates: false,
-    })
-    .select()
-    .single() as { data: CalendarEvent | null; error: unknown };
+  if (!result.success) {
+    return { data: null, error: result.error ?? 'Unknown error' };
+  }
 
-  return { data, error };
+  return { data: result.data as CalendarEvent | null, error: null };
 }
 
 /**
  * Deletes a calendar event.
  */
-export async function deleteCalendarEvent(eventId: string): Promise<{ error: unknown }> {
-  const supabase = getClient();
-  const { error } = await supabase
-    .from('calendar_events')
-    .delete()
-    .eq('id', eventId);
+export async function deleteCalendarEvent(
+  eventId: string,
+  initData?: string
+): Promise<{ error: string | null }> {
+  const result = await callCalendarApi('delete_event', { event_id: eventId }, initData);
 
-  return { error };
+  if (!result.success) {
+    return { error: result.error ?? 'Unknown error' };
+  }
+
+  return { error: null };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -132,40 +118,68 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error: unk
 // ═══════════════════════════════════════════════════════
 
 /**
- * Fetches all active calendar connections for a profile (user).
- * Calendar connections are per-user (profile).
+ * Fetches all active calendar connections for a profile.
  */
 export async function getCalendarConnections(
-  profileId: string
-): Promise<{ data: CalendarConnection[] | null; error: unknown }> {
-  // Return empty if no profile ID (not authenticated yet)
+  profileId: string,
+  initData?: string
+): Promise<{ data: CalendarConnection[] | null; error: string | null }> {
   if (!profileId || profileId.trim() === '') {
     return { data: [], error: null };
   }
 
-  const supabase = getClient();
-  const { data, error } = await supabase
-    .from('calendar_connections')
-    .select('*')
-    .eq('profile_id', profileId)
-    .eq('is_active', true)
-    .order('connected_at', { ascending: false }) as {
-      data: CalendarConnection[] | null;
-      error: unknown;
-    };
+  const result = await callCalendarApi('get_connections', { profile_id: profileId }, initData);
 
-  return { data, error };
+  if (!result.success) {
+    return { data: null, error: result.error ?? 'Unknown error' };
+  }
+
+  return { data: (result.data ?? []) as CalendarConnection[], error: null };
+}
+
+// ═══════════════════════════════════════════════════════
+// Reminder Settings
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Updates reminder_minutes_before for a calendar event.
+ */
+export async function updateReminderSettings(
+  eventId: string,
+  reminderMinutes: number | null,
+  initData?: string
+): Promise<{ success: boolean; error: string | null }> {
+  const result = await callCalendarApi('update_reminder', {
+    event_id: eventId,
+    reminder_minutes: reminderMinutes,
+  }, initData);
+
+  if (!result.success) {
+    return { success: false, error: result.error ?? 'Unknown error' };
+  }
+
+  return { success: true, error: null };
+}
+
+// ═══════════════════════════════════════════════════════
+// Sync & Disconnect (Edge Functions fallback)
+// ═══════════════════════════════════════════════════════
+
+export interface SyncCalendarParams {
+  profile_id: string;
+  provider: CalendarProvider;
+  action?: 'sync' | 'connect' | 'disconnect';
+  code?: string;
 }
 
 /**
  * Initiates OAuth flow by calling calendar_sync Edge Function.
  */
-export async function syncCalendar(params: SyncCalendarParams): Promise<CalendarSyncResponse> {
-  const supabase = getClient();
+export async function syncCalendar(
+  params: SyncCalendarParams
+): Promise<Record<string, unknown>> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token ?? '';
+  const token = localStorage.getItem('sb-token-auth-token');
 
   const response = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
     method: 'POST',
@@ -181,7 +195,7 @@ export async function syncCalendar(params: SyncCalendarParams): Promise<Calendar
     throw new Error(errorData.error || `Sync failed: ${response.status}`);
   }
 
-  return response.json() as Promise<CalendarSyncResponse>;
+  return response.json() as Promise<Record<string, unknown>>;
 }
 
 /**
@@ -202,39 +216,6 @@ export async function disconnectCalendar(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Disconnect failed',
-    };
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-// Reminder Settings
-// ═══════════════════════════════════════════════════════
-
-/**
- * Updates reminder_minutes_before for a calendar event via direct DB update.
- * The database trigger trg_schedule_calendar_reminder will automatically
- * create an enrichment_queue job for the Telegram notification.
- */
-export async function updateReminderSettings(
-  eventId: string,
-  reminderMinutes: number | null
-): Promise<{ success: boolean; error: string | null }> {
-  try {
-    const supabase = getClient();
-    const { error } = await supabase
-      .from('calendar_events')
-      .update({ reminder_minutes_before: reminderMinutes })
-      .eq('id', eventId);
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, error: null };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Update failed',
     };
   }
 }
