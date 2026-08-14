@@ -16,19 +16,10 @@ import type {
 // ═══════════════════════════════════════════════════════
 
 export interface SyncCalendarParams {
-  workspace_id: string;
+  profile_id: string;
   provider: CalendarProvider;
   action?: 'sync' | 'connect' | 'disconnect';
   code?: string; // для OAuth connect
-  worker_id?: string; // для disconnect
-}
-
-export interface ConnectOAuthParams {
-  workspace_id: string;
-  provider: CalendarProvider;
-  code: string;
-  worker_id: string;
-  provider_account_email: string;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -58,10 +49,10 @@ async function getCurrentWorkspaceId(): Promise<string | null> {
 // ═══════════════════════════════════════════════════════
 
 /**
- * Fetches all calendar events for a workspace within a date range.
+ * Fetches all calendar events for a profile within a date range.
  */
 export async function getCalendarEvents(
-  workspaceId: string,
+  profileId: string,
   options?: {
     startDate?: Date;
     endDate?: Date;
@@ -75,7 +66,7 @@ export async function getCalendarEvents(
   let query = supabase
     .from('calendar_events')
     .select('*')
-    .eq('workspace_id', workspaceId)
+    .eq('profile_id', profileId)
     .order('start_at', { ascending: true })
     .limit(limit);
 
@@ -101,8 +92,8 @@ export async function getCalendarEvents(
  * Creates or updates a calendar event manually.
  */
 export async function upsertCalendarEvent(
-  workspaceId: string,
-  eventData: Omit<CalendarEvent, 'id' | 'workspace_id' | 'created_at' | 'updated_at'>
+  profileId: string,
+  eventData: Omit<CalendarEvent, 'id' | 'profile_id' | 'created_at' | 'updated_at'>
 ): Promise<{ data: CalendarEvent | null; error: unknown }> {
   const supabase = getClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -111,10 +102,10 @@ export async function upsertCalendarEvent(
     .from('calendar_events')
     .upsert({
       ...eventData,
-      workspace_id: workspaceId,
+      profile_id: profileId,
       updated_by: user?.id ?? null,
     }, {
-      onConflict: 'workspace_id,remote_event_id',
+      onConflict: 'profile_id,remote_event_id',
       ignoreDuplicates: false,
     })
     .select()
@@ -141,14 +132,14 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error: unk
 // ═══════════════════════════════════════════════════════
 
 /**
- * Fetches all active calendar connections for a worker (user).
- * Calendar connections are per-user, not per-workspace.
+ * Fetches all active calendar connections for a profile (user).
+ * Calendar connections are per-user (profile).
  */
 export async function getCalendarConnections(
-  workerId: string
+  profileId: string
 ): Promise<{ data: CalendarConnection[] | null; error: unknown }> {
-  // Return empty if no worker ID (not authenticated yet)
-  if (!workerId || workerId.trim() === '') {
+  // Return empty if no profile ID (not authenticated yet)
+  if (!profileId || profileId.trim() === '') {
     return { data: [], error: null };
   }
 
@@ -156,7 +147,7 @@ export async function getCalendarConnections(
   const { data, error } = await supabase
     .from('calendar_connections')
     .select('*')
-    .eq('worker_id', workerId)
+    .eq('profile_id', profileId)
     .eq('is_active', true)
     .order('connected_at', { ascending: false }) as {
       data: CalendarConnection[] | null;
@@ -197,16 +188,14 @@ export async function syncCalendar(params: SyncCalendarParams): Promise<Calendar
  * Disconnects a calendar account.
  */
 export async function disconnectCalendar(
-  workspaceId: string,
-  provider: CalendarProvider,
-  workerId: string
+  profileId: string,
+  provider: CalendarProvider
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     await syncCalendar({
-      workspace_id: workspaceId,
+      profile_id: profileId,
       provider,
       action: 'disconnect',
-      worker_id: workerId,
     });
     return { success: true, error: null };
   } catch (err) {

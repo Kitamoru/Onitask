@@ -37,12 +37,12 @@ function CalendarContent() {
 
   useEffect(() => {
     // Only load when BOTH workspace AND auth data are ready
-    if (workspaceId && !authLoading && authData?.worker?.id) {
+    if (workspaceId && !authLoading && authData?.profile_id) {
       loadData();
     } else if (!authLoading && !workspaceId) {
       setIsLoading(false);
     }
-  }, [workspaceId, authLoading, authData?.worker?.id]);
+  }, [workspaceId, authLoading, authData?.profile_id]);
 
   async function loadData() {
     if (!workspaceId) return;
@@ -52,11 +52,11 @@ function CalendarContent() {
 
     try {
       const [eventsRes, connectionsRes] = await Promise.all([
-        getCalendarEvents(workspaceId, {
+        getCalendarEvents(authData?.profile_id ?? '', {
           startDate: new Date(new Date().getFullYear(), 0, 1),
           endDate: new Date(new Date().getFullYear(), 11, 31),
         }),
-        getCalendarConnections(authData?.worker?.id ?? ''),
+        getCalendarConnections(authData?.profile_id ?? ''),
       ]);
 
       if (connectionsRes.error) {
@@ -112,20 +112,20 @@ function CalendarContent() {
   }
 
   async function handleStoreToken() {
-    // Calendar connections are per-user (worker), not per-workspace
-    // Use the authenticated worker's ID from InitResponse
-    const workerId = authData?.worker?.id;
+    // Calendar connections are per-user (profile)
+    // Use the authenticated profile's ID (profiles.id = auth.users.id)
+    const profileId = authData?.profile_id;
     
     console.log('[Calendar] handleStoreToken called');
     console.log('[Calendar] oauthToken length:', oauthToken?.length);
-    console.log('[Calendar] workerId:', workerId);
+    console.log('[Calendar] profileId:', profileId);
     
     if (!oauthToken?.trim()) {
       setError('Токен не введен');
       return;
     }
     
-    if (!workerId) {
+    if (!profileId) {
       setError('Пользователь не авторизован');
       return;
     }
@@ -138,7 +138,7 @@ function CalendarContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: oauthToken.trim(),
-          worker_id: workerId,
+          profile_id: profileId,
         }),
       });
 
@@ -167,15 +167,14 @@ function CalendarContent() {
   }
 
   async function handleSync(provider: CalendarProvider) {
-    if (!workspaceId || !authData?.worker?.id) return;
+    if (!workspaceId || !authData?.profile_id) return;
     
     setIsSyncing(true);
     setSyncStatus('syncing');
 
     try {
       await syncCalendar({
-        workspace_id: workspaceId,
-        worker_id: authData.worker.id,
+        profile_id: authData.profile_id,
         provider,
         action: 'sync',
       });

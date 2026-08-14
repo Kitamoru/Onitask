@@ -15,7 +15,7 @@ export type CalendarViewMode = 'month-list' | 'day' | 'three-days' | 'list';
 
 export interface CalendarEvent {
   id: string;
-  workspace_id: string;
+  profile_id: string;
   provider: CalendarProvider;
   remote_event_id: string;
   title: string;
@@ -32,8 +32,7 @@ export interface CalendarEvent {
 
 export interface CalendarConnection {
   id: string;
-  workspace_id: string;
-  worker_id: string;
+  profile_id: string;
   provider: CalendarProvider;
   provider_account_email: string;
   token_expires_at: string | null;

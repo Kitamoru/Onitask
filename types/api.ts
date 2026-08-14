@@ -79,6 +79,8 @@ export interface WorkspacePreview {
 
 export interface InitResponse {
   worker: InitWorkerResponse;
+  /** UUID of the user's profile (profiles.id = auth.users.id) */
+  profile_id: string;
   workspaces: WorkspacePreview[];
   is_new_user: boolean;
   /** UUID of the user's most recently selected workspace/board (null = never selected) */

@@ -24,19 +24,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 interface CalendarConnection {
   id: string;
-  worker_id: string;
+  profile_id: string;
   provider: 'yandex';
   provider_account_email: string;
   encrypted_oauth_tokens: Uint8Array;
   token_expires_at: string | null;
   is_active: boolean;
   last_sync_at: string | null;
-  // workspace_id resolved from workers table at runtime
-  resolved_workspace_id?: string;
 }
 
 interface CalendarEventPayload {
-  workspace_id: string;
+  profile_id: string;
   provider: 'yandex';
   remote_event_id: string;
   title: string;
@@ -160,7 +158,7 @@ async function upsertCalendarEvent(
     .from('calendar_events')
     .upsert(
       {
-        workspace_id: payload.workspace_id,
+        profile_id: payload.profile_id,
         provider: payload.provider,
         remote_event_id: payload.remote_event_id,
         title: payload.title.slice(0, 500),
@@ -171,7 +169,7 @@ async function upsertCalendarEvent(
         source_synced_at: new Date().toISOString(),
       },
       {
-        onConflict: 'workspace_id,provider,remote_event_id',
+        onConflict: 'profile_id,provider,remote_event_id',
         ignoreDuplicates: false,
       }
     );
@@ -277,7 +275,7 @@ async function syncYandex(
         const endAt = parseDate(dtEndMatch[1].trim());
 
         await upsertCalendarEvent(supabase, {
-          workspace_id: connection.resolved_workspace_id || '',
+          profile_id: connection.profile_id,
           provider: 'yandex',
           remote_event_id: remoteId,
           title,
@@ -476,18 +474,16 @@ serve(async (req: Request) => {
 
     // ── 3. Parse request body ──────────────────────────────
     const body = await req.json();
-    const { workspace_id, worker_id, provider, action = 'sync' } = body as {
-      workspace_id?: string;
-      worker_id?: string;
+    const { profile_id, provider, action = 'sync' } = body as {
+      profile_id?: string;
       provider?: 'yandex';
       action?: 'sync' | 'connect' | 'disconnect';
     };
 
-    // Calendar connections are per-user (worker), not per-workspace
-    // workspace_id is optional — used for event filtering, not required for connection
-    if (!worker_id && !workspace_id) {
+    // Calendar connections are per-user (profile), not per-workspace
+    if (!profile_id) {
       return new Response(
-        JSON.stringify({ error: 'worker_id or workspace_id is required' }),
+        JSON.stringify({ error: 'profile_id is required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -510,21 +506,13 @@ serve(async (req: Request) => {
     if (action === 'connect') {
       // OAuth callback: exchange code for tokens, encrypt, save
       // Supports two flows:
-      // 1. Authorization code flow: { code, worker_id } → exchange via OAuth
-      // 2. Implicit token flow: { access_token, worker_id } → use directly
-      const { code, access_token: incomingToken, worker_id, provider_account_email } = body as {
+      // 1. Authorization code flow: { code, profile_id } → exchange via OAuth
+      // 2. Implicit token flow: { access_token, profile_id } → use directly
+      const { code, access_token: incomingToken, provider_account_email } = body as {
         code?: string;
         access_token?: string;
-        worker_id?: string;
         provider_account_email?: string;
       };
-
-      if (!worker_id) {
-        return new Response(
-          JSON.stringify({ error: 'worker_id required for connect action' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
 
       // Determine which flow to use
       let tokens: OAuthTokens;
@@ -561,31 +549,11 @@ serve(async (req: Request) => {
         );
       }
 
-      // Step 2: Resolve workspace_id from workers table (connections are per-worker now)
-      let resolvedWorkspaceId = workspace_id;
-      
-      if (!resolvedWorkspaceId && worker_id) {
-        const { data: workerData } = await supabase
-          .from('workers')
-          .select('workspace_id')
-          .eq('id', worker_id)
-          .maybeSingle();
-        
-        resolvedWorkspaceId = workerData?.workspace_id || '';
-      }
-      
-      if (!resolvedWorkspaceId) {
-        return new Response(
-          JSON.stringify({ error: 'workspace_id not found for worker' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Check if connection already exists for this worker+provider
+      // Check if connection already exists for this profile+provider
       const { data: existingConnection } = await supabase
         .from('calendar_connections')
         .select('id, provider_account_email')
-        .eq('worker_id', worker_id)
+        .eq('profile_id', profile_id)
         .eq('provider', provider)
         .maybeSingle();
 
@@ -624,11 +592,11 @@ serve(async (req: Request) => {
           })
           .eq('id', existingConnection.id);
       } else {
-        // Create new connection (no workspace_id column in calendar_connections)
+        // Create new connection
         const { error: insertError } = await supabase
           .from('calendar_connections')
           .insert({
-            worker_id,
+            profile_id,
             provider,
             provider_account_email: accountEmail,
             encrypted_oauth_tokens: encryptedTokens,
@@ -646,19 +614,18 @@ serve(async (req: Request) => {
         }
       }
 
-      // Step 5: Trigger initial sync with resolved workspace_id
+      // Step 5: Trigger initial sync
       let syncResult: { synced: number; errors: string[] };
       try {
         syncResult = await syncYandex(supabase, {
           id: existingConnection?.id || '',
-          worker_id,
+          profile_id,
           provider,
           provider_account_email: accountEmail,
           encrypted_oauth_tokens: encryptedTokens,
           token_expires_at: expiresAt,
           is_active: true,
           last_sync_at: null,
-          resolved_workspace_id: resolvedWorkspaceId,
         } as CalendarConnection, tokens);
       } catch (syncErr) {
         console.error('calendar_sync: initial sync failed', syncErr);
@@ -677,19 +644,11 @@ serve(async (req: Request) => {
     }
 
     if (action === 'disconnect') {
-      // Deactivate connection (per-worker, no workspace_id in connections)
-      const { worker_id } = body as { worker_id?: string };
-      if (!worker_id) {
-        return new Response(
-          JSON.stringify({ error: 'worker_id required for disconnect action' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-
+      // Deactivate connection (per-profile)
       const { error: updateError } = await supabase
         .from('calendar_connections')
         .update({ is_active: false })
-        .eq('worker_id', worker_id)
+        .eq('profile_id', profile_id)
         .eq('provider', provider);
 
       if (updateError) {
@@ -706,31 +665,11 @@ serve(async (req: Request) => {
     }
 
     // ── 5. Sync action ─────────────────────────────────────
-    // Resolve workspace_id from workers table (connections are per-worker)
-    let syncWorkspaceId = workspace_id;
-    
-    if (!syncWorkspaceId && worker_id) {
-      const { data: workerData } = await supabase
-        .from('workers')
-        .select('workspace_id')
-        .eq('id', worker_id)
-        .maybeSingle();
-      
-      syncWorkspaceId = workerData?.workspace_id || '';
-    }
-
-    if (!syncWorkspaceId) {
-      return new Response(
-        JSON.stringify({ error: 'workspace_id not found for worker' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Fetch active connection by worker_id
+    // Fetch active connection by profile_id
     const { data: connection, error: connError } = await supabase
       .from('calendar_connections')
       .select('*')
-      .eq('worker_id', worker_id)
+      .eq('profile_id', profile_id)
       .eq('provider', provider)
       .eq('is_active', true)
       .maybeSingle() as { data: CalendarConnection | null; error: unknown };
@@ -812,13 +751,8 @@ serve(async (req: Request) => {
       }
     }
 
-    // Route to provider-specific sync with resolved workspace_id
-    const connectionWithWorkspace = {
-      ...connection,
-      resolved_workspace_id: syncWorkspaceId,
-    } as CalendarConnection;
-    
-    const result = await syncYandex(supabase, connectionWithWorkspace, tokens);
+    // Route to provider-specific sync
+    const result = await syncYandex(supabase, connection, tokens);
 
     // Update last_sync_at
     await supabase

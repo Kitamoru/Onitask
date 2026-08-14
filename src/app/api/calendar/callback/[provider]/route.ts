@@ -34,14 +34,13 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { token, workspace_id, worker_id } = body as {
+    const { token, profile_id } = body as {
       token?: string;
-      workspace_id?: string;
-      worker_id?: string;
+      profile_id?: string;
     };
 
     // Validate required fields
-    // Calendar connections are per-user (worker), not per-workspace
+    // Calendar connections are per-user (profile)
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'missing_token' },
@@ -49,15 +48,14 @@ export async function POST(
       );
     }
 
-    if (!worker_id) {
+    if (!profile_id) {
       return NextResponse.json(
-        { success: false, error: 'missing_worker_id' },
+        { success: false, error: 'missing_profile_id' },
         { status: 400 }
       );
     }
 
     // Store token via Edge Function (handles encryption + DB storage)
-    // worker_id is required; workspace_id is optional (used for filtering events)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     
@@ -71,8 +69,7 @@ export async function POST(
         'apikey': supabaseAnonKey,
       },
       body: JSON.stringify({
-        worker_id,
-        workspace_id, // optional — used for event filtering, not required for connection
+        profile_id,
         provider,
         action: 'connect',
         access_token: token,

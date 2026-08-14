@@ -24,45 +24,37 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({});
   const [error, setError] = useState<string | null>(null);
-  const [workerId, setWorkerId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   const isConnected = (provider: CalendarProvider) => {
     return connections.some((c) => c.provider === provider && c.is_active);
   };
 
-  // Fetch worker_id from auth
+  // Fetch profile_id from auth (profiles.id = auth.users.id)
   useEffect(() => {
-    async function fetchWorkerId() {
+    async function fetchProfileId() {
       try {
         const supabase = getClient();
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: worker } = await supabase
-          .from('workers')
-          .select('id')
-          .eq('source_id', user.id)
-          .single();
-
-        if (worker?.id) {
-          setWorkerId(worker.id);
+        if (user?.id) {
+          setProfileId(user.id);
         }
       } catch (err) {
-        console.error('Failed to fetch worker_id:', err);
+        console.error('Failed to fetch profile_id:', err);
       }
     }
 
-    fetchWorkerId();
+    fetchProfileId();
   }, []);
 
   useEffect(() => {
-    if (!workspaceId || !workerId) return;
+    if (!workspaceId || !profileId) return;
 
     async function load() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await getCalendarConnections(workerId!);
+        const res = await getCalendarConnections(profileId!);
         if (res.error) {
           setError('Не удалось загрузить подключения');
         } else {
@@ -76,15 +68,14 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
     }
 
     load();
-  }, [workspaceId, workerId]);
+  }, [workspaceId, profileId]);
 
   async function handleSync(provider: CalendarProvider) {
-    if (!workerId) return;
+    if (!profileId) return;
     setSyncStatus((prev) => ({ ...prev, [provider]: 'syncing' }));
     try {
       await syncCalendar({ 
-        workspace_id: workspaceId, 
-        worker_id: workerId,
+        profile_id: profileId,
         provider, 
         action: 'sync' 
       });
@@ -92,7 +83,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
       setTimeout(() => setSyncStatus((prev) => ({ ...prev, [provider]: 'idle' })), 2000);
       
       // Reload connections
-      const res = await getCalendarConnections(workerId!);
+      const res = await getCalendarConnections(profileId);
       if (!res.error) setConnections(res.data ?? []);
     } catch (err) {
       console.error('Sync error:', err);
@@ -100,9 +91,9 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
     }
   }
 
-  async function handleDisconnect(provider: CalendarProvider, connWorkerId: string) {
-    if (!workerId) return;
-    const result = await disconnectCalendar(workspaceId, provider, workerId);
+  async function handleDisconnect(provider: CalendarProvider) {
+    if (!profileId) return;
+    const result = await disconnectCalendar(profileId, provider);
     if (result.success) {
       setConnections((prev) => prev.filter((c) => !(c.provider === provider)));
     }
@@ -189,8 +180,8 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
                 ↻
               </button>
               <button
-                onClick={() => yandexConn && handleDisconnect('yandex', yandexConn.worker_id)}
-                disabled={!workerId}
+                onClick={() => yandexConn && handleDisconnect('yandex')}
+                disabled={!profileId}
                 className="rounded-sm px-2 py-1 text-body-xs transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error disabled:opacity-50"
                 style={{ color: 'var(--color-error)' }}
                 aria-label="Отключить Яндекс Календарь"
