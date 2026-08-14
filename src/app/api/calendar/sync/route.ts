@@ -13,11 +13,41 @@ import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 
 export async function POST(req: NextRequest) {
-  // 1. Authenticate via Telegram initData
-  const body = await req.json().catch(() => ({}));
-  const { init_data } = body as { init_data?: string };
+  // 1. Parse body
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ success: false, error: 'invalid_json' }, { status: 400 });
+  }
 
+  const { init_data, profile_id, provider, action, code } = body as {
+    init_data?: string;
+    profile_id?: string;
+    provider?: string;
+    action?: string;
+    code?: string;
+  };
+
+  // Debug logging
+  console.log('[calendar/sync] Request received:', {
+    hasInitData: !!init_data,
+    initDataLength: init_data?.length,
+    profile_id,
+    provider,
+    action,
+  });
+
+  // 2. Authenticate via Telegram initData
   const auth = await authenticateRequest(init_data);
+  
+  console.log('[calendar/sync] Auth result:', {
+    authenticated: auth.authenticated,
+    profileId: auth.profileId,
+    error: auth.error,
+    status: auth.status,
+  });
+
   if (!auth.authenticated || !auth.profileId) {
     return NextResponse.json(
       { success: false, error: auth.error || 'unauthorized' },
@@ -25,16 +55,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Extract params from body
-  const { profile_id, provider, action, code } = body as {
-    profile_id?: string;
-    provider?: string;
-    action?: string;
-    code?: string;
-  };
-
   // Security: only allow syncing own profile
-  if (profile_id && profile_id !== auth.profileId) {
+  const targetProfile = profile_id || auth.profileId;
+  if (targetProfile !== auth.profileId) {
     return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
   }
 
@@ -43,6 +66,8 @@ export async function POST(req: NextRequest) {
   const edgeFunctionUrl = `${supabaseUrl}/functions/v1/calendar-sync`;
 
   try {
+    console.log('[calendar/sync] Proxing to edge function:', edgeFunctionUrl);
+    
     const response = await fetch(edgeFunctionUrl, {
       method: 'POST',
       headers: {
@@ -50,7 +75,7 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
       body: JSON.stringify({
-        profile_id: profile_id || auth.profileId,
+        profile_id: targetProfile,
         provider,
         action,
         code,
@@ -58,6 +83,7 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await response.json().catch(() => ({}));
+    console.log('[calendar/sync] Edge function response:', response.status, Object.keys(data));
 
     if (!response.ok) {
       console.error('[calendar/sync] Edge function error:', response.status, data);

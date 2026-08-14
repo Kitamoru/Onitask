@@ -183,16 +183,23 @@ export async function syncCalendar(
     profile_id: params.profile_id,
     provider: params.provider,
     action: params.action,
+    hasInitData: !!initData,
+    initDataLength: initData?.length,
+    initDataPreview: initData ? initData.substring(0, 50) + '...' : '(none)',
   });
+
+  const payload = {
+    ...params,
+    init_data: initData,
+  };
+
+  console.log('[calendar/syncCalendar] Sending payload:', JSON.stringify(payload).substring(0, 200));
 
   try {
     const response = await fetch('/api/calendar/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...params,
-        init_data: initData,
-      }),
+      body: JSON.stringify(payload),
     });
 
     console.log('[calendar/syncCalendar] Response status:', response.status);

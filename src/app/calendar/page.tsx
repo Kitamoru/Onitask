@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { CalendarView } from '@/components/calendar/CalendarView';
 import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
@@ -29,6 +29,10 @@ function CalendarContent() {
   // Use active workspace from DataContext (like flowboard does)
   const workspaceId = state.activeWorkspaceId;
 
+  // Ref to prevent duplicate loadData calls when deps change rapidly
+  const loadingRef = useRef(false);
+  const loadedProfileRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!authLoading && !workspaceId) {
       loadBoardsData(undefined).catch(() => {});
@@ -36,12 +40,24 @@ function CalendarContent() {
   }, [authLoading, workspaceId, loadBoardsData]);
 
   useEffect(() => {
-    // Only load when BOTH workspace AND auth data are ready
-    if (workspaceId && !authLoading && authData?.profile_id) {
-      loadData();
-    } else if (!authLoading && !workspaceId) {
-      setIsLoading(false);
+    // Skip if already loading or already loaded for this profile
+    if (loadingRef.current || !workspaceId || authLoading) return;
+    if (!authData?.profile_id) {
+      if (!authLoading && !workspaceId) {
+        setIsLoading(false);
+      }
+      return;
     }
+
+    // Only load once per profile_id
+    if (loadedProfileRef.current === authData.profile_id) return;
+
+    loadingRef.current = true;
+    loadedProfileRef.current = authData.profile_id;
+
+    loadData().finally(() => {
+      loadingRef.current = false;
+    });
   }, [workspaceId, authLoading, authData?.profile_id]);
 
   async function loadData() {
