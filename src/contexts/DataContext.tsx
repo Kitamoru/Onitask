@@ -340,9 +340,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Ref to track which workspace was used in the parallel load (for comparison when authData arrives)
   const firstLoadedWorkspaceIdRef = useRef<string | null>(null);
 
-  // Ref to track an ongoing loadBoardsData call to prevent concurrent duplicates
-  const loadInProgressRef = useRef(false);
-
   // State for data loading error and workspace switching
   const [dataError, setDataError] = useState<string | null>(null);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
@@ -354,13 +351,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.warn('[DataContext] loadBoardsData called before initData is available');
       return;
     }
-
-    // Dedup guard: skip if a load is already in progress for the same or broader scope
-    if (loadInProgressRef.current) {
-      console.debug('[DataContext] loadBoardsData: skipping, load already in progress');
-      return;
-    }
-    loadInProgressRef.current = true;
 
     const isPartial = options?.partial ?? false;
 
@@ -512,9 +502,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const message = err instanceof Error ? err.message : 'failed_to_load_boards_data';
       console.error('[DataContext] failed to load boards data:', err);
       setDataError(message);
-    } finally {
-      clearTimeout(timeoutId);
-      loadInProgressRef.current = false;
     }
   }, []);
 

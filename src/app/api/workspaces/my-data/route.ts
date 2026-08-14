@@ -1,4 +1,4 @@
-'use server';
+ 'use server';
 
 /**
  * POST /api/workspaces/my-data — Returns authenticated user's workspace data + flow metrics.
@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
-import { enrichTaskRow, type EnrichedTask } from '../../../../../lib/taskEnrichment';
+import { enrichTaskRowsBatch, type EnrichedTask } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -152,11 +152,8 @@ export async function POST(req: NextRequest) {
     const workspaces = wsResult.data || [];
     const rawTasks = taskResult.data || [];
     
-    // Enrich tasks with workspace_name, created_by_name, assigned_to_name
-    const tasks: EnrichedTask[] = [];
-    for (const row of rawTasks as TasksRow[]) {
-      tasks.push(await enrichTaskRow(row));
-    }
+    // Enrich tasks with workspace_name, created_by_name, assigned_to_name (batch — single DB query)
+    const tasks: EnrichedTask[] = await enrichTaskRowsBatch(rawTasks as TasksRow[]);
     
     const relevantTasks = metricsWorkspaceId ? tasks.filter((t: EnrichedTask) => t.workspace_id === metricsWorkspaceId) : tasks;
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useData } from "@/contexts/DataContext";
 import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 import { Button } from "@/components/ui/desk-ui/Button";
 import { BasicInfoSection } from "@/components/desk-create/BasicInfoSection";
@@ -64,7 +63,6 @@ export function EditDeskForm({
   onAddColleague: () => void;
 }) {
   const router = useRouter();
-  const { state } = useData();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
