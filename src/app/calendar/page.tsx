@@ -36,12 +36,13 @@ function CalendarContent() {
   }, [authLoading, workspaceId, loadBoardsData]);
 
   useEffect(() => {
-    if (workspaceId) {
+    // Only load when BOTH workspace AND auth data are ready
+    if (workspaceId && !authLoading && authData?.worker?.id) {
       loadData();
     } else if (!authLoading && !workspaceId) {
       setIsLoading(false);
     }
-  }, [workspaceId, authLoading]);
+  }, [workspaceId, authLoading, authData?.worker?.id]);
 
   async function loadData() {
     if (!workspaceId) return;

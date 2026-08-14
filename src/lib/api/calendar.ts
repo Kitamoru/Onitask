@@ -147,6 +147,11 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error: unk
 export async function getCalendarConnections(
   workerId: string
 ): Promise<{ data: CalendarConnection[] | null; error: unknown }> {
+  // Return empty if no worker ID (not authenticated yet)
+  if (!workerId || workerId.trim() === '') {
+    return { data: [], error: null };
+  }
+
   const supabase = getClient();
   const { data, error } = await supabase
     .from('calendar_connections')
