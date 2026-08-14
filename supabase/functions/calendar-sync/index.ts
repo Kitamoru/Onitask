@@ -480,6 +480,8 @@ serve(async (req: Request) => {
       action?: 'sync' | 'connect' | 'disconnect';
     };
 
+    console.log('calendar_sync: action=', action, 'profile_id=', profile_id, 'provider=', provider);
+
     // Calendar connections are per-user (profile), not per-workspace
     if (!profile_id) {
       return new Response(
@@ -741,11 +743,28 @@ serve(async (req: Request) => {
     } else {
       // Token is still valid — decrypt normally
       try {
+        // Log encrypted token size for debugging
+        const tokenBytes = connection.encrypted_oauth_tokens instanceof Uint8Array
+          ? connection.encrypted_oauth_tokens
+          : new TextEncoder().encode(String(connection.encrypted_oauth_tokens));
+        console.log('calendar_sync: encrypted_oauth_tokens length =', tokenBytes.length, 'bytes');
+        console.log('calendar_sync: encryptionKey length =', encryptionKey.length, 'chars');
+
         tokens = await decryptOauthTokens(connection.encrypted_oauth_tokens, encryptionKey);
+        console.log('calendar_sync: tokens decrypted successfully, has_refresh_token=', !!tokens.refresh_token);
       } catch (decryptErr) {
         console.error('calendar_sync: decryption failed', decryptErr);
+        // Provide more context in the error response
+        const tokenLen = connection.encrypted_oauth_tokens instanceof Uint8Array
+          ? connection.encrypted_oauth_tokens.length
+          : 0;
         return new Response(
-          JSON.stringify({ error: 'token_decryption_failed' }),
+          JSON.stringify({
+            error: 'token_decryption_failed',
+            hint: 'Re-connect your calendar account. Existing tokens may be encrypted with a different key.',
+            details: decryptErr instanceof Error ? decryptErr.message : 'unknown',
+            token_bytes_stored: tokenLen,
+          }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
       }
