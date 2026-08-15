@@ -142,7 +142,7 @@ export async function sendMessage(
   token: string,
   params: SendMessageParams
 ): Promise<Message> {
-  return botApiRequest<Message>('sendMessage', {
+  return botApiRequest<Message>(token, 'sendMessage', {
     chat_id: params.chat_id,
     text: params.text.slice(0, MAX_MESSAGE_LENGTH),
     parse_mode: params.parse_mode,
@@ -160,7 +160,7 @@ export async function editMessageText(
   token: string,
   params: EditMessageTextParams
 ): Promise<Message | boolean> {
-  return botApiRequest<Message | boolean>('editMessageText', {
+  return botApiRequest<Message | boolean>(token, 'editMessageText', {
     chat_id: params.chat_id,
     message_id: params.message_id,
     inline_message_id: params.inline_message_id,
@@ -177,7 +177,7 @@ export async function deleteMessage(
   token: string,
   params: DeleteMessageParams
 ): Promise<boolean> {
-  return botApiRequest<boolean>('deleteMessage', {
+  return botApiRequest<boolean>(token, 'deleteMessage', {
     chat_id: params.chat_id,
     message_id: params.message_id,
   });
@@ -190,7 +190,7 @@ export async function sendChatAction(
   token: string,
   params: SendChatActionParams
 ): Promise<boolean> {
-  return botApiRequest<boolean>('sendChatAction', {
+  return botApiRequest<boolean>(token, 'sendChatAction', {
     chat_id: params.chat_id,
     action: params.action,
     message_thread_id: params.message_thread_id,
@@ -204,7 +204,7 @@ export async function answerCallbackQuery(
   token: string,
   params: AnswerCallbackQueryParams
 ): Promise<boolean> {
-  return botApiRequest<boolean>('answerCallbackQuery', {
+  return botApiRequest<boolean>(token, 'answerCallbackQuery', {
     callback_query_id: params.callback_query_id,
     text: params.text,
     show_alert: params.show_alert,
@@ -249,7 +249,7 @@ export async function sendRichMessage(
     params.callback_query_id = options.callback_query_id;
   }
   
-  return botApiRequest<Message>('sendMessage', params);
+  return botApiRequest<Message>(token, 'sendMessage', params);
 }
 
 /**
@@ -276,7 +276,7 @@ export async function sendRichMessageDraft(
     draftParams.reply_to_message_id = params.reply_to_message_id;
   }
   
-  return botApiRequest<void>('sendMessageDraft', draftParams);
+  return botApiRequest<void>(token, 'sendMessageDraft', draftParams);
 }
 
 // ============================================================================
@@ -294,7 +294,7 @@ export async function sendEphemeralMessage(
   receiverUserId: number,
   extra?: { reply_markup?: InlineKeyboardMarkup }
 ): Promise<Message> {
-  return botApiRequest<Message>('sendMessage', {
+  return botApiRequest<Message>(token, 'sendMessage', {
     chat_id: chatId,
     text: text.slice(0, MAX_MESSAGE_LENGTH),
     receiver_user_id: receiverUserId,
@@ -312,7 +312,7 @@ export async function sendEphemeralRichMessage(
   receiverUserId: number,
   extra?: { reply_markup?: InlineKeyboardMarkup }
 ): Promise<Message> {
-  return botApiRequest<Message>('sendMessage', {
+  return botApiRequest<Message>(token, 'sendMessage', {
     chat_id: chatId,
     html: html.slice(0, MAX_MESSAGE_LENGTH),
     receiver_user_id: receiverUserId,
@@ -328,7 +328,7 @@ export async function deleteEphemeralMessage(
   chatId: number | string,
   ephemeralMessageId: number
 ): Promise<boolean> {
-  return botApiRequest<boolean>('deleteEphemeralMessage', {
+  return botApiRequest<boolean>(token, 'deleteEphemeralMessage', {
     chat_id: chatId,
     ephemeral_message_id: ephemeralMessageId,
   });
