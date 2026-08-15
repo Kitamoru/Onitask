@@ -572,8 +572,21 @@ async function executeDraftInWorkspaceByChat(
     return;
   }
 
+  // Resolve worker_id for created_by (tasks.created_by REFERENCES workers(id), NOT profiles)
+  // draft.user_id is a profile_id — find the worker in the selected workspace via source_id
+  let createdBy: string | null = null;
+  if (draftRow.user_id) {
+    const { data: worker } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('source_id', draftRow.user_id)
+      .eq('workspace_id', workspaceId)
+      .eq('is_active', true)
+      .maybeSingle();
+    createdBy = worker?.id ?? null;
+  }
+
   // Create task in the selected workspace
-  // created_by = draft.user_id (постановщик — автор черновика)
   const { data: task, error: taskError } = await supabase
     .from('tasks')
     .insert({
@@ -581,7 +594,7 @@ async function executeDraftInWorkspaceByChat(
       title: draftRow.title,
       description: draftRow.description || null,
       source: draftRow.source || 'bot',
-      created_by: draftRow.user_id,
+      created_by: createdBy,
       is_inbox: false,
       column: 'backlog',
       priority: 'medium',
