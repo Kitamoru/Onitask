@@ -960,34 +960,31 @@ export function FlowBoard({
         </div>
       )}
 
-      {workers.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <DeskSectionHeader title="Участники" />
-          <div className="flex flex-col gap-3">
-            {workers.map((worker) => (
-              <PersonCard key={worker.id} person={worker} type="worker" />
-            ))}
-          </div>
-          <Button variant="outline" onClick={onAddWorker} aria-label="Добавить коллегу" type="button">
-            Добавить коллегу
-          </Button>
+      {/* Team members section — always visible */}
+      <div className="flex flex-col gap-4">
+        <DeskSectionHeader title="Участники" />
+        <div className="flex flex-col gap-3">
+          {workers.map((worker) => (
+            <PersonCard key={worker.id} person={worker} type="worker" />
+          ))}
         </div>
-      )}
+        <Button variant="outline" onClick={onAddWorker} aria-label="Добавить коллегу" type="button">
+          Добавить коллегу
+        </Button>
+      </div>
 
       {/* Agents section — always visible for add agent CTA */}
-      {agents.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <DeskSectionHeader title="Агенты" />
-          <div className="flex flex-col gap-3">
-            {agents.map((agent) => (
-              <PersonCard key={agent.id} person={agent} type="agent" />
-            ))}
-          </div>
-          <Button variant="outline" onClick={onAddAgent} aria-label="Добавить Агента" type="button">
-            Добавить Агента
-          </Button>
+      <div className="flex flex-col gap-4">
+        <DeskSectionHeader title="Агенты" />
+        <div className="flex flex-col gap-3">
+          {agents.map((agent) => (
+            <PersonCard key={agent.id} person={agent} type="agent" />
+          ))}
         </div>
-      )}
+        <Button variant="outline" disabled aria-label="Добавить агента" type="button">
+          Добавить агента
+        </Button>
+      </div>
 
       {/* ─── Sprint Sheets ─────────────────────────────────────── */}
       {sprintEnabled && (
