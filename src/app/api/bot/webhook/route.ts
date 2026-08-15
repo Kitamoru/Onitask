@@ -247,17 +247,10 @@ async function handleCommandRequiringWorkspace(
 
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, keyboardOptions);
   
-  let wsList: string;
-  if (keyboardOptions.draftId) {
-    wsList = `<b>Выбери доску для задачи:</b>\n\n`;
-  } else {
-    wsList = `<b>Выбери доску для выполнения команды:</b>\n\n`;
-  }
+  let wsList = `<b>Выберите доску для выполнения команды:</b>\n\n`;
   
   for (const ws of availableWorkspaces.slice(0, 8)) {
-    wsList += `• <code>${escapeHtml(ws.slug)}</code>`;
-    if (ws.title) wsList += ` — ${escapeHtml(ws.title)}`;
-    wsList += '\n';
+    wsList += `• ${escapeHtml(ws.title || ws.slug)}\n`;
   }
   wsList += '\nНажмите кнопку для выбора.';
 
