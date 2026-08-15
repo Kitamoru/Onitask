@@ -543,9 +543,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
 
-      // Always load data for the target workspace — this is the single source of truth.
-      // No parallel load means no race condition.
-      loadBoardsData(targetWorkspaceId);
+      // Always load data for the target workspace with partial=true so that ONLY tasks
+      // for this specific workspace are fetched. Without partial=true, the server returns
+      // tasks for ALL workspaces (workspaceIds), which causes stale tasks from other boards
+      // to appear when the user's last_active_workspace_id differs from their first board.
+      loadBoardsData(targetWorkspaceId, { partial: true });
     }
   }, [authData?.worker?.id, authData?.workspaces, loadBoardsData]);
 
