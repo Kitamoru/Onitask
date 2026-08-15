@@ -247,12 +247,11 @@ async function handleCommandRequiringWorkspace(
 
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, keyboardOptions);
   
-  let wsList = `<b>Выберите доску для выполнения команды:</b>\n\n`;
+  let wsList = 'Выберите доску для выполнения команды:\n';
   
   for (const ws of availableWorkspaces.slice(0, 8)) {
-    wsList += `• ${escapeHtml(ws.title || ws.slug)}\n`;
+    wsList += escapeHtml(ws.title || ws.slug) + '\n';
   }
-  wsList += '\nНажмите кнопку для выбора.';
 
   await sendMessage(BOT_TOKEN!, {
     chat_id: chatId,

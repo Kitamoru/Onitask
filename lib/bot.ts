@@ -591,7 +591,7 @@ export function buildWorkspaceSelectionKeyboard(
 
   // Max 8 buttons (Telegram limit)
   const buttons = workspaces.slice(0, 8).map(ws => ({
-    text: ws.title ? `${ws.slug} — ${ws.title}` : ws.slug,
+    text: ws.title || ws.slug,
     callback_data: suffix ? `select_ws:${ws.id}:${suffix}` : `select_ws:${ws.id}`,
   }));
 
