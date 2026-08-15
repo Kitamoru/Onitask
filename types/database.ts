@@ -69,6 +69,67 @@ export interface Database {
           status?: string;
         };
       };
+      workers: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          source_id: string;
+          source_type: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          source_id: string;
+          source_type: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          source_id?: string;
+          source_type?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      workspace_telegram_chats: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          chat_id: number;
+          chat_type: string;
+          is_active: boolean;
+          linked_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          chat_id: number;
+          chat_type: string;
+          is_active?: boolean;
+          linked_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          chat_id?: number;
+          chat_type?: string;
+          is_active?: boolean;
+          linked_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {};
     Functions: {};
