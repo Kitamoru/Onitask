@@ -31,6 +31,30 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
 
 /**
+ * In-memory session store for pending commands.
+ * Key: chatId, Value: { command: string, args: string, userId: number }
+ * TTL: 5 minutes (cleaned up on use or after timeout)
+ */
+interface PendingCommand {
+  command: string;
+  args: string;
+  userId: number;
+  expiresAt?: number;
+}
+
+const pendingCommands = new Map<number, PendingCommand>();
+
+// Cleanup timer: remove expired entries every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, session] of pendingCommands.entries()) {
+    if (session.expiresAt && session.expiresAt < now) {
+      pendingCommands.delete(chatId);
+    }
+  }
+}, 60_000);
+
+/**
  * Parse command from message text. Returns [command, args] or null.
  */
 function parseCommand(text: string): [string, string] | null {
@@ -167,6 +191,14 @@ async function dispatchUpdate(update: any): Promise<void> {
       }
       wsList += '\nНажмите кнопку для выбора.';
 
+      // Store pending command for re-execution after workspace selection
+      pendingCommands.set(chatId, {
+        command,
+        args,
+        userId,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 min expiry
+      });
+
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
         text: wsList.slice(0, 4096),
@@ -244,6 +276,22 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
       text: html,
       parse_mode: 'HTML',
     });
+
+    // Re-execute pending command if exists
+    const pending = pendingCommands.get(chatId);
+    if (pending) {
+      // Clear pending
+      pendingCommands.delete(chatId);
+
+      // Execute the stored command with the selected workspace
+      // We need to reconstruct the message object
+      const fakeMessage = {
+        chat: { id: chatId },
+        from: { id: userId },
+        text: `/${pending.command}${pending.args ? ' ' + pending.args : ''}`,
+      };
+      await handleCommand(fakeMessage as any, pending.command, pending.args, workspaceId);
+    }
 
     console.log(`[Bot Webhook] User ${userId} selected workspace ${ws.slug} (${workspaceId})`);
     return;
