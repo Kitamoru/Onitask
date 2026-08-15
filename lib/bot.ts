@@ -552,3 +552,45 @@ export function buildWelcomeHTML(workspaceSlug: string): string {
 export function buildResolveHTML(fullId: string): string {
   return `✅ Эскалация ${escapeHtml(fullId)} снята.\nАгент возобновит работу в течение минуты.\n[Открыть задачу →]`;
 }
+
+// ============================================================================
+// Workspace Selection Keyboard Builder
+// ============================================================================
+
+/**
+ * Build inline keyboard for workspace selection.
+ * Each workspace gets a button with callback_data: "select_ws:<workspace_id>"
+ * bot_.md §3 Priority 6 — Inline-кнопки выбора доступных workspace
+ */
+export function buildWorkspaceSelectionKeyboard(
+  workspaces: Array<{ id: string; slug: string; title?: string }>
+): InlineKeyboardMarkup {
+  // Max 8 buttons per row (Telegram limit is 8 columns)
+  const buttons = workspaces.slice(0, 8).map(ws => ({
+    text: ws.title ? `${ws.slug} — ${ws.title}` : ws.slug,
+    callback_data: `select_ws:${ws.id}`,
+  }));
+
+  // Group into rows of 2 buttons each
+  const rows: Array<Array<{ text: string; callback_data?: string }>> = [];
+  for (let i = 0; i < buttons.length; i += 2) {
+    rows.push(buttons.slice(i, i + 2));
+  }
+
+  return {
+    inline_keyboard: rows.map(row =>
+      row.map(btn => {
+        const button: InlineKeyboardButton = { text: btn.text };
+        if (btn.callback_data) button.callback_data = btn.callback_data;
+        return button as InlineKeyboardButton;
+      })
+    ),
+  };
+}
+
+/**
+ * Build welcome HTML after workspace selection.
+ */
+export function buildWorkspaceSelectedHTML(workspaceTitle: string): string {
+  return `✅ Выбрано рабочее пространство: <b>${escapeHtml(workspaceTitle)}</b>\n\nТеперь вы можете использовать команды бота в этом workspace.`;
+}
