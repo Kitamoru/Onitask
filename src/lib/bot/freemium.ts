@@ -1,5 +1,8 @@
 // src/lib/bot/freemium.ts — Freemium Boundary Check (BOT-05+)
 // bot_.md §4 — проверка тарифа перед выполнением команд
+//
+// FIX: getUserPlanType теперь использует resolveProfileId для корректного
+// поиска workers по source_id = profile.id, а не telegram_user_id.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -40,31 +43,51 @@ export function getFreemiumGateMessage(command: string): string {
 }
 
 /**
+ * Resolve profile UUID from Telegram user ID.
+ */
+async function resolveProfileId(telegramUserId: number): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('telegram_id', telegramUserId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
+/**
  * Get user's plan type by workspace_id.
- * Checks workspace_settings.plan_type.
+ * Checks workspaces.plan column.
+ * FIX: Uses resolveProfileId to find workers by correct source_id.
  */
 export async function getUserPlanType(
   telegramUserId: number,
   workspaceId: string
 ): Promise<PlanType> {
-  // First, check if user is a worker in this workspace
+  // Resolve profile first — this is the key fix
+  const profileId = await resolveProfileId(telegramUserId);
+  if (!profileId) return 'free';
+
+  // Check if user is a worker in this workspace (using resolved profile UUID)
   const { data: worker } = await supabase
     .from('workers')
     .select('workspace_id')
-    .eq('source_id', String(telegramUserId))
+    .eq('source_id', profileId)
+    .eq('workspace_id', workspaceId)
     .eq('is_active', true)
     .maybeSingle();
 
   if (!worker) return 'free';
 
-  // Get workspace settings
-  const { data: settings } = await supabase
-    .from('workspace_settings')
-    .select('plan_type')
-    .eq('workspace_id', workspaceId)
+  // Get workspace plan
+  const { data: ws } = await supabase
+    .from('workspaces')
+    .select('plan')
+    .eq('id', workspaceId)
     .maybeSingle();
 
-  return (settings?.plan_type as PlanType) ?? 'free';
+  return (ws?.plan as PlanType) ?? 'free';
 }
 
 /**
@@ -77,10 +100,10 @@ export async function checkFreemiumBoundary(
   workspaceId: string
 ): Promise<string | null> {
   const plan = await getUserPlanType(telegramUserId, workspaceId);
-  
+
   if (isCommandAvailable(command, plan)) {
     return null; // Allowed
   }
-  
+
   return getFreemiumGateMessage(command);
 }
