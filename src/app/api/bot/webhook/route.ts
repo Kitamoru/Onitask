@@ -573,6 +573,7 @@ async function executeDraftInWorkspaceByChat(
   }
 
   // Create task in the selected workspace
+  // created_by = draft.user_id (постановщик — автор черновика)
   const { data: task, error: taskError } = await supabase
     .from('tasks')
     .insert({
@@ -580,6 +581,7 @@ async function executeDraftInWorkspaceByChat(
       title: draftRow.title,
       description: draftRow.description || null,
       source: draftRow.source || 'bot',
+      created_by: draftRow.user_id,
       is_inbox: false,
       column: 'backlog',
       priority: 'medium',
@@ -614,7 +616,8 @@ async function executeDraftInWorkspaceByChat(
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
 
   // Build task card HTML and confirmation keyboard
-  const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n<details>\n<summary>📋 Атрибуты</summary>\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}\n</details>`;
+  // NOTE: Telegram HTML supports only <b>,<i>,<u>,<s>,<a>,<code>,<pre> — no <details>/<summary>
+  const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}`;
 
   await sendMessage(token, {
     chat_id: chatId,

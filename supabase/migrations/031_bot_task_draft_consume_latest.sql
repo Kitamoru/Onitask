@@ -29,13 +29,15 @@ DECLARE
   v_row bot_task_drafts%ROWTYPE;
 BEGIN
   -- Атомарно читаем и удаляем последний активный черновик для чата
-  DELETE FROM public.bot_task_drafts
-  WHERE id = (
-    SELECT id FROM public.bot_task_drafts
-    WHERE chat_id = p_chat_id
-      AND expires_at > now()
-      AND source != 'pending'
-    ORDER BY created_at DESC
+  -- NOTE: используем алиасы d/d2, т.к. RETURNS TABLE (user_id, chat_id, ...)
+  -- создаёт переменные, конфликтующие с колонками таблицы (ошибка 42702 ambiguous).
+  DELETE FROM public.bot_task_drafts AS d
+  WHERE d.id = (
+    SELECT d2.id FROM public.bot_task_drafts AS d2
+    WHERE d2.chat_id = p_chat_id
+      AND d2.expires_at > now()
+      AND d2.source != 'pending'
+    ORDER BY d2.created_at DESC
     LIMIT 1
   )
   RETURNING * INTO v_row;
