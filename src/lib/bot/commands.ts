@@ -1,10 +1,11 @@
 // src/lib/bot/commands.ts — Команды бота (BOT-05, BOT-06, BOT-08, BOT-09)
-// /inbox, /flow, /task ALPHA-123, /resolve, /standup, /stuck, /review
+// /inbox, /flow, /task, /resolve, /standup, /stuck, /review
 // bot_.md §5.3, §5.5–5.8
 //
 // FIX: handleInbox — не выбирает full_id как столбец (это RPC функция).
-// handleFlow — запрашивает tracker.columns вместо несуществующего tracker_columns.
+// handleFlow — использует реальные названия колонок из БД с русским переводом.
 // handleReview — фильтрует по reviewer_id текущего пользователя.
+// /task объединена: текст → handleTextTask, голос → handleVoiceTask.
 
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -16,6 +17,7 @@ import {
   buildStandupHTML,
   escapeHtml,
 } from '../../../lib/bot';
+import { handleTextTask, handleVoiceTask } from './taskHandler';
 import type { Message } from '../../../types/telegram';
 
 const supabase = createClient(
@@ -25,6 +27,17 @@ const supabase = createClient(
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MAX_MESSAGE_LENGTH = 4096;
+
+/**
+ * Mapping of DB column names to Russian display names.
+ * Source: onitask_flow_.md §2
+ */
+const COLUMN_LABELS: Record<string, string> = {
+  backlog: 'В очереди',
+  in_progress: 'В работе',
+  review: 'На проверке',
+  done: 'Сделано',
+};
 
 /**
  * Resolve profile UUID from Telegram user ID.
@@ -64,11 +77,28 @@ export async function handleCommand(
       await handleFlow(chatId, workspaceId);
       break;
     case 'task':
-      if (args) await handleTaskLookup(chatId, args);
-      else await sendRichMessage(BOT_TOKEN!, {
-        chat_id: chatId,
-        rich_message: { html: 'Использование: /task ALPHA-123' },
-      });
+      // Объединённая команда /task:
+      // - Если есть аргументы (ALPHA-123) → поиск задачи
+      // - Если есть голосовое сообщение → создание задачи из голоса
+      // - Если есть текст (но не full_id) → создание задачи из текста
+      if (args) {
+        // Check if args looks like a task ID (ALPHA-123 pattern)
+        if (/^[A-Z]+-\d+$/.test(args)) {
+          await handleTaskLookup(chatId, args);
+        } else {
+          // Treat as task creation text
+          await handleTextTask(msg, args, workspaceId);
+        }
+      } else if (msg.voice) {
+        // Voice message → create task from voice
+        await handleVoiceTask(msg, workspaceId);
+      } else {
+        // No args, no voice — show usage
+        await sendRichMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          rich_message: { html: 'Использование:\n/task ALPHA-123 — показать задачу\n/task [текст] — создать задачу\n/task 🎤 — создать задачу голосом' },
+        });
+      }
       break;
     case 'resolve':
       if (args) await handleResolve(chatId, args);
@@ -105,7 +135,7 @@ export async function handleCommand(
 // ============================================================================
 
 async function handleInbox(chatId: number, workspaceId: string): Promise<void> {
-  // Get tasks where is_inbox = true AND column = 'backlog'
+  // Get tasks where is_inbox = true
   // FIX: Don't select 'full_id' as it's not a column — use task_full_id() RPC or just title
   const { data: tasks, error } = await supabase
     .from('tasks')
@@ -143,31 +173,41 @@ async function handleInbox(chatId: number, workspaceId: string): Promise<void> {
 // ============================================================================
 
 async function handleFlow(chatId: number, workspaceId: string): Promise<void> {
-  // FIX: Query tracker.columns instead of non-existent tracker_columns
-  const { data: columns, error: colErr } = await supabase
-    .from('columns')
-    .select('name, wip_limit')
-    .eq('workspace_id', workspaceId);
+  // Get column counts from tasks table (matching route.ts logic)
+  const { data: columnCounts, error } = await supabase
+    .from('tasks')
+    .select('column')
+    .eq('workspace_id', workspaceId)
+    .eq('is_inbox', false);
 
-  let todo = 0, inProgress = 0, done = 0;
-
-  if (!colErr && columns) {
-    // Need to count tasks per column — use direct query
-    const { data: taskCounts } = await supabase
-      .from('tasks')
-      .select('column')
-      .eq('workspace_id', workspaceId);
-
-    if (taskCounts) {
-      for (const t of taskCounts) {
-        if (t.column === 'backlog') todo++;
-        if (t.column === 'in_progress') inProgress++;
-        if (t.column === 'done') done++;
-      }
-    }
+  if (error) {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Ошибка при получении статуса доски.' },
+    });
+    return;
   }
 
-  const html = buildFlowBoardHTML({ todo, inProgress, done });
+  // Count tasks per column
+  const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
+  ((columnCounts ?? []) as any[]).forEach((t) => {
+    if (t.column in columnMap) {
+      columnMap[t.column]++;
+    }
+  });
+
+  // Build HTML with Russian column names
+  let html = '<b>📊 Flow Board</b>\n\n';
+  const wipLimits: Record<string, number | null> = {
+    backlog: 15, in_progress: 5, review: 4, done: null,
+  };
+
+  for (const [colKey, count] of Object.entries(columnMap)) {
+    const label = COLUMN_LABELS[colKey] || colKey;
+    const wip = wipLimits[colKey];
+    const wipStr = wip !== null ? ` / ${wip}` : '';
+    html += `<b>${escapeHtml(label)}</b>: ${count}${wipStr}\n`;
+  }
 
   await sendRichMessage(BOT_TOKEN!, {
     chat_id: chatId,
@@ -446,6 +486,7 @@ async function handleHelp(chatId: number): Promise<void> {
 
 /task [текст] — создать задачу
 /task ALPHA-123 — показать задачу
+/task 🎤 — создать задачу голосом
 @onitask [текст] — inline создание задачи
 
 /inbox — показать задачи в inbox
