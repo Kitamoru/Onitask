@@ -328,17 +328,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
   const { data: authData, isLoading: isLoadingAuth, initData } = useTelegramAuth();
 
-  // Ref to track if initial load happened (dedup guard)
-  const boardsLoadedRef = useRef(false);
-
   // Ref for initData (avoids stale closure in loadBoardsData callback)
   const initDataRef = useRef('');
   useEffect(() => {
     initDataRef.current = initData;
   }, [initData]);
-
-  // Ref to track which workspace was used in the parallel load (for comparison when authData arrives)
-  const firstLoadedWorkspaceIdRef = useRef<string | null>(null);
 
   // State for data loading error and workspace switching
   const [dataError, setDataError] = useState<string | null>(null);
@@ -383,13 +377,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData, tasks, metrics } = json.data;
-
-      // Track which workspace was used for this load (for parallel load comparison)
-      if (!workspaceId && wsData?.length > 0) {
-        firstLoadedWorkspaceIdRef.current = wsData[0].id;
-      } else if (workspaceId) {
-        firstLoadedWorkspaceIdRef.current = workspaceId;
-      }
 
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
@@ -492,10 +479,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      // Mark as loaded + clear any previous error
-      dispatch({ type: 'SET_BOARDS_LOADED', payload: true });
+      // Mark first load as done + clear any previous error
       dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
-      boardsLoadedRef.current = true;
       setDataError(null);
     } catch (err) {
       clearTimeout(timeoutId);
@@ -505,17 +490,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Parallel load (Option A): start loadBoardsData as soon as initData is available,
-  // without waiting for /api/init to complete. Server uses first workspace.
-  // When authData arrives, if active workspace differs, reload with correct workspaceId.
-  useEffect(() => {
-    if (!initData) return;
-    if (boardsLoadedRef.current) return;
-    if (authData?.worker) return; // Auth already arrived — let the auth effect handle it
-    loadBoardsData();
-  }, [initData, authData?.worker, loadBoardsData]);
-
-  // Sync workspace and worker data from auth response + load boards data
+  // Single source of truth: wait for auth response, then load data for the correct workspace.
+  // This eliminates the race condition where a parallel "first workspace" load could
+  // overwrite the correct workspace data with stale tasks from a different board.
+  //
+  // Flow:
+  // 1. App mounts → auth starts verifying
+  // 2. Auth completes → we know last_active_workspace_id from profiles table
+  // 3. Load boards data FOR THAT WORKSPACE ONLY
+  //
+  // Tradeoff: +200-800ms initial load delay (waiting for auth), but zero race conditions.
   useEffect(() => {
     if (!authData?.worker) return;
 
@@ -559,22 +543,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
 
-      // If parallel load already completed, check if we need to reload for correct workspace.
-      // The parallel load (above effect) uses the first workspace; if the active workspace
-      // differs, reload to get correct metrics.
-      if (!boardsLoadedRef.current) {
-        loadBoardsData(targetWorkspaceId);
-      } else {
-        // Data already loaded by parallel effect — check if workspace matches
-        const loadedWorkspaceId = firstLoadedWorkspaceIdRef.current;
-        if (loadedWorkspaceId && targetWorkspaceId !== loadedWorkspaceId) {
-          // Clear stale metrics from parallel load (wrong workspace) + show loading state
-          // This prevents flash of board A's data when user's active board is B
-          dispatch({ type: 'SET_METRICS', payload: null });
-          setIsSwitchingWorkspace(true);
-          loadBoardsData(targetWorkspaceId).finally(() => setIsSwitchingWorkspace(false));
-        }
-      }
+      // Always load data for the target workspace — this is the single source of truth.
+      // No parallel load means no race condition.
+      loadBoardsData(targetWorkspaceId);
     }
   }, [authData?.worker?.id, authData?.workspaces, loadBoardsData]);
 
@@ -714,8 +685,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [state.activeWorkspaceId]);
 
   // Load boards data when active workspace changes (e.g., user selects different board)
-  // Initial load is handled in the auth useEffect above or by the parallel load effect.
-  // Skip the first change (from null to value) — it's handled by auth/parallel effects.
+  // Initial load is handled in the auth useEffect above.
   // Only reload when the user explicitly switches workspaces (from one value to another).
   const prevActiveWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -724,11 +694,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Update ref regardless of whether we reload
     prevActiveWorkspaceIdRef.current = workspaceId;
 
-    if (workspaceId && boardsLoadedRef.current) {
-      // Skip initial set (from null to value) — already handled by auth/parallel effects
-      if (prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
-        loadBoardsData(workspaceId, { partial: true });
-      }
+    if (workspaceId && prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
+      // User explicitly switched workspaces — reload data for the new workspace
+      loadBoardsData(workspaceId, { partial: true });
     }
   }, [state.activeWorkspaceId, loadBoardsData]);
 
