@@ -34,6 +34,7 @@ interface FlowMetricsResponse {
   sprintEnabled: boolean;
   sprint: {
     id: string;
+    workspace_id: string;
     name: string;
     topic: string;
     startDate: string;
@@ -247,6 +248,7 @@ function computeMetricsFromData(
 
       sprint = {
         id: sp.id,
+        workspace_id: workspaceId!,
         name: sp.name || '',
         topic: sp.goal || '',
         startDate: sp.start_date || '',
