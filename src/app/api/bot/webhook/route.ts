@@ -368,6 +368,17 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
+  // /task without args → prompt for text first, board selection happens after draft is saved
+  // (regardless of workspace count — user must send text/voice before choosing a board)
+  if (command === 'task' && (!args || args.trim().length === 0)) {
+    await sendMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      text: '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\nБот сохранит черновик и покажет подтверждение.',
+    });
+    await setPendingTask(chatId);
+    return;
+  }
+
   // Multiple workspaces — show selection keyboard
   let keyboardOptions: { command?: string; draftId?: string } = {};
 
