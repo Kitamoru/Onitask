@@ -440,8 +440,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // Use allWorkspaceWorkers for accurate member counts across the entire workspace
           const wsAllWorkers = allWorkspaceWorkers.filter((w: any) => w.workspace_id === ws.id);
 
-          // Attach sprint data if this is the active workspace and metrics contain a sprint
-          const cardSprint = (ws.id === metricsWorkspaceId && metrics?.sprint)
+          // Attach sprint data only when the sprint's workspace_id matches this workspace
+          const cardSprint = (metrics?.sprint?.workspace_id === ws.id && metrics?.sprint)
             ? {
                 name: metrics.sprint.name,
                 topic: metrics.sprint.topic,
