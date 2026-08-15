@@ -246,16 +246,10 @@ async function handleCommandRequiringWorkspace(
   }
 
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, keyboardOptions);
-  
-  let wsList = 'Выберите доску для выполнения команды:\n';
-  
-  for (const ws of availableWorkspaces.slice(0, 8)) {
-    wsList += escapeHtml(ws.title || ws.slug) + '\n';
-  }
 
   await sendMessage(BOT_TOKEN!, {
     chat_id: chatId,
-    text: wsList.slice(0, 4096),
+    text: 'Выберите доску для выполнения команды:',
     reply_markup: keyboard,
   });
 }
