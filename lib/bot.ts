@@ -563,24 +563,29 @@ export function buildResolveHTML(fullId: string): string {
 
 /**
  * Build inline keyboard for workspace selection.
- * Supports two modes:
+ * Supports three modes:
  *   1. Command mode: callback_data = "select_ws:<wsId>:<command>"
  *      Used for commands without args (/review, /inbox, /flow, etc.)
- *   2. Draft mode: callback_data = "select_ws:<wsId>:draft:<draftId>"
- *      Used for /task [text] where draftId is a short UUID stored in DB
+ *   2. Draft mode: callback_data = "select_ws:<wsId>:draft"
+ *      Used for /task flow — latest draft consumed by chat_id, no UUID needed.
+ *      This avoids exceeding Telegram's 64-byte callback_data limit.
+ *   3. No extra data: callback_data = "select_ws:<wsId>"
  *
  * Buttons are arranged vertically (1 per row) for better UX.
- * Telegram callback_data limit is 64 bytes — both formats fit within it.
+ * Telegram callback_data limit is 64 bytes.
+ * Max length check: "select_ws:" + 36(UUID) + ":draft" = 57 bytes ✓
  */
 export function buildWorkspaceSelectionKeyboard(
   workspaces: Array<{ id: string; slug: string; title?: string }>,
   options?: { command?: string; draftId?: string }
 ): InlineKeyboardMarkup {
   // Build callback_data suffix based on mode
+  // NOTE: draftId is intentionally ignored here — we use consume_latest_bot_task_draft(chat_id)
+  // instead of passing UUID in callback_data to stay within Telegram's 64-byte limit.
   let suffix: string;
   if (options?.draftId) {
-    // Draft mode: select_ws:<wsId>:draft:<draftId>
-    suffix = `draft:${options.draftId}`;
+    // Draft mode: select_ws:<wsId>:draft (no UUID!)
+    suffix = 'draft';
   } else if (options?.command) {
     // Command mode: select_ws:<wsId>:<command>
     suffix = options.command;

@@ -536,8 +536,8 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     // Command mode: extra = "command" or "command:arg"
     await executeCommandInWorkspace(token, chatId, userId, workspaceId, extra);
   } else if (type === 'draft') {
-    // Draft mode: extra = draftId
-    await executeDraftInWorkspace(token, chatId, userId, workspaceId, extra);
+    // Draft mode: no extra needed — consume latest draft by chat_id
+    await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
   }
 
   console.log(`[Bot Webhook] User ${userId} selected workspace ${ws.slug} (${workspaceId}), type=${type}, extra=${extra}`);
@@ -579,35 +579,33 @@ async function executeCommandInWorkspace(
 
 /**
  * Execute a task draft in the selected workspace (one-phase, no pending state).
- * Consumes the draft from DB and creates the task.
+ * Consumes the LATEST draft from DB by chat_id and creates the task.
+ * This is the primary path for /task flow with board selection.
  */
-async function executeDraftInWorkspace(
+async function executeDraftInWorkspaceByChat(
   token: string,
   chatId: number,
   userId: number,
-  workspaceId: string,
-  draftId: string
+  workspaceId: string
 ): Promise<void> {
-  // Consume draft atomically (reads and deletes in one transaction)
-  const { data: draft, error } = await supabase.rpc('consume_bot_task_draft', {
-    p_draft_id: draftId,
+  // Consume latest active draft atomically (reads and deletes in one transaction)
+  const { data: draft, error } = await supabase.rpc('consume_latest_bot_task_draft', {
+    p_chat_id: chatId,
   });
 
   if (error || !draft || draft.length === 0) {
-    await editMessageText(token, {
+    await sendMessage(token, {
       chat_id: chatId,
-      message_id: (await getLastMessageId(chatId)) ?? undefined,
-      text: '⚠️ Черновик не найден или истёк. Пожалуйста, отправьте задачу заново.',
+      text: '⚠️ Черновик не найден или истёк. Пожалуйста, отправьте задачу заново через /task.',
     });
     return;
   }
 
   const draftRow = draft[0];
   if (!draftRow.title) {
-    await editMessageText(token, {
+    await sendMessage(token, {
       chat_id: chatId,
-      message_id: (await getLastMessageId(chatId)) ?? undefined,
-      text: '⚠️ Черновик пустой. Пожалуйста, отправьте задачу заново.',
+      text: '⚠️ Черновик пустой. Пожалуйста, отправьте задачу заново через /task.',
     });
     return;
   }
@@ -630,9 +628,8 @@ async function executeDraftInWorkspace(
 
   if (taskError || !task) {
     console.error('[Bot Webhook] Failed to create task:', taskError);
-    await editMessageText(token, {
+    await sendMessage(token, {
       chat_id: chatId,
-      message_id: (await getLastMessageId(chatId)) ?? undefined,
       text: `⚠️ Не удалось создать задачу: ${taskError?.message || 'неизвестная ошибка'}`,
     });
     return;
@@ -657,9 +654,8 @@ async function executeDraftInWorkspace(
   // Build task card HTML and confirmation keyboard
   const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n<details>\n<summary>📋 Атрибуты</summary>\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}\n</details>`;
 
-  await editMessageText(token, {
+  await sendMessage(token, {
     chat_id: chatId,
-    message_id: (await getLastMessageId(chatId)) ?? undefined,
     text: taskCardHtml,
     parse_mode: 'HTML',
     reply_markup: {
@@ -668,6 +664,22 @@ async function executeDraftInWorkspace(
       ]],
     },
   });
+}
+
+/**
+ * Legacy wrapper: execute a task draft by explicit draftId.
+ * Kept for backward compatibility but prefer executeDraftInWorkspaceByChat.
+ */
+async function executeDraftInWorkspace(
+  token: string,
+  chatId: number,
+  userId: number,
+  workspaceId: string,
+  _draftId: string
+): Promise<void> {
+  // For single-workspace flow where user sends /task [text] directly,
+  // we still use consume_latest since we don't track draftId anymore.
+  await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
 }
 
 /**
