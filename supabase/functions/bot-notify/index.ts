@@ -1,3 +1,5 @@
+// @ts-nocheck — Supabase Edge Function uses Deno runtime, not Node.js
+
 // supabase/functions/bot-notify/index.ts — Bot Notify Worker (BOT-10)
 // Обработка enrichment_queue записей и отправка уведомлений в Telegram
 // bot_.md §6.5
