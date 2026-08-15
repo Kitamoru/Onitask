@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import type {
   BotAPIResponse,
   InlineKeyboardMarkup,
+  InlineKeyboardButton,
   RichMessageOptions,
   DraftParams,
   SendMessageParams,
@@ -356,12 +357,12 @@ export function buildMultiRowInlineKeyboard(
   rows: Array<Array<{ text: string; callback_data?: string; url?: string }>>
 ): InlineKeyboardMarkup {
   return {
-    inline_keyboard: rows.map(row => 
+    inline_keyboard: rows.map(row =>
       row.map(btn => {
-        const button: Record<string, string> = { text: btn.text };
+        const button: InlineKeyboardButton = { text: btn.text };
         if (btn.callback_data) button.callback_data = btn.callback_data;
         if (btn.url) button.url = btn.url;
-        return button;
+        return button as InlineKeyboardButton;
       })
     ),
   };
