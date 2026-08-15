@@ -563,16 +563,36 @@ export function buildResolveHTML(fullId: string): string {
 
 /**
  * Build inline keyboard for workspace selection.
- * Each workspace gets a button with callback_data: "select_ws:<workspace_id>"
+ * Supports two modes:
+ *   1. Command mode: callback_data = "select_ws:<wsId>:<command>"
+ *      Used for commands without args (/review, /inbox, /flow, etc.)
+ *   2. Draft mode: callback_data = "select_ws:<wsId>:draft:<draftId>"
+ *      Used for /task [text] where draftId is a short UUID stored in DB
+ *
  * Buttons are arranged vertically (1 per row) for better UX.
+ * Telegram callback_data limit is 64 bytes — both formats fit within it.
  */
 export function buildWorkspaceSelectionKeyboard(
-  workspaces: Array<{ id: string; slug: string; title?: string }>
+  workspaces: Array<{ id: string; slug: string; title?: string }>,
+  options?: { command?: string; draftId?: string }
 ): InlineKeyboardMarkup {
+  // Build callback_data suffix based on mode
+  let suffix: string;
+  if (options?.draftId) {
+    // Draft mode: select_ws:<wsId>:draft:<draftId>
+    suffix = `draft:${options.draftId}`;
+  } else if (options?.command) {
+    // Command mode: select_ws:<wsId>:<command>
+    suffix = options.command;
+  } else {
+    // No extra data — just workspace selection
+    suffix = '';
+  }
+
   // Max 8 buttons (Telegram limit)
   const buttons = workspaces.slice(0, 8).map(ws => ({
     text: ws.title ? `${ws.slug} — ${ws.title}` : ws.slug,
-    callback_data: `select_ws:${ws.id}`,
+    callback_data: suffix ? `select_ws:${ws.id}:${suffix}` : `select_ws:${ws.id}`,
   }));
 
   // One button per row (vertical layout)
@@ -587,6 +607,42 @@ export function buildWorkspaceSelectionKeyboard(
       })
     ),
   };
+}
+
+/**
+ * Parse callback_data from workspace selection button.
+ * Returns { workspaceId, type, extra } where:
+ *   - type: 'command' | 'draft' | null
+ *   - extra: command name or draftId
+ */
+export function parseWorkspaceCallbackData(callbackData: string): {
+  workspaceId: string;
+  type: 'command' | 'draft' | null;
+  extra: string;
+} {
+  const parts = callbackData.split(':');
+  
+  if (parts[0] !== 'select_ws' || parts.length < 2) {
+    return { workspaceId: '', type: null, extra: '' };
+  }
+  
+  const workspaceId = parts[1];
+  
+  if (parts.length === 2) {
+    // Just workspace ID, no extra data
+    return { workspaceId, type: null, extra: '' };
+  }
+  
+  const secondPart = parts[2];
+  
+  if (secondPart === 'draft' && parts.length >= 3) {
+    // Draft mode: select_ws:<wsId>:draft:<draftId>
+    const draftId = parts.slice(3).join(':');
+    return { workspaceId, type: 'draft', extra: draftId };
+  }
+  
+  // Command mode: select_ws:<wsId>:<command>
+  return { workspaceId, type: 'command', extra: secondPart };
 }
 
 /**
