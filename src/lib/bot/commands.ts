@@ -18,6 +18,7 @@ import {
   escapeHtml,
 } from '../../../lib/bot';
 import { handleTextTask, handleVoiceTask } from './taskHandler';
+import { setPendingTask } from './taskDraft';
 import type { Message } from '../../../types/telegram';
 
 const supabase = createClient(
@@ -98,10 +99,11 @@ export async function handleCommand(
       await handleFlow(chatId, workspaceId);
       break;
     case 'task':
-      // Объединённая команда /task:
-      // - Если есть аргументы (ALPHA-123) → поиск задачи
-      // - Если есть голосовое сообщение → создание задачи из голоса
-      // - Если есть текст (но не full_id) → создание задачи из текста
+      // Unified /task flow via drafts (bot_task_drafts):
+      // - If there are args (ALPHA-123) → lookup task by ID
+      // - If there is a voice message → create task from voice
+      // - If there is text (but not full_id) → create task from text
+      // - If no args, no voice → enter pending mode: ask user to send text/voice
       if (args) {
         // Check if args looks like a task ID (ALPHA-123 pattern)
         if (/^[A-Z]+-\d+$/.test(args)) {
@@ -114,10 +116,12 @@ export async function handleCommand(
         // Voice message → create task from voice
         await handleVoiceTask(msg, workspaceId);
       } else {
-        // No args, no voice — show usage
+        // No args, no voice → enter pending mode
+        // User will receive next message as task description
+        await setPendingTask(chatId);
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          rich_message: { html: 'Использование:\n/task ALPHA-123 — показать задачу\n/task [текст] — создать задачу\n/task 🎤 — создать задачу голосом' },
+          rich_message: { html: '📝 Для создания задачи пришлите текст или голосовое сообщение.\nБот сохранит черновик и покажет подтверждение.' },
         });
       }
       break;

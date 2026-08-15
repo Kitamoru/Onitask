@@ -9,7 +9,7 @@
 //   1. Command without args (/review, /inbox, /flow):
 //      callback_data = "select_ws:<wsId>:<command>" → execute in same callback
 //   2. /task [text]:
-//      INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft:<draftId>"
+//      INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft"
 //      → consume draft + create task in same callback
 //   3. /task ALPHA-123 or /resolve ALPHA-123:
 //      callback_data = "select_ws:<wsId>:<command>:<fullId>" → execute in same callback
@@ -29,6 +29,7 @@ import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
 import { handleCommand, handleUnblockTask } from '../../../../../src/lib/bot/commands';
 import { resolveWorkspace, getUserAvailableWorkspaces, resolveProfileId } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
+import { setPendingTask, clearPendingTask, isPendingTaskMode } from '../../../../../src/lib/bot/taskDraft';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -162,9 +163,9 @@ async function dispatchUpdate(update: any): Promise<void> {
 
   // Step 4: Regular message — check if user is in "pending task" mode
   // If so, treat this text/voice as the task description → save draft → show board selection
-  const pendingWorkspaceId = await isPendingTaskMode(chatId);
+  const pendingActive = await isPendingTaskMode(chatId);
 
-  if (pendingWorkspaceId) {
+  if (pendingActive) {
     // Resolve profile UUID for DB operations
     const profileId = await resolveProfileId(userId);
     if (!profileId) {
@@ -238,7 +239,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       if (availableWorkspaces.length === 1) {
         // Single workspace — create task immediately
-        await executeDraftInWorkspace(BOT_TOKEN!, chatId, userId, availableWorkspaces[0].id, draftResult);
+        await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, availableWorkspaces[0].id);
         return;
       }
 
@@ -314,7 +315,7 @@ async function handleCommandRequiringWorkspace(
       });
       // Store pending context in a lightweight way: we'll detect the next non-command message
       // by checking if it's a regular text/voice message (handled in dispatchUpdate Step 4)
-      await storePendingTask(chatId, userId, ws.id);
+      await setPendingTask(chatId);
       return;
     }
 
@@ -353,7 +354,7 @@ async function handleCommandRequiringWorkspace(
       }
 
       // Consume draft and create task in same workspace (send new message since we can't track lastMessageId)
-      await executeDraftInWorkspace(BOT_TOKEN!, chatId, userId, ws.id, draftResult);
+      await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, ws.id);
       return;
     }
 
@@ -418,59 +419,9 @@ async function handleCommandRequiringWorkspace(
   });
 }
 
-// Track which chats are in "pending task text" mode (set by /task without args)
-// SERVERLESS-SAFE: we use a lightweight DB table for this state.
-const PENDING_TASK_MARKER_TITLE = '__PENDING_TASK__';
-
-/**
- * Check if a chat is waiting for task text (after /task without args).
- * Returns workspaceId if pending, null otherwise.
- */
-async function isPendingTaskMode(chatId: number): Promise<string | null> {
-  const { data: drafts } = await supabase
-    .from('bot_task_drafts')
-    .select('description')
-    .eq('chat_id', chatId)
-    .eq('title', PENDING_TASK_MARKER_TITLE)
-    .maybeSingle();
-
-  if (drafts && drafts.description) {
-    return drafts.description; // workspaceId stored in description
-  }
-  return null;
-}
-
-/**
- * Create a pending marker for a chat.
- */
-async function storePendingTask(chatId: number, userId: number, workspaceId: string): Promise<void> {
-  try {
-    await supabase.rpc('create_bot_task_draft', {
-      p_user_id: userId,
-      p_chat_id: chatId,
-      p_title: PENDING_TASK_MARKER_TITLE,
-      p_description: workspaceId,
-      p_source: 'pending',
-    });
-  } catch {
-    console.warn('[Bot Webhook] Pending marker failed (non-critical)');
-  }
-}
-
-/**
- * Clean up pending marker after task is created or user moves on.
- */
-async function clearPendingTask(chatId: number): Promise<void> {
-  await supabase
-    .from('bot_task_drafts')
-    .delete()
-    .eq('chat_id', chatId)
-    .eq('title', PENDING_TASK_MARKER_TITLE);
-}
-
 /**
  * Handle inline button callback queries.
- * Supports: select_ws:<wsId>, select_ws:<wsId>:<command>, select_ws:<wsId>:draft:<draftId>
+ * Supports: select_ws:<wsId>, select_ws:<wsId>:<command>, select_ws:<wsId>:draft
  * All processing happens IN THE SAME REQUEST — no pending state needed.
  */
 async function handleCallbackQuery(callbackQuery: any): Promise<void> {
@@ -664,33 +615,6 @@ async function executeDraftInWorkspaceByChat(
       ]],
     },
   });
-}
-
-/**
- * Legacy wrapper: execute a task draft by explicit draftId.
- * Kept for backward compatibility but prefer executeDraftInWorkspaceByChat.
- */
-async function executeDraftInWorkspace(
-  token: string,
-  chatId: number,
-  userId: number,
-  workspaceId: string,
-  _draftId: string
-): Promise<void> {
-  // For single-workspace flow where user sends /task [text] directly,
-  // we still use consume_latest since we don't track draftId anymore.
-  await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
-}
-
-/**
- * Helper: get last message ID for a chat (for editing).
- * In production, you'd track this per-message. Here we use a simple approach.
- */
-async function getLastMessageId(chatId: number): Promise<number | null> {
-  // This is a placeholder — in production, track message_ids when sending
-  // For now, we can't reliably get the last message_id without storing it
-  // The edit will fail silently if message_id is wrong
-  return null;
 }
 
 export async function POST(req: NextRequest) {
