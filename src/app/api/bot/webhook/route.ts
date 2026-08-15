@@ -47,6 +47,7 @@ function parseCommand(text: string): [string, string] | null {
  */
 const COMMANDS_REQUIRING_WORKSPACE = [
   'inbox', 'flow', 'standup', 'stuck', 'review', 'summary',
+  'task', 'resolve',
 ];
 
 /**
@@ -158,7 +159,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       // Multiple workspaces — show selection keyboard
       const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces);
-      let wsList = `<b>🏢 Из какой доски выполнить /${escapeHtml(command)}?</b>\n\n`;
+      let wsList = `<b>Выбери доску для выполнения команды:</b>\n\n`;
       for (const ws of availableWorkspaces.slice(0, 8)) {
         wsList += `• <code>${escapeHtml(ws.slug)}</code>`;
         if (ws.title) wsList += ` — ${escapeHtml(ws.title)}`;

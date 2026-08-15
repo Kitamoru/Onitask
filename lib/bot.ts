@@ -273,7 +273,8 @@ export async function sendRichMessageDraft(
     draftParams.text = params.text.slice(0, MAX_MESSAGE_LENGTH);
   }
   if (params.rich_message?.html) {
-    draftParams.html = params.rich_message.html.slice(0, MAX_MESSAGE_LENGTH);
+    draftParams.text = params.rich_message.html.slice(0, MAX_MESSAGE_LENGTH);
+    draftParams.parse_mode = 'HTML';
   }
   if (params.reply_to_message_id) {
     draftParams.reply_to_message_id = params.reply_to_message_id;
@@ -317,7 +318,8 @@ export async function sendEphemeralRichMessage(
 ): Promise<Message> {
   return botApiRequest<Message>(token, 'sendMessage', {
     chat_id: chatId,
-    html: html.slice(0, MAX_MESSAGE_LENGTH),
+    text: html.slice(0, MAX_MESSAGE_LENGTH),
+    parse_mode: 'HTML',
     receiver_user_id: receiverUserId,
     ...extra,
   });
@@ -562,22 +564,19 @@ export function buildResolveHTML(fullId: string): string {
 /**
  * Build inline keyboard for workspace selection.
  * Each workspace gets a button with callback_data: "select_ws:<workspace_id>"
- * bot_.md §3 Priority 6 — Inline-кнопки выбора доступных workspace
+ * Buttons are arranged vertically (1 per row) for better UX.
  */
 export function buildWorkspaceSelectionKeyboard(
   workspaces: Array<{ id: string; slug: string; title?: string }>
 ): InlineKeyboardMarkup {
-  // Max 8 buttons per row (Telegram limit is 8 columns)
+  // Max 8 buttons (Telegram limit)
   const buttons = workspaces.slice(0, 8).map(ws => ({
     text: ws.title ? `${ws.slug} — ${ws.title}` : ws.slug,
     callback_data: `select_ws:${ws.id}`,
   }));
 
-  // Group into rows of 2 buttons each
-  const rows: Array<Array<{ text: string; callback_data?: string }>> = [];
-  for (let i = 0; i < buttons.length; i += 2) {
-    rows.push(buttons.slice(i, i + 2));
-  }
+  // One button per row (vertical layout)
+  const rows: Array<Array<{ text: string; callback_data?: string }>> = buttons.map(btn => [btn]);
 
   return {
     inline_keyboard: rows.map(row =>
