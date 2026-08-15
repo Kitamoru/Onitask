@@ -3,6 +3,7 @@
 // SEC-03: Secret token verification via timingSafeEqual
 // BOT-05: Lazy workspace selection — no initial board prompt
 //          Commands requiring workspace show inline keyboard if not selected
+// NO LAST-USED: We don't remember board selection — always ask if multiple boards
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -30,30 +31,6 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
 
 /**
- * In-memory session store for pending commands.
- * Key: chatId, Value: { command: string, args: string, userId: number }
- * TTL: 5 minutes (cleaned up on use or after timeout)
- */
-interface PendingCommand {
-  command: string;
-  args: string;
-  userId: number;
-  expiresAt?: number;
-}
-
-const pendingCommands = new Map<number, PendingCommand>();
-
-// Cleanup timer: remove expired entries every 60 seconds
-setInterval(() => {
-  const now = Date.now();
-  for (const [chatId, session] of pendingCommands.entries()) {
-    if (session.expiresAt && session.expiresAt < now) {
-      pendingCommands.delete(chatId);
-    }
-  }
-}, 60_000);
-
-/**
  * Parse command from message text. Returns [command, args] or null.
  */
 function parseCommand(text: string): [string, string] | null {
@@ -65,29 +42,11 @@ function parseCommand(text: string): [string, string] | null {
 }
 
 /**
- * Save user's last used workspace in profiles table.
- * This enables Priority 5 (last-used) in workspace resolution.
- */
-async function setLastUsedWorkspace(telegramUserId: number, workspaceId: string): Promise<void> {
-  await supabase
-    .from('profiles')
-    .update({ last_used_workspace_id: workspaceId })
-    .eq('telegram_id', telegramUserId);
-}
-
-/**
  * Commands that require workspace selection before execution.
- * These will trigger the inline keyboard if no workspace is selected.
+ * These will trigger the inline keyboard if no workspace is resolved.
  */
 const COMMANDS_REQUIRING_WORKSPACE = [
   'inbox', 'flow', 'standup', 'stuck', 'review', 'summary',
-];
-
-/**
- * Commands that are always available without workspace selection.
- */
-const COMMANDS_NO_WORKSPACE_NEEDED = [
-  'start', 'help',
 ];
 
 /**
@@ -162,21 +121,20 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 3: No workspace resolved — check if it's a command needing workspace
+  // Step 3: No workspace resolved — check if it's a command
   if (parsedCommand) {
     const [command, args] = parsedCommand;
 
-    // Commands that don't need workspace (start, help)
-    if (COMMANDS_NO_WORKSPACE_NEEDED.includes(command)) {
-      if (command === 'start') {
-        await handleStartCommand(message, args);
-        return;
-      }
-      if (command === 'help') {
-        // Show help even without workspace
-        await handleCommand(message, command, args, '');
-        return;
-      }
+    // Commands that work without workspace (start, help)
+    if (command === 'start') {
+      await handleStartCommand(message, args);
+      return;
+    }
+
+    if (command === 'help') {
+      // Show help even without workspace
+      await handleCommand(message, command, args, '');
+      return;
     }
 
     // Commands that need workspace — show inline keyboard
@@ -194,8 +152,6 @@ async function dispatchUpdate(update: any): Promise<void> {
       if (availableWorkspaces.length === 1) {
         // Auto-select single workspace
         const ws = availableWorkspaces[0];
-        await setLastUsedWorkspace(userId, ws.id);
-        // Re-dispatch with workspace
         await handleCommand(message, command, args, ws.id);
         return;
       }
@@ -209,14 +165,6 @@ async function dispatchUpdate(update: any): Promise<void> {
         wsList += '\n';
       }
       wsList += '\nНажмите кнопку для выбора.';
-
-      // Store pending command for re-execution after workspace selection
-      pendingCommands.set(chatId, {
-        command,
-        args,
-        userId,
-        expiresAt: Date.now() + 5 * 60 * 1000, // 5 min expiry
-      });
 
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
@@ -244,7 +192,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
 /**
  * Handle inline button callback queries.
- * Supports: select_ws:<workspace_id>, resolve_task:<task_id>, unblock_task:<task_id>
+ * Supports: select_ws:<workspace_id>, unblock_task:<task_id>
  */
 async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   const token = BOT_TOKEN!;
@@ -287,9 +235,6 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
       return;
     }
 
-    // Save last used workspace
-    await setLastUsedWorkspace(userId, workspaceId);
-
     // Update message with confirmation
     const html = buildWorkspaceSelectedHTML(ws.name || ws.slug);
     await editMessageText(token, {
@@ -298,22 +243,6 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
       text: html,
       parse_mode: 'HTML',
     });
-
-    // Re-execute pending command if exists
-    const pending = pendingCommands.get(chatId);
-    if (pending) {
-      // Clear pending
-      pendingCommands.delete(chatId);
-
-      // Execute the stored command with the selected workspace
-      // We need to reconstruct the message object
-      const fakeMessage = {
-        chat: { id: chatId },
-        from: { id: userId },
-        text: `/${pending.command}${pending.args ? ' ' + pending.args : ''}`,
-      };
-      await handleCommand(fakeMessage as any, pending.command, pending.args, workspaceId);
-    }
 
     console.log(`[Bot Webhook] User ${userId} selected workspace ${ws.slug} (${workspaceId})`);
     return;

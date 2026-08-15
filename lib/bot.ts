@@ -221,6 +221,7 @@ export async function answerCallbackQuery(
 /**
  * Send a rich message with HTML content.
  * Supports up to 32,768 characters (but we cap at 4096 for consistency).
+ * Uses parse_mode: 'HTML' so <b>, <i>, <code> etc. are rendered.
  */
 export async function sendRichMessage(
   token: string,
@@ -232,7 +233,8 @@ export async function sendRichMessage(
   
   // Prefer rich_message.html over plain text
   if (options.rich_message?.html) {
-    params.html = options.rich_message.html.slice(0, MAX_MESSAGE_LENGTH);
+    params.text = options.rich_message.html.slice(0, MAX_MESSAGE_LENGTH);
+    params.parse_mode = 'HTML';
   } else if (options.text) {
     params.text = options.text.slice(0, MAX_MESSAGE_LENGTH);
   }
