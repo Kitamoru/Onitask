@@ -1,7 +1,8 @@
 // POST /api/bot/webhook — Telegram Bot Webhook Endpoint
 // Handles incoming updates from Telegram Bot API
 // SEC-03: Secret token verification via timingSafeEqual
-// BOT-02 §3 Priority 6: Inline-кнопки выбора доступных workspace
+// BOT-05: Lazy workspace selection — no initial board prompt
+//          Commands requiring workspace show inline keyboard if not selected
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -15,7 +16,7 @@ import {
   escapeHtml,
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
-import { handleCommand } from '../../../../../src/lib/bot/commands';
+import { handleCommand, handleUnblockTask } from '../../../../../src/lib/bot/commands';
 import { resolveWorkspace, getUserAvailableWorkspaces } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
 import { createClient } from '@supabase/supabase-js';
@@ -27,6 +28,30 @@ const supabase = createClient(
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
+
+/**
+ * In-memory session store for pending commands.
+ * Key: chatId, Value: { command: string, args: string, userId: number }
+ * TTL: 5 minutes (cleaned up on use or after timeout)
+ */
+interface PendingCommand {
+  command: string;
+  args: string;
+  userId: number;
+  expiresAt?: number;
+}
+
+const pendingCommands = new Map<number, PendingCommand>();
+
+// Cleanup timer: remove expired entries every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, session] of pendingCommands.entries()) {
+    if (session.expiresAt && session.expiresAt < now) {
+      pendingCommands.delete(chatId);
+    }
+  }
+}, 60_000);
 
 /**
  * Parse command from message text. Returns [command, args] or null.
@@ -49,6 +74,21 @@ async function setLastUsedWorkspace(telegramUserId: number, workspaceId: string)
     .update({ last_used_workspace_id: workspaceId })
     .eq('telegram_id', telegramUserId);
 }
+
+/**
+ * Commands that require workspace selection before execution.
+ * These will trigger the inline keyboard if no workspace is selected.
+ */
+const COMMANDS_REQUIRING_WORKSPACE = [
+  'inbox', 'flow', 'standup', 'stuck', 'review', 'summary',
+];
+
+/**
+ * Commands that are always available without workspace selection.
+ */
+const COMMANDS_NO_WORKSPACE_NEEDED = [
+  'start', 'help',
+];
 
 /**
  * Dispatch update to appropriate handler based on update type.
@@ -88,71 +128,113 @@ async function dispatchUpdate(update: any): Promise<void> {
     await sendChatAction(BOT_TOKEN, { chat_id: chatId, action: 'typing' }).catch(() => {});
   }
 
-  // Step 1: Resolve workspace using 6-priority system
+  // Step 1: Check if it's a command
+  let parsedCommand: [string, string] | null = null;
+  if (text && text.startsWith('/')) {
+    parsedCommand = parseCommand(text);
+  }
+
+  // Step 2: Resolve workspace
   let workspaceResult = await resolveWorkspace(userId, chatId, 'private');
 
-  if (!workspaceResult) {
-    // User has no workspace — show available workspaces with inline buttons
-    const availableWorkspaces = await getUserAvailableWorkspaces(userId);
+  // If workspace resolved, proceed with command handling
+  if (workspaceResult && parsedCommand) {
+    const [command, args] = parsedCommand;
+    const workspaceId = workspaceResult.workspace_id;
 
-    if (availableWorkspaces.length === 0) {
-      // No workspaces at all — show general welcome
+    // Freemium check for restricted commands
+    const gateMessage = await checkFreemiumBoundary(command, userId, workspaceId);
+    if (gateMessage) {
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
-        text: `👋 Привет! Чтобы начать, введите код рабочего пространства:\n\n/ws_ABC123`,
+        text: gateMessage,
       });
       return;
     }
 
-    // Show available workspaces with inline keyboard
-    const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces);
-    let wsList = '<b>🏢 Выберите рабочее пространство:</b>\n\n';
-    for (const ws of availableWorkspaces.slice(0, 8)) {
-      wsList += `• <code>${escapeHtml(ws.slug)}</code>`;
-      if (ws.title) wsList += ` — ${escapeHtml(ws.title)}`;
-      wsList += '\n';
+    if (command === 'start') {
+      await handleStartCommand(message, args);
+      return;
     }
-    wsList += '\nНажмите кнопку для выбора.';
 
-    await sendMessage(BOT_TOKEN!, {
-      chat_id: chatId,
-      text: wsList.slice(0, 4096),
-      reply_markup: keyboard,
-    });
+    // Route other commands
+    await handleCommand(message, command, args, workspaceId);
     return;
   }
 
-  const workspaceId = workspaceResult.workspace_id;
+  // Step 3: No workspace resolved — check if it's a command needing workspace
+  if (parsedCommand) {
+    const [command, args] = parsedCommand;
 
-  // Step 2: Check if it's a command
-  if (text && text.startsWith('/')) {
-    const parsed = parseCommand(text);
-    if (parsed) {
-      const [command, args] = parsed;
+    // Commands that don't need workspace (start, help)
+    if (COMMANDS_NO_WORKSPACE_NEEDED.includes(command)) {
+      if (command === 'start') {
+        await handleStartCommand(message, args);
+        return;
+      }
+      if (command === 'help') {
+        // Show help even without workspace
+        await handleCommand(message, command, args, '');
+        return;
+      }
+    }
 
-      // Freemium check for restricted commands
-      const gateMessage = await checkFreemiumBoundary(command, userId, workspaceId);
-      if (gateMessage) {
+    // Commands that need workspace — show inline keyboard
+    if (COMMANDS_REQUIRING_WORKSPACE.includes(command)) {
+      const availableWorkspaces = await getUserAvailableWorkspaces(userId);
+
+      if (availableWorkspaces.length === 0) {
         await sendMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          text: gateMessage,
+          text: 'У вас нет доступных рабочих пространств. Введите код через администратора.',
         });
         return;
       }
 
-      if (command === 'start') {
-        // Re-use handleStartCommand with workspace code from args
-        await handleStartCommand(message, args);
+      if (availableWorkspaces.length === 1) {
+        // Auto-select single workspace
+        const ws = availableWorkspaces[0];
+        await setLastUsedWorkspace(userId, ws.id);
+        // Re-dispatch with workspace
+        await handleCommand(message, command, args, ws.id);
         return;
       }
 
-      // Route other commands
-      await handleCommand(message, command, args, workspaceId);
+      // Multiple workspaces — show selection keyboard
+      const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces);
+      let wsList = `<b>🏢 Из какой доски выполнить /${escapeHtml(command)}?</b>\n\n`;
+      for (const ws of availableWorkspaces.slice(0, 8)) {
+        wsList += `• <code>${escapeHtml(ws.slug)}</code>`;
+        if (ws.title) wsList += ` — ${escapeHtml(ws.title)}`;
+        wsList += '\n';
+      }
+      wsList += '\nНажмите кнопку для выбора.';
+
+      // Store pending command for re-execution after workspace selection
+      pendingCommands.set(chatId, {
+        command,
+        args,
+        userId,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 min expiry
+      });
+
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: wsList.slice(0, 4096),
+        reply_markup: keyboard,
+      });
       return;
     }
+
+    // Unknown command — show help
+    await sendMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      text: '⚠️ Неизвестная команда. Введите /help для списка команд.',
+    });
+    return;
   }
 
-  // Step 3: Regular message — could be inline task creation
+  // Step 4: Regular message — could be inline task creation or just text
   // For now, show help
   await sendMessage(BOT_TOKEN!, {
     chat_id: chatId,
@@ -162,7 +244,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
 /**
  * Handle inline button callback queries.
- * Supports: select_ws:<workspace_id>
+ * Supports: select_ws:<workspace_id>, resolve_task:<task_id>, unblock_task:<task_id>
  */
 async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   const token = BOT_TOKEN!;
@@ -217,7 +299,43 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
       parse_mode: 'HTML',
     });
 
+    // Re-execute pending command if exists
+    const pending = pendingCommands.get(chatId);
+    if (pending) {
+      // Clear pending
+      pendingCommands.delete(chatId);
+
+      // Execute the stored command with the selected workspace
+      // We need to reconstruct the message object
+      const fakeMessage = {
+        chat: { id: chatId },
+        from: { id: userId },
+        text: `/${pending.command}${pending.args ? ' ' + pending.args : ''}`,
+      };
+      await handleCommand(fakeMessage as any, pending.command, pending.args, workspaceId);
+    }
+
     console.log(`[Bot Webhook] User ${userId} selected workspace ${ws.slug} (${workspaceId})`);
+    return;
+  }
+
+  // Handle unblock task: unblock_task:<task_id>
+  if (data.startsWith('unblock_task:')) {
+    const taskId = data.replace('unblock_task:', '');
+
+    // Get user's last used workspace or resolve
+    const wsResult = await resolveWorkspace(userId, chatId, 'private');
+    if (!wsResult) {
+      await answerCallbackQuery(token, {
+        callback_query_id: callbackQuery.id,
+        text: '⚠️ Workspace не найден',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await handleUnblockTask(taskId, chatId, wsResult.workspace_id);
+    return;
   }
 }
 

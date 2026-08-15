@@ -3,7 +3,7 @@
 // bot_.md §5.3, §5.5–5.8
 //
 // FIX: handleInbox — не выбирает full_id как столбец (это RPC функция).
-// handleFlow — использует реальные названия колонок из БД с русским переводом.
+// handleFlow — показывает только фактическое количество задач (без WIP limits).
 // handleReview — фильтрует по reviewer_id текущего пользователя.
 // /task объединена: текст → handleTextTask, голос → handleVoiceTask.
 
@@ -40,6 +40,13 @@ const COLUMN_LABELS: Record<string, string> = {
 };
 
 /**
+ * Check if workspaceId is empty (lazy selection mode).
+ */
+function hasNoWorkspace(workspaceId: string): boolean {
+  return !workspaceId || workspaceId === '';
+}
+
+/**
  * Resolve profile UUID from Telegram user ID.
  */
 async function resolveProfileId(telegramUserId: number): Promise<string | null> {
@@ -59,6 +66,7 @@ async function resolveProfileId(telegramUserId: number): Promise<string | null> 
 
 /**
  * Route a command message to the appropriate handler.
+ * If workspaceId is empty, only /help is available.
  */
 export async function handleCommand(
   msg: Message,
@@ -68,6 +76,19 @@ export async function handleCommand(
 ): Promise<void> {
   const chatId = msg.chat.id;
   const userId = msg.from?.id ?? 0;
+
+  // If no workspace selected, only /help works
+  if (hasNoWorkspace(workspaceId)) {
+    if (command === 'help') {
+      await handleHelp(chatId);
+    } else {
+      await sendRichMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        rich_message: { html: '⚠️ Для выполнения этой команды выберите рабочее пространство. Введите команду снова, и бот предложит выбрать доску.' },
+      });
+    }
+    return;
+  }
 
   switch (command) {
     case 'inbox':
@@ -169,11 +190,11 @@ async function handleInbox(chatId: number, workspaceId: string): Promise<void> {
 }
 
 // ============================================================================
-// /flow — Flow Board статус
+// /flow — Flow Board статус (только фактическое количество, без WIP limits)
 // ============================================================================
 
 async function handleFlow(chatId: number, workspaceId: string): Promise<void> {
-  // Get column counts from tasks table (matching route.ts logic)
+  // Get column counts from tasks table
   const { data: columnCounts, error } = await supabase
     .from('tasks')
     .select('column')
@@ -196,17 +217,12 @@ async function handleFlow(chatId: number, workspaceId: string): Promise<void> {
     }
   });
 
-  // Build HTML with Russian column names
+  // Build HTML with Russian column names (no WIP limits)
   let html = '<b>📊 Flow Board</b>\n\n';
-  const wipLimits: Record<string, number | null> = {
-    backlog: 15, in_progress: 5, review: 4, done: null,
-  };
 
   for (const [colKey, count] of Object.entries(columnMap)) {
     const label = COLUMN_LABELS[colKey] || colKey;
-    const wip = wipLimits[colKey];
-    const wipStr = wip !== null ? ` / ${wip}` : '';
-    html += `<b>${escapeHtml(label)}</b>: ${count}${wipStr}\n`;
+    html += `<b>${escapeHtml(label)}</b>: ${count}\n`;
   }
 
   await sendRichMessage(BOT_TOKEN!, {
@@ -370,13 +386,13 @@ async function handleStandup(chatId: number, workspaceId: string): Promise<void>
 }
 
 // ============================================================================
-// /stuck — Задачи с флагом is_blocked
+// /stuck — Задачи с флагом is_blocked + inline выбор для разблокировки
 // ============================================================================
 
 async function handleStuck(chatId: number, workspaceId: string): Promise<void> {
   const { data: tasks } = await supabase
     .from('tasks')
-    .select('id, title, is_blocked, created_at')
+    .select('id, full_id, title, is_blocked, column, assignee_name')
     .eq('workspace_id', workspaceId)
     .eq('is_blocked', true)
     .order('created_at', { ascending: true })
@@ -390,14 +406,25 @@ async function handleStuck(chatId: number, workspaceId: string): Promise<void> {
     return;
   }
 
-  let html = '<b>🔒 Заблокированные задачи</b>\n\n';
+  // Build inline keyboard with task buttons
+  const keyboard = {
+    inline_keyboard: [
+      tasks.map((t: any) => ({
+        text: `${escapeHtml(t.full_id || '')} — ${escapeHtml(t.title || '')}`,
+        callback_data: `unblock_task:${t.id}`,
+      })),
+    ],
+  };
+
+  let html = '<b>🔒 Заблокированные задачи</b>\n\nНажмите на задачу для разблокировки:\n\n';
   for (const t of tasks) {
-    html += `• <b>${escapeHtml(t.title || '')}</b>\n`;
+    html += `• <b>${escapeHtml(t.full_id || '')}</b>: ${escapeHtml(t.title || '')}\n`;
   }
 
   await sendRichMessage(BOT_TOKEN!, {
     chat_id: chatId,
     rich_message: { html: html.slice(0, MAX_MESSAGE_LENGTH) },
+    reply_markup: keyboard as any,
   });
 }
 
@@ -476,6 +503,45 @@ async function handleSummary(chatId: number, workspaceId: string): Promise<void>
   // TODO: Call F-03 Cold Path Edge Function
 }
 
+/**
+ * Handle unblock task from inline keyboard (/stuck flow).
+ */
+export async function handleUnblockTask(taskId: string, chatId: number, workspaceId: string): Promise<void> {
+  // Get task details
+  const { data: task, error } = await supabase
+    .from('tasks')
+    .select('full_id, title, is_blocked')
+    .eq('id', taskId)
+    .maybeSingle();
+
+  if (error || !task) {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Задача не найдена.' },
+    });
+    return;
+  }
+
+  // Unset is_blocked
+  const { error: updateErr } = await supabase
+    .from('tasks')
+    .update({ is_blocked: false })
+    .eq('id', taskId);
+
+  if (updateErr) {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Ошибка при разблокировке задачи.' },
+    });
+    return;
+  }
+
+  await sendRichMessage(BOT_TOKEN!, {
+    chat_id: chatId,
+    rich_message: { html: `✅ Задача ${escapeHtml(task.full_id || taskId)} разблокирована.` },
+  });
+}
+
 // ============================================================================
 // /help — Список команд
 // ============================================================================
@@ -499,6 +565,8 @@ async function handleHelp(chatId: number): Promise<void> {
 
 /summary — AI Flow Summary (AI Dev/Team)
 /help — этот список
+
+<b>💡 Совет:</b> При первом использовании команды бот предложит выбрать доску. Далее выбор запоминается.
 `.trim();
 
   await sendRichMessage(BOT_TOKEN!, {
