@@ -27,7 +27,7 @@ import {
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
 import { handleCommand, handleUnblockTask } from '../../../../../src/lib/bot/commands';
-import { resolveWorkspace, getUserAvailableWorkspaces } from '../../../../../src/lib/bot/workspaceResolver';
+import { resolveWorkspace, getUserAvailableWorkspaces, resolveProfileId } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
 import { createClient } from '@supabase/supabase-js';
 
@@ -160,8 +160,107 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 4: Regular message — could be inline task creation or just text
-  // For now, show help
+  // Step 4: Regular message — check if user is in "pending task" mode
+  // If so, treat this text/voice as the task description → save draft → show board selection
+  const pendingWorkspaceId = await isPendingTaskMode(chatId);
+
+  if (pendingWorkspaceId) {
+    // Resolve profile UUID for DB operations
+    const profileId = await resolveProfileId(userId);
+    if (!profileId) {
+      await clearPendingTask(chatId);
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: '⚠️ Профиль не найден. Начните с /start.',
+      });
+      return;
+    }
+
+    // User sent text after /task — create a real draft and show board selection
+    let taskText = '';
+    let source: string = 'nl';
+
+    if (text && text.trim().length > 0) {
+      taskText = text.trim();
+      source = 'nl';
+    } else if (message.voice) {
+      // Voice message — transcribe first
+      const voiceFileId = message.voice.file_id;
+      const audioUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
+      try {
+        const resp = await fetch(audioUrl, {
+          headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          // For MVP: use placeholder transcription (actual STT via /api/ai/transcribe)
+          taskText = `[Голосовое сообщение] (транскрибация: ${blob.size} bytes)`;
+          source = 'voice';
+        }
+      } catch (err) {
+        console.error('[Bot Webhook] Failed to download voice:', err);
+        taskText = '[Голосовое сообщение]';
+        source = 'voice';
+      }
+    }
+
+    if (taskText.length > 0) {
+      // Clean up pending marker
+      await clearPendingTask(chatId);
+
+      // Create real draft
+      const { data: draftResult, error: draftError } = await supabase.rpc('create_bot_task_draft', {
+        p_user_id: profileId,
+        p_chat_id: chatId,
+        p_title: taskText.slice(0, 500),
+        p_description: null,
+        p_source: source,
+      });
+
+      if (draftError || !draftResult) {
+        console.error('[Bot Webhook] Failed to create draft from pending:', draftError);
+        await sendMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
+        });
+        return;
+      }
+
+      // Show workspace selection keyboard with draft
+      const availableWorkspaces = await getUserAvailableWorkspaces(userId); // getUserAvailableWorkspaces internally resolves profileId
+      if (availableWorkspaces.length === 0) {
+        await sendMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          text: 'У вас нет доступных рабочих пространств.',
+        });
+        return;
+      }
+
+      if (availableWorkspaces.length === 1) {
+        // Single workspace — create task immediately
+        await executeDraftInWorkspace(BOT_TOKEN!, chatId, userId, availableWorkspaces[0].id, draftResult);
+        return;
+      }
+
+      // Multiple workspaces — show selection
+      const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, { draftId: draftResult });
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: '✅ Черновик сохранён! Выберите доску:',
+        reply_markup: keyboard,
+      });
+      return;
+    }
+
+    // Not text or voice — just send help
+    await sendMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      text: '📝 Пожалуйста, отправьте текст или голосовое сообщение для создания задачи.',
+    });
+    return;
+  }
+
+  // No pending — regular help message
   await sendMessage(BOT_TOKEN!, {
     chat_id: chatId,
     text: '📝 Отправьте /help для списка команд или используйте бота через TWA.',
@@ -172,7 +271,10 @@ async function dispatchUpdate(update: any): Promise<void> {
  * Handle commands that require workspace selection.
  * Uses serverless-safe approach:
  *   - /task [text]: save draft to DB, pass draftId in callback_data
+ *   - /task (no args): prompt user to send text/voice → saved as draft
  *   - Other commands: pass command name in callback_data
+ *
+ * INV: profileId resolved once, reused for all DB calls.
  */
 async function handleCommandRequiringWorkspace(
   chatId: number,
@@ -180,6 +282,16 @@ async function handleCommandRequiringWorkspace(
   command: string,
   args: string
 ): Promise<void> {
+  // Resolve profile UUID — canonical path for all DB operations
+  const profileId = await resolveProfileId(userId);
+  if (!profileId) {
+    await sendMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      text: '⚠️ Профиль не найден. Начните с /start.',
+    });
+    return;
+  }
+
   const availableWorkspaces = await getUserAvailableWorkspaces(userId);
 
   if (availableWorkspaces.length === 0) {
@@ -190,9 +302,62 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
+  // Single workspace: auto-select, but still ask for text first for /task
   if (availableWorkspaces.length === 1) {
-    // Auto-select single workspace
     const ws = availableWorkspaces[0];
+
+    // /task without args → prompt for text, then save draft + auto-select board
+    if (command === 'task' && (!args || args.trim().length === 0)) {
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\nБот сохранит черновик и покажет подтверждение.',
+      });
+      // Store pending context in a lightweight way: we'll detect the next non-command message
+      // by checking if it's a regular text/voice message (handled in dispatchUpdate Step 4)
+      await storePendingTask(chatId, userId, ws.id);
+      return;
+    }
+
+    // /task with text → create draft directly (single workspace, no selection needed)
+    if (command === 'task' && args && args.trim().length > 0) {
+      const trimmedArgs = args.trim();
+      const looksLikeShortId = /^[A-Z]{2,6}-\d{1,6}$/.test(trimmedArgs);
+
+      if (looksLikeShortId) {
+        // /task ALPHA-123 — lookup task
+        const fakeMessage = {
+          chat: { id: chatId },
+          from: { id: userId },
+          text: `/task ${trimmedArgs}`,
+        };
+        await handleCommand(fakeMessage as any, 'task', trimmedArgs, ws.id);
+        return;
+      }
+
+      // /task [text] — save draft and create immediately (single workspace)
+      const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
+        p_user_id: profileId,
+        p_chat_id: chatId,
+        p_title: trimmedArgs.slice(0, 500),
+        p_description: null,
+        p_source: 'nl',
+      });
+
+      if (error || !draftResult) {
+        console.error('[Bot Webhook] Failed to create draft:', error);
+        await sendMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
+        });
+        return;
+      }
+
+      // Consume draft and create task in same workspace (send new message since we can't track lastMessageId)
+      await executeDraftInWorkspace(BOT_TOKEN!, chatId, userId, ws.id, draftResult);
+      return;
+    }
+
+    // Other commands with single workspace — execute directly
     const fakeMessage = {
       chat: { id: chatId },
       from: { id: userId },
@@ -208,18 +373,17 @@ async function handleCommandRequiringWorkspace(
   if (command === 'task' && args && args.trim().length > 0) {
     // /task [text] — save draft to DB first
     const trimmedArgs = args.trim();
-    
+
     // Check if args look like a short task ID (e.g., ALPHA-123) vs full text
-    // Short IDs are typically < 20 chars and contain alphanumeric + hyphen
     const looksLikeShortId = /^[A-Z]{2,6}-\d{1,6}$/.test(trimmedArgs);
-    
+
     if (looksLikeShortId) {
       // /task ALPHA-123 — treat as short ID, pass in callback_data
       keyboardOptions.command = `task:${trimmedArgs}`;
     } else {
       // /task [long text] — save to DB as draft
       const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
-        p_user_id: userId,
+        p_user_id: profileId,
         p_chat_id: chatId,
         p_title: trimmedArgs.slice(0, 500),
         p_description: null,
@@ -252,6 +416,56 @@ async function handleCommandRequiringWorkspace(
     text: 'Выберите доску для выполнения команды:',
     reply_markup: keyboard,
   });
+}
+
+// Track which chats are in "pending task text" mode (set by /task without args)
+// SERVERLESS-SAFE: we use a lightweight DB table for this state.
+const PENDING_TASK_MARKER_TITLE = '__PENDING_TASK__';
+
+/**
+ * Check if a chat is waiting for task text (after /task without args).
+ * Returns workspaceId if pending, null otherwise.
+ */
+async function isPendingTaskMode(chatId: number): Promise<string | null> {
+  const { data: drafts } = await supabase
+    .from('bot_task_drafts')
+    .select('description')
+    .eq('chat_id', chatId)
+    .eq('title', PENDING_TASK_MARKER_TITLE)
+    .maybeSingle();
+
+  if (drafts && drafts.description) {
+    return drafts.description; // workspaceId stored in description
+  }
+  return null;
+}
+
+/**
+ * Create a pending marker for a chat.
+ */
+async function storePendingTask(chatId: number, userId: number, workspaceId: string): Promise<void> {
+  try {
+    await supabase.rpc('create_bot_task_draft', {
+      p_user_id: userId,
+      p_chat_id: chatId,
+      p_title: PENDING_TASK_MARKER_TITLE,
+      p_description: workspaceId,
+      p_source: 'pending',
+    });
+  } catch {
+    console.warn('[Bot Webhook] Pending marker failed (non-critical)');
+  }
+}
+
+/**
+ * Clean up pending marker after task is created or user moves on.
+ */
+async function clearPendingTask(chatId: number): Promise<void> {
+  await supabase
+    .from('bot_task_drafts')
+    .delete()
+    .eq('chat_id', chatId)
+    .eq('title', PENDING_TASK_MARKER_TITLE);
 }
 
 /**

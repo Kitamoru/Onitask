@@ -25,7 +25,7 @@ const supabase = createClient(
  * This is the canonical resolution path used by all bot functions.
  * INV-10: workspace_telegram_chats.linked_by → profiles(id)
  */
-async function resolveProfileId(telegramUserId: number): Promise<string | null> {
+export async function resolveProfileId(telegramUserId: number): Promise<string | null> {
   const { data, error } = await supabase
     .from('profiles')
     .select('id')
