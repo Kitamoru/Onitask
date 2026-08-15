@@ -20,15 +20,16 @@ export const PENDING_TASK_MARKER_TITLE = '__PENDING_TASK__';
  * Set pending task mode for a chat.
  * Inserts a special marker row that signals the webhook to expect
  * the next message as the task description.
+ * IMPORTANT: user_id is NOT NULL in bot_task_drafts — must pass resolved profile UUID.
  */
-export async function setPendingTask(chatId: number): Promise<void> {
+export async function setPendingTask(chatId: number, userId: string): Promise<void> {
   await supabase.from('bot_task_drafts').insert({
     chat_id: chatId,
-    user_id: null, // Not yet resolved
+    user_id: userId,
     title: PENDING_TASK_MARKER_TITLE,
     description: null,
     source: 'pending',
-    expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+    expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
   });
 }
 

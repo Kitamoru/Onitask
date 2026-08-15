@@ -118,7 +118,15 @@ export async function handleCommand(
       } else {
         // No args, no voice → enter pending mode
         // User will receive next message as task description
-        await setPendingTask(chatId);
+        const profileId = await resolveProfileId(userId);
+        if (!profileId) {
+          await sendRichMessage(BOT_TOKEN!, {
+            chat_id: chatId,
+            rich_message: { html: '⚠️ Профиль не найден. Начните с /start.' },
+          });
+          return;
+        }
+        await setPendingTask(chatId, profileId);
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
           rich_message: { html: '📝 Для создания задачи пришлите текст или голосовое сообщение.\nБот сохранит черновик и покажет подтверждение.' },

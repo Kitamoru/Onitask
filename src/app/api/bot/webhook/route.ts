@@ -315,7 +315,7 @@ async function handleCommandRequiringWorkspace(
       });
       // Store pending context in a lightweight way: we'll detect the next non-command message
       // by checking if it's a regular text/voice message (handled in dispatchUpdate Step 4)
-      await setPendingTask(chatId);
+      await setPendingTask(chatId, profileId);
       return;
     }
 
@@ -375,7 +375,7 @@ async function handleCommandRequiringWorkspace(
       chat_id: chatId,
       text: '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\nБот сохранит черновик и покажет подтверждение.',
     });
-    await setPendingTask(chatId);
+    await setPendingTask(chatId, profileId);
     return;
   }
 
