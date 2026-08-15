@@ -3,7 +3,7 @@
 // bot_.md §3
 
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database';
+import type { Database } from '../../../types/database';
 
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type WorkspaceTelegramChat = Database['public']['Tables']['workspace_telegram_chats']['Row'];
@@ -113,24 +113,29 @@ async function getLastUsedWorkspace(
     return { workspace_id: data.workspace_id, slug: data.slug };
   }
   
-  // Fallback: direct query if RPC doesn't exist yet
-  const { data: tasks, error: tasksError } = await supabase
+  // Fallback: get worker first, then their latest task
+  const { data: worker, error: workerError } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('source_id', String(telegramUserId))
+    .eq('is_active', true)
+    .maybeSingle();
+  
+  if (workerError || !worker) return null;
+  
+  const { data: latestTask, error: taskError } = await supabase
     .from('tasks')
     .select('workspace_id, workspaces(slug)')
-    .join('workers', {
-      left: { column: 'assigned_to', right: 'id' },
-    })
-    .eq('workers.source_id', String(telegramUserId))
-    .neq('workers.source_id', null)
+    .eq('assigned_to', worker.id)
     .order('created_at', { ascending: false })
     .limit(1)
-    .maybeSingle() as any;
+    .maybeSingle();
   
-  if (tasksError || !tasks) return null;
+  if (taskError || !latestTask) return null;
   
   return {
-    workspace_id: tasks.workspace_id,
-    slug: (tasks as any).workspaces?.slug || '',
+    workspace_id: latestTask.workspace_id,
+    slug: (latestTask as any).workspaces?.slug || '',
   };
 }
 
@@ -146,7 +151,7 @@ async function findWorkspaceBySlug(slug: string): Promise<{ workspace_id: string
     .maybeSingle();
   
   if (error || !data) return null;
-  return data;
+  return { workspace_id: data.id, slug: data.slug };
 }
 
 /**
