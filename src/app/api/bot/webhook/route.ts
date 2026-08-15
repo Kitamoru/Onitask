@@ -452,9 +452,14 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   }
 
   // Answer callback query immediately (Telegram gives 30s timeout)
-  await answerCallbackQuery(token, {
-    callback_query_id: callbackQuery.id,
-  });
+  // NOTE: if the callback is stale (>30s), Telegram returns 400 — must NOT kill the flow
+  try {
+    await answerCallbackQuery(token, {
+      callback_query_id: callbackQuery.id,
+    });
+  } catch (err) {
+    console.warn('[Bot Webhook] answerCallbackQuery failed (stale callback):', err);
+  }
 
   // Parse callback_data
   const parsed = parseWorkspaceCallbackData(data);
@@ -486,12 +491,17 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   }
 
   // Update message with confirmation
-  await editMessageText(token, {
-    chat_id: chatId,
-    message_id: messageId,
-    text: `✅ Выбрано рабочее пространство: <b>${escapeHtml(ws.name || ws.slug)}</b>`,
-    parse_mode: 'HTML',
-  });
+  // NOTE: editMessageText can fail if the message was already edited — must not kill the flow
+  try {
+    await editMessageText(token, {
+      chat_id: chatId,
+      message_id: messageId,
+      text: `✅ Выбрано рабочее пространство: <b>${escapeHtml(ws.name || ws.slug)}</b>`,
+      parse_mode: 'HTML',
+    });
+  } catch (err) {
+    console.warn('[Bot Webhook] editMessageText failed:', err);
+  }
 
   // Execute based on type
   if (type === 'command') {
@@ -550,12 +560,15 @@ async function executeDraftInWorkspaceByChat(
   userId: number,
   workspaceId: string
 ): Promise<void> {
+  console.log('[Bot Webhook] executeDraftInWorkspaceByChat:', { chatId, userId, workspaceId });
+
   // Consume latest active draft atomically (reads and deletes in one transaction)
   const { data: draft, error } = await supabase.rpc('consume_latest_bot_task_draft', {
     p_chat_id: chatId,
   });
 
   if (error || !draft || draft.length === 0) {
+    console.warn('[Bot Webhook] Draft not found or expired:', { chatId, error });
     await sendMessage(token, {
       chat_id: chatId,
       text: '⚠️ Черновик не найден или истёк. Пожалуйста, отправьте задачу заново через /task.',
@@ -627,21 +640,36 @@ async function executeDraftInWorkspaceByChat(
     .maybeSingle();
 
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
+  console.log('[Bot Webhook] Task created:', { taskId: task.id, fullId, chatId });
 
   // Build task card HTML and confirmation keyboard
   // NOTE: Telegram HTML supports only <b>,<i>,<u>,<s>,<a>,<code>,<pre> — no <details>/<summary>
   const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}`;
 
-  await sendMessage(token, {
-    chat_id: chatId,
-    text: taskCardHtml,
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [[
-        { text: '📋 Открыть в TWA →', url: `/board?task=${fullId}` },
-      ]],
-    },
-  });
+  // Send confirmation — wrap in try/catch so a Telegram API error doesn't crash the webhook
+  try {
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: taskCardHtml,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '📋 Открыть в TWA →', url: `/board?task=${fullId}` },
+        ]],
+      },
+    });
+  } catch (err) {
+    console.error('[Bot Webhook] sendMessage (task card) failed:', err);
+    // Fallback: plain text without reply_markup
+    try {
+      await sendMessage(token, {
+        chat_id: chatId,
+        text: `✅ Задача создана: ${fullId} · «${task.title}»`,
+      });
+    } catch (err2) {
+      console.error('[Bot Webhook] sendMessage (fallback) failed:', err2);
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
