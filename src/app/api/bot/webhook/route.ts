@@ -642,7 +642,7 @@ async function executeDraftInWorkspaceByChat(
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
   console.log('[Bot Webhook] Task created:', { taskId: task.id, fullId, chatId });
 
-  // Build task card HTML and confirmation keyboard
+  // Build task card HTML
   // NOTE: Telegram HTML supports only <b>,<i>,<u>,<s>,<a>,<code>,<pre> — no <details>/<summary>
   const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}`;
 
@@ -652,11 +652,6 @@ async function executeDraftInWorkspaceByChat(
       chat_id: chatId,
       text: taskCardHtml,
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '📋 Открыть в TWA →', url: `/board?task=${fullId}` },
-        ]],
-      },
     });
   } catch (err) {
     console.error('[Bot Webhook] sendMessage (task card) failed:', err);
