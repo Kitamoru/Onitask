@@ -23,14 +23,27 @@ export const PENDING_TASK_MARKER_TITLE = '__PENDING_TASK__';
  * IMPORTANT: user_id is NOT NULL in bot_task_drafts — must pass resolved profile UUID.
  */
 export async function setPendingTask(chatId: number, userId: string): Promise<void> {
-  await supabase.from('bot_task_drafts').insert({
-    chat_id: chatId,
-    user_id: userId,
-    title: PENDING_TASK_MARKER_TITLE,
-    description: null,
-    source: 'pending',
-    expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-  });
+  console.log('[taskDraft] setPendingTask called:', { chatId, userId });
+  try {
+    const { error } = await supabase.from('bot_task_drafts').insert({
+      chat_id: chatId,
+      user_id: userId,
+      title: PENDING_TASK_MARKER_TITLE,
+      description: null,
+      source: 'pending',
+      expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    });
+
+    if (error) {
+      console.error('[taskDraft] Failed to insert pending marker:', error);
+      throw error;
+    }
+
+    console.log('[taskDraft] Pending marker inserted successfully');
+  } catch (err) {
+    console.error('[taskDraft] setPendingTask exception:', err);
+    throw err;
+  }
 }
 
 /**

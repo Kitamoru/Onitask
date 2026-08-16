@@ -118,15 +118,27 @@ export async function handleCommand(
       } else {
         // No args, no voice → enter pending mode
         // User will receive next message as task description
+        console.log('[commands] /task without args — entering pending mode');
         const profileId = await resolveProfileId(userId);
         if (!profileId) {
+          console.error('[commands] Profile not found for userId:', userId);
           await sendRichMessage(BOT_TOKEN!, {
             chat_id: chatId,
             rich_message: { html: '⚠️ Профиль не найден. Начните с /start.' },
           });
           return;
         }
-        await setPendingTask(chatId, profileId);
+        try {
+          await setPendingTask(chatId, profileId);
+          console.log('[commands] Pending mode activated successfully');
+        } catch (err) {
+          console.error('[commands] Failed to activate pending mode:', err);
+          await sendRichMessage(BOT_TOKEN!, {
+            chat_id: chatId,
+            rich_message: { html: '⚠️ Ошибка активации режима задачи. Попробуйте позже.' },
+          });
+          return;
+        }
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
           rich_message: { html: '📝 Для создания задачи пришлите текст или голосовое сообщение.\nБот сохранит черновик и покажет подтверждение.' },
