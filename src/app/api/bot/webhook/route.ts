@@ -185,28 +185,48 @@ async function dispatchUpdate(update: any): Promise<void> {
       taskText = text.trim();
       source = 'nl';
     } else if (message.voice) {
-      // Voice message — transcribe first
-      const voiceFileId = message.voice.file_id;
-      const audioUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
-      try {
-        const resp = await fetch(audioUrl, {
-          headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
-        });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          // For MVP: use placeholder transcription (actual STT via /api/ai/transcribe)
-          taskText = `[Голосовое сообщение] (транскрибация: ${blob.size} bytes)`;
+      // Voice message — check caption first (Telegram allows adding text to voice)
+      if (message.caption && message.caption.trim().length > 0) {
+        taskText = message.caption.trim();
+        source = 'voice_with_caption';
+      } else {
+        // No caption — try to download and transcribe via STT API
+        const voiceFileId = message.voice.file_id;
+        const audioUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
+        try {
+          const resp = await fetch(audioUrl, {
+            headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
+          });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            // Upload blob to our STT endpoint
+            const formData = new FormData();
+            formData.append('file', blob, 'voice.ogg');
+            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai/transcribe`, {
+              method: 'POST',
+              body: formData,
+            });
+            if (sttResp.ok) {
+              const sttData = await sttResp.json();
+              taskText = sttData.text || `[Голосовое сообщение]`;
+              source = 'voice';
+            } else {
+              // STT failed — use placeholder
+              console.warn('[Bot Webhook] STT failed, using placeholder');
+              taskText = '[Голосовое сообщение — текст недоступен]';
+              source = 'voice';
+            }
+          }
+        } catch (err) {
+          console.error('[Bot Webhook] Failed to download/transcribe voice:', err);
+          taskText = '[Голосовое сообщение — текст недоступен]';
           source = 'voice';
         }
-      } catch (err) {
-        console.error('[Bot Webhook] Failed to download voice:', err);
-        taskText = '[Голосовое сообщение]';
-        source = 'voice';
       }
     }
 
     if (taskText.length > 0) {
-      // Clean up pending marker
+      // ALWAYS clear pending first — even on error we don't want to loop
       await clearPendingTask(chatId);
 
       // Create real draft
@@ -222,7 +242,7 @@ async function dispatchUpdate(update: any): Promise<void> {
         console.error('[Bot Webhook] Failed to create draft from pending:', draftError);
         await sendMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
+          text: '⚠️ Не удалось сохранить черновик. Отправьте задачу заново через /task.',
         });
         return;
       }
@@ -550,8 +570,8 @@ async function executeCommandInWorkspace(
 }
 
 /**
- * Execute a task draft in the selected workspace (one-phase, no pending state).
- * Consumes the LATEST draft from DB by chat_id and creates the task.
+ * Execute a task draft in the selected workspace using F-04 AI pipeline.
+ * Calls POST /api/bot/create-task which runs Groq parse + enrichment.
  * This is the primary path for /task flow with board selection.
  */
 async function executeDraftInWorkspaceByChat(
@@ -585,8 +605,117 @@ async function executeDraftInWorkspaceByChat(
     return;
   }
 
-  // Resolve worker_id for created_by (tasks.created_by REFERENCES workers(id), NOT profiles)
-  // draft.user_id is a profile_id — find the worker in the selected workspace via source_id
+  const taskText = draftRow.title;
+
+  // Call F-04 create-task endpoint (same pipeline as TWA)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  if (!baseUrl) {
+    console.error('[Bot Webhook] NEXT_PUBLIC_BASE_URL not set');
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: '⚠️ Сервер не настроен. Попробуйте позже.',
+    });
+    return;
+  }
+
+  let aiResult: {
+    task?: { id: string; title: string; column: string; priority: string };
+    parse?: { rewritten_title?: string; clarity_score?: number };
+    showCorrectionSheet?: boolean;
+  };
+
+  try {
+    const resp = await fetch(`${baseUrl}/api/bot/create-task`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WEBHOOK_SECRET}`,
+      },
+      body: JSON.stringify({
+        telegram_user_id: userId,
+        workspace_id: workspaceId,
+        text: taskText,
+      }),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      console.error('[Bot Webhook] /api/bot/create-task failed:', resp.status, errBody);
+      throw new Error(errBody.error || `HTTP ${resp.status}`);
+    }
+
+    aiResult = await resp.json();
+  } catch (err) {
+    console.error('[Bot Webhook] F-04 create-task call failed:', err);
+    // Fallback: create task directly without AI enrichment
+    await createTaskFallback(token, chatId, userId, workspaceId, draftRow);
+    return;
+  }
+
+  const task = aiResult.task;
+  if (!task) {
+    console.error('[Bot Webhook] No task returned from F-04');
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: '⚠️ Задача не создана. Попробуйте ещё раз.',
+    });
+    return;
+  }
+
+  // Get full_id
+  const { data: wsWithPrefix } = await supabase
+    .from('workspaces')
+    .select('task_prefix')
+    .eq('id', workspaceId)
+    .maybeSingle();
+
+  const { data: taskWithNumber } = await supabase
+    .from('tasks')
+    .select('task_number')
+    .eq('id', task.id)
+    .maybeSingle();
+
+  const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
+  console.log('[Bot Webhook] Task created via F-04:', { taskId: task.id, fullId, chatId });
+
+  // Build enhanced task card HTML
+  const clarity = aiResult.parse?.clarity_score;
+  const clarityStr = clarity != null ? `✨ Ясность: ${Math.round(clarity * 100)}%` : '';
+
+  const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}\n${clarityStr ? `\n${clarityStr}` : ''}`;
+
+  // Send confirmation
+  try {
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: taskCardHtml,
+      parse_mode: 'HTML',
+    });
+  } catch (err) {
+    console.error('[Bot Webhook] sendMessage (task card) failed:', err);
+    try {
+      await sendMessage(token, {
+        chat_id: chatId,
+        text: `✅ Задача создана: ${fullId} · «${task.title}»`,
+      });
+    } catch (err2) {
+      console.error('[Bot Webhook] sendMessage (fallback) failed:', err2);
+    }
+  }
+}
+
+/**
+ * Fallback: create task directly without AI when /api/bot/create-task fails.
+ * Used when F-04 pipeline is unavailable.
+ */
+async function createTaskFallback(
+  token: string,
+  chatId: number,
+  userId: number,
+  workspaceId: string,
+  draftRow: any
+): Promise<void> {
+  // Resolve worker_id for created_by
   let createdBy: string | null = null;
   if (draftRow.user_id) {
     const { data: worker } = await supabase
@@ -599,7 +728,6 @@ async function executeDraftInWorkspaceByChat(
     createdBy = worker?.id ?? null;
   }
 
-  // Create task in the selected workspace
   const { data: task, error: taskError } = await supabase
     .from('tasks')
     .insert({
@@ -617,7 +745,7 @@ async function executeDraftInWorkspaceByChat(
     .single();
 
   if (taskError || !task) {
-    console.error('[Bot Webhook] Failed to create task:', taskError);
+    console.error('[Bot Webhook] Fallback task creation failed:', taskError);
     await sendMessage(token, {
       chat_id: chatId,
       text: `⚠️ Не удалось создать задачу: ${taskError?.message || 'неизвестная ошибка'}`,
@@ -625,14 +753,12 @@ async function executeDraftInWorkspaceByChat(
     return;
   }
 
-  // Get full_id by looking up workspace prefix and task_number
   const { data: wsWithPrefix } = await supabase
     .from('workspaces')
     .select('task_prefix')
     .eq('id', workspaceId)
     .maybeSingle();
 
-  // Get task_number from tasks table
   const { data: taskWithNumber } = await supabase
     .from('tasks')
     .select('task_number')
@@ -640,13 +766,10 @@ async function executeDraftInWorkspaceByChat(
     .maybeSingle();
 
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
-  console.log('[Bot Webhook] Task created:', { taskId: task.id, fullId, chatId });
+  console.log('[Bot Webhook] Task created via fallback:', { taskId: task.id, fullId, chatId });
 
-  // Build task card HTML
-  // NOTE: Telegram HTML supports only <b>,<i>,<u>,<s>,<a>,<code>,<pre> — no <details>/<summary>
   const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}`;
 
-  // Send confirmation — wrap in try/catch so a Telegram API error doesn't crash the webhook
   try {
     await sendMessage(token, {
       chat_id: chatId,
@@ -654,16 +777,7 @@ async function executeDraftInWorkspaceByChat(
       parse_mode: 'HTML',
     });
   } catch (err) {
-    console.error('[Bot Webhook] sendMessage (task card) failed:', err);
-    // Fallback: plain text without reply_markup
-    try {
-      await sendMessage(token, {
-        chat_id: chatId,
-        text: `✅ Задача создана: ${fullId} · «${task.title}»`,
-      });
-    } catch (err2) {
-      console.error('[Bot Webhook] sendMessage (fallback) failed:', err2);
-    }
+    console.error('[Bot Webhook] sendMessage (fallback) failed:', err);
   }
 }
 
