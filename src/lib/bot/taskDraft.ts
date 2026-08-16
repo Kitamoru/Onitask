@@ -63,6 +63,22 @@ export async function clearPendingTask(chatId: number): Promise<void> {
  * Returns true if a pending marker exists and is not expired.
  */
 export async function isPendingTaskMode(chatId: number): Promise<boolean> {
+  console.log('[taskDraft] isPendingTaskMode called:', { chatId });
+  
+  // First check if ANY row exists for this chat
+  const { data: anyRows, error: anyError } = await supabase
+    .from('bot_task_drafts')
+    .select('id, title, source, expires_at')
+    .eq('chat_id', chatId);
+
+  if (anyError) {
+    console.error('[taskDraft] isPendingTaskMode query failed:', anyError);
+    return false;
+  }
+  
+  console.log('[taskDraft] isPendingTaskMode: anyRows=', JSON.stringify(anyRows));
+
+  // Now check specifically for pending marker
   const { data, error } = await supabase
     .from('bot_task_drafts')
     .select('id')
@@ -71,6 +87,12 @@ export async function isPendingTaskMode(chatId: number): Promise<boolean> {
     .eq('source', 'pending')
     .maybeSingle();
 
-  if (error || !data) return false;
-  return true;
+  if (error) {
+    console.error('[taskDraft] isPendingTaskMode filter query error:', error);
+    return false;
+  }
+
+  const result = !!data;
+  console.log('[taskDraft] isPendingTaskMode result:', result, 'data=', data);
+  return result;
 }
