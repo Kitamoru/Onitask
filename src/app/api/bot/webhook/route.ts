@@ -608,9 +608,9 @@ async function executeDraftInWorkspaceByChat(
   const taskText = draftRow.title;
 
   // Call F-04 create-task endpoint (same pipeline as TWA)
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL;
   if (!baseUrl) {
-    console.error('[Bot Webhook] NEXT_PUBLIC_BASE_URL not set');
+    console.error('[Bot Webhook] NEXT_PUBLIC_WEBAPP_URL not set');
     await sendMessage(token, {
       chat_id: chatId,
       text: '⚠️ Сервер не настроен. Попробуйте позже.',
