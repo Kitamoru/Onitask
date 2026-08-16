@@ -204,7 +204,7 @@ async function dispatchUpdate(update: any): Promise<void> {
             // Upload blob to our STT endpoint
             const formData = new FormData();
             formData.append('file', blob, 'voice.ogg');
-            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:3000'}/api/ai/transcribe`, {
+            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_WEBAPP_URL || 'http://localhost:3000'}/api/ai/transcribe`, {
               method: 'POST',
               body: formData,
             });
@@ -623,7 +623,7 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || 'http://localhost:3000';
     const resp = await fetch(`${baseUrl}/api/bot/create-task`, {
       method: 'POST',
       headers: {
