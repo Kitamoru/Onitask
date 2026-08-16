@@ -164,10 +164,12 @@ async function dispatchUpdate(update: any): Promise<void> {
   // Step 4: Regular message — check if user is in "pending task" mode
   // If so, treat this text/voice as the task description → save draft → show board selection
   const pendingActive = await isPendingTaskMode(chatId);
+  console.log('[Bot Webhook] Step 4: pendingActive=', pendingActive, 'chatId=', chatId, 'textLen=', text?.length, 'hasVoice=', !!message?.voice);
 
   if (pendingActive) {
     // Resolve profile UUID for DB operations
     const profileId = await resolveProfileId(userId);
+    console.log('[Bot Webhook] Step 4: profileId=', profileId);
     if (!profileId) {
       await clearPendingTask(chatId);
       await sendMessage(BOT_TOKEN!, {
@@ -226,6 +228,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     }
 
     if (taskText.length > 0) {
+      console.log('[Bot Webhook] Step 4: Creating draft, taskText=', taskText.slice(0, 100), 'source=', source);
       // ALWAYS clear pending first — even on error we don't want to loop
       await clearPendingTask(chatId);
 
@@ -247,8 +250,11 @@ async function dispatchUpdate(update: any): Promise<void> {
         return;
       }
 
+      console.log('[Bot Webhook] Draft created successfully, draftId=', draftResult);
+
       // Show workspace selection keyboard with draft
-      const availableWorkspaces = await getUserAvailableWorkspaces(userId); // getUserAvailableWorkspaces internally resolves profileId
+      const availableWorkspaces = await getUserAvailableWorkspaces(userId);
+      console.log('[Bot Webhook] Step 4: availableWorkspaces count=', availableWorkspaces.length);
       if (availableWorkspaces.length === 0) {
         await sendMessage(BOT_TOKEN!, {
           chat_id: chatId,
