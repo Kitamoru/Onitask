@@ -202,7 +202,7 @@ async function dispatchUpdate(update: any): Promise<void> {
             // Upload blob to our STT endpoint
             const formData = new FormData();
             formData.append('file', blob, 'voice.ogg');
-            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai/transcribe`, {
+            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_WEBAPP_URL}/api/ai/transcribe`, {
               method: 'POST',
               body: formData,
             });
