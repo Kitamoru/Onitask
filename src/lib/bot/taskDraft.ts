@@ -21,10 +21,23 @@ export const PENDING_TASK_MARKER_TITLE = '__PENDING_TASK__';
  * Inserts a special marker row that signals the webhook to expect
  * the next message as the task description.
  * IMPORTANT: user_id is NOT NULL in bot_task_drafts — must pass resolved profile UUID.
+ * FIX: Clear old pending markers first to prevent PGRST116 (multiple rows).
  */
 export async function setPendingTask(chatId: number, userId: string): Promise<void> {
   console.log('[taskDraft] setPendingTask called:', { chatId, userId });
   try {
+    // Clear any old pending markers for this chat to prevent duplicates
+    const { error: clearError } = await supabase
+      .from('bot_task_drafts')
+      .delete()
+      .eq('chat_id', chatId)
+      .eq('title', PENDING_TASK_MARKER_TITLE)
+      .eq('source', 'pending');
+
+    if (clearError) {
+      console.warn('[taskDraft] Failed to clear old pending markers:', clearError);
+    }
+
     const { error } = await supabase.from('bot_task_drafts').insert({
       chat_id: chatId,
       user_id: userId,
@@ -78,21 +91,23 @@ export async function isPendingTaskMode(chatId: number): Promise<boolean> {
   
   console.log('[taskDraft] isPendingTaskMode: anyRows=', JSON.stringify(anyRows));
 
-  // Now check specifically for pending marker
+  // Check specifically for pending marker — use .limit(1) instead of .maybeSingle()
+  // to avoid PGRST116 error when multiple pending markers exist
   const { data, error } = await supabase
     .from('bot_task_drafts')
     .select('id')
     .eq('chat_id', chatId)
     .eq('title', PENDING_TASK_MARKER_TITLE)
     .eq('source', 'pending')
-    .maybeSingle();
+    .order('expires_at', { ascending: false })
+    .limit(1);
 
   if (error) {
     console.error('[taskDraft] isPendingTaskMode filter query error:', error);
     return false;
   }
 
-  const result = !!data;
+  const result = data && data.length > 0;
   console.log('[taskDraft] isPendingTaskMode result:', result, 'data=', data);
   return result;
 }
