@@ -202,7 +202,7 @@ async function dispatchUpdate(update: any): Promise<void> {
             // Upload blob to our STT endpoint
             const formData = new FormData();
             formData.append('file', blob, 'voice.ogg');
-            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_WEBAPP_URL}/api/ai/transcribe`, {
+            const sttResp = await fetch('/api/ai/transcribe', {
               method: 'POST',
               body: formData,
             });
@@ -608,15 +608,7 @@ async function executeDraftInWorkspaceByChat(
   const taskText = draftRow.title;
 
   // Call F-04 create-task endpoint (same pipeline as TWA)
-  const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL;
-  if (!baseUrl) {
-    console.error('[Bot Webhook] NEXT_PUBLIC_WEBAPP_URL not set');
-    await sendMessage(token, {
-      chat_id: chatId,
-      text: '⚠️ Сервер не настроен. Попробуйте позже.',
-    });
-    return;
-  }
+  // Use relative path — both endpoints are in the same Next.js app on Vercel
 
   let aiResult: {
     task?: { id: string; title: string; column: string; priority: string };
@@ -625,7 +617,7 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    const resp = await fetch(`${baseUrl}/api/bot/create-task`, {
+    const resp = await fetch('/api/bot/create-task', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
