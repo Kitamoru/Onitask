@@ -62,7 +62,7 @@ function parseCommand(text: string): [string, string] | null {
   const trimmed = text.trim();
   // Allow hyphens in command names (create-task, run-task)
   const match = trimmed.match(
-    /^\/([a-zA-Z0-9_-]+)(?:@[a-zA-Z0-9_]+)?(?:\s+(.*))?$/s
+    /^\/([a-zA-Z0-9_-]+)(?:@[a-zA-Z0-9_]+)?(?:\s+(.*))?$/
   );
   if (!match) return null;
   return [match[1].toLowerCase(), (match[2] || '').trim()];
