@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 
 /**
  * Handles deep links from Telegram Bot (t.me/bot/app?startapp=task_TASK-42).
@@ -14,74 +14,33 @@ import { useRouter, usePathname } from 'next/navigation';
  *
  * The flowboard page will read ?open_task and open TaskViewEdit sheet.
  */
-/**
- * Reads ?open_task from URL without using useSearchParams() — this avoids
- * the Next.js Suspense requirement that breaks prerendering on /404 and /_not-found.
- */
-function getOpenTaskFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
-  return params.get('open_task');
-}
-
 export function TelegramDeepLinkRouter() {
   const router = useRouter();
-  const pathname = usePathname();
   const handled = useRef(false);
-  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     if (handled.current) return;
     handled.current = true;
 
     const tg = (window as any).Telegram?.WebApp;
-    
+
     if (!tg) {
-      const msg = '[TG] Telegram.WebApp unavailable at mount time';
-      console.warn(msg);
-      setDebugInfo(msg);
+      console.warn('[TG-DL] Telegram.WebApp unavailable at mount time');
       return;
     }
 
     tg.ready();
-    
+
     const startParam = tg.initDataUnsafe?.start_param;
-    const currentUrl = window.location.href;
-    const currentOpenTask = getOpenTaskFromUrl();
-    
-    setDebugInfo(`start_param="${startParam}" | open_task=${currentOpenTask}`);
-    
+
     if (!startParam) {
       console.info('[TG-DL] No start_param — normal launch, not a deep link');
       return;
     }
 
-    console.info('[TG-DL] start_param detected', { startParam });
-    void routeByStartParam(startParam, router, pathname);
-  }, [router, pathname]);
-
-  // Debug display (only in development)
-  if (process.env.NODE_ENV === 'development' && debugInfo) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          top: 8,
-          left: 8,
-          zIndex: 9999,
-          background: '#000',
-          color: '#0f0',
-          padding: '4px 8px',
-          fontSize: 11,
-          fontFamily: 'monospace',
-          borderRadius: 4,
-          opacity: 0.85,
-        }}
-      >
-        {debugInfo}
-      </div>
-    );
-  }
+    console.info('[TG-DL] start_param detected:', startParam);
+    void routeByStartParam(startParam, router);
+  }, [router]);
 
   return null;
 }
@@ -89,27 +48,22 @@ export function TelegramDeepLinkRouter() {
 async function routeByStartParam(
   startParam: string,
   router: ReturnType<typeof useRouter>,
-  currentPathname: string,
 ) {
-  console.log('[TG] Processing start_param:', startParam);
+  console.info('[TG-DL] Processing start_param:', startParam);
 
   // Match task deep links: "task_BOOP-39"
   const taskMatch = startParam.match(/^task_([A-Za-z]+-\d+)$/);
   if (taskMatch) {
     const fullId = taskMatch[1];
-    console.log('[TG] Task deep link detected, fullId:', fullId);
-    
-    // Use setTimeout to avoid race condition with initial page load / Suspense
-    // Increase delay to ensure Next.js routing is stable
+    console.info('[TG-DL] Task deep link detected, fullId:', fullId);
+
+    // Use setTimeout to avoid race condition with initial page load / Suspense.
+    // Delay increased to ensure Next.js routing is fully stable.
     setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      params.set('open_task', fullId);
-      const query = params.toString();
-      const targetPath = `${currentPathname}${query ? '?' + query : ''}`;
-      
-      console.log('[TG] Navigating to:', targetPath);
+      const targetPath = `/flowboard?open_task=${encodeURIComponent(fullId)}`;
+      console.info('[TG-DL] Navigating to:', targetPath);
       router.replace(targetPath, { scroll: false });
-    }, 300);
+    }, 500);
     return;
   }
 
@@ -118,9 +72,9 @@ async function routeByStartParam(
   if (flowMatch) {
     setTimeout(() => {
       router.replace(`/workspace/${flowMatch[1]}`, { scroll: false });
-    }, 300);
+    }, 500);
     return;
   }
 
-  console.log('[TG] start_param does not match known patterns:', startParam);
+  console.warn('[TG-DL] start_param does not match known patterns:', startParam);
 }
