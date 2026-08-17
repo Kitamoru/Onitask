@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
 /**
  * Handles deep links from Telegram Bot (t.me/bot/app?startapp=task_TASK-42).
@@ -16,41 +16,90 @@ import { useRouter } from 'next/navigation';
  */
 export function TelegramDeepLinkRouter() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const handled = useRef(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     if (handled.current) return;
+    handled.current = true;
 
     const tg = (window as any).Telegram?.WebApp;
+    
     if (!tg) {
-      console.warn('[TG] Telegram.WebApp unavailable at mount time — check Script strategy');
+      const msg = '[TG] Telegram.WebApp unavailable at mount time';
+      console.warn(msg);
+      setDebugInfo(msg);
       return;
     }
 
     tg.ready();
-    handled.current = true;
-
+    
     const startParam = tg.initDataUnsafe?.start_param;
-    if (!startParam) return;
+    const currentUrl = window.location.href;
+    const currentOpenTask = searchParams.get('open_task');
+    
+    setDebugInfo(`start_param="${startParam}" | url="${currentUrl}" | open_task=${currentOpenTask}`);
+    
+    if (!startParam) {
+      console.log('[TG] No start_param in initDataUnsafe — normal launch, not a deep link');
+      return;
+    }
 
-    void routeByStartParam(startParam, router);
-  }, [router]);
+    void routeByStartParam(startParam, router, pathname);
+  }, [router, pathname, searchParams]);
+
+  // Debug display (only in development)
+  if (process.env.NODE_ENV === 'development' && debugInfo) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 8,
+          left: 8,
+          zIndex: 9999,
+          background: '#000',
+          color: '#0f0',
+          padding: '4px 8px',
+          fontSize: 11,
+          fontFamily: 'monospace',
+          borderRadius: 4,
+          opacity: 0.85,
+        }}
+      >
+        {debugInfo}
+      </div>
+    );
+  }
 
   return null;
 }
 
-async function routeByStartParam(startParam: string, router: ReturnType<typeof useRouter>) {
-  // Match task deep links: "task_TASK-42"
+async function routeByStartParam(
+  startParam: string,
+  router: ReturnType<typeof useRouter>,
+  currentPathname: string,
+) {
+  console.log('[TG] Processing start_param:', startParam);
+
+  // Match task deep links: "task_BOOP-39"
   const taskMatch = startParam.match(/^task_([A-Za-z]+-\d+)$/);
   if (taskMatch) {
     const fullId = taskMatch[1];
+    console.log('[TG] Task deep link detected, fullId:', fullId);
+    
     // Use setTimeout to avoid race condition with initial page load / Suspense
+    // Increase delay to ensure Next.js routing is stable
     setTimeout(() => {
-      const currentPath = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
       params.set('open_task', fullId);
-      router.replace(`${currentPath}?${params.toString()}`, { scroll: false });
-    }, 150);
+      const query = params.toString();
+      const targetPath = `${currentPathname}${query ? '?' + query : ''}`;
+      
+      console.log('[TG] Navigating to:', targetPath);
+      router.replace(targetPath, { scroll: false });
+    }, 300);
     return;
   }
 
@@ -58,8 +107,10 @@ async function routeByStartParam(startParam: string, router: ReturnType<typeof u
   const flowMatch = startParam.match(/^flow_([a-z0-9-]+)$/);
   if (flowMatch) {
     setTimeout(() => {
-      router.replace(`/workspace/${flowMatch[1]}`);
-    }, 150);
+      router.replace(`/workspace/${flowMatch[1]}`, { scroll: false });
+    }, 300);
     return;
   }
+
+  console.log('[TG] start_param does not match known patterns:', startParam);
 }
