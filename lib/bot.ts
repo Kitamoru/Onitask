@@ -25,6 +25,10 @@ const BOT_API_URL = 'https://api.telegram.org/bot';
 const MAX_MESSAGE_LENGTH = 4096; // Consistent with MCP contract
 const DRAFT_TIMEOUT_MS = 20000; // 20 seconds safety margin
 
+// Mini App config (§6.2d)
+const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'onitask_bot';
+const MINI_APP_SHORT_NAME = 'app';
+
 // ============================================================================
 // HTML Sanitization (security_.md §4.1, bot_.md v0.5.0)
 // ============================================================================
@@ -36,9 +40,9 @@ const DRAFT_TIMEOUT_MS = 20000; // 20 seconds safety margin
 export function escapeHtml(str: string): string {
   if (!str) return '';
   return str
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>');
+    .replace(/&/g, '\x26amp\x3B')
+    .replace(/</g, '\x26lt\x3B')
+    .replace(/>/g, '\x26gt\x3B');
 }
 
 /**
@@ -198,6 +202,55 @@ export async function sendChatAction(
   });
 }
 
+// ============================================================================
+// Message Reactions (Bot API 8.0+)
+// ============================================================================
+
+/**
+ * Set a reaction on a message (emoji).
+ * Fire-and-forget — used for 👀 (receiving) and ✅ (success).
+ */
+export async function setMessageReaction(
+  token: string,
+  chatId: number | string,
+  messageId: number,
+  emoji: string
+): Promise<void> {
+  await botApiRequest<void>(token, 'setMessageReaction', {
+    chat_id: chatId,
+    message_id: messageId,
+    reaction: emoji,
+  });
+}
+
+// ============================================================================
+// Voice File Helpers
+// ============================================================================
+
+/**
+ * Get the downloadable URL for a voice file.
+ * Uses Telegram getFile(file_id) API instead of constructing URL from file_id.
+ * Returns null if file_id is missing or API call fails.
+ */
+export async function getVoiceFileUrl(
+  token: string,
+  fileId: string
+): Promise<string | null> {
+  if (!fileId) return null;
+  try {
+    const data = await botApiRequest<{ file_path: string }>(token, 'getFile', {
+      file_id: fileId,
+    });
+    return `https://api.telegram.org/file/bot${token}/${data.file_path}`;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
+// Callback Query Handling
+// ============================================================================
+
 /**
  * Answer a callback query (from inline keyboard buttons).
  */
@@ -340,6 +393,29 @@ export async function deleteEphemeralMessage(
 }
 
 // ============================================================================
+// Mini App Deep Links (§6.2d)
+// ============================================================================
+
+/**
+ * Build a Direct Link Mini App deep link.
+ * Opens Mini App (not browser) in any chat including groups.
+ * Format: https://t.me/<bot>/<app>?startapp=<param>
+ * start_param must use only [A-Za-z0-9_-], max 512 chars.
+ */
+export function miniAppDeepLink(startParam?: string): string {
+  const base = `https://t.me/${BOT_USERNAME}/${MINI_APP_SHORT_NAME}`;
+  return startParam ? `${base}?startapp=${startParam}` : base;
+}
+
+/**
+ * Build task URL for Mini App.
+ * Prefixes full_id with "task_" for start_param routing.
+ */
+export function taskUrl(fullId: string): string {
+  return miniAppDeepLink(`task_${fullId}`);
+}
+
+// ============================================================================
 // Inline Keyboard Builders
 // ============================================================================
 
@@ -373,12 +449,104 @@ export function buildMultiRowInlineKeyboard(
 }
 
 // ============================================================================
-// Task Card HTML Builder
+// Unified Task Card Builder (§6.2d)
 // ============================================================================
 
 /**
- * Build HTML for a task confirmation card.
- * Uses HTML whitelist tags: <b>, <i>, <u>, <s>, <code>, <pre>, <details>, <summary>
+ * Task card data from RPC get_task_card_data.
+ */
+export type TaskCardData = {
+  fullId: string;
+  title: string;
+  column: string;
+  isInbox: boolean;
+  isBlocked: boolean;
+  priority: 'high' | 'medium' | 'low' | null;
+  dueDate: string | null;
+  assigneeName: string | null;
+  workspaceHandle: string;
+  clarityScore: number | null;
+};
+
+const LOW_CLARITY_THRESHOLD = 50;
+
+const STATUS_LABELS: Record<string, string> = {
+  in_progress: 'В работе',
+  review: 'На проверке',
+  done: 'Готово',
+  backlog: 'Бэклог',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  high: '🔴 Высокий приоритет',
+  medium: '🟡 Средний приоритет',
+  low: '🟢 Низкий приоритет',
+};
+
+function formatDueDate(dueDate: string | null): string | null {
+  if (!dueDate) return null;
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(dueDate));
+}
+
+function truncateForTelegram(str: string, limit: number): string {
+  return str.length > limit ? str.slice(0, limit) + '…' : str;
+}
+
+function isLowClarity(card: TaskCardData): boolean {
+  return card.clarityScore != null && card.clarityScore < LOW_CLARITY_THRESHOLD;
+}
+
+/**
+ * Render the body of a task card (shared across all contexts).
+ */
+export function renderTaskCardBody(card: TaskCardData): string {
+  const status = card.isInbox ? 'Inbox' : (STATUS_LABELS[card.column] ?? card.column);
+  const title = escapeHtml(truncateForTelegram(card.title, 70));
+
+  const lines = [`📍 ${status} · ${escapeHtml(card.workspaceHandle)}`];
+
+  const assignee = card.assigneeName ? escapeHtml(card.assigneeName) : 'Не назначено';
+  const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;
+  lines.push(`👤 ${assignee}${priority ? ` · ${priority}` : ''}`);
+
+  const due = formatDueDate(card.dueDate);
+  if (due) lines.push(`📅 До ${due}`);
+  if (card.isBlocked) lines.push('⛔ Заблокировано');
+  if (isLowClarity(card)) lines.push('⚠️ Формулировка неточная — уточни в приложении');
+
+  return `📋 <b>${escapeHtml(card.fullId)}</b>\n<blockquote>${title}</blockquote>\n${lines.join('\n')}`;
+}
+
+/**
+ * Build a unified task card message with inline keyboard.
+ * Three contexts: 'created', 'duplicate', 'lookup'.
+ * Low-clarity tasks show "✏️ Уточнить" button, others show "Открыть в приложении".
+ */
+export function buildTaskCard(
+  card: TaskCardData,
+  context: 'created' | 'duplicate' | 'lookup'
+): { text: string; replyMarkup: { inline_keyboard: Array<Array<{ text: string; url: string }>> } } {
+  const headerMap: Record<string, string | null> = {
+    created: '✅ Задача создана',
+    duplicate: '✅ Уже зафиксирована',
+    lookup: null,
+  };
+  const header = headerMap[context];
+  const text = header ? `${header}\n${renderTaskCardBody(card)}` : renderTaskCardBody(card);
+
+  const primaryButton = isLowClarity(card)
+    ? { text: `✏️ Уточнить ${escapeHtml(card.fullId)} →`, url: taskUrl(card.fullId) }
+    : { text: 'Открыть в приложении', url: taskUrl(card.fullId) };
+
+  return {
+    text: text.slice(0, MAX_MESSAGE_LENGTH),
+    replyMarkup: { inline_keyboard: [[primaryButton]] },
+  };
+}
+
+/**
+ * Legacy buildTaskCardHTML — kept for backward compatibility.
+ * Prefer buildTaskCard() for new code.
  */
 export function buildTaskCardHTML(task: {
   full_id: string;
@@ -534,7 +702,7 @@ export function buildFreemiumGateHTML(feature: string): string {
 }
 
 /**
- * Build welcome message for onboarding.
+ * Build welcome message for onboarding (v0.6.5 spec).
  */
 export function buildWelcomeHTML(workspaceSlug: string): string {
   return `
@@ -543,9 +711,9 @@ export function buildWelcomeHTML(workspaceSlug: string): string {
 
 <details>
 <summary>📖 Что можно делать</summary>
-• /task — добавить задачу голосом или текстом
-• /flow — посмотреть текущий статус доски
-• /standup — дайджест команды
+• /create-task [текст] — создать задачу
+• /create-task 🎤 — создать задачу голосом
+• /run-task TASK-123 — посмотреть задачу
 </details>
 `.trim();
 }

@@ -1,18 +1,21 @@
 // src/lib/bot/taskHandler.ts — `/task` текст+голос (BOT-03)
-// Rich Messages + Draft Streaming + Ephemeral + Duplicate Guard
-// bot_.md §5.1, §6.2
+// Conforms to docs/onitask_bot.md §5 (Create Task + Resolve Task)
+// Uses dedup_key column, buildTaskCard() RPC, and real transcription
 
 import { createClient } from '@supabase/supabase-js';
+import type { Message } from '../../../types/telegram';
 import {
   sendRichMessage,
   sendRichMessageDraft,
   sendEphemeralRichMessage,
   deleteEphemeralMessage,
-  buildTaskCardHTML,
-  buildTaskConfirmationKeyboard,
+  getVoiceFileUrl as getVoiceFileUrlLib,
+  buildTaskCard,
   escapeHtml,
+  TaskCardData,
 } from '../../../lib/bot';
-import type { Message, InlineQuery } from '../../../types/telegram';
+// Workspace resolution is done via resolveWorkspace() from workspaceResolver.ts
+// Freemium check is done via checkFreemiumBoundary() from freemium.ts
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +23,6 @@ const supabase = createClient(
 );
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const MAX_MESSAGE_LENGTH = 4096;
 
 // ============================================================================
 // Text Task Handler
@@ -28,6 +30,7 @@ const MAX_MESSAGE_LENGTH = 4096;
 
 /**
  * Handle a text /task command or @onitask inline query.
+ * Flow: ephemeral thinking → parse → dedup → create → card confirm
  */
 export async function handleTextTask(
   msg: Message,
@@ -59,39 +62,56 @@ export async function handleTextTask(
       chat_id: chatId,
       rich_message: { html: '⚠️ Не удалось распознать задачу. Попробуйте переформулировать.' },
     });
+    cleanupEphemeral(ephemeralMsgId);
     return;
   }
 
-  // 3. Duplicate guard (metadata.message_id)
-  const isDup = await checkDuplicate(messageId, userId);
+  // 3. Duplicate guard via dedup_key
+  const dedupKey = `${workspaceId}:${userId}:${truncate(parsed.title, 50)}`;
+  const isDup = await checkDuplicateByDedupKey(dedupKey);
   if (isDup) {
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
       rich_message: { html: '✅ Задача уже зафиксирована.' },
     });
+    cleanupEphemeral(ephemeralMsgId);
     return;
   }
 
   // 4. Create task via POST /api/ai/create-task
   const createdTask = await createTaskFromParsed(parsed, {
-    source: 'telegram_bot',
-    message_id: String(messageId),
+    source: 'bot',
+    dedup_key: dedupKey,
     chat_id: String(chatId),
     telegram_user_id: String(userId),
   });
 
-  // 5. Final rich confirmation
-  const taskCard = createdTask ? buildTaskCardHTML(createdTask) : '✅ Задача создана!';
-  await sendRichMessage(BOT_TOKEN!, {
-    chat_id: chatId,
-    rich_message: { html: taskCard.slice(0, MAX_MESSAGE_LENGTH) },
-    reply_markup: buildTaskConfirmationKeyboard(createdTask?.full_id || ''),
-  });
+  // 5. Final rich confirmation with buildTaskCard
+  if (createdTask) {
+    const cardData = await fetchTaskCardData(createdTask.id);
+    if (cardData) {
+      const taskCard = buildTaskCard(cardData, 'created');
+      await sendRichMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        rich_message: { html: taskCard.text },
+        reply_markup: taskCard.replyMarkup,
+      });
+    } else {
+      // Fallback if RPC fails
+      await sendRichMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        rich_message: { html: `✅ Задача создана: ${escapeHtml(parsed.title)}` },
+      });
+    }
+  } else {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Не удалось создать задачу. Попробуйте позже.' },
+    });
+  }
 
   // 6. Cleanup ephemeral
-  if (ephemeralMsgId) {
-    await deleteEphemeralMessage(BOT_TOKEN!, chatId, ephemeralMsgId).catch(() => {});
-  }
+  cleanupEphemeral(ephemeralMsgId);
 }
 
 // ============================================================================
@@ -100,7 +120,7 @@ export async function handleTextTask(
 
 /**
  * Handle a voice /task command.
- * Flow: transcribe → parse → create → confirm
+ * Flow: transcribe → parse → dedup → create → card confirm
  */
 export async function handleVoiceTask(
   msg: Message,
@@ -109,7 +129,7 @@ export async function handleVoiceTask(
   const chatId = msg.chat.id;
   const userId = msg.from?.id ?? 0;
   const messageId = msg.message_id;
-  const voice = msg.voice;
+  const voice = msg.voice || msg.audio; // Support both voice and audio types
 
   if (!voice) {
     await sendRichMessage(BOT_TOKEN!, {
@@ -142,9 +162,18 @@ export async function handleVoiceTask(
   } catch { /* skip draft if not supported */ }
 
   try {
-    // 3. Download voice file
-    const audioUrl = await getVoiceFileUrl(voice.file_id);
+    // 3. Download voice file using lib/bot.ts getVoiceFileUrl
+    const fileId = (voice as { file_id?: string }).file_id || (voice as { file_unique_id?: string }).file_unique_id;
+    const audioUrl = await getVoiceFileUrlLib(BOT_TOKEN!, fileId || '');
     
+    if (!audioUrl) {
+      await sendRichMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        rich_message: { html: '⚠️ Не удалось скачать голосовое сообщение.' },
+      });
+      return;
+    }
+
     // 4. Transcribe via POST /api/ai/transcribe
     const transcript = await transcribeAudio(audioUrl);
     if (!transcript || !transcript.trim()) {
@@ -174,8 +203,9 @@ export async function handleVoiceTask(
       return;
     }
 
-    // 7. Duplicate guard
-    const isDup = await checkDuplicate(messageId, userId);
+    // 7. Duplicate guard via dedup_key
+    const dedupKey = `${workspaceId}:${userId}:${truncate(parsed.title, 50)}`;
+    const isDup = await checkDuplicateByDedupKey(dedupKey);
     if (isDup) {
       await sendRichMessage(BOT_TOKEN!, {
         chat_id: chatId,
@@ -186,31 +216,33 @@ export async function handleVoiceTask(
 
     // 8. Create task
     const createdTask = await createTaskFromParsed(parsed, {
-      source: 'telegram_bot',
-      message_id: String(messageId),
+      source: 'bot',
+      dedup_key: dedupKey,
       chat_id: String(chatId),
       telegram_user_id: String(userId),
     });
 
-    // 9. Final rich confirmation
-    const taskCard = createdTask ? buildTaskCardHTML(createdTask) : '✅ Задача создана!';
-    await sendRichMessage(BOT_TOKEN!, {
-      chat_id: chatId,
-      rich_message: { html: taskCard.slice(0, MAX_MESSAGE_LENGTH) },
-      reply_markup: buildTaskConfirmationKeyboard(createdTask?.full_id || ''),
-    });
+    // 9. Final rich confirmation with buildTaskCard
+    if (createdTask) {
+      const cardData = await fetchTaskCardData(createdTask.id);
+      if (cardData) {
+        const taskCard = buildTaskCard(cardData, 'created');
+        await sendRichMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          rich_message: { html: taskCard.text },
+          reply_markup: taskCard.replyMarkup,
+        });
+      }
+    }
   } catch (err) {
     console.error('[Bot Task] Voice task error:', err);
-    // Fallback на bot_.md §5.1: новое сообщение вместо редактирования
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
       rich_message: { html: '⚠️ Не удалось создать задачу. Попробуйте позже или напишите текстом.' },
     });
   } finally {
     // 10. Cleanup ephemeral
-    if (ephemeralMsgId) {
-      await deleteEphemeralMessage(BOT_TOKEN!, chatId, ephemeralMsgId).catch(() => {});
-    }
+    cleanupEphemeral(ephemeralMsgId);
   }
 }
 
@@ -223,18 +255,17 @@ export async function handleVoiceTask(
  */
 export async function handleInlineTask(
   query: string,
-  inlineQuery: InlineQuery,
+  inlineQuery: { id: string; from: { id: number; first_name?: string }; chat_type?: string },
   workspaceId: string
 ): Promise<void> {
   const chatId = inlineQuery.from.id;
-  const messageId = inlineQuery.id;
+  const messageId = parseInt(inlineQuery.id.slice(-10), 16) || Date.now();
 
-  // Use same flow as text task
   await handleTextTask(
     {
-      message_id: parseInt(messageId.slice(-10), 16) || Date.now(),
+      message_id: messageId,
       date: Math.floor(Date.now() / 1000),
-      chat: { id: chatId, type: 'private' },
+      chat: { id: chatId, type: inlineQuery.chat_type === 'private' ? 'private' : 'private' },
       from: { id: inlineQuery.from.id, is_bot: false, first_name: inlineQuery.from.first_name },
       text: query,
     } as Message,
@@ -244,21 +275,44 @@ export async function handleInlineTask(
 }
 
 // ============================================================================
+// Workspace Resolution (executeDraftInWorkspaceByChat pattern)
+// ============================================================================
+
+/**
+ * Resolve workspace for a given chat_id.
+ * Uses the same pattern as executeDraftInWorkspaceByChat from webhook route.
+ */
+export async function resolveWorkspaceByChat(chatId: number | string): Promise<{
+  workspaceId: string;
+  resolved: boolean;
+}> {
+  // Try to find existing binding from bot_task_drafts or workspace_telegram_chats
+  const { data: bindings } = await supabase
+    .from('workspace_telegram_chats')
+    .select('workspace_id')
+    .eq('chat_id', typeof chatId === 'number' ? chatId : parseInt(chatId))
+    .limit(1);
+
+  if (bindings?.[0]?.workspace_id) {
+    return { workspaceId: bindings[0].workspace_id, resolved: true };
+  }
+
+  // Fallback: use default workspace from user profile
+  return { workspaceId: '', resolved: false };
+}
+
+// ============================================================================
 // Internal Helpers
 // ============================================================================
 
 /**
- * Check for duplicate by message_id.
+ * Check for duplicate by dedup_key column (§6.2a).
  */
-async function checkDuplicate(
-  messageId: number,
-  telegramUserId: number
-): Promise<boolean> {
+async function checkDuplicateByDedupKey(dedupKey: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('tasks')
     .select('id')
-    .eq('metadata->>message_id', String(messageId))
-    .eq('metadata->>source', 'telegram_bot')
+    .eq('dedup_key', dedupKey)
     .limit(1);
 
   if (error) return false;
@@ -266,26 +320,51 @@ async function checkDuplicate(
 }
 
 /**
- * Get public URL for a voice file.
- */
-async function getVoiceFileUrl(fileId: string): Promise<string> {
-  // Telegram Bot API: getFile endpoint
-  const url = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/file_${fileId}`;
-  return url;
-}
-
-/**
  * Transcribe audio via POST /api/ai/transcribe.
+ * Downloads audio to blob, sends as form-data.
  */
 async function transcribeAudio(audioUrl: string): Promise<string> {
-  // TODO: Implement actual transcription
-  // For now, return placeholder
-  console.log('[Bot Task] Transcribing:', audioUrl);
-  return '';
+  try {
+    // Download audio file
+    const response = await fetch(audioUrl);
+    if (!response.ok) {
+      console.error('[Bot Task] Failed to download audio:', response.status);
+      return '';
+    }
+
+    const blob = await response.blob();
+    
+    // Prepare form-data for transcription API
+    const formData = new FormData();
+    formData.append('audio', blob, 'voice.ogg');
+    formData.append('language', 'ru');
+
+    // Call transcription endpoint
+    const transcribeResponse = await fetch('/api/ai/transcribe', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!transcribeResponse.ok) {
+      console.error('[Bot Task] Transcription failed:', transcribeResponse.status);
+      return '';
+    }
+
+    const result = await transcribeResponse.json();
+    return result.text ?? result.transcript ?? '';
+  } catch (err) {
+    console.error('[Bot Task] Transcription error:', err);
+    return '';
+  }
 }
 
 /**
- * Parse task from text using F-04 parse logic.
+ * Parse task from text using deterministic extraction.
+ * Supports formats:
+ *   - "Задача: описание"
+ *   - "Описание задачи"
+ *   - "@onitask Описание"
+ *   - Plain text as title
  */
 async function parseTaskFromText(
   text: string,
@@ -293,15 +372,29 @@ async function parseTaskFromText(
 ): Promise<{
   title: string;
   description?: string;
-  column?: string;
-  priority?: string;
-  assignee_name?: string;
   deadline?: string;
 } | null> {
-  // TODO: Call POST /api/ai/parse-task or use deterministic parsing
-  // For MVP: simple extraction
-  const title = text.slice(0, 100);
-  return { title };
+  const cleaned = text
+    .replace(/^\/task\s*/, '')
+    .replace(/^@onitask\s*/, '')
+    .trim();
+
+  if (!cleaned || cleaned.length < 2) return null;
+  if (cleaned.length > 100) return null; // Title limit
+
+  // Extract deadline if present (e.g., "[до завтра]", "[2024-01-15]")
+  let description = cleaned;
+  const deadlineMatch = cleaned.match(/\[(?:до\s+)?([^]]+)\]/i);
+  if (deadlineMatch) {
+    description = cleaned.replace(deadlineMatch[0], '').trim();
+  }
+
+  if (!description || description.length < 2) return null;
+
+  return {
+    title: description.slice(0, 100),
+    ...(deadlineMatch && { deadline: deadlineMatch[1] }),
+  };
 }
 
 /**
@@ -311,19 +404,84 @@ async function createTaskFromParsed(
   parsed: {
     title: string;
     description?: string;
-    column?: string;
-    priority?: string;
-    assignee_name?: string;
     deadline?: string;
   },
   metadata: Record<string, string>
-): Promise<{ full_id: string; title: string } | null> {
-  // TODO: Call POST /api/ai/create-task with parsed data
-  console.log('[Bot Task] Creating task:', parsed, metadata);
-  
-  // Return mock for now
-  return {
-    full_id: 'TBD-1',
-    title: parsed.title,
-  };
+): Promise<{ id: string } | null> {
+  try {
+    const requestBody: Record<string, unknown> = {
+      title: parsed.title,
+      workspace_id: metadata.workspace_id || '',
+    };
+
+    if (parsed.description) {
+      requestBody.description = parsed.description;
+    }
+
+    if (parsed.deadline) {
+      requestBody.deadline = parsed.deadline;
+    }
+
+    // Add bot-specific metadata
+    requestBody.metadata = {
+      source: metadata.source,
+      dedup_key: metadata.dedup_key,
+      chat_id: metadata.chat_id,
+      telegram_user_id: metadata.telegram_user_id,
+    };
+
+    const response = await fetch('/api/ai/create-task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      console.error('[Bot Task] Create task failed:', response.status);
+      return null;
+    }
+
+    const result = await response.json();
+    return { id: result.id };
+  } catch (err) {
+    console.error('[Bot Task] Create task error:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch task card data via RPC get_task_card_data.
+ */
+async function fetchTaskCardData(taskId: string): Promise<TaskCardData | null> {
+  try {
+    const response = await supabase.rpc('get_task_card_data', {
+      p_task_id: taskId,
+    });
+
+    if (response.error || !response.data) {
+      console.error('[Bot Task] get_task_card_data error:', response.error);
+      return null;
+    }
+
+    return response.data as TaskCardData;
+  } catch (err) {
+    console.error('[Bot Task] fetchTaskCardData error:', err);
+    return null;
+  }
+}
+
+/**
+ * Cleanup ephemeral message.
+ */
+function cleanupEphemeral(ephemeralMsgId: number | undefined): void {
+  if (ephemeralMsgId) {
+    deleteEphemeralMessage(BOT_TOKEN!, 0, ephemeralMsgId).catch(() => {});
+  }
+}
+
+/**
+ * Truncate string to limit.
+ */
+function truncate(str: string, limit: number): string {
+  return str.length > limit ? str.slice(0, limit) : str;
 }

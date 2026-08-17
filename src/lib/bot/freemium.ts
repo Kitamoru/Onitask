@@ -1,5 +1,5 @@
 // src/lib/bot/freemium.ts — Freemium Boundary Check (BOT-05+)
-// bot_.md §4 — проверка тарифа перед выполнением команд
+// bot.md §4 — проверка тарифа перед выполнением команд
 //
 // FIX: getUserPlanType теперь использует resolveProfileId для корректного
 // поиска workers по source_id = profile.id, а не telegram_user_id.
@@ -18,13 +18,13 @@ export type PlanType = 'free' | 'solo' | 'ai_dev' | 'team';
 
 /**
  * Commands available per plan.
- * bot_.md §4 table.
+ // bot.md §4 table — только /task и /help.
  */
 const PLAN_COMMANDS: Record<PlanType, string[]> = {
   free: ['help'],
-  solo: ['help', 'task', 'inbox', 'flow', 'standup', 'resolve', 'stuck'],
-  ai_dev: ['help', 'task', 'inbox', 'flow', 'standup', 'resolve', 'stuck', 'summary', 'who', 'load', 'review'],
-  team: ['help', 'task', 'inbox', 'flow', 'standup', 'resolve', 'stuck', 'summary', 'who', 'load', 'review'],
+  solo: ['help', 'task'],
+  ai_dev: ['help', 'task'],
+  team: ['help', 'task'],
 };
 
 /**

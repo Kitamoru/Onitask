@@ -2,17 +2,19 @@
 // Handles incoming updates from Telegram Bot API
 // SEC-03: Secret token verification via timingSafeEqual
 // BOT-05: Lazy workspace selection — no initial board prompt
-//          Commands requiring workspace show inline keyboard if not selected
 // SERVERLESS-SAFE: No in-memory state — uses DB for drafts, callback_data for commands
+// v0.6.5 spec: /create-task, /run-task, /help only
+//
+// Commands:
+//   /create-task [text] → save draft → select workspace → execute F-04 pipeline
+//   /create-task 🎤 (voice) → transcribe → save draft → select workspace → F-04
+//   /run-task TASK-123 → lookup task by full_id
+//   /help → list available commands
 //
 // Workflow:
-//   1. Command without args (/review, /inbox, /flow):
-//      callback_data = "select_ws:<wsId>:<command>" → execute in same callback
-//   2. /task [text]:
-//      INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft"
+//   1. /create-task [text]: INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft"
 //      → consume draft + create task in same callback
-//   3. /task ALPHA-123 or /resolve ALPHA-123:
-//      callback_data = "select_ws:<wsId>:<command>:<fullId>" → execute in same callback
+//   2. /run-task TASK-123: callback_data = "select_ws:<wsId>:run:TASK-123" → lookup in same callback
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -24,9 +26,12 @@ import {
   buildWorkspaceSelectionKeyboard,
   parseWorkspaceCallbackData,
   escapeHtml,
+  buildTaskCard,
+  setMessageReaction,
+  TaskCardData,
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
-import { handleCommand, handleUnblockTask } from '../../../../../src/lib/bot/commands';
+import { handleCommand } from '../../../../../src/lib/bot/commands';
 import { resolveWorkspace, getUserAvailableWorkspaces, resolveProfileId } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
 import { setPendingTask, clearPendingTask, isPendingTaskMode } from '../../../../../src/lib/bot/taskDraft';
@@ -53,12 +58,9 @@ function parseCommand(text: string): [string, string] | null {
 
 /**
  * Commands that require workspace selection before execution.
- * These will trigger the inline keyboard if no workspace is resolved.
+ * v0.6.5 spec: only /create-task needs workspace (for draft execution).
  */
-const COMMANDS_REQUIRING_WORKSPACE = [
-  'inbox', 'flow', 'standup', 'stuck', 'review', 'summary',
-  'task', 'resolve',
-];
+const COMMANDS_REQUIRING_WORKSPACE = ['create-task'];
 
 /**
  * Commands that work WITHOUT workspace (start, help).
@@ -93,7 +95,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Ignore bot messages
+  // Ignore group messages
   if (chat.type !== 'private') {
     return;
   }
@@ -153,6 +155,20 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
+    // /run-task doesn't need workspace — handle directly
+    if (command === 'run-task') {
+      const fullId = args.trim();
+      if (/^[A-Z]+-\d+$/.test(fullId)) {
+        await handleResolveTask(BOT_TOKEN!, chatId, userId, message.message_id, fullId);
+      } else {
+        await sendMessage(BOT_TOKEN!, {
+          chat_id: chatId,
+          text: '📝 Введите полный ID задачи, например: /run-task ALPHA-123',
+        });
+      }
+      return;
+    }
+
     // Unknown command — show help
     await sendMessage(BOT_TOKEN!, {
       chat_id: chatId,
@@ -194,20 +210,20 @@ async function dispatchUpdate(update: any): Promise<void> {
       } else {
         // No caption — try to download and transcribe via STT API
         const voiceFileId = message.voice.file_id;
-        const audioUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
-        try {
-          const resp = await fetch(audioUrl, {
-            headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
+      const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
+      try {
+        const resp = await fetch(telegramFileUrl, {
+          headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          // Upload blob to our STT endpoint (relative path — same Next.js app)
+          const formData = new FormData();
+          formData.append('file', blob, 'voice.ogg');
+          const sttResp = await fetch('/api/ai/transcribe', {
+            method: 'POST',
+            body: formData,
           });
-          if (resp.ok) {
-            const blob = await resp.blob();
-            // Upload blob to our STT endpoint
-            const formData = new FormData();
-            formData.append('file', blob, 'voice.ogg');
-            const sttResp = await fetch(`${process.env.NEXT_PUBLIC_WEBAPP_URL || 'http://localhost:3000'}/api/ai/transcribe`, {
-              method: 'POST',
-              body: formData,
-            });
             if (sttResp.ok) {
               const sttData = await sttResp.json();
               taskText = sttData.text || `[Голосовое сообщение]`;
@@ -299,7 +315,7 @@ async function dispatchUpdate(update: any): Promise<void> {
  * Uses serverless-safe approach:
  *   - /task [text]: save draft to DB, pass draftId in callback_data
  *   - /task (no args): prompt user to send text/voice → saved as draft
- *   - Other commands: pass command name in callback_data
+ *   - /task ALPHA-123: pass full_id in callback_data for lookup
  *
  * INV: profileId resolved once, reused for all DB calls.
  */
@@ -329,39 +345,26 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  // Single workspace: auto-select, but still ask for text first for /task
+  // Single workspace: auto-select, but still ask for text first for /create-task
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
 
-    // /task without args → prompt for text, then save draft + auto-select board
-    if (command === 'task' && (!args || args.trim().length === 0)) {
+    // /create-task without args → prompt for text, then save draft + auto-select board
+    if (command === 'create-task' && (!args || args.trim().length === 0)) {
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
         text: '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\nБот сохранит черновик и покажет подтверждение.',
       });
-      // Store pending context in a lightweight way: we'll detect the next non-command message
-      // by checking if it's a regular text/voice message (handled in dispatchUpdate Step 4)
+      // Store pending context — detected in dispatchUpdate Step 4
       await setPendingTask(chatId, profileId);
       return;
     }
 
-    // /task with text → create draft directly (single workspace, no selection needed)
-    if (command === 'task' && args && args.trim().length > 0) {
+    // /create-task with text → save draft and create immediately (single workspace)
+    if (command === 'create-task' && args && args.trim().length > 0) {
       const trimmedArgs = args.trim();
-      const looksLikeShortId = /^[A-Z]{2,6}-\d{1,6}$/.test(trimmedArgs);
 
-      if (looksLikeShortId) {
-        // /task ALPHA-123 — lookup task
-        const fakeMessage = {
-          chat: { id: chatId },
-          from: { id: userId },
-          text: `/task ${trimmedArgs}`,
-        };
-        await handleCommand(fakeMessage as any, 'task', trimmedArgs, ws.id);
-        return;
-      }
-
-      // /task [text] — save draft and create immediately (single workspace)
+      // /create-task [text] — save draft and create immediately (single workspace)
       const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
         p_user_id: profileId,
         p_chat_id: chatId,
@@ -379,24 +382,16 @@ async function handleCommandRequiringWorkspace(
         return;
       }
 
-      // Consume draft and create task in same workspace (send new message since we can't track lastMessageId)
+      // Consume draft and create task in same workspace
       await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, ws.id);
       return;
     }
 
-    // Other commands with single workspace — execute directly
-    const fakeMessage = {
-      chat: { id: chatId },
-      from: { id: userId },
-      text: `/${command}${args ? ' ' + args : ''}`,
-    };
-    await handleCommand(fakeMessage as any, command, args, ws.id);
     return;
   }
 
-  // /task without args → prompt for text first, board selection happens after draft is saved
-  // (regardless of workspace count — user must send text/voice before choosing a board)
-  if (command === 'task' && (!args || args.trim().length === 0)) {
+  // /create-task without args → prompt for text first, board selection happens after draft is saved
+  if (command === 'create-task' && (!args || args.trim().length === 0)) {
     await sendMessage(BOT_TOKEN!, {
       chat_id: chatId,
       text: '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\nБот сохранит черновик и покажет подтверждение.',
@@ -408,43 +403,29 @@ async function handleCommandRequiringWorkspace(
   // Multiple workspaces — show selection keyboard
   let keyboardOptions: { command?: string; draftId?: string } = {};
 
-  if (command === 'task' && args && args.trim().length > 0) {
-    // /task [text] — save draft to DB first
+  if (command === 'create-task' && args && args.trim().length > 0) {
+    // /create-task [text] — save draft to DB first
     const trimmedArgs = args.trim();
 
-    // Check if args look like a short task ID (e.g., ALPHA-123) vs full text
-    const looksLikeShortId = /^[A-Z]{2,6}-\d{1,6}$/.test(trimmedArgs);
+    // /create-task [text] — always save to DB as draft (no lookup mode)
+    const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
+      p_user_id: profileId,
+      p_chat_id: chatId,
+      p_title: trimmedArgs.slice(0, 500),
+      p_description: null,
+      p_source: 'nl',
+    });
 
-    if (looksLikeShortId) {
-      // /task ALPHA-123 — treat as short ID, pass in callback_data
-      keyboardOptions.command = `task:${trimmedArgs}`;
-    } else {
-      // /task [long text] — save to DB as draft
-      const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
-        p_user_id: profileId,
-        p_chat_id: chatId,
-        p_title: trimmedArgs.slice(0, 500),
-        p_description: null,
-        p_source: 'nl',
+    if (error || !draftResult) {
+      console.error('[Bot Webhook] Failed to create draft:', error);
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
       });
-
-      if (error || !draftResult) {
-        console.error('[Bot Webhook] Failed to create draft:', error);
-        await sendMessage(BOT_TOKEN!, {
-          chat_id: chatId,
-          text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
-        });
-        return;
-      }
-
-      keyboardOptions.draftId = draftResult;
+      return;
     }
-  } else if (command === 'resolve' && args && args.trim().length > 0) {
-    // /resolve ALPHA-123 — pass fullId in callback_data
-    keyboardOptions.command = `resolve:${args.trim()}`;
-  } else {
-    // All other commands: /review, /inbox, /flow, etc.
-    keyboardOptions.command = command;
+
+    keyboardOptions.draftId = draftResult;
   }
 
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, keyboardOptions);
@@ -500,14 +481,14 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
 
   const { workspaceId, type, extra } = parsed;
 
-  // Get workspace details
-  const { data: ws } = await supabase
+  // Get workspace details (needed for slug in task cards)
+  const { data: wsData } = await supabase
     .from('workspaces')
     .select('slug, name')
     .eq('id', workspaceId)
     .maybeSingle();
 
-  if (!ws) {
+  if (!wsData) {
     await editMessageText(token, {
       chat_id: chatId,
       message_id: messageId,
@@ -522,7 +503,7 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     await editMessageText(token, {
       chat_id: chatId,
       message_id: messageId,
-      text: `✅ Выбрано рабочее пространство: <b>${escapeHtml(ws.name || ws.slug)}</b>`,
+      text: `✅ Выбрано рабочее пространство: <b>${escapeHtml(wsData.name || wsData.slug)}</b>`,
       parse_mode: 'HTML',
     });
   } catch (err) {
@@ -538,12 +519,12 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
   }
 
-  console.log(`[Bot Webhook] User ${userId} selected workspace ${ws.slug} (${workspaceId}), type=${type}, extra=${extra}`);
+  console.log(`[Bot Webhook] User ${userId} selected workspace ${wsData?.slug || ''} (${workspaceId}), type=${type}, extra=${extra}`);
 }
 
 /**
  * Execute a command in the selected workspace (one-phase, no pending state).
- * Handles: review, inbox, flow, stuck, standup, summary, task:<id>, resolve:<id>
+ * Handles: task:<id> (lookup by full_id)
  */
 async function executeCommandInWorkspace(
   token: string,
@@ -623,8 +604,8 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || 'http://localhost:3000';
-    const resp = await fetch(`${baseUrl}/api/bot/create-task`, {
+    // Use relative path — webhook and create-task are in the same Next.js app
+    const resp = await fetch('/api/bot/create-task', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -664,7 +645,7 @@ async function executeDraftInWorkspaceByChat(
   // Get full_id
   const { data: wsWithPrefix } = await supabase
     .from('workspaces')
-    .select('task_prefix')
+    .select('task_prefix, slug')
     .eq('id', workspaceId)
     .maybeSingle();
 
@@ -677,18 +658,29 @@ async function executeDraftInWorkspaceByChat(
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
   console.log('[Bot Webhook] Task created via F-04:', { taskId: task.id, fullId, chatId });
 
-  // Build enhanced task card HTML
-  const clarity = aiResult.parse?.clarity_score;
-  const clarityStr = clarity != null ? `✨ Ясность: ${Math.round(clarity * 100)}%` : '';
+  // Build unified task card using buildTaskCard() from lib/bot.ts
+  const cardData: TaskCardData = {
+    fullId,
+    title: task.title,
+    column: task.column,
+    isInbox: false,
+    isBlocked: false,
+    priority: task.priority as 'high' | 'medium' | 'low' | null,
+    dueDate: null,
+    assigneeName: null,
+    workspaceHandle: wsWithPrefix?.slug || '',
+    clarityScore: aiResult.parse?.clarity_score ?? null,
+  };
 
-  const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}\n${clarityStr ? `\n${clarityStr}` : ''}`;
+  const taskCard = buildTaskCard(cardData, 'created');
 
-  // Send confirmation
+  // Send confirmation with unified task card
   try {
     await sendMessage(token, {
       chat_id: chatId,
-      text: taskCardHtml,
+      text: taskCard.text,
       parse_mode: 'HTML',
+      reply_markup: taskCard.replyMarkup,
     });
   } catch (err) {
     console.error('[Bot Webhook] sendMessage (task card) failed:', err);
@@ -752,31 +744,114 @@ async function createTaskFallback(
     return;
   }
 
-  const { data: wsWithPrefix } = await supabase
+  const { data: wsForFallback } = await supabase
     .from('workspaces')
-    .select('task_prefix')
+    .select('task_prefix, slug')
     .eq('id', workspaceId)
     .maybeSingle();
 
-  const { data: taskWithNumber } = await supabase
+  const { data: taskWithNumber2 } = await supabase
     .from('tasks')
     .select('task_number')
     .eq('id', task.id)
     .maybeSingle();
 
-  const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
+  const fullId = `${wsForFallback?.task_prefix || '?'}-${taskWithNumber2?.task_number || '?'}`;
   console.log('[Bot Webhook] Task created via fallback:', { taskId: task.id, fullId, chatId });
 
-  const taskCardHtml = `<b>✅ Задача создана</b>\n\n<b>🔖 ${escapeHtml(fullId)} · «${escapeHtml(task.title)}»</b>\n\n📍 Статус: ${escapeHtml(task.column)}\n🔴 Приоритет: ${escapeHtml(task.priority)}`;
+  // Build unified task card for fallback path too
+  const cardData: TaskCardData = {
+    fullId,
+    title: task.title,
+    column: task.column,
+    isInbox: false,
+    isBlocked: false,
+    priority: task.priority as 'high' | 'medium' | 'low' | null,
+    dueDate: null,
+    assigneeName: null,
+    workspaceHandle: wsForFallback?.slug || '',
+    clarityScore: null,
+  };
+
+  const taskCard = buildTaskCard(cardData, 'created');
 
   try {
     await sendMessage(token, {
       chat_id: chatId,
-      text: taskCardHtml,
+      text: taskCard.text,
       parse_mode: 'HTML',
+      reply_markup: taskCard.replyMarkup,
     });
   } catch (err) {
     console.error('[Bot Webhook] sendMessage (fallback) failed:', err);
+  }
+}
+
+/**
+ * Check if a string looks like a task full_id (e.g., ALPHA-123).
+ */
+function looksLikeTaskFullId(text: string): boolean {
+  return /^[A-Z]{2,6}-\d{1,6}$/.test(text.trim());
+}
+
+/**
+ * Handle /run-task TASK-123 lookup command — resolve and show unified card.
+ * v0.6.5 spec §5.3: reactions 👀→✅/❌
+ */
+async function handleResolveTask(
+  token: string,
+  chatId: number,
+  userId: number,
+  messageId: number,
+  fullId: string
+): Promise<void> {
+  // Reaction 👀 at start (spec §5.3)
+  await setMessageReaction(token, chatId, messageId, '👀').catch(() => {});
+
+  try {
+    // Fetch task card data via RPC get_task_card_data by full_id
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data: cardData, error: rpcError } = await supabase.rpc(
+      'get_task_card_data_by_full_id',
+      { p_full_id: fullId }
+    );
+
+    if (rpcError || !cardData) {
+      console.error('[Bot Webhook] get_task_card_data_by_full_id error:', rpcError);
+      await sendMessage(token, {
+        chat_id: chatId,
+        text: `⚠️ Задача ${escapeHtml(fullId)} не найдена. Проверьте формат (например, ALPHA-123).`,
+        parse_mode: 'HTML',
+      });
+      // Reaction ❌ on error
+      await setMessageReaction(token, chatId, messageId, '❌').catch(() => {});
+      return;
+    }
+
+    // Build unified task card with buildTaskCard()
+    const taskCard = buildTaskCard(cardData as TaskCardData, 'lookup');
+
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: taskCard.text,
+      parse_mode: 'HTML',
+      reply_markup: taskCard.replyMarkup,
+    });
+
+    // Reaction ✅ on success
+    await setMessageReaction(token, chatId, messageId, '✅').catch(() => {});
+  } catch (err) {
+    console.error('[Bot Webhook] handleResolveTask error:', err);
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: `⚠️ Ошибка при поиске задачи ${escapeHtml(fullId)}.`,
+      parse_mode: 'HTML',
+    });
+    await setMessageReaction(token, chatId, messageId, '❌').catch(() => {});
   }
 }
 
@@ -811,15 +886,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Dispatch to handler
-  try {
-    await dispatchUpdate(update as any);
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error('[Bot Webhook] Dispatch error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  // 3. Fire-and-forget dispatch using setImmediate (Node.js runtime on Vercel)
+  //    Edge runtime would use env.waitUntil(), but we're on Node.js.
+  setImmediate(() => {
+    dispatchUpdate(update as any).catch((err) => {
+      console.error('[Bot Webhook] Unhandled dispatch error:', err);
+    });
+  });
+
+  // Return immediately — don't wait for async processing
+  return NextResponse.json({ ok: true });
 }

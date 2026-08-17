@@ -105,6 +105,7 @@ export interface Message {
   sender_chat?: Chat;
   reply_to_message?: Message;
   via_bot?: User;
+  message_thread_id?: number; // for forum topics / threads (Bot API 7.4+)
   edit_date?: number;
   text?: string;
   entities?: MessageEntity[];
@@ -453,6 +454,8 @@ export interface RichMessageOptions {
   disable_notification?: boolean;
   protect_content?: boolean;
   allow_sending_without_reply?: boolean;
+  /** Thread ID for forum topics (Bot API 7.4+) */
+  message_thread_id?: number;
   /** Ephemeral: visible only to this user (Bot API 10.2+) */
   receiver_user_id?: number;
   /** Ephemeral: visible only to callback query sender (Bot API 10.2+) */

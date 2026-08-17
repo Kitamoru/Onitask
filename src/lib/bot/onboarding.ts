@@ -1,6 +1,6 @@
 // src/lib/bot/onboarding.ts — Онбординг через invite (BOT-07)
 // /start ws_CODE → welcome Rich Message + worker registration
-// bot_.md §5.9
+// v0.6.5 spec: /start task_TASK-123 → lookup task via /run-task flow
 //
 // FIX: registerWorker теперь использует profile.id как source_id (INV-16).
 // findWorkspaceByCode запрашивает invite_links.code вместо workspaces.invite_code.
@@ -72,6 +72,20 @@ export async function handleStartCommand(
   const firstName = msg.from?.first_name || 'Пользователь';
   const lastName = msg.from?.last_name;
 
+  // Parse args: check for task deep link first (startapp=task_TASK-123)
+  // Format from TWA: "task_ALPHA-123" (prefix added by taskUrl() in lib/bot.ts)
+  const taskDeepLinkMatch = args.match(/^task_([A-Z]+-\d+)$/i);
+  if (taskDeepLinkMatch) {
+    const fullId = taskDeepLinkMatch[1].toUpperCase();
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: {
+        html: `🔍 <b>Просмотр задачи ${escapeHtml(fullId)}</b>\n\nИспользуйте команду: <b>/run-task ${escapeHtml(fullId)}</b>`,
+      },
+    });
+    return;
+  }
+
   // Parse workspace code from args (format: ws_CODE or CODE)
   let workspaceCode: string | null = null;
   if (args) {
@@ -80,7 +94,7 @@ export async function handleStartCommand(
   }
 
   if (!workspaceCode) {
-    // No code provided — show general welcome
+    // No code provided — show general welcome (v0.6.5 spec)
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
       rich_message: { html: `
@@ -88,11 +102,10 @@ export async function handleStartCommand(
 
 Я бот Onitask — ваш AI-помощник для управления задачами.
 
-<b>Что я умею:</b>
-• /task [текст] — создать задачу текстом
-• /task 🎤 — создать задачу голосом
-• /flow — статус доски
-• /standup — дайджест команды
+<b>Команды:</b>
+• /create-task [текст] — создать задачу
+• /create-task 🎤 — создать задачу голосом
+• /run-task TASK-123 — посмотреть задачу
 
 <b>Чтобы начать:</b>
 Введите код рабочего пространства:
