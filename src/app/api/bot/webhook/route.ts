@@ -98,6 +98,49 @@ function looksLikeTaskFullId(text: string): boolean {
 }
 
 /**
+ * Check if the bot is mentioned in the message entities.
+ * Supports: mention (@botname), text_mention (user name only), and command (@botname /cmd).
+ */
+async function checkBotMention(message: any, botToken: string | undefined): Promise<boolean> {
+  if (!botToken) return false;
+
+  // Get bot username from Telegram API
+  let botUsername: string | null = null;
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+    if (resp.ok) {
+      const data = await resp.json();
+      botUsername = data.result?.username ?? null;
+    }
+  } catch (err) {
+    console.warn('[Bot Webhook] Failed to get bot username for mention check:', err);
+    return false;
+  }
+
+  if (!botUsername) return false;
+
+  const entities = message.entities || message.reply_to_message?.entities;
+  if (!entities || !Array.isArray(entities)) return false;
+
+  for (const entity of entities) {
+    if (entity.type === 'mention') {
+      // @username — extract from message.text
+      const username = message.text?.substring(entity.offset + 1, entity.offset + entity.length).toLowerCase();
+      if (username === botUsername.toLowerCase()) return true;
+    } else if (entity.type === 'bot_command') {
+      // /cmd or /cmd@botname
+      const cmdText = message.text?.substring(entity.offset, entity.offset + entity.length).toLowerCase();
+      if (cmdText === botUsername.toLowerCase() || cmdText.endsWith('@' + botUsername.toLowerCase())) return true;
+    } else if (entity.type === 'text_mention') {
+      // User mention without @ — always matches (we're mentioned by user ID)
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * sendChatAction with timeout so a hung Telegram API call cannot kill the whole flow.
  */
 async function safeSendChatAction(chatId: number): Promise<void> {
@@ -178,10 +221,37 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  if (chat.type !== 'private') {
-    console.log('[Bot Webhook] Ignoring non-private chat: type=' + chat.type);
-    return;
-  }
+   // ── Group/supergroup/channel: require bot @mention ──
+   let effectiveUserId = userId;
+   const chatType = chat.type; // 'private' | 'group' | 'supergroup' | 'channel'
+
+   if (chatType !== 'private') {
+     // Check if bot is mentioned via entities (text_mention or mention)
+     const botMentioned = await checkBotMention(message, BOT_TOKEN);
+     if (!botMentioned) {
+       console.log(
+         '[Bot Webhook] Ignoring non-private chat without bot mention: type=' + chatType
+       );
+       return;
+     }
+
+     // For reply messages: use the replied-to user as effectiveUserId
+     if (message.reply_to_message && message.reply_to_message.from) {
+       effectiveUserId = message.reply_to_message.from.id;
+     } else {
+       // Otherwise use the sender
+       effectiveUserId = userId;
+     }
+
+     console.log(
+       '[Bot Webhook] Bot mentioned in ' +
+         chatType +
+         ' effectiveUserId=' +
+         effectiveUserId +
+         ' originalUserId=' +
+         userId
+     );
+   }
 
   console.log('[Bot Webhook] before sendChatAction');
   await safeSendChatAction(chatId);
@@ -255,17 +325,19 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 2: Resolve workspace
+  // Step 2: Resolve workspace — use effectiveUserId for groups
   let workspaceResult: { workspace_id: string } | null;
   console.log(
-    '[Bot Webhook] >>> About to call resolveWorkspace, userId=' +
-      userId +
+    '[Bot Webhook] >>> About to call resolveWorkspace, effectiveUserId=' +
+      effectiveUserId +
       ', chatId=' +
-      chatId
+      chatId +
+      ', chatType=' +
+      chatType
   );
   try {
     console.log('[Bot Webhook] >>> resolveWorkspace START');
-    workspaceResult = await resolveWorkspace(userId, chatId, 'private');
+    workspaceResult = await resolveWorkspace(effectiveUserId, chatId, chatType);
     console.log(
       '[Bot Webhook] >>> resolveWorkspace DONE, result=' +
         (workspaceResult ? 'found' : 'null') +
@@ -281,7 +353,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     workspaceResult = null;
   }
 
-  // Workspace resolved + command
+  // Workspace resolved + command — use effectiveUserId for groups
   if (workspaceResult && parsedCommand) {
     const [command, args] = parsedCommand;
     const workspaceId = workspaceResult.workspace_id;
@@ -289,17 +361,17 @@ async function dispatchUpdate(update: any): Promise<void> {
     // Create flow with single workspace → still go through draft helper
     // (handleCommand may not know about /create aliases)
     if (command === 'create' || (command === 'task' && !looksLikeTaskFullId(args))) {
-      const gateMessage = await checkFreemiumBoundary('create-task', userId, workspaceId);
+      const gateMessage = await checkFreemiumBoundary('create-task', effectiveUserId, workspaceId);
       if (gateMessage) {
         await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: gateMessage });
         return;
       }
       // Re-use workspace-requiring handler (handles 1 or N boards)
-      await handleCommandRequiringWorkspace(chatId, userId, 'create', args);
+      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args);
       return;
     }
 
-    const gateMessage = await checkFreemiumBoundary(command, userId, workspaceId);
+    const gateMessage = await checkFreemiumBoundary(command, effectiveUserId, workspaceId);
     if (gateMessage) {
       await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: gateMessage });
       return;
@@ -332,7 +404,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       COMMANDS_REQUIRING_WORKSPACE.includes(command) &&
       !(command === 'task' && looksLikeTaskFullId(args))
     ) {
-      await handleCommandRequiringWorkspace(chatId, userId, 'create', args);
+      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args);
       return;
     }
 
@@ -349,7 +421,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 4: Regular message — pending task mode?
+  // Step 4: Regular message — pending task mode? (use effectiveUserId for groups)
   const pendingActive = await isPendingTaskMode(chatId);
   console.log(
     '[Bot Webhook] Step 4: pendingActive=',
@@ -363,7 +435,7 @@ async function dispatchUpdate(update: any): Promise<void> {
   );
 
   if (pendingActive) {
-    const profileId = await resolveProfileId(userId);
+    const profileId = await resolveProfileId(effectiveUserId);
     console.log('[Bot Webhook] Step 4: profileId=', profileId);
     if (!profileId) {
       await clearPendingTask(chatId);
@@ -448,7 +520,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       console.log('[Bot Webhook] Draft created successfully, draftId=', draftResult);
 
-      const availableWorkspaces = await getUserAvailableWorkspaces(userId);
+      const availableWorkspaces = await getUserAvailableWorkspaces(effectiveUserId);
       console.log(
         '[Bot Webhook] Step 4: availableWorkspaces count=',
         availableWorkspaces.length
@@ -466,7 +538,7 @@ async function dispatchUpdate(update: any): Promise<void> {
         await executeDraftInWorkspaceByChat(
           BOT_TOKEN!,
           chatId,
-          userId,
+          effectiveUserId,
           availableWorkspaces[0].id
         );
         return;
