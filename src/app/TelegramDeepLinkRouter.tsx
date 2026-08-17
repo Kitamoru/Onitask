@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 /**
  * Handles deep links from Telegram Bot (t.me/bot/app?startapp=task_TASK-42).
@@ -14,10 +14,19 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
  *
  * The flowboard page will read ?open_task and open TaskViewEdit sheet.
  */
+/**
+ * Reads ?open_task from URL without using useSearchParams() — this avoids
+ * the Next.js Suspense requirement that breaks prerendering on /404 and /_not-found.
+ */
+function getOpenTaskFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('open_task');
+}
+
 export function TelegramDeepLinkRouter() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const handled = useRef(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
 
@@ -38,17 +47,18 @@ export function TelegramDeepLinkRouter() {
     
     const startParam = tg.initDataUnsafe?.start_param;
     const currentUrl = window.location.href;
-    const currentOpenTask = searchParams.get('open_task');
+    const currentOpenTask = getOpenTaskFromUrl();
     
-    setDebugInfo(`start_param="${startParam}" | url="${currentUrl}" | open_task=${currentOpenTask}`);
+    setDebugInfo(`start_param="${startParam}" | open_task=${currentOpenTask}`);
     
     if (!startParam) {
-      console.log('[TG] No start_param in initDataUnsafe — normal launch, not a deep link');
+      console.info('[TG-DL] No start_param — normal launch, not a deep link');
       return;
     }
 
+    console.info('[TG-DL] start_param detected', { startParam });
     void routeByStartParam(startParam, router, pathname);
-  }, [router, pathname, searchParams]);
+  }, [router, pathname]);
 
   // Debug display (only in development)
   if (process.env.NODE_ENV === 'development' && debugInfo) {
