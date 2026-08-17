@@ -98,6 +98,19 @@ function looksLikeTaskFullId(text: string): boolean {
 }
 
 /**
+ * Strip bot @mention from command arguments.
+ * Removes "@botname" from beginning, middle, or end of args string.
+ */
+function stripBotMentionFromArgs(args: string, botUsername: string): string {
+  if (!args) return '';
+  // Remove @botname from start, end, or standalone
+  let result = args.replace(new RegExp(`^\\s*@${botUsername}\\s+`, 'gi'), '');
+  result = result.replace(new RegExp(`\\s+@${botUsername}\\s*$`, 'gi'), '');
+  result = result.replace(new RegExp(`^\\s*@${botUsername}\\s*$`, 'gi'), '');
+  return result.trim();
+}
+
+/**
  * Check if the bot is mentioned in the message entities.
  * Supports: mention (@botname), text_mention (user name only), and command (@botname /cmd).
  */
@@ -256,10 +269,31 @@ async function dispatchUpdate(update: any): Promise<void> {
   console.log('[Bot Webhook] before sendChatAction');
   await safeSendChatAction(chatId);
 
-  // Parse command
+  // Parse command — in groups, also strip bot @mention from args
   let parsedCommand: [string, string] | null = null;
+  let resolvedBotUsername: string | null = null;
+
   if (text && text.startsWith('/')) {
     parsedCommand = parseCommand(text);
+  }
+
+  if (parsedCommand && chatType !== 'private' && BOT_TOKEN) {
+    const [_cmd, rawArgs] = parsedCommand;
+    // Resolve bot username once for this request
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+      if (resp.ok) {
+        const data = await resp.json();
+        resolvedBotUsername = data.result?.username ?? null;
+      }
+    } catch (err) {
+      console.warn('[Bot Webhook] Failed to resolve bot username:', err);
+    }
+
+    if (resolvedBotUsername) {
+      const cleanedArgs = stripBotMentionFromArgs(rawArgs, resolvedBotUsername);
+      parsedCommand = [parsedCommand[0], cleanedArgs];
+    }
   }
 
   if (parsedCommand) {
@@ -272,7 +306,9 @@ async function dispatchUpdate(update: any): Promise<void> {
       'args=',
       JSON.stringify(args),
       'raw=',
-      rawCmd
+      rawCmd,
+      'chatType=',
+      chatType
     );
   } else {
     console.log('[Bot Webhook] parsedCommand= null');
@@ -367,7 +403,7 @@ async function dispatchUpdate(update: any): Promise<void> {
         return;
       }
       // Re-use workspace-requiring handler (handles 1 or N boards)
-      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args);
+      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args, message);
       return;
     }
 
@@ -404,7 +440,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       COMMANDS_REQUIRING_WORKSPACE.includes(command) &&
       !(command === 'task' && looksLikeTaskFullId(args))
     ) {
-      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args);
+      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args, message);
       return;
     }
 
@@ -577,12 +613,14 @@ async function dispatchUpdate(update: any): Promise<void> {
 /**
  * Handle commands that require workspace selection (create flow).
  * command is always normalized to 'create' here.
+ * In group chats, if there's a reply_to_message, its text takes priority over args.
  */
 async function handleCommandRequiringWorkspace(
   chatId: number,
   userId: number,
   command: string,
-  args: string
+  args: string,
+  message?: any
 ): Promise<void> {
   const profileId = await resolveProfileId(userId);
   if (!profileId) {
@@ -602,11 +640,17 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
+  // In groups with reply: use replied-to message text as task description
+  let effectiveArgs = args;
+  if (message?.reply_to_message?.text) {
+    effectiveArgs = message.reply_to_message.text.trim();
+  }
+
   // Single workspace
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
 
-    if (!args || args.trim().length === 0) {
+    if (!effectiveArgs || effectiveArgs.trim().length === 0) {
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
         text:
@@ -617,7 +661,7 @@ async function handleCommandRequiringWorkspace(
       return;
     }
 
-    const trimmedArgs = args.trim();
+    const trimmedArgs = effectiveArgs.trim();
     const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
       p_user_id: profileId,
       p_chat_id: chatId,
@@ -637,8 +681,8 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  // Multiple workspaces — no args → pending + ask for text first
-  if (!args || args.trim().length === 0) {
+  // Multiple workspaces — no effectiveArgs → pending + ask for text first
+  if (!effectiveArgs || effectiveArgs.trim().length === 0) {
     await sendMessage(BOT_TOKEN!, {
       chat_id: chatId,
       text:
@@ -650,7 +694,7 @@ async function handleCommandRequiringWorkspace(
   }
 
   // Multiple + text → draft then keyboard
-  const trimmedArgs = args.trim();
+  const trimmedArgs = effectiveArgs.trim();
   const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
     p_user_id: profileId,
     p_chat_id: chatId,
