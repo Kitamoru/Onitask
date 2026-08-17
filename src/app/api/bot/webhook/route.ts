@@ -123,13 +123,16 @@ async function dispatchUpdate(update: any): Promise<void> {
     parsedCommand = parseCommand(text);
   }
 
-  // Step 2: Resolve workspace
+  // Step 2: Resolve workspace — with detailed logging for debugging
   let workspaceResult: { workspace_id: string } | null;
+  console.log('[Bot Webhook] >>> About to call resolveWorkspace, userId=' + userId + ', chatId=' + chatId);
   try {
+    console.log('[Bot Webhook] >>> resolveWorkspace START');
     workspaceResult = await resolveWorkspace(userId, chatId, 'private');
-    console.log('[Bot Webhook] resolveWorkspace result:', workspaceResult ? 'found' : 'null', 'userId=' + userId, 'chatId=' + chatId);
-  } catch (err) {
-    console.error('[Bot Webhook] ERROR resolveWorkspace failed:', err);
+    console.log('[Bot Webhook] >>> resolveWorkspace DONE, result=' + (workspaceResult ? 'found' : 'null') + ', userId=' + userId);
+  } catch (err: any) {
+    console.error('[Bot Webhook] >>> resolveWorkspace THREW ERROR:', err?.message || String(err));
+    console.error('[Bot Webhook] >>> resolveWorkspace STACK:', err?.stack || 'no stack');
     workspaceResult = null;
   }
 
