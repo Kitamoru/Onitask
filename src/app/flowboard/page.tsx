@@ -34,6 +34,7 @@ function FlowBoardPageContent() {
   const searchParams = useSearchParams();
   const view = searchParams.get('view');
   const isStreamView = view === 'stream';
+  const openTaskParam = searchParams.get('open_task');
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, dispatch, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
@@ -57,6 +58,32 @@ function FlowBoardPageContent() {
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
+
+  // Open task from Telegram deep link: ?open_task=TASK-42
+  // After data loads, find the task by full_id and open TaskViewEdit sheet, then clean URL.
+  useEffect(() => {
+    if (!openTaskParam || !firstLoadDone || dataError) return;
+
+    const matchTask = (t: TaskEntity) => {
+      if (t.full_id === openTaskParam) return true;
+      const computed = t.workspace_prefix && t.task_number
+        ? `${t.workspace_prefix}-${t.task_number}`
+        : null;
+      if (computed === openTaskParam) return true;
+      return false;
+    };
+
+    const task = tasks.find(matchTask);
+    if (task) {
+      setSelectedTask(task);
+      // Clean URL: remove ?open_task=
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('open_task');
+      const cleanQuery = params.toString();
+      router.replace(`/flowboard${cleanQuery ? '?' + cleanQuery : ''}`, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTaskParam, firstLoadDone, dataError, tasks]);
 
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
