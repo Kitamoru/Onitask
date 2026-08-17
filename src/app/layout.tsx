@@ -60,12 +60,15 @@ export default function RootLayout({
           <TelegramProvider>
             <TelegramThemeProvider>
               <DataProvider>
+                {/* Deep link router — монтируется СРАЗУ, не ждёт авторизацию.
+                    Должен быть ВНУТРИ провайдеров (Telegram, Data), но ВНЕ AuthLoader. */}
+                <TelegramDeepLinkRouter />
+                
                 <AuthLoader>
                   {children}
                 </AuthLoader>
+                
                 <AiTaskCreator />
-                {/* Deep link router — reads tg.initDataUnsafe.start_param and navigates */}
-                <TelegramDeepLinkRouter />
               </DataProvider>
             </TelegramThemeProvider>
           </TelegramProvider>

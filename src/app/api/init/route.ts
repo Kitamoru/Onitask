@@ -64,6 +64,13 @@ export async function POST(req: NextRequest) {
     const initData = (body.initData || body.init_data) as string | undefined;
     const start_param = body.start_param as string | undefined;
 
+    // Server-side logging for deep link debugging (Vercel Logs)
+    console.info('[INIT] request received', {
+      has_init_data: !!initData,
+      start_param,
+      content_type: req.headers.get('content-type'),
+    });
+
     if (!initData) {
       return NextResponse.json(
         { success: false, error: 'missing_init_data' },
