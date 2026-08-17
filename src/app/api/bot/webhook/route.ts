@@ -6,15 +6,16 @@
 // v0.6.5 spec: /create-task, /run-task, /help only
 //
 // Commands:
-//   /create-task [text] → save draft → select workspace → execute F-04 pipeline
-//   /create-task 🎤 (voice) → transcribe → save draft → select workspace → F-04
-//   /run-task TASK-123 → lookup task by full_id
-//   /help → list available commands
+// /create-task [text] → save draft → select workspace → execute F-04 pipeline
+// /create-task 🎤 (voice) → transcribe → save draft → select workspace → F-04
+// /run-task TASK-123 → lookup task by full_id
+// /help → list available commands
+// /start → onboarding (workspace-free)
 //
 // Workflow:
-//   1. /create-task [text]: INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft"
-//      → consume draft + create task in same callback
-//   2. /run-task TASK-123: callback_data = "select_ws:<wsId>:run:TASK-123" → lookup in same callback
+// 1. /create-task [text]: INSERT into bot_task_drafts → callback_data = "select_ws:<wsId>:draft"
+// → consume draft + create task in same callback
+// 2. /run-task TASK-123: callback_data = "select_ws:<wsId>:run:TASK-123" → lookup in same callback
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -32,10 +33,21 @@ import {
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
 import { handleCommand } from '../../../../../src/lib/bot/commands';
-import { resolveWorkspace, getUserAvailableWorkspaces, resolveProfileId } from '../../../../../src/lib/bot/workspaceResolver';
+import {
+  resolveWorkspace,
+  getUserAvailableWorkspaces,
+  resolveProfileId,
+} from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
-import { setPendingTask, clearPendingTask, isPendingTaskMode } from '../../../../../src/lib/bot/taskDraft';
+import {
+  setPendingTask,
+  clearPendingTask,
+  isPendingTaskMode,
+} from '../../../../../src/lib/bot/taskDraft';
 import { createClient } from '@supabase/supabase-js';
+
+export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,6 +80,27 @@ const COMMANDS_REQUIRING_WORKSPACE = ['create-task'];
 const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
 
 /**
+ * sendChatAction with timeout so a hung Telegram API call cannot kill the whole flow.
+ */
+async function safeSendChatAction(chatId: number): Promise<void> {
+  if (!BOT_TOKEN) {
+    console.warn('[Bot Webhook] safeSendChatAction: BOT_TOKEN missing');
+    return;
+  }
+  try {
+    await Promise.race([
+      sendChatAction(BOT_TOKEN, { chat_id: chatId, action: 'typing' }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('sendChatAction timeout 3s')), 3000)
+      ),
+    ]);
+    console.log('[Bot Webhook] sendChatAction OK');
+  } catch (err: any) {
+    console.warn('[Bot Webhook] sendChatAction failed/timeout:', err?.message || String(err));
+  }
+}
+
+/**
  * Dispatch update to appropriate handler based on update type.
  */
 async function dispatchUpdate(update: any): Promise<void> {
@@ -75,9 +108,25 @@ async function dispatchUpdate(update: any): Promise<void> {
   const cb = update.callback_query;
   const msg = update.message || update.edited_message;
   if (cb) {
-    console.log('[Bot Webhook] UPDATE type=callback_query id=' + cb.id + ' data=' + (cb.data ?? 'null') + ' from_user=' + (cb.from?.id ?? '?'));
+    console.log(
+      '[Bot Webhook] UPDATE type=callback_query id=' +
+        cb.id +
+        ' data=' +
+        (cb.data ?? 'null') +
+        ' from_user=' +
+        (cb.from?.id ?? '?')
+    );
   } else if (msg) {
-    console.log('[Bot Webhook] UPDATE type=message chat=' + msg.chat?.id + ' type=' + msg.chat?.type + ' text=' + (msg.text ?? '[voice]') + ' from=' + (msg.from?.id ?? '?'));
+    console.log(
+      '[Bot Webhook] UPDATE type=message chat=' +
+        msg.chat?.id +
+        ' type=' +
+        msg.chat?.type +
+        ' text=' +
+        (msg.text ?? '[voice]') +
+        ' from=' +
+        (msg.from?.id ?? '?')
+    );
   } else {
     console.log('[Bot Webhook] UPDATE type=unknown (no callback_query, no message)');
   }
@@ -102,7 +151,10 @@ async function dispatchUpdate(update: any): Promise<void> {
   const userId = message.from?.id;
 
   if (!userId) {
-    console.error('[Bot Webhook] ERROR No user id in message:', JSON.stringify(message).slice(0, 500));
+    console.error(
+      '[Bot Webhook] ERROR No user id in message:',
+      JSON.stringify(message).slice(0, 500)
+    );
     return;
   }
 
@@ -112,26 +164,58 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Send typing indicator
-  if (BOT_TOKEN) {
-    await sendChatAction(BOT_TOKEN, { chat_id: chatId, action: 'typing' }).catch(() => {});
-  }
+  // Typing indicator (non-blocking for the rest of the flow)
+  console.log('[Bot Webhook] before sendChatAction');
+  await safeSendChatAction(chatId);
 
   // Step 1: Check if it's a command
   let parsedCommand: [string, string] | null = null;
   if (text && text.startsWith('/')) {
     parsedCommand = parseCommand(text);
   }
+  console.log(
+    '[Bot Webhook] parsedCommand=',
+    parsedCommand ? parsedCommand[0] + ' args=' + JSON.stringify(parsedCommand[1]) : 'null'
+  );
+
+  // ── /start FIRST — never depends on workspace / profile ──
+  if (parsedCommand && parsedCommand[0] === 'start') {
+    const [, args] = parsedCommand;
+    console.log('[Bot Webhook] Handling /start (workspace-free path)');
+    try {
+      await handleStartCommand(message, args);
+      console.log('[Bot Webhook] handleStartCommand DONE');
+    } catch (err) {
+      console.error('[Bot Webhook] ERROR handleStartCommand:', err);
+      if (BOT_TOKEN) {
+        await sendMessage(BOT_TOKEN, {
+          chat_id: chatId,
+          text: '⚠️ Ошибка при обработке /start.',
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
 
   // Step 2: Resolve workspace — with detailed logging for debugging
   let workspaceResult: { workspace_id: string } | null;
-  console.log('[Bot Webhook] >>> About to call resolveWorkspace, userId=' + userId + ', chatId=' + chatId);
+  console.log(
+    '[Bot Webhook] >>> About to call resolveWorkspace, userId=' + userId + ', chatId=' + chatId
+  );
   try {
     console.log('[Bot Webhook] >>> resolveWorkspace START');
     workspaceResult = await resolveWorkspace(userId, chatId, 'private');
-    console.log('[Bot Webhook] >>> resolveWorkspace DONE, result=' + (workspaceResult ? 'found' : 'null') + ', userId=' + userId);
+    console.log(
+      '[Bot Webhook] >>> resolveWorkspace DONE, result=' +
+        (workspaceResult ? 'found' : 'null') +
+        ', userId=' +
+        userId
+    );
   } catch (err: any) {
-    console.error('[Bot Webhook] >>> resolveWorkspace THREW ERROR:', err?.message || String(err));
+    console.error(
+      '[Bot Webhook] >>> resolveWorkspace THREW ERROR:',
+      err?.message || String(err)
+    );
     console.error('[Bot Webhook] >>> resolveWorkspace STACK:', err?.stack || 'no stack');
     workspaceResult = null;
   }
@@ -151,22 +235,15 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
-    if (command === 'start') {
-      try {
-        await handleStartCommand(message, args);
-      } catch (err) {
-        console.error('[Bot Webhook] ERROR handleStartCommand:', err);
-        await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: '⚠️ Ошибка при обработке /start.' });
-      }
-      return;
-    }
-
-    // Route other commands
+    // Route other commands (start already handled above)
     try {
       await handleCommand(message, command, args, workspaceId);
     } catch (err) {
       console.error('[Bot Webhook] ERROR handleCommand (' + command + '):', err);
-      await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: '⚠️ Ошибка при выполнении команды.' });
+      await sendMessage(BOT_TOKEN!, {
+        chat_id: chatId,
+        text: '⚠️ Ошибка при выполнении команды.',
+      });
     }
     return;
   }
@@ -175,8 +252,9 @@ async function dispatchUpdate(update: any): Promise<void> {
   if (parsedCommand) {
     const [command, args] = parsedCommand;
 
-    // Commands that work without workspace (start, help)
+    // Commands that work without workspace (help; start already returned above)
     if (WORKSPACE_FREE_COMMANDS.includes(command)) {
+      console.log('[Bot Webhook] Workspace-free command:', command);
       await handleCommand(message, command, args, '');
       return;
     }
@@ -212,7 +290,16 @@ async function dispatchUpdate(update: any): Promise<void> {
   // Step 4: Regular message — check if user is in "pending task" mode
   // If so, treat this text/voice as the task description → save draft → show board selection
   const pendingActive = await isPendingTaskMode(chatId);
-  console.log('[Bot Webhook] Step 4: pendingActive=', pendingActive, 'chatId=', chatId, 'textLen=', text?.length, 'hasVoice=', !!message?.voice);
+  console.log(
+    '[Bot Webhook] Step 4: pendingActive=',
+    pendingActive,
+    'chatId=',
+    chatId,
+    'textLen=',
+    text?.length,
+    'hasVoice=',
+    !!message?.voice
+  );
 
   if (pendingActive) {
     // Resolve profile UUID for DB operations
@@ -242,26 +329,26 @@ async function dispatchUpdate(update: any): Promise<void> {
       } else {
         // No caption — try to download and transcribe via STT API
         const voiceFileId = message.voice.file_id;
-      const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
-      try {
-        const resp = await fetch(telegramFileUrl, {
-          headers: { 'Authorization': `Bot ${BOT_TOKEN}` },
-        });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          // Upload blob to our STT endpoint (relative path — same Next.js app)
-          const formData = new FormData();
-          formData.append('file', blob, 'voice.ogg');
-          const sttResp = await fetch('/api/ai/transcribe', {
-            method: 'POST',
-            body: formData,
+        // Correct Telegram file path requires getFile first; placeholder URL kept for parity
+        const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
+        try {
+          const resp = await fetch(telegramFileUrl, {
+            headers: { Authorization: `Bot ${BOT_TOKEN}` },
           });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            // Upload blob to our STT endpoint (relative path — same Next.js app)
+            const formData = new FormData();
+            formData.append('file', blob, 'voice.ogg');
+            const sttResp = await fetch('/api/ai/transcribe', {
+              method: 'POST',
+              body: formData,
+            });
             if (sttResp.ok) {
               const sttData = await sttResp.json();
               taskText = sttData.text || `[Голосовое сообщение]`;
               source = 'voice';
             } else {
-              // STT failed — use placeholder
               console.warn('[Bot Webhook] STT failed, using placeholder');
               taskText = '[Голосовое сообщение — текст недоступен]';
               source = 'voice';
@@ -276,18 +363,26 @@ async function dispatchUpdate(update: any): Promise<void> {
     }
 
     if (taskText.length > 0) {
-      console.log('[Bot Webhook] Step 4: Creating draft, taskText=', taskText.slice(0, 100), 'source=', source);
+      console.log(
+        '[Bot Webhook] Step 4: Creating draft, taskText=',
+        taskText.slice(0, 100),
+        'source=',
+        source
+      );
       // ALWAYS clear pending first — even on error we don't want to loop
       await clearPendingTask(chatId);
 
       // Create real draft
-      const { data: draftResult, error: draftError } = await supabase.rpc('create_bot_task_draft', {
-        p_user_id: profileId,
-        p_chat_id: chatId,
-        p_title: taskText.slice(0, 500),
-        p_description: null,
-        p_source: source,
-      });
+      const { data: draftResult, error: draftError } = await supabase.rpc(
+        'create_bot_task_draft',
+        {
+          p_user_id: profileId,
+          p_chat_id: chatId,
+          p_title: taskText.slice(0, 500),
+          p_description: null,
+          p_source: source,
+        }
+      );
 
       if (draftError || !draftResult) {
         console.error('[Bot Webhook] Failed to create draft from pending:', draftError);
@@ -302,7 +397,11 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       // Show workspace selection keyboard with draft
       const availableWorkspaces = await getUserAvailableWorkspaces(userId);
-      console.log('[Bot Webhook] Step 4: availableWorkspaces count=', availableWorkspaces.length);
+      console.log(
+        '[Bot Webhook] Step 4: availableWorkspaces count=',
+        availableWorkspaces.length
+      );
+
       if (availableWorkspaces.length === 0) {
         await sendMessage(BOT_TOKEN!, {
           chat_id: chatId,
@@ -313,12 +412,19 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       if (availableWorkspaces.length === 1) {
         // Single workspace — create task immediately
-        await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, availableWorkspaces[0].id);
+        await executeDraftInWorkspaceByChat(
+          BOT_TOKEN!,
+          chatId,
+          userId,
+          availableWorkspaces[0].id
+        );
         return;
       }
 
       // Multiple workspaces — show selection
-      const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, { draftId: draftResult });
+      const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, {
+        draftId: draftResult,
+      });
       await sendMessage(BOT_TOKEN!, {
         chat_id: chatId,
         text: '✅ Черновик сохранён! Выберите доску:',
@@ -345,9 +451,9 @@ async function dispatchUpdate(update: any): Promise<void> {
 /**
  * Handle commands that require workspace selection.
  * Uses serverless-safe approach:
- *   - /task [text]: save draft to DB, pass draftId in callback_data
- *   - /task (no args): prompt user to send text/voice → saved as draft
- *   - /task ALPHA-123: pass full_id in callback_data for lookup
+ * - /task [text]: save draft to DB, pass draftId in callback_data
+ * - /task (no args): prompt user to send text/voice → saved as draft
+ * - /task ALPHA-123: pass full_id in callback_data for lookup
  *
  * INV: profileId resolved once, reused for all DB calls.
  */
@@ -368,7 +474,6 @@ async function handleCommandRequiringWorkspace(
   }
 
   const availableWorkspaces = await getUserAvailableWorkspaces(userId);
-
   if (availableWorkspaces.length === 0) {
     await sendMessage(BOT_TOKEN!, {
       chat_id: chatId,
@@ -395,8 +500,6 @@ async function handleCommandRequiringWorkspace(
     // /create-task with text → save draft and create immediately (single workspace)
     if (command === 'create-task' && args && args.trim().length > 0) {
       const trimmedArgs = args.trim();
-
-      // /create-task [text] — save draft and create immediately (single workspace)
       const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
         p_user_id: profileId,
         p_chat_id: chatId,
@@ -404,7 +507,6 @@ async function handleCommandRequiringWorkspace(
         p_description: null,
         p_source: 'nl',
       });
-
       if (error || !draftResult) {
         console.error('[Bot Webhook] Failed to create draft:', error);
         await sendMessage(BOT_TOKEN!, {
@@ -413,12 +515,10 @@ async function handleCommandRequiringWorkspace(
         });
         return;
       }
-
       // Consume draft and create task in same workspace
       await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, ws.id);
       return;
     }
-
     return;
   }
 
@@ -438,8 +538,6 @@ async function handleCommandRequiringWorkspace(
   if (command === 'create-task' && args && args.trim().length > 0) {
     // /create-task [text] — save draft to DB first
     const trimmedArgs = args.trim();
-
-    // /create-task [text] — always save to DB as draft (no lookup mode)
     const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
       p_user_id: profileId,
       p_chat_id: chatId,
@@ -447,7 +545,6 @@ async function handleCommandRequiringWorkspace(
       p_description: null,
       p_source: 'nl',
     });
-
     if (error || !draftResult) {
       console.error('[Bot Webhook] Failed to create draft:', error);
       await sendMessage(BOT_TOKEN!, {
@@ -456,12 +553,10 @@ async function handleCommandRequiringWorkspace(
       });
       return;
     }
-
     keyboardOptions.draftId = draftResult;
   }
 
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, keyboardOptions);
-
   await sendMessage(BOT_TOKEN!, {
     chat_id: chatId,
     text: 'Выберите доску для выполнения команды:',
@@ -551,7 +646,9 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
   }
 
-  console.log(`[Bot Webhook] User ${userId} selected workspace ${wsData?.slug || ''} (${workspaceId}), type=${type}, extra=${extra}`);
+  console.log(
+    `[Bot Webhook] User ${userId} selected workspace ${wsData?.slug || ''} (${workspaceId}), type=${type}, extra=${extra}`
+  );
 }
 
 /**
@@ -570,7 +667,6 @@ async function executeCommandInWorkspace(
   const colonIdx = extra.indexOf(':');
   let command: string;
   let args: string;
-
   if (colonIdx >= 0) {
     command = extra.substring(0, colonIdx);
     args = extra.substring(colonIdx + 1);
@@ -627,8 +723,6 @@ async function executeDraftInWorkspaceByChat(
   const taskText = draftRow.title;
 
   // Call F-04 create-task endpoint (same pipeline as TWA)
-  // Use relative path — both endpoints are in the same Next.js app on Vercel
-
   let aiResult: {
     task?: { id: string; title: string; column: string; priority: string };
     parse?: { rewritten_title?: string; clarity_score?: number };
@@ -636,12 +730,11 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    // Use relative path — webhook and create-task are in the same Next.js app
     const resp = await fetch('/api/bot/create-task', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WEBHOOK_SECRET}`,
+        Authorization: `Bearer ${WEBHOOK_SECRET}`,
       },
       body: JSON.stringify({
         telegram_user_id: userId,
@@ -791,7 +884,6 @@ async function createTaskFallback(
   const fullId = `${wsForFallback?.task_prefix || '?'}-${taskWithNumber2?.task_number || '?'}`;
   console.log('[Bot Webhook] Task created via fallback:', { taskId: task.id, fullId, chatId });
 
-  // Build unified task card for fallback path too
   const cardData: TaskCardData = {
     fullId,
     title: task.title,
@@ -841,12 +933,6 @@ async function handleResolveTask(
   await setMessageReaction(token, chatId, messageId, '👀').catch(() => {});
 
   try {
-    // Fetch task card data via RPC get_task_card_data by full_id
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
     const { data: cardData, error: rpcError } = await supabase.rpc(
       'get_task_card_data_by_full_id',
       { p_full_id: fullId }
@@ -866,7 +952,6 @@ async function handleResolveTask(
 
     // Build unified task card with buildTaskCard()
     const taskCard = buildTaskCard(cardData as TaskCardData, 'lookup');
-
     await sendMessage(token, {
       chat_id: chatId,
       text: taskCard.text,
@@ -893,39 +978,35 @@ export async function POST(req: NextRequest) {
 
   if (!WEBHOOK_SECRET) {
     console.error('[Bot Webhook] TELEGRAM_BOT_SECRET not configured');
-    return NextResponse.json(
-      { error: 'Server configuration error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
   if (!providedSecret || !verifyTelegramWebhookSecret(providedSecret, WEBHOOK_SECRET)) {
     console.warn('[Bot Webhook] Invalid secret token');
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // Env sanity check (once per request — useful while debugging silence)
+  console.log('[Bot Webhook] env check', {
+    hasToken: !!BOT_TOKEN,
+    hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
 
   // 2. Parse update payload
   let update: unknown;
   try {
     update = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: 'Invalid JSON' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // 3. Fire-and-forget dispatch using setImmediate (Node.js runtime on Vercel)
-  //    Edge runtime would use env.waitUntil(), but we're on Node.js.
-  setImmediate(() => {
-    dispatchUpdate(update as any).catch((err) => {
-      console.error('[Bot Webhook] Unhandled dispatch error:', err);
-    });
-  });
+  // 3. Process synchronously — DO NOT use setImmediate on Vercel serverless
+  try {
+    await dispatchUpdate(update as any);
+  } catch (err) {
+    console.error('[Bot Webhook] Unhandled dispatch error:', err);
+  }
 
-  // Return immediately — don't wait for async processing
   return NextResponse.json({ ok: true });
 }
