@@ -55,6 +55,7 @@ export async function resolveWorkspace(
   /** Optional: extracted target_workspace from @mention or voice NLP */
   explicitTarget?: string
 ): Promise<{ workspace_id: string; slug: string } | null> {
+  console.log('[Bot WS] resolveWorkspace START userId=' + telegramUserId + ' chatId=' + chatId + ' type=' + chatType);
 
   // Priority 3: Explicit @workspace mention
   if (explicitTarget) {
@@ -72,14 +73,31 @@ export async function resolveWorkspace(
   }
 
   // Resolve profile first — this is the key fix
-  const profileId = await resolveProfileId(telegramUserId);
+  console.log('[Bot WS] Calling resolveProfileId for userId=' + telegramUserId);
+  let profileId: string | null;
+  try {
+    profileId = await resolveProfileId(telegramUserId);
+    console.log('[Bot WS] resolveProfileId result:', profileId ? 'found' : 'null');
+  } catch (err) {
+    console.error('[Bot WS] ERROR resolveProfileId:', err);
+    throw err;
+  }
   if (!profileId) {
     // User has no profile — show available workspaces or general welcome
+    console.log('[Bot WS] No profile found for userId=' + telegramUserId);
     return null;
   }
 
   // Priority 1: User has exactly one workspace → auto-use
-  const userWorkspaces = await getUserWorkspaces(profileId);
+  console.log('[Bot WS] Calling getUserWorkspaces for profileId=' + profileId);
+  let userWorkspaces: Array<{ id: string; slug: string }>;
+  try {
+    userWorkspaces = await getUserWorkspaces(profileId);
+    console.log('[Bot WS] getUserWorkspaces result count:', userWorkspaces.length);
+  } catch (err) {
+    console.error('[Bot WS] ERROR getUserWorkspaces:', err);
+    throw err;
+  }
   if (userWorkspaces.length === 1) {
     return { workspace_id: userWorkspaces[0].id, slug: userWorkspaces[0].slug };
   }
