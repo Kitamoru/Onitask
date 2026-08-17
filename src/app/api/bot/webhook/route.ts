@@ -71,6 +71,17 @@ const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
  * Dispatch update to appropriate handler based on update type.
  */
 async function dispatchUpdate(update: any): Promise<void> {
+  // === LOG: incoming update ===
+  const cb = update.callback_query;
+  const msg = update.message || update.edited_message;
+  if (cb) {
+    console.log('[Bot Webhook] UPDATE type=callback_query id=' + cb.id + ' data=' + (cb.data ?? 'null') + ' from_user=' + (cb.from?.id ?? '?'));
+  } else if (msg) {
+    console.log('[Bot Webhook] UPDATE type=message chat=' + msg.chat?.id + ' type=' + msg.chat?.type + ' text=' + (msg.text ?? '[voice]') + ' from=' + (msg.from?.id ?? '?'));
+  } else {
+    console.log('[Bot Webhook] UPDATE type=unknown (no callback_query, no message)');
+  }
+
   // Handle callback_query (inline button presses)
   const callbackQuery = update.callback_query;
   if (callbackQuery) {
@@ -91,12 +102,13 @@ async function dispatchUpdate(update: any): Promise<void> {
   const userId = message.from?.id;
 
   if (!userId) {
-    console.log('[Bot Webhook] No user id in message');
+    console.error('[Bot Webhook] ERROR No user id in message:', JSON.stringify(message).slice(0, 500));
     return;
   }
 
   // Ignore group messages
   if (chat.type !== 'private') {
+    console.log('[Bot Webhook] Ignoring non-private chat: type=' + chat.type);
     return;
   }
 
@@ -112,7 +124,14 @@ async function dispatchUpdate(update: any): Promise<void> {
   }
 
   // Step 2: Resolve workspace
-  let workspaceResult = await resolveWorkspace(userId, chatId, 'private');
+  let workspaceResult: { workspace_id: string } | null;
+  try {
+    workspaceResult = await resolveWorkspace(userId, chatId, 'private');
+    console.log('[Bot Webhook] resolveWorkspace result:', workspaceResult ? 'found' : 'null', 'userId=' + userId, 'chatId=' + chatId);
+  } catch (err) {
+    console.error('[Bot Webhook] ERROR resolveWorkspace failed:', err);
+    workspaceResult = null;
+  }
 
   // If workspace resolved, proceed with command handling
   if (workspaceResult && parsedCommand) {
@@ -130,12 +149,22 @@ async function dispatchUpdate(update: any): Promise<void> {
     }
 
     if (command === 'start') {
-      await handleStartCommand(message, args);
+      try {
+        await handleStartCommand(message, args);
+      } catch (err) {
+        console.error('[Bot Webhook] ERROR handleStartCommand:', err);
+        await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: '⚠️ Ошибка при обработке /start.' });
+      }
       return;
     }
 
     // Route other commands
-    await handleCommand(message, command, args, workspaceId);
+    try {
+      await handleCommand(message, command, args, workspaceId);
+    } catch (err) {
+      console.error('[Bot Webhook] ERROR handleCommand (' + command + '):', err);
+      await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: '⚠️ Ошибка при выполнении команды.' });
+    }
     return;
   }
 
