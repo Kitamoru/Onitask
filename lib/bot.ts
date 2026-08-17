@@ -26,8 +26,8 @@ const MAX_MESSAGE_LENGTH = 4096; // Consistent with MCP contract
 const DRAFT_TIMEOUT_MS = 20000; // 20 seconds safety margin
 
 // Mini App config (§6.2d)
-const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'onitask_bot';
-const MINI_APP_SHORT_NAME = 'app';
+const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'onitaskbot';
+const MINI_APP_SHORT_NAME = 'onitask';
 
 // ============================================================================
 // HTML Sanitization (security_.md §4.1, bot_.md v0.5.0)
