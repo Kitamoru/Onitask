@@ -29,6 +29,7 @@ export default function BoardEditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<any>(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [initialData, setInitialData] = useState<{
     name: string;
     slug: string;
@@ -100,6 +101,21 @@ export default function BoardEditPage() {
           if (settingsJson.success) {
             settingsData = settingsJson.data?.workspace_settings;
             linksData = settingsJson.data?.workspace_links ?? [];
+          }
+        }
+
+        // 2b. Check if current user is the owner of this workspace
+        const initData = getTelegramInitData();
+        const myDataRes = await fetch('/api/workspaces/my-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        if (myDataRes.ok) {
+          const myDataJson = await myDataRes.json();
+          if (myDataJson.success) {
+            const myWs = (myDataJson.data?.workspaces ?? []).find((w: any) => w.id === ws.id);
+            setIsOwner(myWs?.role === 'owner');
           }
         }
 
@@ -212,6 +228,7 @@ export default function BoardEditPage() {
         workspaceId={workspace.id}
         initialData={initialData}
         serverDocuments={serverDocuments}
+        isOwner={isOwner}
         onAddColleague={() => router.push(`/board/${slug}/members`)}
       />
     </main>

@@ -325,6 +325,142 @@ export async function PUT(req: NextRequest) {
   }
 }
 
+/**
+ * DELETE /api/workspaces — Delete workspace with cascading cleanup
+ * 
+ * Only the workspace owner can delete. All related data is cascade-deleted:
+ * - tasks, sprints, workers, workspace_settings, workspace_links
+ * - workspace_documents + storage files
+ * - calendar_events, calendar_connections, bot_telegram_chats
+ * - task_relations, assignment_history, enrichments, vector_chunks
+ * - agent_events, version_tracking, workspace_task_counters
+ * - invite_codes, enrichment_queue entries
+ */
+export async function DELETE(req: NextRequest) {
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    console.error('workspaces: TELEGRAM_BOT_TOKEN is not set');
+    return NextResponse.json(
+      { success: false, error: 'server_configuration_error' },
+      { status: 500 },
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const init_data = body.init_data as string | undefined;
+    const workspace_id = body.workspace_id as string | undefined;
+
+    if (!init_data) {
+      return NextResponse.json(
+        { success: false, error: 'missing_init_data' },
+        { status: 400 },
+      );
+    }
+
+    if (!workspace_id) {
+      return NextResponse.json(
+        { success: false, error: 'missing_workspace_id' },
+        { status: 400 },
+      );
+    }
+
+    // 1. Verify Telegram initData
+    const validation = await validateTelegramInitData(init_data, TELEGRAM_BOT_TOKEN);
+    if (!validation.valid || !validation.user) {
+      return NextResponse.json(
+        { success: false, error: validation.error || 'invalid_init_data' },
+        { status: 401 },
+      );
+    }
+
+    const telegramUser = validation.user;
+    const supabase = createServerClient();
+    const anySupabase = supabase as any;
+
+    // 2. Find profile by telegram_id
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('telegram_id', Number(telegramUser.id))
+      .maybeSingle();
+
+    if (!profileData) {
+      return NextResponse.json(
+        { success: false, error: 'profile_not_found' },
+        { status: 404 },
+      );
+    }
+
+    const profileId = profileData.id as string;
+
+    // 3. Check that user is the OWNER of this workspace
+    const { data: workerData } = await supabase
+      .from('workers')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('source_id', profileId)
+      .maybeSingle();
+
+    if (!workerData || workerData.role !== 'owner') {
+      return NextResponse.json(
+        { success: false, error: 'forbidden_owner_required' },
+        { status: 403 },
+      );
+    }
+
+    // 4. Clean up Supabase Storage files for this workspace
+    try {
+      // Get all documents for this workspace to find storage paths
+      const { data: docs } = await supabase
+        .from('workspace_documents')
+        .select('*')
+        .eq('workspace_id', workspace_id);
+
+      if (docs && docs.length > 0) {
+        const pathsToDelete: string[] = [];
+        for (const doc of docs as any[]) {
+          if (doc.storage_path) pathsToDelete.push(doc.storage_path);
+          pathsToDelete.push(`${workspace_id}/${doc.filename}`);
+        }
+        // Delete from storage (ignore errors — files may already be gone)
+        await supabase.storage.from('documents').remove(pathsToDelete);
+      }
+    } catch (storageErr) {
+      console.warn('workspaces: storage cleanup failed (non-fatal)', storageErr);
+      // Continue — DB deletion will still succeed
+    }
+
+    // 5. Delete workspace — CASCADE handles all child tables automatically
+    // Tables with ON DELETE CASCADE on workspace_id:
+    //   tasks, sprints, workers, workspace_settings, workspace_links,
+    //   workspace_documents, column_definitions, task_column_history,
+    //   task_relations, assignment_history, enrichments, agent_events,
+    //   workspace_context_cache, workspace_task_counters, invite_codes,
+    //   calendar_events, calendar_connections, bot_telegram_chats,
+    //   task_vector_chunks, enrichment_queue
+    const { error: deleteError } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', workspace_id);
+
+    if (deleteError) {
+      console.error('workspaces: delete error', deleteError);
+      return NextResponse.json(
+        { success: false, error: 'delete_failed', details: deleteError.message },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('workspaces: unexpected error', err);
+    return NextResponse.json(
+      { success: false, error: 'internal_error' },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   // Guard: require TELEGRAM_BOT_TOKEN to be set
   if (!process.env.TELEGRAM_BOT_TOKEN) {

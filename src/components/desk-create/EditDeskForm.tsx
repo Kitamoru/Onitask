@@ -41,6 +41,7 @@ export function EditDeskForm({
   workspaceId,
   initialData,
   serverDocuments,
+  isOwner,
   onAddColleague,
 }: {
   workspaceId: string;
@@ -60,6 +61,7 @@ export function EditDeskForm({
     urgentDays: number;
   };
   serverDocuments?: ServerDocument[];
+  isOwner: boolean;
   onAddColleague: () => void;
 }) {
   const router = useRouter();
@@ -67,6 +69,8 @@ export function EditDeskForm({
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   // Store original values for rollback on save failure
   const originalValuesRef = useRef({
     name: initialData.name,
@@ -161,6 +165,39 @@ export function EditDeskForm({
       return false;
     } finally {
       setUploading(false);
+    }
+  };
+
+  /**
+   * Delete the entire workspace (cascading).
+   */
+  const handleDeleteWorkspace = async () => {
+    setDeletingWorkspace(true);
+    setShowDeleteConfirm(false);
+    try {
+      const res = await fetch('/api/workspaces', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          init_data: getTelegramInitData(),
+          workspace_id: workspaceId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete workspace');
+      }
+
+      // Success - navigate to boards list
+      router.push('/boards');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Не удалось удалить доску: ${message}`);
+      console.error('Failed to delete workspace:', message);
+    } finally {
+      setDeletingWorkspace(false);
     }
   };
 
@@ -366,18 +403,76 @@ export function EditDeskForm({
         </section>
       </div>
 
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && isOwner && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ backgroundColor: '#1A1A1A' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p
+              className="mb-2 text-center text-lg font-semibold"
+              style={{ color: '#FAFAFA' }}
+            >
+              Удалить доску?
+            </p>
+            <p
+              className="mb-6 text-center text-sm"
+              style={{ color: '#8B8B8B' }}
+            >
+              Все задачи и данные будут удалены без возможности восстановления.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button
+                variant="solid"
+                onClick={handleDeleteWorkspace}
+                disabled={deletingWorkspace}
+                style={{ backgroundColor: '#EF4444', color: '#FAFAFA' }}
+              >
+                {deletingWorkspace ? 'Удаление...' : 'Удалить доску'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingWorkspace}
+                style={{ borderColor: '#333', color: '#8B8B8B' }}
+              >
+                Отмена
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Inline CTA */}
       <div
         className="px-4 pt-2 lg:hidden"
         style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <Button
-          variant="solid"
-          disabled={!canSubmit || saving || uploading}
-          onClick={handleSubmit}
-        >
-          {saving ? 'Сохранение...' : uploading ? 'Загрузка документов...' : 'Сохранить'}
-        </Button>
+        <div className="flex flex-col gap-3">
+          <Button
+            variant="solid"
+            disabled={!canSubmit || saving || uploading}
+            onClick={handleSubmit}
+          >
+            {saving ? 'Сохранение...' : uploading ? 'Загрузка документов...' : 'Сохранить'}
+          </Button>
+          {isOwner && (
+            <Button
+              variant="solid"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={saving || uploading || deletingWorkspace}
+              style={{ backgroundColor: '#EF4444', color: '#FAFAFA' }}
+            >
+              Удалить доску
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
