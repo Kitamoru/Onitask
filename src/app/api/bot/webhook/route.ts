@@ -79,7 +79,6 @@ async function getBotUsername(): Promise<string | null> {
  */
 function parseCommand(text: string): [string, string] | null {
   const trimmed = text.trim();
-  // Allow hyphens in command names (create-task, run-task)
   const match = trimmed.match(
     /^\/([a-zA-Z0-9_-]+)(?:@[a-zA-Z0-9_]+)?(?:\s+(.*))?$/
   );
@@ -93,46 +92,27 @@ function normalizeCommand(command: string): string {
     case 'create-task':
       return 'create';
     case 'run-task':
-      return 'task'; // lookup when args look like full_id
+      return 'task';
     default:
       return command;
   }
 }
 
-/**
- * Commands that require workspace selection (create flow).
- */
 const COMMANDS_REQUIRING_WORKSPACE = ['create', 'task'];
-
-/**
- * Commands that work WITHOUT workspace.
- */
 const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
 
-/**
- * Check if a string looks like a task full_id (e.g., ALPHA-123).
- */
 function looksLikeTaskFullId(text: string): boolean {
   return /^[A-Z]{2,6}-\d{1,6}$/.test(text.trim());
 }
 
-/**
- * Strip bot @mention from command arguments.
- * Removes "@botname" from beginning, middle, or end of args string.
- */
 function stripBotMentionFromArgs(args: string, botUsername: string): string {
   if (!args) return '';
-  // Remove @botname from start, end, or standalone
   let result = args.replace(new RegExp(`^\\s*@${botUsername}\\s+`, 'gi'), '');
   result = result.replace(new RegExp(`\\s+@${botUsername}\\s*$`, 'gi'), '');
   result = result.replace(new RegExp(`^\\s*@${botUsername}\\s*$`, 'gi'), '');
   return result.trim();
 }
 
-/**
- * Check if the bot is mentioned in the message entities.
- * Supports: mention (@botname), text_mention, and bot_command (@botname /cmd).
- */
 async function checkBotMention(message: any): Promise<boolean> {
   const botUsername = await getBotUsername();
   if (!botUsername) return false;
@@ -159,7 +139,6 @@ async function checkBotMention(message: any): Promise<boolean> {
         return true;
       }
     } else if (entity.type === 'text_mention') {
-      // text_mention by user ID — treat as mention
       return true;
     }
   }
@@ -169,6 +148,7 @@ async function checkBotMention(message: any): Promise<boolean> {
 /**
  * Download Telegram file by file_id → Blob.
  * Correct flow: getFile → file_path → download.
+ * Forces audio/ogg MIME (Telegram voice/audio is always OGG/Opus).
  */
 async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
   if (!BOT_TOKEN) {
@@ -176,7 +156,6 @@ async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
     return null;
   }
   try {
-    // 1. getFile
     const getFileResp = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`
     );
@@ -191,23 +170,22 @@ async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
       return null;
     }
 
-    // 2. download
     const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
     const fileResp = await fetch(downloadUrl);
     if (!fileResp.ok) {
       console.warn('[Bot Webhook] file download failed:', fileResp.status);
       return null;
     }
-    return await fileResp.blob();
+
+    const arrayBuffer = await fileResp.arrayBuffer();
+    // Telegram voice/audio всегда OGG/Opus — принудительно ставим правильный MIME
+    return new Blob([arrayBuffer], { type: 'audio/ogg' });
   } catch (err) {
     console.error('[Bot Webhook] downloadTelegramFile error:', err);
     return null;
   }
 }
 
-/**
- * sendChatAction with timeout so a hung Telegram API call cannot kill the whole flow.
- */
 async function safeSendChatAction(chatId: number): Promise<void> {
   if (!BOT_TOKEN) {
     console.warn('[Bot Webhook] safeSendChatAction: BOT_TOKEN missing');
@@ -229,9 +207,6 @@ async function safeSendChatAction(chatId: number): Promise<void> {
   }
 }
 
-/**
- * Dispatch update to appropriate handler based on update type.
- */
 async function dispatchUpdate(update: any): Promise<void> {
   const cb = update.callback_query;
   const msg = update.message || update.edited_message;
@@ -260,7 +235,6 @@ async function dispatchUpdate(update: any): Promise<void> {
     console.log('[Bot Webhook] UPDATE type=unknown (no callback_query, no message)');
   }
 
-  // Handle callback_query
   const callbackQuery = update.callback_query;
   if (callbackQuery) {
     await handleCallbackQuery(callbackQuery);
@@ -283,7 +257,6 @@ async function dispatchUpdate(update: any): Promise<void> {
   const text = message.text;
   const userId = message.from?.id;
 
-  // ── Debug logging: log all message types received ──
   console.log('[Bot Webhook] DEBUG message structure:', {
     hasText: !!message.text,
     hasVoice: !!message.voice,
@@ -307,9 +280,8 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ── Group/supergroup/channel: require bot @mention ──
   let effectiveUserId = userId;
-  const chatType = chat.type; // 'private' | 'group' | 'supergroup' | 'channel'
+  const chatType = chat.type;
 
   if (chatType !== 'private') {
     const botMentioned = await checkBotMention(message);
@@ -320,7 +292,6 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
-    // For reply messages: use the replied-to user as effectiveUserId
     if (message.reply_to_message && message.reply_to_message.from) {
       effectiveUserId = message.reply_to_message.from.id;
     } else {
@@ -340,7 +311,6 @@ async function dispatchUpdate(update: any): Promise<void> {
   console.log('[Bot Webhook] before sendChatAction');
   await safeSendChatAction(chatId);
 
-  // Parse command — in groups, also strip bot @mention from args
   let parsedCommand: [string, string] | null = null;
 
   if (text && text.startsWith('/')) {
@@ -374,7 +344,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     console.log('[Bot Webhook] parsedCommand= null');
   }
 
-  // ── /start FIRST — never depends on workspace / profile ──
+  // ── /start FIRST ──
   if (parsedCommand && parsedCommand[0] === 'start') {
     const [, args] = parsedCommand;
     console.log('[Bot Webhook] Handling /start (workspace-free path)');
@@ -391,7 +361,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ── /task TASK-123 or /run-task TASK-123 → lookup (no workspace needed) ──
+  // ── /task TASK-123 → lookup ──
   if (parsedCommand && parsedCommand[0] === 'task' && looksLikeTaskFullId(parsedCommand[1])) {
     const fullId = parsedCommand[1].trim().toUpperCase();
     console.log('[Bot Webhook] Task lookup:', fullId);
@@ -399,7 +369,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ── /help without workspace ──
+  // ── /help ──
   if (parsedCommand && parsedCommand[0] === 'help') {
     console.log('[Bot Webhook] Handling /help (workspace-free path)');
     try {
@@ -419,7 +389,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 2: Resolve workspace — use effectiveUserId for groups
+  // Step 2: Resolve workspace
   let workspaceResult: { workspace_id: string } | null;
   console.log(
     '[Bot Webhook] >>> About to call resolveWorkspace, effectiveUserId=' +
@@ -447,12 +417,10 @@ async function dispatchUpdate(update: any): Promise<void> {
     workspaceResult = null;
   }
 
-  // Workspace resolved + command — use effectiveUserId for groups
   if (workspaceResult && parsedCommand) {
     const [command, args] = parsedCommand;
     const workspaceId = workspaceResult.workspace_id;
 
-    // Create flow with single workspace → still go through draft helper
     if (command === 'create' || (command === 'task' && !looksLikeTaskFullId(args))) {
       const gateMessage = await checkFreemiumBoundary('create-task', effectiveUserId, workspaceId);
       if (gateMessage) {
@@ -491,7 +459,6 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
-    // /create or /task [text] → need board selection
     if (
       COMMANDS_REQUIRING_WORKSPACE.includes(command) &&
       !(command === 'task' && looksLikeTaskFullId(args))
@@ -500,7 +467,6 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
-    // Unknown
     await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text:
@@ -513,7 +479,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // Step 4: Regular message — pending task mode? (use effectiveUserId for groups)
+  // Step 4: Pending task mode
   const pendingActive = await isPendingTaskMode(chatId);
   console.log(
     '[Bot Webhook] Step 4: pendingActive=',
@@ -546,7 +512,6 @@ async function dispatchUpdate(update: any): Promise<void> {
       taskText = text.trim();
       source = 'nl';
     } else if (message.voice) {
-      // Standard Telegram voice message
       if (message.caption && message.caption.trim().length > 0) {
         taskText = message.caption.trim();
         source = 'voice_with_caption';
@@ -586,7 +551,6 @@ async function dispatchUpdate(update: any): Promise<void> {
         }
       }
     } else if (message.audio) {
-      // Audio file (not standard voice message)
       console.log('[Bot Webhook] Received audio file, downloading...');
       const blob = await downloadTelegramFile(message.audio.file_id);
       if (blob) {
@@ -622,7 +586,6 @@ async function dispatchUpdate(update: any): Promise<void> {
         source = 'audio_file';
       }
     } else if (message.video_note) {
-      // Circular video note — not supported by Whisper STT
       console.log('[Bot Webhook] Received video_note (circular video), cannot transcribe');
       taskText =
         '[Круглое видео — бот не может распознать текст. Отправьте обычное голосовое сообщение]';
@@ -714,11 +677,6 @@ async function dispatchUpdate(update: any): Promise<void> {
   });
 }
 
-/**
- * Handle commands that require workspace selection (create flow).
- * command is always normalized to 'create' here.
- * In group chats, if there's a reply_to_message, its text takes priority over args.
- */
 async function handleCommandRequiringWorkspace(
   chatId: number,
   userId: number,
@@ -749,13 +707,11 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  // In groups with reply: use replied-to message text as task description
   let effectiveArgs = args;
   if (message?.reply_to_message?.text) {
     effectiveArgs = message.reply_to_message.text.trim();
   }
 
-  // Single workspace
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
     if (!effectiveArgs || effectiveArgs.trim().length === 0) {
@@ -791,7 +747,6 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  // Multiple workspaces — no effectiveArgs → pending + ask for text first
   if (!effectiveArgs || effectiveArgs.trim().length === 0) {
     await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
@@ -803,7 +758,6 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  // Multiple + text → draft then keyboard
   const trimmedArgs = effectiveArgs.trim();
   const { data: draftResult, error } = await supabase.rpc('create_bot_task_draft', {
     p_user_id: profileId,
@@ -844,7 +798,6 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   const userId = callbackQuery.from?.id;
   const data = callbackQuery.data;
 
-  // Answer callback exactly once
   const answer = async (opts?: { text?: string; show_alert?: boolean }) => {
     try {
       await answerCallbackQuery(token, {
@@ -867,7 +820,6 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     return;
   }
 
-  // Success path — answer without text
   await answer();
 
   const { workspaceId, type, extra } = parsed;
