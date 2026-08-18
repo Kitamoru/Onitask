@@ -2,35 +2,35 @@
  * F-04 AI — Create Task endpoint (F04-07).
  *
  * POST /api/ai/create-task
- * Body: { init_data, input }
+ * Body: { init_data, input, workspace_id?, source?, profile_id? }
  *
  * Полный F-04 Route Handler по контракту onitask_ai_.md §3.6:
- *   1. Auth (initData)
- *   2. Resolve workspace_id via workers.source_id = profileId
- *   3. Load workspace settings (f04_config, workspace_context, data_sharing_level)
- *   4. Load team workers
- *   5. Build parse prompt (prompts.ts)
- *   6. Call Groq llama-3.3-70b-versatile with JSON mode (groq.ts)
- *   7. Validate with Zod (types.ts) — fallback to safe defaults
- *   8. Run Gatekeeper → enrichment strategy (types.ts)
- *   9. Assignee matching: display_name → worker ID
- *   10. INSERT tasks со ВСЕМИ полями (raw_input, clarity_score, complexity,
- *       enrichment_strategy, cognitive_weight, tags, column, assignee)
- *   11. IF skip → INSERT task_enrichments (deterministic)
- *       IF !skip → INSERT enrichment_queue
- *   12. INSERT task_events (parse_rewrite)
- *   13. Return { task, parse, strategy, showCorrectionSheet }
+ * 1. Auth (initData или service-role Bearer)
+ * 2. Resolve workspace_id via workers.source_id = profileId
+ * 3. Load workspace settings (f04_config, workspace_context, data_sharing_level)
+ * 4. Load team workers
+ * 5. Build parse prompt (prompts.ts)
+ * 6. Call Groq / NDH with JSON mode
+ * 7. Validate with Zod (types.ts) — fallback to safe defaults
+ * 8. Run Gatekeeper → enrichment strategy (types.ts)
+ * 9. Assignee matching: display_name → worker ID
+ * 10. INSERT tasks со ВСЕМИ полями (raw_input, clarity_score, complexity,
+ *     enrichment_strategy, cognitive_weight, tags, column, assignee, source, created_by)
+ * 11. IF skip → INSERT task_enrichments (deterministic)
+ *     IF !skip → INSERT enrichment_queue
+ * 12. INSERT task_events (parse_rewrite)
+ * 13. Return { task, parse, strategy, showCorrectionSheet }
  *
  * Based on: onitask_ai_.md §3.6, TASKS.md F04-07
  * Security: onitask_security_.md §1.1 (JSON mode + Zod), INV-05 (workspace_id)
  * A-1: Vercel Hot Path (< 2s), A-6: single model call
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 import { createServerClient } from '../../../../../lib/supabase';
 
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
 import { chatCompletion } from '../../../../lib/ai/neuralDeepHub';
 import { buildParsePrompt } from '../../../../lib/ai/prompts';
 import {
@@ -50,16 +50,27 @@ interface CreateTaskBody {
   input?: string;
   service_token?: string;
   workspace_id?: string;
+  /** Explicit source from caller: 'bot' | 'manual' | ... */
+  source?: string;
+  /** Profile UUID of the acting user (required for bot/service calls to set created_by) */
+  profile_id?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CreateTaskBody;
-    const { init_data, input, service_token, workspace_id: explicitWorkspaceId } = body;
+    const {
+      init_data,
+      input,
+      service_token,
+      workspace_id: explicitWorkspaceId,
+      source: bodySource,
+      profile_id: bodyProfileId,
+    } = body;
 
     let auth = await authenticateRequest(init_data);
 
-    // Server-to-server auth: bot calls this endpoint with service_token + explicit workspace_id
+    // Server-to-server auth: bot calls this endpoint with service-role Bearer
     if (!auth.authenticated && !init_data) {
       const authHeader = request.headers.get('Authorization') || '';
       const bearer = authHeader.replace(/^Bearer\s+/i, '');
@@ -77,7 +88,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const profileId = auth.profileId;
+
+    // Effective profile: from initData auth OR explicit body (bot path)
+    const profileId = auth.profileId || bodyProfileId || null;
 
     // Resolve workspace_id: explicit from body > user's active worker
     let workspaceId = explicitWorkspaceId || null;
@@ -90,9 +103,11 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (userWorkersError) {
-        return NextResponse.json({ error: 'Не удалось определить рабочее пространство' }, { status: 500 });
+        return NextResponse.json(
+          { error: 'Не удалось определить рабочее пространство' },
+          { status: 500 }
+        );
       }
-
       workspaceId = userWorkers?.[0]?.workspace_id ?? null;
     }
 
@@ -100,7 +115,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Рабочее пространство не найдено' }, { status: 404 });
     }
 
-    // 3. Load workspace settings (f04_config, context, data_sharing_level)
+    // 3. Load workspace settings
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
       .select('f04_config, workspace_context, data_sharing_level')
@@ -113,10 +128,10 @@ export async function POST(request: NextRequest) {
 
     const config = parseF04Config(settings?.f04_config);
 
-    // 3a. Read workspace_context_cache via dedicated utility (F04-11)
+    // 3a. workspace_context_cache
     const cacheResult = await getWorkspaceContextCache(workspaceId);
 
-    // 3b. Load team workers (id + display_name for assignee matching)
+    // 3b. Load team workers
     const { data: workers, error: workersError } = await supabase
       .from('workers')
       .select('id, display_name')
@@ -127,19 +142,22 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Build prompt
-    const prompt = buildParsePrompt(input, {
-      workspace_context: settings?.workspace_context ?? null,
-      workspace_context_cache: cacheResult?.workspace_context_cache ?? null,
-      data_sharing_level: settings?.data_sharing_level ?? 'standard',
-    }, workers ?? []);
+    const prompt = buildParsePrompt(
+      input,
+      {
+        workspace_context: settings?.workspace_context ?? null,
+        workspace_context_cache: cacheResult?.workspace_context_cache ?? null,
+        data_sharing_level: settings?.data_sharing_level ?? 'standard',
+      },
+      workers ?? []
+    );
 
-    // 5. Call Neural Deep Hub (qwen3.6-35b-a3b-noreason) with JSON mode
+    // 5. Call NDH / Groq with JSON mode
     const raw = await chatCompletion({ prompt });
 
-    // 5a. Log raw response for debugging parse failures
     console.log('[F-04] Raw NDH response:', raw?.slice(0, 500));
 
-    // 6. Validate with Zod — log full error on failure
+    // 6. Validate with Zod
     let parsed: ParseResponseV2;
     try {
       parsed = validateParseResponse(JSON.parse(raw));
@@ -152,22 +170,36 @@ export async function POST(request: NextRequest) {
     // 7. Gatekeeper → enrichment strategy
     const strategy: EnrichmentStrategy = determineEnrichmentStrategy(parsed, config);
 
-    // 8. Assignee matching: display_name → worker ID (ai_.md §3.6)
+    // 8. Assignee matching
     let assignedTo: string | null = null;
     if (parsed.assignee) {
       const matched = (workers ?? []).find(
-        (w) => w.display_name.toLowerCase() === parsed.assignee?.toLowerCase(),
+        (w) => w.display_name.toLowerCase() === parsed.assignee?.toLowerCase()
       );
       assignedTo = matched?.id ?? null;
     }
 
-    // 9. Title/Description finalization (ai_.md §3.6)
-    // При низком clarity rewritten_description может быть пустым (§3.4) — задача идёт
-    // в Correction Sheet, сырой input НЕ должен попадать в описание как fallback.
+    // 9. Title / description finalization
     const finalTitle = parsed.rewritten_title?.trim() || parsed.title;
     const finalDescription = parsed.rewritten_description?.trim() || '';
 
-    // 10. INSERT tasks со ВСЕМИ полями (raw_input, clarity, complexity, strategy, tags, column)
+    // Resolve created_by: profile → worker in this workspace
+    let createdBy: string | null = null;
+    if (profileId) {
+      const { data: creatorWorker } = await supabase
+        .from('workers')
+        .select('id')
+        .eq('source_id', profileId)
+        .eq('workspace_id', workspaceId)
+        .eq('is_active', true)
+        .maybeSingle();
+      createdBy = creatorWorker?.id ?? null;
+    }
+
+    // Explicit source from caller; default to 'manual'
+    const source = bodySource === 'bot' ? 'bot' : 'manual';
+
+    // 10. INSERT tasks
     const insertPayload: TasksInsert = {
       workspace_id: workspaceId,
       title: finalTitle,
@@ -183,7 +215,8 @@ export async function POST(request: NextRequest) {
       complexity: parsed.complexity,
       enrichment_strategy: strategy,
       cognitive_weight: strategy === 'skip' ? 0 : 1,
-      source: service_token ? 'telegram_bot' : 'manual',
+      source,
+      created_by: createdBy,
     };
 
     const { data: task, error: insertError } = await supabase
@@ -198,7 +231,7 @@ export async function POST(request: NextRequest) {
 
     const taskId = (task as { id: string }).id;
 
-    // 11. IF skip → INSERT task_enrichments (deterministic) / IF !skip → INSERT enrichment_queue
+    // 11. Enrichment
     if (strategy === 'skip') {
       await supabase.from('task_enrichments').insert({
         task_id: taskId,
@@ -218,14 +251,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 12. INSERT task_events (parse_rewrite)
+    // 12. task_events
     await supabase.from('task_events').insert({
       workspace_id: workspaceId,
       task_id: taskId,
       event_type: 'parse_rewrite',
       payload: {
-      raw_input: input,
-      metadata: service_token ? { source: 'telegram_bot' } : undefined,
+        raw_input: input,
+        metadata: source === 'bot' ? { source: 'bot' } : undefined,
         rewritten_title: parsed.rewritten_title,
         rewritten_description: parsed.rewritten_description,
         clarity_score: parsed.clarity_score,
@@ -235,16 +268,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 13. Correction Sheet condition (ai_.md §3.7)
+    // 13. Correction Sheet condition
     const showCorrectionSheet =
       parsed.clarity_score < config.correction_sheet_clarity_threshold ||
-      parsed.confidence < 0.80;
+      parsed.confidence < 0.8;
 
     return NextResponse.json({ task, parse: parsed, strategy, showCorrectionSheet });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Ошибка AI-создания задачи' },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
