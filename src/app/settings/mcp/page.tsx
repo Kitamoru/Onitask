@@ -33,16 +33,20 @@ interface DeleteKeyResponse {
 // API Helpers
 // ============================================================================
 
-async function fetchMcpKeys(workspaceId: string): Promise<McpKeyInfo[]> {
-  const res = await fetch(`/api/mcp-keys?workspace_id=${encodeURIComponent(workspaceId)}`);
+/**
+ * Fetch all MCP keys (without workspace filter for now).
+ * In future: can add workspace filtering when workspace context is available.
+ */
+async function fetchMcpKeys(): Promise<McpKeyInfo[]> {
+  const res = await fetch(`/api/mcp-keys`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.keys ?? [];
 }
 
-async function createMcpKey(workspaceId: string, name: string): Promise<CreateKeyResponse> {
+async function createMcpKey(name: string): Promise<CreateKeyResponse> {
   const res = await fetch(
-    `/api/mcp-keys?workspace_id=${encodeURIComponent(workspaceId)}`,
+    `/api/mcp-keys`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,9 +56,9 @@ async function createMcpKey(workspaceId: string, name: string): Promise<CreateKe
   return res.json();
 }
 
-async function deleteMcpKey(workspaceId: string, keyHash: string): Promise<DeleteKeyResponse> {
+async function deleteMcpKey(keyHash: string): Promise<DeleteKeyResponse> {
   const res = await fetch(
-    `/api/mcp-keys/${encodeURIComponent(keyHash)}?workspace_id=${encodeURIComponent(workspaceId)}`,
+    `/api/mcp-keys/${encodeURIComponent(keyHash)}`,
     { method: 'DELETE' },
   );
   return res.json();
@@ -173,7 +177,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * AddKeyButton — primary button to create a new key.
+ * AddKeyButton — primary button to create a new key. Always visible.
  */
 function AddKeyButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
   return (
@@ -253,65 +257,28 @@ export default function McpSettingsPage() {
   const [freshKey, setFreshKey] = useState<{ key: string; prefix: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Workspace ID — in production this comes from auth/context
-  // For now, use the first available workspace or a test value
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [workspaceLoading, setWorkspaceLoading] = useState(true);
-
-  // Load active workspace on mount
+  // Load keys on mount (no workspace dependency)
   useEffect(() => {
     let cancelled = false;
-    setWorkspaceLoading(true);
-
-    fetch('/api/workspaces/active-workspace')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data?.workspace?.id) {
-          setWorkspaceId(data.workspace.id);
-        } else {
-          // Fallback: empty state
-          setWorkspaceLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setWorkspaceLoading(false);
-        }
-      });
-
-    return () => { cancelled = true; };
-  }, []);
-
-  // Load keys when workspace is ready
-  useEffect(() => {
-    if (!workspaceId) return;
-
-    let cancelled = false;
-    fetchMcpKeys(workspaceId).then((data) => {
+    fetchMcpKeys().then((data) => {
       if (!cancelled) setKeys(data);
     });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, []);
 
   const handleAddKeyClick = useCallback(() => {
-    if (!workspaceId) {
-      setError('Рабочее пространство не выбрано');
-      return;
-    }
     performCreateKey();
-  }, [workspaceId]);
+  }, []);
 
   const performCreateKey = useCallback(async () => {
-    if (!workspaceId) return;
-
     setError(null);
     setLoading(true);
     try {
-      const result = await createMcpKey(workspaceId, `Ключ ${new Date().toLocaleTimeString('ru-RU')}`);
+      const result = await createMcpKey(`Ключ ${new Date().toLocaleTimeString('ru-RU')}`);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
         // Refresh keys list
-        const updated = await fetchMcpKeys(workspaceId);
+        const updated = await fetchMcpKeys();
         setKeys(updated);
       } else {
         setError(result.error ?? 'Неизвестная ошибка');
@@ -321,15 +288,14 @@ export default function McpSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, []);
 
   const handleDeleteKey = useCallback(async (keyHash: string) => {
-    if (!workspaceId) return;
     setError(null);
     try {
-      const result = await deleteMcpKey(workspaceId, keyHash);
+      const result = await deleteMcpKey(keyHash);
       if (result.success) {
-        const updated = await fetchMcpKeys(workspaceId);
+        const updated = await fetchMcpKeys();
         setKeys(updated);
       } else {
         setError(result.error ?? 'Не удалось удалить ключ');
@@ -337,7 +303,7 @@ export default function McpSettingsPage() {
     } catch {
       setError('Не удалось удалить ключ');
     }
-  }, [workspaceId]);
+  }, []);
 
   const handleCopyKey = useCallback(async (text: string) => {
     try {
@@ -429,7 +395,7 @@ export default function McpSettingsPage() {
           </div>
         )}
 
-        {/* Мои ключи section — always visible, no workspaceId condition */}
+        {/* Мои ключи section */}
         <div className="flex flex-col gap-3 w-full">
           <div className="flex items-center gap-2 w-full px-3 py-2">
             <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
@@ -444,7 +410,7 @@ export default function McpSettingsPage() {
             </span>
           </div>
 
-          {workspaceLoading ? (
+          {loading ? (
             <div
               className="flex items-center justify-center h-10 w-full"
               style={{
@@ -455,7 +421,7 @@ export default function McpSettingsPage() {
             >
               <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Загрузка...</span>
             </div>
-          ) : keys.length === 0 && !freshKey ? (
+          ) : keys.length === 0 ? (
             <div
               className="flex flex-col items-center justify-center py-8 gap-2 w-full"
               style={{

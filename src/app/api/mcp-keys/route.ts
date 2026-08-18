@@ -14,11 +14,6 @@ interface McpKeyConfig {
   expires_at?: string;
 }
 
-interface WorkspaceRow {
-  id: string;
-  name: string;
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -63,6 +58,25 @@ function getDefaultExpiry(): string {
   return date.toISOString();
 }
 
+/**
+ * Get the active workspace ID for the current user.
+ * Uses the profiles.active_workspace_id field.
+ */
+async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
+  // Try to get from session
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) return null;
+
+  // Get profile's active workspace
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_workspace_id')
+    .eq('id', session.user.id)
+    .maybeSingle();
+
+  return profile?.active_workspace_id ?? null;
+}
+
 // ============================================================================
 // GET — List MCP keys (hashes only, no plaintext)
 // ============================================================================
@@ -71,18 +85,21 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createServerClient();
 
-    // Get workspace_id from query params
-    const url = new URL(request.url);
-    const workspaceId = url.searchParams.get('workspace_id');
+    // Get workspace_id from query params OR from auth context
+    let workspaceId: string | null = request.url.split('workspace_id=')[1]?.split('&')[0] ?? null;
+
+    if (!workspaceId) {
+      workspaceId = await getActiveWorkspaceId(supabase);
+    }
 
     if (!workspaceId) {
       return NextResponse.json(
-        { error: 'unauthorized', message: 'workspace_id required' },
+        { error: 'unauthorized', message: 'No active workspace' },
         { status: 401 },
       );
     }
 
-    // Fetch workspace settings and name
+    // Fetch workspace settings
     const { data: settingsData, error: settingsError } = await supabase
       .from('workspace_settings')
       .select('mcp_api_keys')
@@ -136,12 +153,16 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createServerClient();
 
-    const url = new URL(request.url);
-    const workspaceId = url.searchParams.get('workspace_id');
+    // Get workspace_id from query params OR from auth context
+    let workspaceId: string | null = request.url.split('workspace_id=')[1]?.split('&')[0] ?? null;
+
+    if (!workspaceId) {
+      workspaceId = await getActiveWorkspaceId(supabase);
+    }
 
     if (!workspaceId) {
       return NextResponse.json(
-        { error: 'unauthorized', message: 'workspace_id required' },
+        { error: 'unauthorized', message: 'No active workspace' },
         { status: 401 },
       );
     }
