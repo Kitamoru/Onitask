@@ -75,9 +75,9 @@ export default function BoardEditPage() {
           throw new Error(json.error || 'Failed to load board data');
         }
 
-        const { workspaces: wsData } = json.data;
+        const { workspaces: wsData, workers } = json.data;
 
-        // Find workspace by slug
+        // Find workspace by slug AND determine ownership from workers array
         const ws = (wsData ?? []).find((w: any) => w.slug === slug);
         if (!ws) {
           router.push('/boards');
@@ -85,6 +85,10 @@ export default function BoardEditPage() {
         }
 
         setWorkspace(ws);
+
+        // Determine if current user is the owner of this workspace
+        const myWorker = (workers ?? []).find((w: any) => w.workspace_id === ws.id);
+        setIsOwner(myWorker?.role === 'owner');
 
         // 2. Load workspace settings and links via new dedicated endpoint
         const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
@@ -101,21 +105,6 @@ export default function BoardEditPage() {
           if (settingsJson.success) {
             settingsData = settingsJson.data?.workspace_settings;
             linksData = settingsJson.data?.workspace_links ?? [];
-          }
-        }
-
-        // 2b. Check if current user is the owner of this workspace
-        const initData = getTelegramInitData();
-        const myDataRes = await fetch('/api/workspaces/my-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ init_data: initData }),
-        });
-        if (myDataRes.ok) {
-          const myDataJson = await myDataRes.json();
-          if (myDataJson.success) {
-            const myWs = (myDataJson.data?.workspaces ?? []).find((w: any) => w.id === ws.id);
-            setIsOwner(myWs?.role === 'owner');
           }
         }
 
