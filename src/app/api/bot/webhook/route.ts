@@ -221,10 +221,26 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  const chat = message.chat;
-  const chatId = chat.id;
-  const text = message.text;
-  const userId = message.from?.id;
+   const chat = message.chat;
+   const chatId = chat.id;
+   const text = message.text;
+   const userId = message.from?.id;
+
+   // ── Debug logging: log all message types received ──
+   console.log('[Bot Webhook] DEBUG message structure:', {
+     hasText: !!message.text,
+     hasVoice: !!message.voice,
+     hasAudio: !!message.audio,
+     hasVideoNote: !!message.video_note,
+     hasCaption: !!message.caption,
+     voiceDuration: message.voice?.duration ?? null,
+     audioDuration: message.audio?.duration ?? null,
+     audioMimeType: message.audio?.mime_type ?? null,
+     audioFileName: message.audio?.file_name ?? null,
+     videoNoteDuration: message.video_note?.duration ?? null,
+     caption: message.caption ?? null,
+     textPreview: text ? text.slice(0, 100) : null,
+   });
 
   if (!userId) {
     console.error(
@@ -489,6 +505,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       taskText = text.trim();
       source = 'nl';
     } else if (message.voice) {
+      // Standard Telegram voice message
       if (message.caption && message.caption.trim().length > 0) {
         taskText = message.caption.trim();
         source = 'voice_with_caption';
@@ -517,7 +534,7 @@ async function dispatchUpdate(update: any): Promise<void> {
               taskText = sttData.text || `[Голосовое сообщение]`;
               source = 'voice';
             } else {
-              console.warn('[Bot Webhook] STT failed, using placeholder');
+              console.warn('[Bot Webhook] STT failed for voice, using placeholder');
               taskText = '[Голосовое сообщение — текст недоступен]';
               source = 'voice';
             }
@@ -528,6 +545,49 @@ async function dispatchUpdate(update: any): Promise<void> {
           source = 'voice';
         }
       }
+    } else if (message.audio) {
+      // Audio file sent as a file (not a standard voice message)
+      // This can happen when users send audio files or voice notes via certain clients
+      console.log('[Bot Webhook] Received audio file (not standard voice), downloading...');
+      const audioFileId = message.audio.file_id;
+      const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${audioFileId}`;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        const resp = await fetch(telegramFileUrl, {
+          headers: { Authorization: `Bot ${BOT_TOKEN}` },
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const formData = new FormData();
+          formData.append('audio', blob, 'audio.ogg');
+          const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+          const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            body: formData,
+          });
+          if (sttResp.ok) {
+            const sttData = await sttResp.json();
+            taskText = sttData.text || `[Аудио сообщение]`;
+            source = 'audio_file';
+          } else {
+            console.warn('[Bot Webhook] STT failed for audio file');
+            taskText = '[Аудио сообщение — текст недоступен]';
+            source = 'audio_file';
+          }
+        }
+      } catch (err) {
+        console.error('[Bot Webhook] Failed to download/transcribe audio:', err);
+        taskText = '[Аудио сообщение — текст недоступен]';
+        source = 'audio_file';
+      }
+    } else if (message.video_note) {
+      // Circular video note (video_note is not supported by Whisper STT)
+      console.log('[Bot Webhook] Received video_note (circular video), cannot transcribe');
+      taskText = '[Круглое видео — бот не может распознать текст. Отправьте обычное голосовое сообщение]';
+      source = 'video_note';
     }
 
     if (taskText.length > 0) {
