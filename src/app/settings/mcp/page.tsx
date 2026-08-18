@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, Suspense } from 'react';
 import { Copy, Trash2, KeyRound, Plus, Link as LinkIcon } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 
@@ -271,11 +271,11 @@ function ConnectionTemplate() {
   );
 }
 
-// ============================================================================
-// Main Page Component
-// ============================================================================
-
-export default function McpSettingsPage() {
+/**
+ * McpPageContent — actual page content that uses useSearchParams.
+ * Wrapped in Suspense by the parent.
+ */
+function McpPageContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get('workspace_id') ?? '';
 
@@ -499,5 +499,29 @@ export default function McpSettingsPage() {
         <div className="h-16" aria-hidden="true" />
       </div>
     </main>
+  );
+}
+
+// ============================================================================
+// Main Page Component — wraps content in Suspense for useSearchParams
+// ============================================================================
+
+export default function McpSettingsPage() {
+  return (
+    <Suspense fallback={
+      <main
+        className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg flex items-center justify-center"
+        style={{
+          paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
+          paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px)',
+        }}
+      >
+        <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Загрузка...
+        </span>
+      </main>
+    }>
+      <McpPageContent />
+    </Suspense>
   );
 }
