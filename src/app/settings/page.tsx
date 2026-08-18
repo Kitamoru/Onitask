@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   UserProfileCard,
   WorkspaceSettingsCard,
@@ -12,12 +13,9 @@ import {
 function SettingsContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get('workspace_id') ?? '';
+  const router = useRouter();
 
-  return <SettingsInner workspaceId={workspaceId} />;
-}
-
-interface SettingsInnerProps {
-  workspaceId: string;
+  return <SettingsInner workspaceId={workspaceId} onMcpClick={() => router.push('/settings/mcp')} />;
 }
 
 /**
@@ -26,12 +24,13 @@ interface SettingsInnerProps {
  *
  * Layout matches board/desk pages: main container with safe area padding.
  */
-function SettingsInner({ workspaceId }: SettingsInnerProps) {
-  const handleMcpClick = () => {
-    // TODO: navigate to MCP integrations
-    console.log('Navigate to MCP integrations');
-  };
-
+function SettingsInner({
+  workspaceId,
+  onMcpClick,
+}: {
+  workspaceId: string;
+  onMcpClick?: () => void;
+}) {
   const handlePlansClick = () => {
     // TODO: navigate to plans
     console.log('Navigate to plans');
@@ -71,7 +70,7 @@ function SettingsInner({ workspaceId }: SettingsInnerProps) {
 
         {/* Workspace settings section */}
         <WorkspaceSettingsCard
-          onMcpClick={handleMcpClick}
+          onMcpClick={onMcpClick}
           onPlansClick={handlePlansClick}
           onColleaguesClick={handleColleaguesClick}
         />
