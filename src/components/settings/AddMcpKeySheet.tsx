@@ -65,9 +65,9 @@ function SelectField({
   const isPlaceholder = !value;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 w-full">
       <div
-        className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+        className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
         onClick={onClick}
         role="button"
         tabIndex={0}
@@ -77,10 +77,10 @@ function SelectField({
         <NotchedPanel
           corner="field"
           notch={8}
-          contentClassName="flex items-center h-10 w-full px-3"
+          contentClassName="flex items-center justify-center h-10 w-full px-3"
         >
           <span
-            className="text-base tracking-tighter truncate flex-1"
+            className="text-base tracking-tighter truncate text-center"
             style={{
               color: isPlaceholder ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
               fontFamily: 'var(--font-family-display)',
@@ -90,7 +90,7 @@ function SelectField({
           </span>
           {trailingIcon && (
             <ChevronDown
-              className="w-5 h-5 shrink-0 ml-auto pr-1"
+              className="w-5 h-5 shrink-0 ml-2"
               style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
             />
           )}
@@ -120,7 +120,7 @@ function PickerOptionButton({
 }) {
   return (
     <div
-      className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+      className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -128,10 +128,10 @@ function PickerOptionButton({
       <NotchedPanel
         corner="field"
         notch={8}
-        contentClassName="h-12 w-full text-left px-4"
+        contentClassName="h-12 w-full flex items-center justify-center"
       >
         <span
-          className="text-base tracking-tighter"
+          className="text-base tracking-tighter text-center"
           style={{
             color: 'var(--color-text-primary)',
             fontFamily: 'var(--font-family-display)',
@@ -160,7 +160,7 @@ function WorkspacePickerSheet({
 }) {
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="flex flex-col gap-2 pb-6">
+      <div className="flex flex-col gap-2 pb-6 max-w-md mx-auto">
         <h3
           className="text-xl font-semibold px-4 pt-2 pb-4"
           style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-display)' }}
@@ -202,7 +202,7 @@ function ExpiryPickerSheet({
 }) {
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="flex flex-col gap-2 pb-6">
+      <div className="flex flex-col gap-2 pb-6 max-w-md mx-auto">
         <h3
           className="text-xl font-semibold px-4 pt-2 pb-4"
           style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-display)' }}
