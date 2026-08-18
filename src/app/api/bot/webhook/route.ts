@@ -5,14 +5,14 @@
 // SERVERLESS-SAFE: No in-memory state — uses DB for drafts, callback_data for commands
 //
 // Commands (primary):
-//   /create [text]     → save draft → select workspace → F-04 pipeline
-//   /task [text]       → same as /create
-//   /task TASK-123     → lookup task by full_id
-//   /help              → list commands
-//   /start             → onboarding
+// /create [text] → save draft → select workspace → F-04 pipeline
+// /task [text] → same as /create
+// /task TASK-123 → lookup task by full_id
+// /help → list commands
+// /start → onboarding
 // Aliases (compat):
-//   /create-task …     → /create
-//   /run-task TASK-123 → /task lookup
+// /create-task … → /create
+// /run-task TASK-123 → /task lookup
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -44,7 +44,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,6 +53,25 @@ const supabase = createClient(
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
+
+// ─── Module-level cache for bot username (lives until cold start) ───
+let cachedBotUsername: string | null = null;
+
+async function getBotUsername(): Promise<string | null> {
+  if (cachedBotUsername) return cachedBotUsername;
+  if (!BOT_TOKEN) return null;
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+    if (resp.ok) {
+      const data = await resp.json();
+      cachedBotUsername = data.result?.username ?? null;
+      return cachedBotUsername;
+    }
+  } catch (err) {
+    console.warn('[Bot Webhook] getMe failed:', err);
+  }
+  return null;
+}
 
 /**
  * Parse command from message text. Returns [command, args] or null.
@@ -112,45 +131,78 @@ function stripBotMentionFromArgs(args: string, botUsername: string): string {
 
 /**
  * Check if the bot is mentioned in the message entities.
- * Supports: mention (@botname), text_mention (user name only), and command (@botname /cmd).
+ * Supports: mention (@botname), text_mention, and bot_command (@botname /cmd).
  */
-async function checkBotMention(message: any, botToken: string | undefined): Promise<boolean> {
-  if (!botToken) return false;
-
-  // Get bot username from Telegram API
-  let botUsername: string | null = null;
-  try {
-    const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
-    if (resp.ok) {
-      const data = await resp.json();
-      botUsername = data.result?.username ?? null;
-    }
-  } catch (err) {
-    console.warn('[Bot Webhook] Failed to get bot username for mention check:', err);
-    return false;
-  }
-
+async function checkBotMention(message: any): Promise<boolean> {
+  const botUsername = await getBotUsername();
   if (!botUsername) return false;
 
   const entities = message.entities || message.reply_to_message?.entities;
   if (!entities || !Array.isArray(entities)) return false;
 
+  const text = message.text || message.caption || '';
+
   for (const entity of entities) {
     if (entity.type === 'mention') {
-      // @username — extract from message.text
-      const username = message.text?.substring(entity.offset + 1, entity.offset + entity.length).toLowerCase();
+      const username = text
+        .substring(entity.offset + 1, entity.offset + entity.length)
+        .toLowerCase();
       if (username === botUsername.toLowerCase()) return true;
     } else if (entity.type === 'bot_command') {
-      // /cmd or /cmd@botname
-      const cmdText = message.text?.substring(entity.offset, entity.offset + entity.length).toLowerCase();
-      if (cmdText === botUsername.toLowerCase() || cmdText.endsWith('@' + botUsername.toLowerCase())) return true;
+      const cmdText = text
+        .substring(entity.offset, entity.offset + entity.length)
+        .toLowerCase();
+      if (
+        cmdText === botUsername.toLowerCase() ||
+        cmdText.endsWith('@' + botUsername.toLowerCase())
+      ) {
+        return true;
+      }
     } else if (entity.type === 'text_mention') {
-      // User mention without @ — always matches (we're mentioned by user ID)
+      // text_mention by user ID — treat as mention
       return true;
     }
   }
-
   return false;
+}
+
+/**
+ * Download Telegram file by file_id → Blob.
+ * Correct flow: getFile → file_path → download.
+ */
+async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
+  if (!BOT_TOKEN) {
+    console.error('[Bot Webhook] downloadTelegramFile: BOT_TOKEN missing');
+    return null;
+  }
+  try {
+    // 1. getFile
+    const getFileResp = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`
+    );
+    if (!getFileResp.ok) {
+      console.warn('[Bot Webhook] getFile failed:', getFileResp.status);
+      return null;
+    }
+    const getFileData = await getFileResp.json();
+    const filePath = getFileData?.result?.file_path;
+    if (!filePath) {
+      console.warn('[Bot Webhook] getFile returned no file_path');
+      return null;
+    }
+
+    // 2. download
+    const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+    const fileResp = await fetch(downloadUrl);
+    if (!fileResp.ok) {
+      console.warn('[Bot Webhook] file download failed:', fileResp.status);
+      return null;
+    }
+    return await fileResp.blob();
+  } catch (err) {
+    console.error('[Bot Webhook] downloadTelegramFile error:', err);
+    return null;
+  }
 }
 
 /**
@@ -221,26 +273,31 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-   const chat = message.chat;
-   const chatId = chat.id;
-   const text = message.text;
-   const userId = message.from?.id;
+  if (!BOT_TOKEN) {
+    console.error('[Bot Webhook] BOT_TOKEN is not configured');
+    return;
+  }
 
-   // ── Debug logging: log all message types received ──
-   console.log('[Bot Webhook] DEBUG message structure:', {
-     hasText: !!message.text,
-     hasVoice: !!message.voice,
-     hasAudio: !!message.audio,
-     hasVideoNote: !!message.video_note,
-     hasCaption: !!message.caption,
-     voiceDuration: message.voice?.duration ?? null,
-     audioDuration: message.audio?.duration ?? null,
-     audioMimeType: message.audio?.mime_type ?? null,
-     audioFileName: message.audio?.file_name ?? null,
-     videoNoteDuration: message.video_note?.duration ?? null,
-     caption: message.caption ?? null,
-     textPreview: text ? text.slice(0, 100) : null,
-   });
+  const chat = message.chat;
+  const chatId = chat.id;
+  const text = message.text;
+  const userId = message.from?.id;
+
+  // ── Debug logging: log all message types received ──
+  console.log('[Bot Webhook] DEBUG message structure:', {
+    hasText: !!message.text,
+    hasVoice: !!message.voice,
+    hasAudio: !!message.audio,
+    hasVideoNote: !!message.video_note,
+    hasCaption: !!message.caption,
+    voiceDuration: message.voice?.duration ?? null,
+    audioDuration: message.audio?.duration ?? null,
+    audioMimeType: message.audio?.mime_type ?? null,
+    audioFileName: message.audio?.file_name ?? null,
+    videoNoteDuration: message.video_note?.duration ?? null,
+    caption: message.caption ?? null,
+    textPreview: text ? text.slice(0, 100) : null,
+  });
 
   if (!userId) {
     console.error(
@@ -250,62 +307,49 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-   // ── Group/supergroup/channel: require bot @mention ──
-   let effectiveUserId = userId;
-   const chatType = chat.type; // 'private' | 'group' | 'supergroup' | 'channel'
+  // ── Group/supergroup/channel: require bot @mention ──
+  let effectiveUserId = userId;
+  const chatType = chat.type; // 'private' | 'group' | 'supergroup' | 'channel'
 
-   if (chatType !== 'private') {
-     // Check if bot is mentioned via entities (text_mention or mention)
-     const botMentioned = await checkBotMention(message, BOT_TOKEN);
-     if (!botMentioned) {
-       console.log(
-         '[Bot Webhook] Ignoring non-private chat without bot mention: type=' + chatType
-       );
-       return;
-     }
+  if (chatType !== 'private') {
+    const botMentioned = await checkBotMention(message);
+    if (!botMentioned) {
+      console.log(
+        '[Bot Webhook] Ignoring non-private chat without bot mention: type=' + chatType
+      );
+      return;
+    }
 
-     // For reply messages: use the replied-to user as effectiveUserId
-     if (message.reply_to_message && message.reply_to_message.from) {
-       effectiveUserId = message.reply_to_message.from.id;
-     } else {
-       // Otherwise use the sender
-       effectiveUserId = userId;
-     }
+    // For reply messages: use the replied-to user as effectiveUserId
+    if (message.reply_to_message && message.reply_to_message.from) {
+      effectiveUserId = message.reply_to_message.from.id;
+    } else {
+      effectiveUserId = userId;
+    }
 
-     console.log(
-       '[Bot Webhook] Bot mentioned in ' +
-         chatType +
-         ' effectiveUserId=' +
-         effectiveUserId +
-         ' originalUserId=' +
-         userId
-     );
-   }
+    console.log(
+      '[Bot Webhook] Bot mentioned in ' +
+        chatType +
+        ' effectiveUserId=' +
+        effectiveUserId +
+        ' originalUserId=' +
+        userId
+    );
+  }
 
   console.log('[Bot Webhook] before sendChatAction');
   await safeSendChatAction(chatId);
 
   // Parse command — in groups, also strip bot @mention from args
   let parsedCommand: [string, string] | null = null;
-  let resolvedBotUsername: string | null = null;
 
   if (text && text.startsWith('/')) {
     parsedCommand = parseCommand(text);
   }
 
-  if (parsedCommand && chatType !== 'private' && BOT_TOKEN) {
+  if (parsedCommand && chatType !== 'private') {
     const [_cmd, rawArgs] = parsedCommand;
-    // Resolve bot username once for this request
-    try {
-      const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
-      if (resp.ok) {
-        const data = await resp.json();
-        resolvedBotUsername = data.result?.username ?? null;
-      }
-    } catch (err) {
-      console.warn('[Bot Webhook] Failed to resolve bot username:', err);
-    }
-
+    const resolvedBotUsername = await getBotUsername();
     if (resolvedBotUsername) {
       const cleanedArgs = stripBotMentionFromArgs(rawArgs, resolvedBotUsername);
       parsedCommand = [parsedCommand[0], cleanedArgs];
@@ -339,12 +383,10 @@ async function dispatchUpdate(update: any): Promise<void> {
       console.log('[Bot Webhook] handleStartCommand DONE');
     } catch (err) {
       console.error('[Bot Webhook] ERROR handleStartCommand:', err);
-      if (BOT_TOKEN) {
-        await sendMessage(BOT_TOKEN, {
-          chat_id: chatId,
-          text: '⚠️ Ошибка при обработке /start.',
-        }).catch(() => {});
-      }
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Ошибка при обработке /start.',
+      }).catch(() => {});
     }
     return;
   }
@@ -353,7 +395,7 @@ async function dispatchUpdate(update: any): Promise<void> {
   if (parsedCommand && parsedCommand[0] === 'task' && looksLikeTaskFullId(parsedCommand[1])) {
     const fullId = parsedCommand[1].trim().toUpperCase();
     console.log('[Bot Webhook] Task lookup:', fullId);
-    await handleResolveTask(BOT_TOKEN!, chatId, userId, message.message_id, fullId);
+    await handleResolveTask(BOT_TOKEN, chatId, userId, message.message_id, fullId);
     return;
   }
 
@@ -364,7 +406,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       await handleCommand(message, 'help', parsedCommand[1], '');
     } catch (err) {
       console.error('[Bot Webhook] ERROR handleCommand (help):', err);
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text:
           '📋 Команды:\n' +
@@ -411,21 +453,19 @@ async function dispatchUpdate(update: any): Promise<void> {
     const workspaceId = workspaceResult.workspace_id;
 
     // Create flow with single workspace → still go through draft helper
-    // (handleCommand may not know about /create aliases)
     if (command === 'create' || (command === 'task' && !looksLikeTaskFullId(args))) {
       const gateMessage = await checkFreemiumBoundary('create-task', effectiveUserId, workspaceId);
       if (gateMessage) {
-        await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: gateMessage });
+        await sendMessage(BOT_TOKEN, { chat_id: chatId, text: gateMessage });
         return;
       }
-      // Re-use workspace-requiring handler (handles 1 or N boards)
       await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args, message);
       return;
     }
 
     const gateMessage = await checkFreemiumBoundary(command, effectiveUserId, workspaceId);
     if (gateMessage) {
-      await sendMessage(BOT_TOKEN!, { chat_id: chatId, text: gateMessage });
+      await sendMessage(BOT_TOKEN, { chat_id: chatId, text: gateMessage });
       return;
     }
 
@@ -433,7 +473,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       await handleCommand(message, command, args, workspaceId);
     } catch (err) {
       console.error('[Bot Webhook] ERROR handleCommand (' + command + '):', err);
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text: '⚠️ Ошибка при выполнении команды.',
       });
@@ -461,7 +501,7 @@ async function dispatchUpdate(update: any): Promise<void> {
     }
 
     // Unknown
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text:
         '⚠️ Неизвестная команда.\n\n' +
@@ -489,9 +529,10 @@ async function dispatchUpdate(update: any): Promise<void> {
   if (pendingActive) {
     const profileId = await resolveProfileId(effectiveUserId);
     console.log('[Bot Webhook] Step 4: profileId=', profileId);
+
     if (!profileId) {
       await clearPendingTask(chatId);
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text: '⚠️ Профиль не найден. Начните с /start.',
       });
@@ -510,18 +551,14 @@ async function dispatchUpdate(update: any): Promise<void> {
         taskText = message.caption.trim();
         source = 'voice_with_caption';
       } else {
-        const voiceFileId = message.voice.file_id;
-        const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        try {
-          const resp = await fetch(telegramFileUrl, {
-            headers: { Authorization: `Bot ${BOT_TOKEN}` },
-          });
-          if (resp.ok) {
-            const blob = await resp.blob();
-            const formData = new FormData();
-            formData.append('audio', blob, 'voice.ogg');
-            const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+        const blob = await downloadTelegramFile(message.voice.file_id);
+        if (blob) {
+          const formData = new FormData();
+          formData.append('audio', blob, 'voice.ogg');
+          const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          const baseUrl =
+            process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+          try {
             const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
               method: 'POST',
               headers: {
@@ -531,36 +568,34 @@ async function dispatchUpdate(update: any): Promise<void> {
             });
             if (sttResp.ok) {
               const sttData = await sttResp.json();
-              taskText = sttData.text || `[Голосовое сообщение]`;
+              taskText = sttData.text || '[Голосовое сообщение]';
               source = 'voice';
             } else {
-              console.warn('[Bot Webhook] STT failed for voice, using placeholder');
+              console.warn('[Bot Webhook] STT failed for voice');
               taskText = '[Голосовое сообщение — текст недоступен]';
               source = 'voice';
             }
+          } catch (err) {
+            console.error('[Bot Webhook] STT error (voice):', err);
+            taskText = '[Голосовое сообщение — текст недоступен]';
+            source = 'voice';
           }
-        } catch (err) {
-          console.error('[Bot Webhook] Failed to download/transcribe voice:', err);
-          taskText = '[Голосовое сообщение — текст недоступен]';
+        } else {
+          taskText = '[Голосовое сообщение — не удалось скачать]';
           source = 'voice';
         }
       }
     } else if (message.audio) {
-      // Audio file sent as a file (not a standard voice message)
-      // This can happen when users send audio files or voice notes via certain clients
-      console.log('[Bot Webhook] Received audio file (not standard voice), downloading...');
-      const audioFileId = message.audio.file_id;
-      const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${audioFileId}`;
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      try {
-        const resp = await fetch(telegramFileUrl, {
-          headers: { Authorization: `Bot ${BOT_TOKEN}` },
-        });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          const formData = new FormData();
-          formData.append('audio', blob, 'audio.ogg');
-          const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+      // Audio file (not standard voice message)
+      console.log('[Bot Webhook] Received audio file, downloading...');
+      const blob = await downloadTelegramFile(message.audio.file_id);
+      if (blob) {
+        const formData = new FormData();
+        formData.append('audio', blob, 'audio.ogg');
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const baseUrl =
+          process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+        try {
           const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
             method: 'POST',
             headers: {
@@ -570,23 +605,27 @@ async function dispatchUpdate(update: any): Promise<void> {
           });
           if (sttResp.ok) {
             const sttData = await sttResp.json();
-            taskText = sttData.text || `[Аудио сообщение]`;
+            taskText = sttData.text || '[Аудио сообщение]';
             source = 'audio_file';
           } else {
             console.warn('[Bot Webhook] STT failed for audio file');
             taskText = '[Аудио сообщение — текст недоступен]';
             source = 'audio_file';
           }
+        } catch (err) {
+          console.error('[Bot Webhook] STT error (audio):', err);
+          taskText = '[Аудио сообщение — текст недоступен]';
+          source = 'audio_file';
         }
-      } catch (err) {
-        console.error('[Bot Webhook] Failed to download/transcribe audio:', err);
-        taskText = '[Аудио сообщение — текст недоступен]';
+      } else {
+        taskText = '[Аудио сообщение — не удалось скачать]';
         source = 'audio_file';
       }
     } else if (message.video_note) {
-      // Circular video note (video_note is not supported by Whisper STT)
+      // Circular video note — not supported by Whisper STT
       console.log('[Bot Webhook] Received video_note (circular video), cannot transcribe');
-      taskText = '[Круглое видео — бот не может распознать текст. Отправьте обычное голосовое сообщение]';
+      taskText =
+        '[Круглое видео — бот не может распознать текст. Отправьте обычное голосовое сообщение]';
       source = 'video_note';
     }
 
@@ -612,7 +651,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       if (draftError || !draftResult) {
         console.error('[Bot Webhook] Failed to create draft from pending:', draftError);
-        await sendMessage(BOT_TOKEN!, {
+        await sendMessage(BOT_TOKEN, {
           chat_id: chatId,
           text: '⚠️ Не удалось сохранить черновик. Отправьте задачу заново через /create.',
         });
@@ -628,7 +667,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       );
 
       if (availableWorkspaces.length === 0) {
-        await sendMessage(BOT_TOKEN!, {
+        await sendMessage(BOT_TOKEN, {
           chat_id: chatId,
           text: 'У вас нет доступных рабочих пространств.',
         });
@@ -637,7 +676,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
       if (availableWorkspaces.length === 1) {
         await executeDraftInWorkspaceByChat(
-          BOT_TOKEN!,
+          BOT_TOKEN,
           chatId,
           effectiveUserId,
           availableWorkspaces[0].id
@@ -648,7 +687,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, {
         draftId: draftResult,
       });
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text: '✅ Черновик сохранён! Выберите доску:',
         reply_markup: keyboard,
@@ -656,7 +695,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text: '📝 Пожалуйста, отправьте текст или голосовое сообщение для создания задачи.',
     });
@@ -664,7 +703,7 @@ async function dispatchUpdate(update: any): Promise<void> {
   }
 
   // No pending — regular help
-  await sendMessage(BOT_TOKEN!, {
+  await sendMessage(BOT_TOKEN, {
     chat_id: chatId,
     text:
       '📝 Команды:\n' +
@@ -687,9 +726,14 @@ async function handleCommandRequiringWorkspace(
   args: string,
   message?: any
 ): Promise<void> {
+  if (!BOT_TOKEN) {
+    console.error('[Bot Webhook] handleCommandRequiringWorkspace: BOT_TOKEN missing');
+    return;
+  }
+
   const profileId = await resolveProfileId(userId);
   if (!profileId) {
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text: '⚠️ Профиль не найден. Начните с /start.',
     });
@@ -698,7 +742,7 @@ async function handleCommandRequiringWorkspace(
 
   const availableWorkspaces = await getUserAvailableWorkspaces(userId);
   if (availableWorkspaces.length === 0) {
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text: 'У вас нет доступных рабочих пространств. Введите код через администратора.',
     });
@@ -714,9 +758,8 @@ async function handleCommandRequiringWorkspace(
   // Single workspace
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
-
     if (!effectiveArgs || effectiveArgs.trim().length === 0) {
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text:
           '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\n' +
@@ -734,21 +777,23 @@ async function handleCommandRequiringWorkspace(
       p_description: null,
       p_source: 'nl',
     });
+
     if (error || !draftResult) {
       console.error('[Bot Webhook] Failed to create draft:', error);
-      await sendMessage(BOT_TOKEN!, {
+      await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
       });
       return;
     }
-    await executeDraftInWorkspaceByChat(BOT_TOKEN!, chatId, userId, ws.id);
+
+    await executeDraftInWorkspaceByChat(BOT_TOKEN, chatId, userId, ws.id);
     return;
   }
 
   // Multiple workspaces — no effectiveArgs → pending + ask for text first
   if (!effectiveArgs || effectiveArgs.trim().length === 0) {
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text:
         '📝 Для создания задачи пришлите текст или голосовое сообщение.\n\n' +
@@ -767,9 +812,10 @@ async function handleCommandRequiringWorkspace(
     p_description: null,
     p_source: 'nl',
   });
+
   if (error || !draftResult) {
     console.error('[Bot Webhook] Failed to create draft:', error);
-    await sendMessage(BOT_TOKEN!, {
+    await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
     });
@@ -779,7 +825,7 @@ async function handleCommandRequiringWorkspace(
   const keyboard = buildWorkspaceSelectionKeyboard(availableWorkspaces, {
     draftId: draftResult,
   });
-  await sendMessage(BOT_TOKEN!, {
+  await sendMessage(BOT_TOKEN, {
     chat_id: chatId,
     text: '✅ Черновик сохранён! Выберите доску:',
     reply_markup: keyboard,
@@ -787,36 +833,42 @@ async function handleCommandRequiringWorkspace(
 }
 
 async function handleCallbackQuery(callbackQuery: any): Promise<void> {
-  const token = BOT_TOKEN!;
+  const token = BOT_TOKEN;
+  if (!token) {
+    console.error('[Bot Webhook] handleCallbackQuery: BOT_TOKEN missing');
+    return;
+  }
+
   const chatId = callbackQuery.message?.chat.id;
   const messageId = callbackQuery.message?.message_id;
   const userId = callbackQuery.from?.id;
   const data = callbackQuery.data;
 
-  if (!chatId || !data) {
-    await answerCallbackQuery(token, {
-      callback_query_id: callbackQuery.id,
-      text: 'Неизвестная ошибка',
-      show_alert: true,
-    });
-    return;
-  }
+  // Answer callback exactly once
+  const answer = async (opts?: { text?: string; show_alert?: boolean }) => {
+    try {
+      await answerCallbackQuery(token, {
+        callback_query_id: callbackQuery.id,
+        ...opts,
+      });
+    } catch (err) {
+      console.warn('[Bot Webhook] answerCallbackQuery failed (stale?):', err);
+    }
+  };
 
-  try {
-    await answerCallbackQuery(token, { callback_query_id: callbackQuery.id });
-  } catch (err) {
-    console.warn('[Bot Webhook] answerCallbackQuery failed (stale callback):', err);
+  if (!chatId || !data) {
+    await answer({ text: 'Неизвестная ошибка', show_alert: true });
+    return;
   }
 
   const parsed = parseWorkspaceCallbackData(data);
   if (!parsed.workspaceId) {
-    await answerCallbackQuery(token, {
-      callback_query_id: callbackQuery.id,
-      text: 'Неверный формат кнопки',
-      show_alert: true,
-    });
+    await answer({ text: 'Неверный формат кнопки', show_alert: true });
     return;
   }
+
+  // Success path — answer without text
+  await answer();
 
   const { workspaceId, type, extra } = parsed;
 
@@ -927,10 +979,10 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    // Call the unified AI create-task endpoint with service token auth
-    // Vercel serverless: relative URLs fail, must use absolute URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+    const baseUrl =
+      process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+
     const resp = await fetch(`${baseUrl}/api/ai/create-task`, {
       method: 'POST',
       headers: {
@@ -979,6 +1031,7 @@ async function executeDraftInWorkspaceByChat(
     .maybeSingle();
 
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
+
   console.log('[Bot Webhook] Task created via F-04:', {
     taskId: task.id,
     fullId,
@@ -1077,6 +1130,7 @@ async function createTaskFallback(
     .maybeSingle();
 
   const fullId = `${wsForFallback?.task_prefix || '?'}-${taskWithNumber2?.task_number || '?'}`;
+
   console.log('[Bot Webhook] Task created via fallback:', {
     taskId: task.id,
     fullId,
@@ -1143,7 +1197,6 @@ async function handleResolveTask(
       parse_mode: 'HTML',
       reply_markup: taskCard.replyMarkup,
     });
-
     await setMessageReaction(token, chatId, messageId, '✅').catch(() => {});
   } catch (err) {
     console.error('[Bot Webhook] handleResolveTask error:', err);
