@@ -429,63 +429,61 @@ export default function McpSettingsPage() {
           </div>
         )}
 
-        {/* Мои ключи section */}
-        {workspaceId && (
-          <div className="flex flex-col gap-3 w-full">
-            <div className="flex items-center gap-2 w-full px-3 py-2">
-              <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
-              <span
-                className="text-base font-medium leading-5"
-                style={{
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-display)',
-                }}
-              >
-                Мои ключи
+        {/* Мои ключи section — always visible, no workspaceId condition */}
+        <div className="flex flex-col gap-3 w-full">
+          <div className="flex items-center gap-2 w-full px-3 py-2">
+            <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+            <span
+              className="text-base font-medium leading-5"
+              style={{
+                color: 'var(--color-text-primary)',
+                fontFamily: 'var(--font-family-display)',
+              }}
+            >
+              Мои ключи
+            </span>
+          </div>
+
+          {workspaceLoading ? (
+            <div
+              className="flex items-center justify-center h-10 w-full"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                borderRadius: 6,
+                border: '1px solid var(--color-line)',
+              }}
+            >
+              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Загрузка...</span>
+            </div>
+          ) : keys.length === 0 && !freshKey ? (
+            <div
+              className="flex flex-col items-center justify-center py-8 gap-2 w-full"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                borderRadius: 6,
+                border: '1px dashed var(--color-line)',
+              }}
+            >
+              <LinkIcon className="w-8 h-8" style={{ color: 'var(--color-text-muted)' }} />
+              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                Нет активных ключей
               </span>
             </div>
-
-            {workspaceLoading ? (
-              <div
-                className="flex items-center justify-center h-10 w-full"
-                style={{
-                  backgroundColor: 'var(--color-surface)',
-                  borderRadius: 6,
-                  border: '1px solid var(--color-line)',
-                }}
-              >
-                <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Загрузка...</span>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2 w-full">
+                {keys.map((keyInfo) => (
+                  <McpKeyItem
+                    key={keyInfo.keyHash}
+                    keyInfo={keyInfo}
+                  />
+                ))}
               </div>
-            ) : keys.length === 0 && !freshKey ? (
-              <div
-                className="flex flex-col items-center justify-center py-8 gap-2 w-full"
-                style={{
-                  backgroundColor: 'var(--color-surface)',
-                  borderRadius: 6,
-                  border: '1px dashed var(--color-line)',
-                }}
-              >
-                <LinkIcon className="w-8 h-8" style={{ color: 'var(--color-text-muted)' }} />
-                <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  Нет активных ключей
-                </span>
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-2 w-full">
-                  {keys.map((keyInfo) => (
-                    <McpKeyItem
-                      key={keyInfo.keyHash}
-                      keyInfo={keyInfo}
-                    />
-                  ))}
-                </div>
 
-                <AddKeyButton onClick={handleAddKeyClick} loading={loading} />
-              </>
-            )}
-          </div>
-        )}
+              <AddKeyButton onClick={handleAddKeyClick} loading={loading} />
+            </>
+          )}
+        </div>
 
         {/* Connection template */}
         <ConnectionTemplate />
