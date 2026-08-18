@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
+import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 
 // ============================================================================
 // Types
@@ -28,9 +29,6 @@ export interface McpKeyInfo {
 // Helpers
 // ============================================================================
 
-/**
- * Generate a random API key with "sk_" prefix.
- */
 function generateApiKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -40,10 +38,6 @@ function generateApiKey(): string {
   return `sk_${hex}`;
 }
 
-/**
- * Hash API key using SHA-256 for secure storage/lookup.
- * Returns hex string.
- */
 async function hashApiKey(key: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(key);
@@ -52,16 +46,10 @@ async function hashApiKey(key: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Get first 8 characters of a hex string as key prefix.
- */
 function getKeyPrefix(hex: string): string {
   return hex.slice(0, 8);
 }
 
-/**
- * Calculate default expiry date (90 days from now).
- */
 function getDefaultExpiry(): string {
   const date = new Date();
   date.setDate(date.getDate() + 90);
@@ -69,36 +57,57 @@ function getDefaultExpiry(): string {
 }
 
 /**
- * Get all workspace IDs the user has access to via workers table.
+ * Authenticate via Telegram initData and return profileId + workspace IDs.
  */
-async function getUserWorkspaceIds(supabase: any): Promise<string[]> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !session) return [];
+async function authenticateAndGetWorkspaces(initData: string): Promise<{
+  profileId: string;
+  workspaceIds: string[];
+  error?: NextResponse;
+}> {
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: 'server_configuration_error' },
+      { status: 500 },
+    )};
+  }
 
+  const validation = validateTelegramInitData(initData, TELEGRAM_BOT_TOKEN);
+  if (!validation.valid || !validation.user) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: validation.error || 'invalid_init_data' },
+      { status: 401 },
+    )};
+  }
+
+  const supabase = createServerClient();
+
+  // Find profile by telegram_id
+  const { data: profileData } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('telegram_id', Number(validation.user.id))
+    .maybeSingle();
+
+  if (!profileData) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: 'profile_not_found' },
+      { status: 404 },
+    )};
+  }
+
+  const profileId = profileData.id as string;
+
+  // Get all workspaces the user has access to via workers table
   const { data: workers } = await supabase
     .from('workers')
     .select('workspace_id')
-    .eq('source_id', session.user.id)
+    .eq('source_id', profileId)
     .eq('is_active', true);
 
-  return workers?.map((w: { workspace_id: string }) => w.workspace_id).filter(Boolean) ?? [];
-}
+  const workspaceIds = workers?.map((w: { workspace_id: string }) => w.workspace_id).filter(Boolean) ?? [];
 
-/**
- * Get the active workspace ID for the current user.
- * Uses the profiles.active_workspace_id field.
- */
-async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !session) return null;
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('active_workspace_id')
-    .eq('id', session.user.id)
-    .maybeSingle();
-
-  return profile?.active_workspace_id ?? null;
+  return { profileId, workspaceIds };
 }
 
 // ============================================================================
@@ -107,14 +116,26 @@ async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
+    const { searchParams } = new URL(request.url);
+    const init_data = searchParams.get('init_data') as string | null;
 
-    // Get all workspace IDs the user has access to
-    const workspaceIds = await getUserWorkspaceIds(supabase);
+    if (!init_data) {
+      return NextResponse.json(
+        { error: 'missing_init_data' },
+        { status: 400 },
+      );
+    }
+
+    const authResult = await authenticateAndGetWorkspaces(init_data);
+    if (authResult.error) return authResult.error;
+
+    const { workspaceIds } = authResult;
 
     if (workspaceIds.length === 0) {
       return NextResponse.json({ keys: [] });
     }
+
+    const supabase = createServerClient();
 
     // Fetch all workspace settings in one query
     const { data: settingsList, error: settingsError } = await supabase
@@ -179,7 +200,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
+    const { searchParams } = new URL(request.url);
+    const init_data = searchParams.get('init_data') as string | null;
+
+    if (!init_data) {
+      return NextResponse.json(
+        { error: 'missing_init_data' },
+        { status: 400 },
+      );
+    }
+
+    const authResult = await authenticateAndGetWorkspaces(init_data);
+    if (authResult.error) return authResult.error;
+
+    const { profileId, workspaceIds } = authResult;
 
     const body = await request.json();
     const name = (body.name as string) ?? `Ключ ${new Date().toLocaleTimeString('ru-RU')}`;
@@ -194,27 +228,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If no workspace_id provided, use active workspace
-    if (!workspaceId) {
-      const activeWs = await getActiveWorkspaceId(supabase);
-      if (!activeWs) {
-        return NextResponse.json(
-          { error: 'unauthorized', message: 'No active workspace' },
-          { status: 401 },
-        );
-      }
-    }
+    // If no workspace_id provided, use first available workspace
+    const targetWorkspaceId = workspaceId || workspaceIds[0];
 
-    // Validate that user has access to the specified workspace
-    const userWorkspaces = await getUserWorkspaceIds(supabase);
-    const targetWorkspaceId = workspaceId || userWorkspaces[0];
-
-    if (!targetWorkspaceId || !userWorkspaces.includes(targetWorkspaceId)) {
+    if (!targetWorkspaceId || !workspaceIds.includes(targetWorkspaceId)) {
       return NextResponse.json(
         { error: 'forbidden', message: 'User does not have access to this workspace' },
         { status: 403 },
       );
     }
+
+    const supabase = createServerClient();
 
     // Fetch current settings
     const { data: settingsData, error: fetchError } = await supabase
@@ -242,7 +266,7 @@ export async function POST(request: NextRequest) {
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + expiresInDays);
 
-    // Store key hash with metadata (legacy mode compatible)
+    // Store key hash with metadata
     const newKeys: Record<string, McpKeyConfig> = {
       ...existingKeys,
       [keyHash]: {

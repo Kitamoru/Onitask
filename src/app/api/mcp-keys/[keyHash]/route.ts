@@ -1,56 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
+import { validateTelegramInitData } from '../../../../../src/lib/telegram/validate';
 
 /**
- * Get the active workspace ID for the current user.
- * Uses the profiles.active_workspace_id field.
+ * Authenticate via Telegram initData and return profileId + workspace IDs.
  */
-async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !session) return null;
+async function authenticateAndGetWorkspaces(initData: string): Promise<{
+  profileId: string;
+  workspaceIds: string[];
+  error?: NextResponse;
+}> {
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: 'server_configuration_error' },
+      { status: 500 },
+    )};
+  }
 
-  const { data: profile } = await supabase
+  const validation = validateTelegramInitData(initData, TELEGRAM_BOT_TOKEN);
+  if (!validation.valid || !validation.user) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: validation.error || 'invalid_init_data' },
+      { status: 401 },
+    )};
+  }
+
+  const supabase = createServerClient();
+
+  // Find profile by telegram_id
+  const { data: profileData } = await supabase
     .from('profiles')
-    .select('active_workspace_id')
-    .eq('id', session.user.id)
+    .select('id')
+    .eq('telegram_id', Number(validation.user.id))
     .maybeSingle();
 
-  return profile?.active_workspace_id ?? null;
+  if (!profileData) {
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: 'profile_not_found' },
+      { status: 404 },
+    )};
+  }
+
+  const profileId = profileData.id as string;
+
+  // Get all workspaces the user has access to via workers table
+  const { data: workers } = await supabase
+    .from('workers')
+    .select('workspace_id')
+    .eq('source_id', profileId)
+    .eq('is_active', true);
+
+  const workspaceIds = workers?.map((w: { workspace_id: string }) => w.workspace_id).filter(Boolean) ?? [];
+
+  return { profileId, workspaceIds };
 }
 
 /**
  * DELETE /api/mcp-keys/[keyHash] — Remove an MCP key by its hash.
  */
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ keyHash: string }> },
 ) {
   try {
-    const supabase = createServerClient();
+    const { searchParams } = new URL(request.url);
+    const init_data = searchParams.get('init_data') as string | null;
 
-    // Get workspace_id from query params OR from auth context
-    let workspaceId: string | null = request.url.split('workspace_id=')[1]?.split('&')[0] ?? null;
-
-    if (!workspaceId) {
-      workspaceId = await getActiveWorkspaceId(supabase);
-    }
-
-    if (!workspaceId) {
+    if (!init_data) {
       return NextResponse.json(
-        { error: 'unauthorized', message: 'No active workspace' },
-        { status: 401 },
+        { error: 'missing_init_data' },
+        { status: 400 },
       );
     }
 
+    const authResult = await authenticateAndGetWorkspaces(init_data);
+    if (authResult.error) return authResult.error;
+
+    const { workspaceIds } = authResult;
+
     const { keyHash } = await params;
 
-    // Fetch current settings
-    const { data: settingsData, error: fetchError } = await supabase
+    const supabase = createServerClient();
+
+    // Fetch settings from all user's workspaces
+    const { data: settingsList, error: fetchError } = await supabase
       .from('workspace_settings')
-      .select('mcp_api_keys')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
+      .select('workspace_id, mcp_api_keys')
+      .in('workspace_id', workspaceIds);
 
     if (fetchError) {
       console.error('DELETE /api/mcp-keys DB fetch error:', fetchError);
@@ -60,31 +97,39 @@ export async function DELETE(
       );
     }
 
-    const existingKeys = ((settingsData as any)?.mcp_api_keys as Record<string, unknown>) ?? {};
+    // Find the key in any of the user's workspaces
+    let foundWorkspaceId: string | null = null;
+    const updatedSettingsList: Array<{ workspace_id: string; mcp_api_keys: Record<string, unknown> }> = [];
 
-    // Check if key exists
-    if (!existingKeys[keyHash]) {
+    for (const settings of (settingsList ?? [])) {
+      const mcpApiKeys = ((settings as any)?.mcp_api_keys as Record<string, unknown>) ?? {};
+      if (mcpApiKeys[keyHash]) {
+        foundWorkspaceId = settings.workspace_id;
+        // Delete the key
+        const { [keyHash]: _, ...rest } = mcpApiKeys;
+        updatedSettingsList.push({ workspace_id: settings.workspace_id, mcp_api_keys: rest as Record<string, unknown> });
+      } else {
+        updatedSettingsList.push({ workspace_id: settings.workspace_id, mcp_api_keys: mcpApiKeys });
+      }
+    }
+
+    if (!foundWorkspaceId) {
       return NextResponse.json(
         { error: 'not_found', message: 'Key not found' },
         { status: 404 },
       );
     }
 
-    // Delete the key
-    delete existingKeys[keyHash];
+    // Update each workspace's settings
+    for (const updated of updatedSettingsList) {
+      const { error: updateError } = await supabase
+        .from('workspace_settings')
+        .update({ mcp_api_keys: updated.mcp_api_keys as any })
+        .eq('workspace_id', updated.workspace_id);
 
-    // Update workspace_settings
-    const { error: updateError } = await supabase
-      .from('workspace_settings')
-      .update({ mcp_api_keys: existingKeys as any })
-      .eq('workspace_id', workspaceId);
-
-    if (updateError) {
-      console.error('DELETE /api/mcp-keys DB update error:', updateError);
-      return NextResponse.json(
-        { error: 'internal_error', message: 'Failed to delete key' },
-        { status: 500 },
-      );
+      if (updateError) {
+        console.error('DELETE /api/mcp-keys DB update error:', updateError);
+      }
     }
 
     return NextResponse.json({ success: true });

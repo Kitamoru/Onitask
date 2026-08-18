@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { Copy, KeyRound, LinkIcon } from 'lucide-react';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { AddMcpKeySheet } from '@/components/settings/AddMcpKeySheet';
 
 // ============================================================================
@@ -39,30 +40,31 @@ interface DeleteKeyResponse {
 }
 
 // ============================================================================
-// API Helpers
+// API Helpers (all use Telegram initData auth)
 // ============================================================================
 
-async function fetchMcpKeys(): Promise<McpKeyInfo[]> {
-  const res = await fetch(`/api/mcp-keys`);
+async function fetchMcpKeys(initData: string): Promise<McpKeyInfo[]> {
+  const res = await fetch(`/api/mcp-keys?init_data=${encodeURIComponent(initData)}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.keys ?? [];
 }
 
-async function fetchWorkspaces(): Promise<WorkspaceOption[]> {
-  const res = await fetch(`/api/workspaces/me`);
+async function fetchWorkspaces(initData: string): Promise<WorkspaceOption[]> {
+  const res = await fetch(`/api/workspaces/list?init_data=${encodeURIComponent(initData)}`);
   if (!res.ok) return [];
   const data = await res.json();
-  return data.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
+  return data.data?.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
 }
 
 async function createMcpKey(
+  initData: string,
   name: string,
   workspaceId: string,
   expiresInDays: number,
 ): Promise<CreateKeyResponse> {
   const res = await fetch(
-    `/api/mcp-keys`,
+    `/api/mcp-keys?init_data=${encodeURIComponent(initData)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,9 +74,12 @@ async function createMcpKey(
   return res.json();
 }
 
-async function deleteMcpKey(keyHash: string): Promise<DeleteKeyResponse> {
+async function deleteMcpKey(
+  initData: string,
+  keyHash: string,
+): Promise<DeleteKeyResponse> {
   const res = await fetch(
-    `/api/mcp-keys/${encodeURIComponent(keyHash)}`,
+    `/api/mcp-keys/${encodeURIComponent(keyHash)}?init_data=${encodeURIComponent(initData)}`,
     { method: 'DELETE' },
   );
   return res.json();
@@ -224,6 +229,7 @@ function ConnectionTemplate() {
 // ============================================================================
 
 export default function McpSettingsPage() {
+  const { isLoading: authLoading, initData: tgInitData } = useTelegramAuth();
   const [keys, setKeys] = useState<McpKeyInfo[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -231,26 +237,28 @@ export default function McpSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
 
-  // Load keys and workspaces on mount
+  // Load keys and workspaces once initData is available
   useEffect(() => {
+    if (!tgInitData || authLoading) return;
     let cancelled = false;
-    Promise.all([fetchMcpKeys(), fetchWorkspaces()]).then(([data, ws]) => {
+    Promise.all([fetchMcpKeys(tgInitData), fetchWorkspaces(tgInitData)]).then(([data, ws]) => {
       if (!cancelled) {
         setKeys(data);
         setWorkspaces(ws);
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [tgInitData, authLoading]);
 
   const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number) => {
+    if (!tgInitData) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await createMcpKey(name, workspaceId, expiresInDays);
+      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
-        const updated = await fetchMcpKeys();
+        const updated = await fetchMcpKeys(tgInitData);
         setKeys(updated);
       } else {
         setError(result.error ?? 'Неизвестная ошибка');
@@ -260,14 +268,15 @@ export default function McpSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tgInitData]);
 
   const handleDeleteKey = useCallback(async (keyHash: string) => {
+    if (!tgInitData) return;
     setError(null);
     try {
-      const result = await deleteMcpKey(keyHash);
+      const result = await deleteMcpKey(tgInitData, keyHash);
       if (result.success) {
-        const updated = await fetchMcpKeys();
+        const updated = await fetchMcpKeys(tgInitData);
         setKeys(updated);
       } else {
         setError(result.error ?? 'Не удалось удалить ключ');
@@ -275,7 +284,7 @@ export default function McpSettingsPage() {
     } catch {
       setError('Не удалось удалить ключ');
     }
-  }, []);
+  }, [tgInitData]);
 
   const handleCopyKey = useCallback(async (text: string) => {
     try {

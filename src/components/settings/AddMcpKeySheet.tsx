@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { TextInput } from '@/components/ui/desk-ui/TextInput';
 import { Button } from '@/components/ui/desk-ui/Button';
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 
 // ============================================================================
 // Types
@@ -43,7 +44,7 @@ const EXPIRY_OPTIONS: ExpiryOption[] = [
 // ============================================================================
 
 /**
- * Styled select field — NotchedPanel + chevron pattern.
+ * Styled select field using NotchedPanel — matches TextInput style.
  */
 function SelectField({
   label,
@@ -66,34 +67,34 @@ function SelectField({
   return (
     <div className="flex flex-col gap-1">
       <div
-        className="relative flex items-center h-10 w-full cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          borderRadius: 6,
-          border: '1px solid var(--color-line)',
-          clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
-        }}
+        className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
         onClick={onClick}
         role="button"
         tabIndex={0}
         aria-label={label}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
       >
-        <span
-          className="text-base tracking-tighter truncate px-3"
-          style={{
-            color: isPlaceholder ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-            fontFamily: 'var(--font-family-display)',
-          }}
+        <NotchedPanel
+          corner="field"
+          notch={8}
+          contentClassName="flex items-center h-10 w-full px-3"
         >
-          {displayText}
-        </span>
-        {trailingIcon && (
-          <ChevronDown
-            className="w-5 h-5 shrink-0 mr-3"
-            style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
-          />
-        )}
+          <span
+            className="text-base tracking-tighter truncate flex-1"
+            style={{
+              color: isPlaceholder ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+              fontFamily: 'var(--font-family-display)',
+            }}
+          >
+            {displayText}
+          </span>
+          {trailingIcon && (
+            <ChevronDown
+              className="w-5 h-5 shrink-0 ml-auto pr-1"
+              style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
+            />
+          )}
+        </NotchedPanel>
       </div>
       {hint && (
         <span
@@ -103,6 +104,42 @@ function SelectField({
           {hint}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * Picker option button using NotchedPanel — matches TextInput style.
+ */
+function PickerOptionButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+    >
+      <NotchedPanel
+        corner="field"
+        notch={8}
+        contentClassName="h-12 w-full text-left px-4"
+      >
+        <span
+          className="text-base tracking-tighter"
+          style={{
+            color: 'var(--color-text-primary)',
+            fontFamily: 'var(--font-family-display)',
+          }}
+        >
+          {label}
+        </span>
+      </NotchedPanel>
     </div>
   );
 }
@@ -139,27 +176,11 @@ function WorkspacePickerSheet({
           </p>
         ) : (
           workspaces.map((ws) => (
-            <button
+            <PickerOptionButton
               key={ws.id}
+              label={ws.name}
               onClick={() => { onSelect(ws); onClose(); }}
-              className="flex items-center h-12 w-full text-left transition-opacity hover:opacity-80 active:opacity-60"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                borderRadius: 6,
-                border: '1px solid var(--color-line)',
-                clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
-              }}
-            >
-              <span
-                className="text-base tracking-tighter px-4"
-                style={{
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-display)',
-                }}
-              >
-                {ws.name}
-              </span>
-            </button>
+            />
           ))
         )}
       </div>
@@ -189,27 +210,11 @@ function ExpiryPickerSheet({
           Срок работы ключа
         </h3>
         {EXPIRY_OPTIONS.map((opt) => (
-          <button
+          <PickerOptionButton
             key={opt.days}
+            label={opt.label}
             onClick={() => { onSelect(opt.days); onClose(); }}
-            className="flex items-center h-12 w-full text-left transition-opacity hover:opacity-80 active:opacity-60"
-            style={{
-              backgroundColor: 'var(--color-surface)',
-              borderRadius: 6,
-              border: '1px solid var(--color-line)',
-              clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
-            }}
-          >
-            <span
-              className="text-base tracking-tighter px-4"
-              style={{
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-display)',
-              }}
-            >
-              {opt.label}
-            </span>
-          </button>
+          />
         ))}
       </div>
     </BottomSheet>
