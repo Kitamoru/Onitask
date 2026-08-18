@@ -37,11 +37,18 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
     throw new Error('GROQ_API_KEY is not set');
   }
 
-  // Groq Whisper определяет формат по расширению файла.
+  // Telegram voice всегда в OGG/Opus (audio/ogg).
   // iOS TWA записывает в audio/mp4, десктоп — в audio/webm.
-  // Несоответствие расширения и реального формата → Groq не может распарсить и висит.
-  const mimeType = audioBlob.type || 'audio/webm';
-  const ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+  // Groq Whisper определяет формат по расширению файла — важно передать .ogg для Telegram.
+  const mimeType = audioBlob.type || 'audio/ogg';
+  let ext: string;
+  // Проверяем name если это File (не Blob)
+  const fileName = (audioBlob as File).name || '';
+  if (mimeType === 'audio/ogg' || fileName.endsWith('.ogg')) {
+    ext = 'ogg';
+  } else {
+    ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+  }
   const file = new File([audioBlob], `audio.${ext}`, { type: mimeType });
 
   console.log('[groq] Sending to Whisper:', file.name, file.type, file.size, 'bytes');

@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Файл audio обязателен' }, { status: 400 });
     }
 
-    const blob = new Blob([await audio.arrayBuffer()], { type: audio.type || 'audio/webm' });
+    // Telegram voice всегда в OGG/Opus — не меняем MIME type
+    const mimeType = audio.type || 'audio/ogg';
+    const blob = new Blob([await audio.arrayBuffer()], { type: mimeType });
     console.log('[transcribe] Audio received:', blob.size, 'bytes, type:', blob.type);
     const result = await transcribeAudio(blob);
     console.log('[transcribe] transcribeAudio returned, result:', JSON.stringify(result));
