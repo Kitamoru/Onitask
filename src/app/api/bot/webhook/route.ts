@@ -996,17 +996,21 @@ async function executeDraftInWorkspaceByChat(
   });
 
   const cardData: TaskCardData = {
-    fullId,
-    title: task.title,
-    column: task.column,
-    isInbox: false,
-    isBlocked: false,
-    priority: task.priority as 'high' | 'medium' | 'low' | null,
-    dueDate: null,
-    assigneeName: null,
-    workspaceHandle: wsWithPrefix?.slug || '',
-    clarityScore: aiResult.parse?.clarity_score ?? null,
-  };
+  fullId,
+  title: task.title,
+  description:
+    (aiResult as any).parse?.rewritten_description ??
+    (task as any).description ??
+    null,
+  column: task.column,
+  isInbox: false,
+  isBlocked: false,
+  priority: task.priority as 'high' | 'medium' | 'low' | null,
+  dueDate: (task as any).deadline ?? (aiResult as any).parse?.deadline ?? null,
+  assigneeName: null,
+  workspaceHandle: wsWithPrefix?.slug || '',
+  clarityScore: aiResult.parse?.clarity_score ?? null,
+};
 
   const taskCard = buildTaskCard(cardData, 'created');
 
