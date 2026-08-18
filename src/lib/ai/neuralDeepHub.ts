@@ -2,7 +2,7 @@
  * Neural Deep Hub (NDH) client — F-04 chat completion for task parsing.
  *
  * Model: gpt-oss-120b
- * Endpoint: https://api.neuraldeephub.com/v1/chat/completions
+ * Endpoint: https://api.neuraldeep.ru/v1/chat/completions
  * Auth: NEURALDEEP_KEY env variable
  *
  * Based on: onitask_ai_.md §3.4 (Parse with JSON mode)
@@ -26,7 +26,7 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
   }
 
   try {
-    const res = await fetch('https://api.neuraldeephub.com/v1/chat/completions', {
+    const res = await fetch('https://api.neuraldeep.ru/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
