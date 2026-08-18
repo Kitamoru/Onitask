@@ -31,7 +31,7 @@ import { authenticateRequest } from '../../../../../lib/api-auth';
 import { createServerClient } from '../../../../../lib/supabase';
 
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-import { chatCompletion } from '../../../../lib/ai/groq';
+import { chatCompletion } from '../../../../lib/ai/neuralDeepHub';
 import { buildParsePrompt } from '../../../../lib/ai/prompts';
 import {
   validateParseResponse,
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       data_sharing_level: settings?.data_sharing_level ?? 'standard',
     }, workers ?? []);
 
-    // 5. Call Groq with JSON mode
+    // 5. Call Neural Deep Hub (gpt-oss-120b) with JSON mode
     const raw = await chatCompletion({ prompt });
 
     // 6. Validate with Zod
