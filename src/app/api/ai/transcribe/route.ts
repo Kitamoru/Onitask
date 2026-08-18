@@ -6,16 +6,15 @@
  * FormData: { init_data, audio }
  *
  * Flow:
- *   1. Auth (initData)
- *   2. Read audio file from FormData
- *   3. Call Groq Whisper (whisper-large-v3-turbo)
- *   4. Return transcribed text
+ * 1. Auth (initData)
+ * 2. Read audio file from FormData
+ * 3. Call Groq Whisper (whisper-large-v3-turbo)
+ * 4. Return transcribed text
  *
  * Based on: onitask_ai_.md §3.2
  * Security: onitask_security_.md §1.1
  * A-1: Vercel Hot Path (< 2s)
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 import { transcribeAudio } from '../../../../lib/ai/groq';
@@ -49,10 +48,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Файл audio обязателен' }, { status: 400 });
     }
 
-    // Telegram voice всегда в OGG/Opus — не меняем MIME type
-    const mimeType = audio.type || 'audio/ogg';
+    // Telegram voice всегда OGG. Если пришёл octet-stream / пустой / не audio/* — форсируем audio/ogg
+    let mimeType = audio.type || 'audio/ogg';
+    if (
+      mimeType === 'application/octet-stream' ||
+      mimeType === '' ||
+      !mimeType.startsWith('audio/')
+    ) {
+      mimeType = 'audio/ogg';
+    }
+
     const blob = new Blob([await audio.arrayBuffer()], { type: mimeType });
+
     console.log('[transcribe] Audio received:', blob.size, 'bytes, type:', blob.type);
+
     const result = await transcribeAudio(blob);
     console.log('[transcribe] transcribeAudio returned, result:', JSON.stringify(result));
 
