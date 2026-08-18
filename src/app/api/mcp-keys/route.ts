@@ -5,13 +5,23 @@ import { createServerClient } from '../../../../lib/supabase';
 // Types
 // ============================================================================
 
-interface McpKeyConfig {
+export interface McpKeyConfig {
   allowed_tools: string[] | 'all';
   can_send_messages: boolean;
   max_tasks_per_minute?: number;
   name?: string;
   created_at?: string;
   expires_at?: string;
+}
+
+export interface McpKeyInfo {
+  keyHash: string;
+  name: string;
+  created_at: string;
+  expires_at: string;
+  prefix: string;
+  workspace_id: string;
+  workspace_name: string;
 }
 
 // ============================================================================
@@ -59,15 +69,29 @@ function getDefaultExpiry(): string {
 }
 
 /**
+ * Get all workspace IDs the user has access to via workers table.
+ */
+async function getUserWorkspaceIds(supabase: any): Promise<string[]> {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) return [];
+
+  const { data: workers } = await supabase
+    .from('workers')
+    .select('workspace_id')
+    .eq('source_id', session.user.id)
+    .eq('is_active', true);
+
+  return workers?.map((w: { workspace_id: string }) => w.workspace_id).filter(Boolean) ?? [];
+}
+
+/**
  * Get the active workspace ID for the current user.
  * Uses the profiles.active_workspace_id field.
  */
 async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
-  // Try to get from session
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError || !session) return null;
 
-  // Get profile's active workspace
   const { data: profile } = await supabase
     .from('profiles')
     .select('active_workspace_id')
@@ -78,33 +102,25 @@ async function getActiveWorkspaceId(supabase: any): Promise<string | null> {
 }
 
 // ============================================================================
-// GET — List MCP keys (hashes only, no plaintext)
+// GET — List MCP keys from ALL user's workspaces
 // ============================================================================
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = createServerClient();
 
-    // Get workspace_id from query params OR from auth context
-    let workspaceId: string | null = request.url.split('workspace_id=')[1]?.split('&')[0] ?? null;
+    // Get all workspace IDs the user has access to
+    const workspaceIds = await getUserWorkspaceIds(supabase);
 
-    if (!workspaceId) {
-      workspaceId = await getActiveWorkspaceId(supabase);
+    if (workspaceIds.length === 0) {
+      return NextResponse.json({ keys: [] });
     }
 
-    if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'No active workspace' },
-        { status: 401 },
-      );
-    }
-
-    // Fetch workspace settings
-    const { data: settingsData, error: settingsError } = await supabase
+    // Fetch all workspace settings in one query
+    const { data: settingsList, error: settingsError } = await supabase
       .from('workspace_settings')
-      .select('mcp_api_keys')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
+      .select('workspace_id, mcp_api_keys')
+      .in('workspace_id', workspaceIds);
 
     if (settingsError) {
       console.error('GET /api/mcp-keys DB error:', settingsError);
@@ -114,26 +130,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch workspace name
-    const { data: workspaceData, error: workspaceError } = await supabase
+    // Fetch all workspace names
+    const { data: workspaces, error: wsError } = await supabase
       .from('workspaces')
       .select('id, name')
-      .eq('id', workspaceId)
-      .maybeSingle();
+      .in('id', workspaceIds);
 
-    if (workspaceError) {
-      console.error('GET /api/mcp-keys workspace fetch error:', workspaceError);
+    if (wsError) {
+      console.error('GET /api/mcp-keys workspace fetch error:', wsError);
     }
 
-    const mcpApiKeys = ((settingsData as any)?.mcp_api_keys as Record<string, McpKeyConfig>) ?? {};
-    const keys = Object.entries(mcpApiKeys).map(([keyHash, config]) => ({
-      keyHash,
-      name: config.name || '',
-      created_at: config.created_at || new Date().toISOString(),
-      expires_at: config.expires_at || getDefaultExpiry(),
-      prefix: getKeyPrefix(keyHash),
-      workspace_name: workspaceData?.name ?? '',
-    }));
+    const wsMap: Record<string, string> = {};
+    for (const ws of (workspaces ?? [])) {
+      wsMap[ws.id] = ws.name;
+    }
+
+    // Collect keys from all workspaces
+    const keys: McpKeyInfo[] = [];
+    for (const settings of (settingsList ?? [])) {
+      const mcpApiKeys = ((settings as any)?.mcp_api_keys as Record<string, McpKeyConfig>) ?? {};
+      const workspaceName = wsMap[settings.workspace_id] ?? '';
+      for (const [keyHash, config] of Object.entries(mcpApiKeys)) {
+        keys.push({
+          keyHash,
+          name: config.name || '',
+          created_at: config.created_at || new Date().toISOString(),
+          expires_at: config.expires_at || getDefaultExpiry(),
+          prefix: getKeyPrefix(keyHash),
+          workspace_id: settings.workspace_id,
+          workspace_name: workspaceName,
+        });
+      }
+    }
 
     return NextResponse.json({ keys });
   } catch (err) {
@@ -153,22 +181,10 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createServerClient();
 
-    // Get workspace_id from query params OR from auth context
-    let workspaceId: string | null = request.url.split('workspace_id=')[1]?.split('&')[0] ?? null;
-
-    if (!workspaceId) {
-      workspaceId = await getActiveWorkspaceId(supabase);
-    }
-
-    if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'No active workspace' },
-        { status: 401 },
-      );
-    }
-
     const body = await request.json();
     const name = (body.name as string) ?? `Ключ ${new Date().toLocaleTimeString('ru-RU')}`;
+    const workspaceId = (body.workspace_id as string) ?? null;
+    const expiresInDays = (body.expires_in_days as number) ?? 90;
 
     // Validate name length
     if (name.length > 100) {
@@ -178,11 +194,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // If no workspace_id provided, use active workspace
+    if (!workspaceId) {
+      const activeWs = await getActiveWorkspaceId(supabase);
+      if (!activeWs) {
+        return NextResponse.json(
+          { error: 'unauthorized', message: 'No active workspace' },
+          { status: 401 },
+        );
+      }
+    }
+
+    // Validate that user has access to the specified workspace
+    const userWorkspaces = await getUserWorkspaceIds(supabase);
+    const targetWorkspaceId = workspaceId || userWorkspaces[0];
+
+    if (!targetWorkspaceId || !userWorkspaces.includes(targetWorkspaceId)) {
+      return NextResponse.json(
+        { error: 'forbidden', message: 'User does not have access to this workspace' },
+        { status: 403 },
+      );
+    }
+
     // Fetch current settings
     const { data: settingsData, error: fetchError } = await supabase
       .from('workspace_settings')
       .select('mcp_api_keys')
-      .eq('workspace_id', workspaceId)
+      .eq('workspace_id', targetWorkspaceId)
       .maybeSingle();
 
     if (fetchError) {
@@ -200,6 +238,10 @@ export async function POST(request: NextRequest) {
     const keyHash = await hashApiKey(plaintextKey);
     const prefix = getKeyPrefix(keyHash);
 
+    // Calculate expiry date
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + expiresInDays);
+
     // Store key hash with metadata (legacy mode compatible)
     const newKeys: Record<string, McpKeyConfig> = {
       ...existingKeys,
@@ -209,7 +251,7 @@ export async function POST(request: NextRequest) {
         max_tasks_per_minute: 50,
         name,
         created_at: new Date().toISOString(),
-        expires_at: getDefaultExpiry(),
+        expires_at: expiryDate.toISOString(),
       },
     };
 
@@ -217,7 +259,7 @@ export async function POST(request: NextRequest) {
     const { error: updateError } = await supabase
       .from('workspace_settings')
       .update({ mcp_api_keys: newKeys as any })
-      .eq('workspace_id', workspaceId);
+      .eq('workspace_id', targetWorkspaceId);
 
     if (updateError) {
       console.error('POST /api/mcp-keys DB update error:', updateError);
@@ -233,6 +275,7 @@ export async function POST(request: NextRequest) {
       plaintextKey,
       prefix,
       name,
+      workspace_id: targetWorkspaceId,
     });
   } catch (err) {
     console.error('POST /api/mcp-keys error:', err);

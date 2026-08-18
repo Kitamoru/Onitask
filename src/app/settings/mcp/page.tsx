@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Copy, KeyRound, Plus, LinkIcon } from 'lucide-react';
+import { Copy, KeyRound, LinkIcon } from 'lucide-react';
+import { AddMcpKeySheet } from '@/components/settings/AddMcpKeySheet';
 
 // ============================================================================
 // Types
@@ -13,7 +14,13 @@ interface McpKeyInfo {
   created_at: string;
   expires_at: string;
   prefix: string;
+  workspace_id: string;
   workspace_name: string;
+}
+
+interface WorkspaceOption {
+  id: string;
+  name: string;
 }
 
 interface CreateKeyResponse {
@@ -21,6 +28,8 @@ interface CreateKeyResponse {
   keyId?: string;
   plaintextKey?: string;
   prefix?: string;
+  name?: string;
+  workspace_id?: string;
   error?: string;
 }
 
@@ -40,13 +49,24 @@ async function fetchMcpKeys(): Promise<McpKeyInfo[]> {
   return data.keys ?? [];
 }
 
-async function createMcpKey(name: string): Promise<CreateKeyResponse> {
+async function fetchWorkspaces(): Promise<WorkspaceOption[]> {
+  const res = await fetch(`/api/workspaces/me`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
+}
+
+async function createMcpKey(
+  name: string,
+  workspaceId: string,
+  expiresInDays: number,
+): Promise<CreateKeyResponse> {
   const res = await fetch(
     `/api/mcp-keys`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, workspace_id: workspaceId, expires_in_days: expiresInDays }),
     },
   );
   return res.json();
@@ -157,29 +177,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function AddKeyButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className="flex items-center justify-center gap-2 h-10 w-full transition-opacity hover:opacity-90 active:opacity-70 disabled:opacity-50"
-      style={{
-        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
-        backgroundColor: '#FAFAFA',
-      }}
-      aria-label="Добавить ключ"
-    >
-      <span
-        className="text-[14px] font-semibold"
-        style={{ color: '#0A0A0A', fontFamily: 'var(--font-family-display)' }}
-      >
-        {loading ? 'Создание...' : 'Добавить ключ'}
-      </span>
-      {!loading && <Plus className="w-5 h-5 text-black shrink-0" />}
-    </button>
-  );
-}
-
 function ConnectionTemplate() {
   const template = `curl -X POST https://your-workspace.vercel.app/api/mcp/create_task \\
   -H "Authorization: Bearer sk_YOUR_API_KEY" \\
@@ -228,23 +225,29 @@ function ConnectionTemplate() {
 
 export default function McpSettingsPage() {
   const [keys, setKeys] = useState<McpKeyInfo[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [freshKey, setFreshKey] = useState<{ key: string; prefix: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAddSheet, setShowAddSheet] = useState(false);
 
+  // Load keys and workspaces on mount
   useEffect(() => {
     let cancelled = false;
-    fetchMcpKeys().then((data) => {
-      if (!cancelled) setKeys(data);
+    Promise.all([fetchMcpKeys(), fetchWorkspaces()]).then(([data, ws]) => {
+      if (!cancelled) {
+        setKeys(data);
+        setWorkspaces(ws);
+      }
     });
     return () => { cancelled = true; };
   }, []);
 
-  const performCreateKey = useCallback(async () => {
+  const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number) => {
     setError(null);
     setLoading(true);
     try {
-      const result = await createMcpKey(`Ключ ${new Date().toLocaleTimeString('ru-RU')}`);
+      const result = await createMcpKey(name, workspaceId, expiresInDays);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
         const updated = await fetchMcpKeys();
@@ -379,18 +382,7 @@ export default function McpSettingsPage() {
             </span>
           </div>
 
-          {loading ? (
-            <div
-              className="flex items-center justify-center h-10 w-full"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                borderRadius: 6,
-                border: '1px solid var(--color-line)',
-              }}
-            >
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Загрузка...</span>
-            </div>
-          ) : keys.length === 0 ? (
+          {keys.length === 0 && !loading ? (
             <div
               className="flex flex-col items-center justify-center py-8 gap-2 w-full"
               style={{
@@ -412,8 +404,24 @@ export default function McpSettingsPage() {
             </div>
           )}
 
-          {/* AddKeyButton — всегда видна, независимо от наличия ключей */}
-          <AddKeyButton onClick={performCreateKey} loading={loading} />
+          {/* Add key button */}
+          <button
+            onClick={() => setShowAddSheet(true)}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 h-10 w-full transition-opacity hover:opacity-90 active:opacity-70 disabled:opacity-50"
+            style={{
+              clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+              backgroundColor: 'var(--color-accent-amber)',
+            }}
+            aria-label="Добавить ключ"
+          >
+            <span
+              className="text-[14px] font-semibold"
+              style={{ color: 'var(--color-text-white)', fontFamily: 'var(--font-family-display)' }}
+            >
+              Добавить ключ
+            </span>
+          </button>
         </div>
 
         {/* Connection template */}
@@ -422,6 +430,14 @@ export default function McpSettingsPage() {
         {/* Bottom filler for safe area */}
         <div className="h-16" aria-hidden="true" />
       </div>
+
+      {/* Add key sheet */}
+      <AddMcpKeySheet
+        open={showAddSheet}
+        onClose={() => setShowAddSheet(false)}
+        onCreateKey={handleCreateKey}
+        workspaces={workspaces}
+      />
     </main>
   );
 }
