@@ -178,7 +178,6 @@ async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
     }
 
     const arrayBuffer = await fileResp.arrayBuffer();
-    // Telegram voice/audio всегда OGG/Opus — принудительно ставим правильный MIME
     return new Blob([arrayBuffer], { type: 'audio/ogg' });
   } catch (err) {
     console.error('[Bot Webhook] downloadTelegramFile error:', err);
@@ -924,6 +923,9 @@ async function executeDraftInWorkspaceByChat(
 
   const taskText = draftRow.title;
 
+  // Resolve profile for created_by + explicit source
+  const profileId = await resolveProfileId(userId);
+
   let aiResult: {
     task?: { id: string; title: string; column: string; priority: string };
     parse?: { rewritten_title?: string; clarity_score?: number };
@@ -944,6 +946,8 @@ async function executeDraftInWorkspaceByChat(
       body: JSON.stringify({
         input: taskText,
         workspace_id: workspaceId,
+        source: 'bot',
+        profile_id: profileId ?? undefined,
       }),
     });
 
@@ -988,6 +992,7 @@ async function executeDraftInWorkspaceByChat(
     taskId: task.id,
     fullId,
     chatId,
+    profileId,
   });
 
   const cardData: TaskCardData = {
@@ -1050,7 +1055,7 @@ async function createTaskFallback(
       workspace_id: workspaceId,
       title: draftRow.title,
       description: draftRow.description || null,
-      source: draftRow.source || 'bot',
+      source: 'bot',
       created_by: createdBy,
       is_inbox: false,
       column: 'backlog',
