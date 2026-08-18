@@ -233,19 +233,28 @@ export default function McpSettingsPage() {
   const [keys, setKeys] = useState<McpKeyInfo[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [freshKey, setFreshKey] = useState<{ key: string; prefix: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
 
   // Load keys and workspaces once initData is available
   useEffect(() => {
-    if (!tgInitData || authLoading) return;
+    if (authLoading) return;
+    if (!tgInitData) {
+      setInitialLoading(false);
+      return;
+    }
+    setInitialLoading(true);
     let cancelled = false;
     Promise.all([fetchMcpKeys(tgInitData), fetchWorkspaces(tgInitData)]).then(([data, ws]) => {
       if (!cancelled) {
         setKeys(data);
         setWorkspaces(ws);
+        setInitialLoading(false);
       }
+    }).catch(() => {
+      if (!cancelled) setInitialLoading(false);
     });
     return () => { cancelled = true; };
   }, [tgInitData, authLoading]);
@@ -376,42 +385,69 @@ export default function McpSettingsPage() {
           </div>
         )}
 
-        {/* Мои ключи section */}
-        <div className="flex flex-col gap-3 w-full">
-          <div className="flex items-center gap-2 w-full px-3 py-2">
-            <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
-            <span
-              className="text-base font-medium leading-5"
-              style={{
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-family-display)',
-              }}
-            >
-              Мои ключи
-            </span>
-          </div>
-
-          {keys.length === 0 && !loading ? (
-            <div
-              className="flex flex-col items-center justify-center py-8 gap-2 w-full"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                borderRadius: 6,
-                border: '1px dashed var(--color-line)',
-              }}
-            >
-              <LinkIcon className="w-8 h-8" style={{ color: 'var(--color-text-muted)' }} />
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                Нет активных ключей
+          {/* Мои ключи section */}
+          <div className="flex flex-col gap-3 w-full">
+            <div className="flex items-center gap-2 w-full px-3 py-2">
+              <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+              <span
+                className="text-base font-medium leading-5"
+                style={{
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'var(--font-family-display)',
+                }}
+              >
+                Мои ключи
               </span>
             </div>
-          ) : (
-            <div className="flex flex-col gap-2 w-full">
-              {keys.map((keyInfo) => (
-                <McpKeyItem key={keyInfo.keyHash} keyInfo={keyInfo} />
-              ))}
-            </div>
-          )}
+
+            {initialLoading ? (
+              /* Skeleton loader — matches McpKeyItem dimensions */
+              <div className="flex flex-col gap-2 w-full">
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="relative w-full px-3 py-3 animate-pulse"
+                    style={{
+                      backgroundColor: 'var(--color-surface)',
+                      borderRadius: 6,
+                      border: '1px solid var(--color-line)',
+                      clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+                    }}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <div
+                        className="h-4 w-3/4 rounded-sm"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                      />
+                      <div
+                        className="h-3 w-1/2 rounded-sm"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : keys.length === 0 ? (
+              <div
+                className="flex flex-col items-center justify-center py-8 gap-2 w-full"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  borderRadius: 6,
+                  border: '1px dashed var(--color-line)',
+                }}
+              >
+                <LinkIcon className="w-8 h-8" style={{ color: 'var(--color-text-muted)' }} />
+                <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  Нет активных ключей
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 w-full">
+                {keys.map((keyInfo) => (
+                  <McpKeyItem key={keyInfo.keyHash} keyInfo={keyInfo} />
+                ))}
+              </div>
+            )}
 
           {/* Add key button */}
           <button
