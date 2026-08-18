@@ -504,7 +504,8 @@ async function dispatchUpdate(update: any): Promise<void> {
             const blob = await resp.blob();
             const formData = new FormData();
             formData.append('audio', blob, 'voice.ogg');
-            const sttResp = await fetch('/api/ai/transcribe', {
+            const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+            const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${serviceKey}`,
@@ -867,8 +868,10 @@ async function executeDraftInWorkspaceByChat(
 
   try {
     // Call the unified AI create-task endpoint with service token auth
+    // Vercel serverless: relative URLs fail, must use absolute URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const resp = await fetch('/api/ai/create-task', {
+    const baseUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+    const resp = await fetch(`${baseUrl}/api/ai/create-task`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
