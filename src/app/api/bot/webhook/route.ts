@@ -495,6 +495,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       } else {
         const voiceFileId = message.voice.file_id;
         const telegramFileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/file_${voiceFileId}`;
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         try {
           const resp = await fetch(telegramFileUrl, {
             headers: { Authorization: `Bot ${BOT_TOKEN}` },
@@ -502,9 +503,12 @@ async function dispatchUpdate(update: any): Promise<void> {
           if (resp.ok) {
             const blob = await resp.blob();
             const formData = new FormData();
-            formData.append('file', blob, 'voice.ogg');
+            formData.append('audio', blob, 'voice.ogg');
             const sttResp = await fetch('/api/ai/transcribe', {
               method: 'POST',
+              headers: {
+                Authorization: `Bearer ${serviceKey}`,
+              },
               body: formData,
             });
             if (sttResp.ok) {
@@ -862,22 +866,23 @@ async function executeDraftInWorkspaceByChat(
   };
 
   try {
-    const resp = await fetch('/api/bot/create-task', {
+    // Call the unified AI create-task endpoint with service token auth
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const resp = await fetch('/api/ai/create-task', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${WEBHOOK_SECRET}`,
+        Authorization: `Bearer ${serviceKey}`,
       },
       body: JSON.stringify({
-        telegram_user_id: userId,
+        input: taskText,
         workspace_id: workspaceId,
-        text: taskText,
       }),
     });
 
     if (!resp.ok) {
       const errBody = await resp.json().catch(() => ({}));
-      console.error('[Bot Webhook] /api/bot/create-task failed:', resp.status, errBody);
+      console.error('[Bot Webhook] /api/ai/create-task failed:', resp.status, errBody);
       throw new Error(errBody.error || `HTTP ${resp.status}`);
     }
 

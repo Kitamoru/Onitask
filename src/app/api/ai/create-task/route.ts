@@ -29,6 +29,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 import { createServerClient } from '../../../../../lib/supabase';
+
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 import { chatCompletion } from '../../../../lib/ai/groq';
 import { buildParsePrompt } from '../../../../lib/ai/prompts';
 import {
@@ -46,43 +48,59 @@ type TasksInsert = Database['public']['Tables']['tasks']['Insert'];
 interface CreateTaskBody {
   init_data?: string;
   input?: string;
+  service_token?: string;
+  workspace_id?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CreateTaskBody;
-    const { init_data, input } = body;
+    const { init_data, input, service_token, workspace_id: explicitWorkspaceId } = body;
 
-    const auth = await authenticateRequest(init_data);
+    let auth = await authenticateRequest(init_data);
+
+    // Server-to-server auth: bot calls this endpoint with service_token + explicit workspace_id
+    if (!auth.authenticated && !init_data) {
+      const authHeader = request.headers.get('Authorization') || '';
+      const bearer = authHeader.replace(/^Bearer\s+/i, '');
+      if (bearer && bearer === SUPABASE_SERVICE_ROLE_KEY) {
+        auth = { authenticated: true };
+      }
+    }
+
     if (!auth.authenticated) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
 
     if (!input || !input.trim()) {
-      return NextResponse.json({ error: 'Поле input обязательно' }, { status: 400 });
+      return NextResponse.json({ error: 'Поле input обязателен' }, { status: 400 });
     }
 
     const supabase = createServerClient();
-    const profileId = auth.profileId!;
+    const profileId = auth.profileId;
 
-    // 1. Resolve workspace_id via user's active worker (source_id = profileId)
-    const { data: userWorkers, error: userWorkersError } = await supabase
-      .from('workers')
-      .select('id, workspace_id')
-      .eq('source_id', profileId)
-      .eq('is_active', true)
-      .limit(1);
+    // Resolve workspace_id: explicit from body > user's active worker
+    let workspaceId = explicitWorkspaceId || null;
+    if (!workspaceId && profileId) {
+      const { data: userWorkers, error: userWorkersError } = await supabase
+        .from('workers')
+        .select('id, workspace_id')
+        .eq('source_id', profileId)
+        .eq('is_active', true)
+        .limit(1);
 
-    if (userWorkersError) {
-      return NextResponse.json({ error: 'Не удалось определить рабочее пространство' }, { status: 500 });
+      if (userWorkersError) {
+        return NextResponse.json({ error: 'Не удалось определить рабочее пространство' }, { status: 500 });
+      }
+
+      workspaceId = userWorkers?.[0]?.workspace_id ?? null;
     }
 
-    const workspaceId = userWorkers?.[0]?.workspace_id;
     if (!workspaceId) {
       return NextResponse.json({ error: 'Рабочее пространство не найдено' }, { status: 404 });
     }
 
-    // 2. Load workspace settings (f04_config, context, data_sharing_level)
+    // 3. Load workspace settings (f04_config, context, data_sharing_level)
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
       .select('f04_config, workspace_context, data_sharing_level')
@@ -95,10 +113,10 @@ export async function POST(request: NextRequest) {
 
     const config = parseF04Config(settings?.f04_config);
 
-    // 2a. Read workspace_context_cache via dedicated utility (F04-11)
+    // 3a. Read workspace_context_cache via dedicated utility (F04-11)
     const cacheResult = await getWorkspaceContextCache(workspaceId);
 
-    // 3. Load team workers (id + display_name for assignee matching)
+    // 3b. Load team workers (id + display_name for assignee matching)
     const { data: workers, error: workersError } = await supabase
       .from('workers')
       .select('id, display_name')
@@ -160,7 +178,7 @@ export async function POST(request: NextRequest) {
       complexity: parsed.complexity,
       enrichment_strategy: strategy,
       cognitive_weight: strategy === 'skip' ? 0 : 1,
-      source: 'manual',
+      source: service_token ? 'telegram_bot' : 'manual',
     };
 
     const { data: task, error: insertError } = await supabase
@@ -201,7 +219,8 @@ export async function POST(request: NextRequest) {
       task_id: taskId,
       event_type: 'parse_rewrite',
       payload: {
-        raw_input: input,
+      raw_input: input,
+      metadata: service_token ? { source: 'telegram_bot' } : undefined,
         rewritten_title: parsed.rewritten_title,
         rewritten_description: parsed.rewritten_description,
         clarity_score: parsed.clarity_score,

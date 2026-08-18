@@ -20,6 +20,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../lib/api-auth';
 import { transcribeAudio } from '../../../../lib/ai/groq';
 
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
 // Groq Whisper может обрабатывать аудио дольше 10с (Vercel Hobby limit)
 export const maxDuration = 30;
 
@@ -29,7 +31,16 @@ export async function POST(request: NextRequest) {
     const initData = formData.get('init_data') as string | undefined;
     const audio = formData.get('audio') as File | null;
 
-    const auth = await authenticateRequest(initData);
+    // Server-to-server auth: bot calls this endpoint with service_token
+    let auth = await authenticateRequest(initData);
+    if (!auth.authenticated && !initData) {
+      const authHeader = request.headers.get('Authorization') || '';
+      const bearer = authHeader.replace(/^Bearer\s+/i, '');
+      if (bearer && bearer === SUPABASE_SERVICE_ROLE_KEY) {
+        auth = { authenticated: true };
+      }
+    }
+
     if (!auth.authenticated) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
