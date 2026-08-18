@@ -30,7 +30,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
 
   // Load existing active invite link when modal opens
   useEffect(() => {
@@ -59,7 +59,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
 
     setLoading(true);
     setError(null);
-    setCopied(false);
+    setShared(false);
 
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/invite`, {
@@ -90,23 +90,18 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
     }
   }, [workspaceId, initData]);
 
-  const handleCopy = useCallback(async () => {
+  const handleShare = useCallback(async () => {
     if (!inviteUrl) return;
 
-    // Try Telegram WebApp API first, fallback to navigator.clipboard
-    const tg = (window as unknown as { Telegram?: { WebApp?: { copyToClipboard?: (text: string) => void } } }).Telegram?.WebApp;
-    if (tg?.copyToClipboard) {
-      tg.copyToClipboard(inviteUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=✨%20Присоединяйся%20к%20команде%20в%20Onitask!`;
+
+    // Try Telegram WebApp API first
+    const webApp = (window as unknown as { Telegram?: { WebApp?: { openTelegramLink?: (url: string) => void } } }).Telegram?.WebApp;
+    if (webApp?.openTelegramLink) {
+      webApp.openTelegramLink(shareUrl);
     } else {
-      try {
-        await navigator.clipboard.writeText(inviteUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Fallback: select text in input for manual copy
-      }
+      // Fallback: open in new window
+      window.open(shareUrl, '_blank');
     }
   }, [inviteUrl]);
 
@@ -148,16 +143,20 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
 
         {/* Actions — buttons above, instructions below (like sprint sheet) */}
         <div className="flex gap-3 mb-6">
-          {/* If link exists — show Copy + Create new */}
+          {/* If link exists — show Share + Create new */}
           {inviteUrl ? (
             <>
               <Button
                 variant="solid"
-                onClick={handleCopy}
-                aria-label="Скопировать ссылку"
+                onClick={() => {
+                  handleShare();
+                  setShared(true);
+                  setTimeout(() => setShared(false), 2000);
+                }}
+                aria-label="Поделиться ссылкой"
                 type="button"
               >
-                {copied ? '✓ Скопировано' : 'Скопировать'}
+                {shared ? '✓ Отправлено' : 'Поделиться'}
               </Button>
               <Button
                 variant="outline"
