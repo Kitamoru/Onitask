@@ -468,7 +468,7 @@ export type TaskCardData = {
   clarityScore: number | null;
 };
 
-const LOW_CLARITY_THRESHOLD = 50;
+const LOW_CLARITY_THRESHOLD = 0.55; // шкала 0..1 (AI clarity_score)
 
 const STATUS_LABELS: Record<string, string> = {
   in_progress: 'В работе',
