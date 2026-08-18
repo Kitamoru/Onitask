@@ -2,19 +2,17 @@
  * Groq client — Hot Path AI calls for F-04.
  *
  * Models:
- *   - whisper-large-v3-turbo (STT)
- *   - llama-3.3-70b-versatile (Parse, JSON mode)
+ * - whisper-large-v3-turbo (STT)
+ * - llama-3.3-70b-versatile (Parse, JSON mode)
  *
  * Based on: onitask_ai_.md §3.2 (Whisper), §3.4 (Parse with JSON mode)
  * Security: onitask_security_.md §1.1 (JSON mode mandatory)
  * A-1: Vercel Hot Path (< 2s), A-6: single model call, no fallback chain
  */
-
 import Groq from 'groq-sdk';
 import type { TranscribeResponse } from './types';
 
 // ─── Groq Client Singleton ────────────────────────────────────────────────────
-
 let client: Groq | null = null;
 
 function getGroqClient(): Groq {
@@ -30,7 +28,6 @@ function getGroqClient(): Groq {
 
 // ─── Transcribe (Whisper) ─────────────────────────────────────────────────────
 // ai_.md §3.2 — Groq Whisper path (primary for iOS TWA, used for all platforms in MVP)
-
 export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -39,17 +36,46 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
 
   // Telegram voice всегда в OGG/Opus (audio/ogg).
   // iOS TWA записывает в audio/mp4, десктоп — в audio/webm.
-  // Groq Whisper определяет формат по расширению файла — важно передать .ogg для Telegram.
+  // Groq Whisper определяет формат по расширению файла — важно передать правильное расширение.
   const mimeType = audioBlob.type || 'audio/ogg';
-  let ext: string;
-  // Проверяем name если это File (не Blob)
   const fileName = (audioBlob as File).name || '';
-  if (mimeType === 'audio/ogg' || fileName.endsWith('.ogg')) {
+
+  let ext: string;
+  if (
+    mimeType === 'audio/ogg' ||
+    mimeType === 'audio/opus' ||
+    fileName.endsWith('.ogg') ||
+    fileName.endsWith('.opus')
+  ) {
     ext = 'ogg';
+  } else if (mimeType === 'audio/mp4' || mimeType === 'audio/m4a' || fileName.endsWith('.m4a')) {
+    ext = 'm4a';
+  } else if (mimeType === 'audio/webm' || fileName.endsWith('.webm')) {
+    ext = 'webm';
+  } else if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3' || fileName.endsWith('.mp3')) {
+    ext = 'mp3';
+  } else if (mimeType === 'audio/wav' || fileName.endsWith('.wav')) {
+    ext = 'wav';
   } else {
-    ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+    // Неизвестный тип (octet-stream и т.п.) — по умолчанию ogg (Telegram voice)
+    ext = 'ogg';
   }
-  const file = new File([audioBlob], `audio.${ext}`, { type: mimeType });
+
+  // Всегда передаём валидный MIME, который понимает Groq
+  const safeMime =
+    ext === 'ogg'
+      ? 'audio/ogg'
+      : ext === 'm4a'
+        ? 'audio/mp4'
+        : ext === 'webm'
+          ? 'audio/webm'
+          : ext === 'mp3'
+            ? 'audio/mpeg'
+            : ext === 'wav'
+              ? 'audio/wav'
+              : 'audio/ogg';
+
+  const file = new File([audioBlob], `audio.${ext}`, { type: safeMime });
 
   console.log('[groq] Sending to Whisper:', file.name, file.type, file.size, 'bytes');
 
@@ -84,7 +110,6 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
 
 // ─── Chat (llama-3.3-70b-versatile with JSON mode) ────────────────────────────
 // ai_.md §3.4, security §1.1 — JSON mode is mandatory (response_format: json_object)
-
 export interface ChatOptions {
   /** System/user prompt content */
   prompt: string;
