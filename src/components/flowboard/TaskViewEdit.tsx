@@ -236,9 +236,9 @@ export function TaskViewEdit({
         <section>
           <SectionHeader title="Ключевой контекст" />
           <div className="flex flex-col gap-3">
-            <TextInput
+            <TextArea
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(v) => setTitle(v)}
               placeholder="Название задачи"
               disabled={isView}
               maxLength={500}
