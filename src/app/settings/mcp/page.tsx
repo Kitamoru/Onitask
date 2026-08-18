@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Copy, Trash2, KeyRound, Plus, LinkIcon } from 'lucide-react';
+import { Copy, KeyRound, Plus, LinkIcon } from 'lucide-react';
 
 // ============================================================================
 // Types
@@ -33,10 +33,6 @@ interface DeleteKeyResponse {
 // API Helpers
 // ============================================================================
 
-/**
- * Fetch all MCP keys (without workspace filter for now).
- * In future: can add workspace filtering when workspace context is available.
- */
 async function fetchMcpKeys(): Promise<McpKeyInfo[]> {
   const res = await fetch(`/api/mcp-keys`);
   if (!res.ok) return [];
@@ -68,15 +64,7 @@ async function deleteMcpKey(keyHash: string): Promise<DeleteKeyResponse> {
 // Components
 // ============================================================================
 
-/**
- * McpKeyItem — simple key card (no copy/delete buttons).
- * Clicking navigates to key detail view.
- */
-function McpKeyItem({
-  keyInfo,
-}: {
-  keyInfo: McpKeyInfo;
-}) {
+function McpKeyItem({ keyInfo }: { keyInfo: McpKeyInfo }) {
   const formatDate = (dateStr: string) => {
     try {
       return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -89,7 +77,6 @@ function McpKeyItem({
     }
   };
 
-  // Check if key is expired
   const isExpired = new Date(keyInfo.expires_at) < new Date();
   const expiryColor = isExpired ? '#EF4444' : 'var(--color-text-secondary)';
 
@@ -113,10 +100,7 @@ function McpKeyItem({
         >
           {keyInfo.name || `Ключ ${keyInfo.prefix}`}
         </span>
-        <span
-          className="text-xs font-medium leading-3"
-          style={{ color: expiryColor }}
-        >
+        <span className="text-xs font-medium leading-3" style={{ color: expiryColor }}>
           {keyInfo.workspace_name} · {formatDate(keyInfo.expires_at)}
         </span>
       </div>
@@ -124,9 +108,6 @@ function McpKeyItem({
   );
 }
 
-/**
- * CopyButton — secondary button with copy icon for "Шаблон подключения".
- */
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -176,9 +157,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-/**
- * AddKeyButton — primary button to create a new key. Always visible.
- */
 function AddKeyButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
   return (
     <button
@@ -202,9 +180,6 @@ function AddKeyButton({ onClick, loading }: { onClick: () => void; loading: bool
   );
 }
 
-/**
- * ConnectionTemplate — shows the connection template example.
- */
 function ConnectionTemplate() {
   const template = `curl -X POST https://your-workspace.vercel.app/api/mcp/create_task \\
   -H "Authorization: Bearer sk_YOUR_API_KEY" \\
@@ -257,17 +232,12 @@ export default function McpSettingsPage() {
   const [freshKey, setFreshKey] = useState<{ key: string; prefix: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load keys on mount (no workspace dependency)
   useEffect(() => {
     let cancelled = false;
     fetchMcpKeys().then((data) => {
       if (!cancelled) setKeys(data);
     });
     return () => { cancelled = true; };
-  }, []);
-
-  const handleAddKeyClick = useCallback(() => {
-    performCreateKey();
   }, []);
 
   const performCreateKey = useCallback(async () => {
@@ -277,7 +247,6 @@ export default function McpSettingsPage() {
       const result = await createMcpKey(`Ключ ${new Date().toLocaleTimeString('ru-RU')}`);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
-        // Refresh keys list
         const updated = await fetchMcpKeys();
         setKeys(updated);
       } else {
@@ -436,19 +405,15 @@ export default function McpSettingsPage() {
               </span>
             </div>
           ) : (
-            <>
-              <div className="flex flex-col gap-2 w-full">
-                {keys.map((keyInfo) => (
-                  <McpKeyItem
-                    key={keyInfo.keyHash}
-                    keyInfo={keyInfo}
-                  />
-                ))}
-              </div>
-
-              <AddKeyButton onClick={handleAddKeyClick} loading={loading} />
-            </>
+            <div className="flex flex-col gap-2 w-full">
+              {keys.map((keyInfo) => (
+                <McpKeyItem key={keyInfo.keyHash} keyInfo={keyInfo} />
+              ))}
+            </div>
           )}
+
+          {/* AddKeyButton — всегда видна, независимо от наличия ключей */}
+          <AddKeyButton onClick={performCreateKey} loading={loading} />
         </div>
 
         {/* Connection template */}
