@@ -133,14 +133,19 @@ export async function POST(request: NextRequest) {
       data_sharing_level: settings?.data_sharing_level ?? 'standard',
     }, workers ?? []);
 
-    // 5. Call Neural Deep Hub (gpt-oss-120b) with JSON mode
+    // 5. Call Neural Deep Hub (qwen3.6-35b-a3b-noreason) with JSON mode
     const raw = await chatCompletion({ prompt });
 
-    // 6. Validate with Zod
+    // 5a. Log raw response for debugging parse failures
+    console.log('[F-04] Raw NDH response:', raw?.slice(0, 500));
+
+    // 6. Validate with Zod — log full error on failure
     let parsed: ParseResponseV2;
     try {
       parsed = validateParseResponse(JSON.parse(raw));
-    } catch {
+    } catch (err) {
+      console.error('[F-04] Parse response validation failed:', err);
+      console.error('[F-04] Raw response snippet:', raw?.slice(0, 200));
       parsed = validateParseResponse(null);
     }
 

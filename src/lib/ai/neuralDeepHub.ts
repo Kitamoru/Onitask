@@ -1,7 +1,7 @@
 /**
  * Neural Deep Hub (NDH) client — F-04 chat completion for task parsing.
  *
- * Model: gpt-oss-120b
+ * Model: qwen3.6-35b-a3b-noreason
  * Endpoint: https://api.neuraldeep.ru/v1/chat/completions
  * Auth: NEURALDEEP_KEY env variable
  *
@@ -33,8 +33,11 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-oss-120b',
-        messages: [{ role: 'user', content: options.prompt }],
+        model: 'qwen3.6-35b-a3b-noreason',
+        messages: [
+          { role: 'system', content: 'Respond ONLY with valid JSON. No markdown, no explanations, no code fences.' },
+          { role: 'user', content: options.prompt },
+        ],
         response_format: { type: 'json_object' }, // mandatory (LLM-1, security §1.1)
         temperature: options.temperature ?? 0.1,
         max_tokens: options.max_tokens ?? 800,
@@ -50,7 +53,7 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
 
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content ?? '';
-    console.log('[ndh] Response length:', content.length);
+    console.log('[ndh] Raw response length:', content.length);
     return content;
   } catch (err) {
     console.error('[ndh] chatCompletion failed:', err);
