@@ -87,7 +87,8 @@ export function TaskCreatorSheet({
   // Audio analyser for real waveform
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
+  // FIX: use explicit ArrayBuffer type for Uint8Array
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   // Auto-sizing textarea ref — MUST be called unconditionally at top level (Rules of Hooks)
@@ -164,6 +165,7 @@ export function TaskCreatorSheet({
           analyser.fftSize = 256;
           analyserRef.current = analyser;
           const bufferLength = analyser.frequencyBinCount;
+          // dataArrayRef now has correct type
           dataArrayRef.current = new Uint8Array(bufferLength);
 
           const source = audioContext.createMediaStreamSource(stream);
@@ -186,8 +188,8 @@ export function TaskCreatorSheet({
       const updateWaveform = () => {
         if (isCancelled || recState !== 'recording') return;
         if (analyserRef.current && dataArrayRef.current) {
-          // FIX: cast to Uint8Array to satisfy TypeScript
-          analyserRef.current.getByteFrequencyData(dataArrayRef.current as Uint8Array);
+          // Now type matches exactly
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
           // Map frequency data to bar heights (3–28 px)
           const data = dataArrayRef.current;
           const step = Math.floor(data.length / BAR_COUNT);
