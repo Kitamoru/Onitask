@@ -415,7 +415,7 @@ export function TaskCreatorSheet({
                   transition: 'opacity 0.15s ease',
                   pointerEvents: recState === 'recording' ? 'none' : 'auto',
                 }}
-                placeholder="Опишите задачу или запишите голосом…"
+                placeholder="Опишите задачу…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
