@@ -31,6 +31,13 @@ export function SingleDateSheet({
     setDraft(stripTime(day));
   };
 
+  const handleConfirm = () => {
+    if (draft) {
+      onConfirm(draft);
+      onClose();
+    }
+  };
+
   const canConfirm = !!draft;
 
   return (
@@ -87,15 +94,13 @@ export function SingleDateSheet({
             </Button>
           </div>
           <div className="flex-1">
-            <Button
-              variant="solid"
-              disabled={!canConfirm}
-              onClick={() => {
-                if (draft) onConfirm(draft);
-              }}
-            >
-              Готово
-            </Button>
+             <Button
+               variant="solid"
+               disabled={!canConfirm}
+               onClick={handleConfirm}
+             >
+               Готово
+             </Button>
           </div>
         </div>
       </div>

@@ -568,6 +568,7 @@ export function TaskCreatorSheet({
         open={previewOpen}
         taskId={previewTaskId ?? ''}
         parse={previewParse}
+        initData={initData}
         onConfirm={handlePreviewConfirm}
         onCancel={() => {
           setPreviewOpen(false);
@@ -585,11 +586,12 @@ interface TaskPreviewSheetProps {
   open: boolean;
   taskId: string;
   parse: ParseResponseV2 | null;
+  initData: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPreviewSheetProps) {
+function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel }: TaskPreviewSheetProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -629,6 +631,7 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          init_data: initData,
           title: trimmedTitle,
           description: draft.rewritten_description,
           priority: draft.priority,
