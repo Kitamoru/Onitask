@@ -87,7 +87,6 @@ export function TaskCreatorSheet({
   // Audio analyser for real waveform
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  // FIX: use explicit ArrayBuffer type for Uint8Array
   const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
@@ -165,7 +164,6 @@ export function TaskCreatorSheet({
           analyser.fftSize = 256;
           analyserRef.current = analyser;
           const bufferLength = analyser.frequencyBinCount;
-          // dataArrayRef now has correct type
           dataArrayRef.current = new Uint8Array(bufferLength);
 
           const source = audioContext.createMediaStreamSource(stream);
@@ -188,9 +186,7 @@ export function TaskCreatorSheet({
       const updateWaveform = () => {
         if (isCancelled || recState !== 'recording') return;
         if (analyserRef.current && dataArrayRef.current) {
-          // Now type matches exactly
           analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-          // Map frequency data to bar heights (3–28 px)
           const data = dataArrayRef.current;
           const step = Math.floor(data.length / BAR_COUNT);
           const bars = new Array(BAR_COUNT).fill(0).map((_, i) => {
@@ -200,7 +196,6 @@ export function TaskCreatorSheet({
               if (idx < data.length) sum += data[idx];
             }
             const avg = sum / step;
-            // Normalize from 0–255 to 3–28
             return Math.max(3, Math.min(28, (avg / 255) * 25 + 3));
           });
           setWaveformBars(bars);
@@ -221,7 +216,6 @@ export function TaskCreatorSheet({
           clearInterval(timerIntervalRef.current);
           timerIntervalRef.current = null;
         }
-        // Clean up audio nodes when recording stops
         if (sourceRef.current) {
           try { sourceRef.current.disconnect(); } catch {}
           sourceRef.current = null;
@@ -234,7 +228,6 @@ export function TaskCreatorSheet({
         dataArrayRef.current = null;
       };
     } else {
-      // Not recording: stop animation and timer
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
@@ -243,7 +236,6 @@ export function TaskCreatorSheet({
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      // Reset bars to flat when not recording
       if (recState === 'idle' || recState === 'error') {
         setWaveformBars(new Array(BAR_COUNT).fill(3));
       }
@@ -299,7 +291,6 @@ export function TaskCreatorSheet({
   const hasContent = input.trim().length > 0;
   const isSendDisabled = loading || recState === 'recording' || !hasContent;
 
-  // Format timer
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
@@ -350,7 +341,12 @@ export function TaskCreatorSheet({
     <>
       {/* Main creation sheet */}
       <BottomSheet open={open} onClose={handleClose}>
-        <div className="px-4 pb-6 pt-2" style={{ paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px))' }}>
+        <div
+          className="px-4 pb-6 pt-2"
+          style={{
+            paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
+          }}
+        >
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -391,7 +387,7 @@ export function TaskCreatorSheet({
           </div>
 
           {/* Capture row — text input + mic + send */}
-          <div className="mb-4 flex items-start gap-2">
+          <div className="mb-4 flex items-end gap-2">
             {/* Input container — now adapts to textarea height */}
             <div
               className="relative flex flex-1 items-center overflow-hidden rounded-2xl border transition-colors"
@@ -406,7 +402,6 @@ export function TaskCreatorSheet({
                   : 'none',
               }}
             >
-              {/* Textarea — in flow, not absolute */}
               <textarea
                 ref={textareaRef}
                 className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
@@ -433,7 +428,7 @@ export function TaskCreatorSheet({
                 aria-label="Ввод задачи"
               />
 
-              {/* Waveform overlay — only visible during recording, positioned absolutely */}
+              {/* Waveform overlay */}
               {recState === 'recording' && (
                 <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
                   <div
@@ -466,7 +461,7 @@ export function TaskCreatorSheet({
             <button
               type="button"
               onClick={recState === 'recording' ? stopRec : startRec}
-              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95"
+              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
               style={{
                 width: '56px',
                 height: '56px',
@@ -490,7 +485,7 @@ export function TaskCreatorSheet({
               type="button"
               onClick={handleSendClick}
               disabled={isSendDisabled}
-              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95"
+              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
               style={{
                 width: '56px',
                 height: '56px',
@@ -518,7 +513,7 @@ export function TaskCreatorSheet({
             Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
           </p>
 
-          {/* Status messages — removed "processing" message */}
+          {/* Status messages */}
           {recState === 'error' && recError && (
             <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
               Ошибка распознавания: {recError}
@@ -565,7 +560,7 @@ export function TaskCreatorSheet({
         </div>
       </BottomSheet>
 
-      {/* Task Preview Sheet — shows parsed task after creation */}
+      {/* Task Preview Sheet */}
       <TaskPreviewSheet
         open={previewOpen}
         taskId={previewTaskId ?? ''}
@@ -673,185 +668,186 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
     <>
       <BottomSheet open={open} onClose={onCancel}>
         <div className="px-4 pb-6 pt-2">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div
-              className="h-5 w-1 rounded"
-              style={{ backgroundColor: 'var(--color-accent-amber)' }}
-            />
-            <h2
-              className="m-0"
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-lg)',
-                fontWeight: 'var(--font-weight-medium)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Задача создана
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={saving}
-            className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
-            style={{
-              backgroundColor: 'transparent',
-              color: 'var(--color-text-muted)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-            aria-label="Закрыть"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
-              <line x1="5" y1="5" x2="19" y2="19" />
-              <line x1="19" y1="5" x2="5" y2="19" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Title */}
-        <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-          Название
-        </label>
-        <input
-          className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
-          style={{
-            backgroundColor: 'var(--color-bg-surface)',
-            borderColor: 'var(--color-line)',
-            color: 'var(--color-text-primary)',
-          }}
-          value={draft.title}
-          onChange={(e) => setField('title', e.target.value)}
-          aria-label="Название задачи"
-        />
-
-        {/* Description */}
-        <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-          Описание
-        </label>
-        <textarea
-          className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
-          style={{
-            backgroundColor: 'var(--color-bg-surface)',
-            borderColor: 'var(--color-line)',
-            color: 'var(--color-text-primary)',
-            minHeight: '60px',
-            resize: 'vertical',
-          }}
-          value={draft.rewritten_description}
-          onChange={(e) => setField('rewritten_description', e.target.value)}
-          rows={3}
-          aria-label="Описание"
-        />
-
-        {/* Priority + Deadline row */}
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              Приоритет
-            </label>
-            <select
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
-              style={{
-                backgroundColor: 'var(--color-bg-surface)',
-                borderColor: 'var(--color-line)',
-                color: 'var(--color-text-primary)',
-              }}
-              value={draft.priority ?? ''}
-              onChange={(e) => setField('priority', (e.target.value || null) as ParseResponseV2['priority'])}
-              aria-label="Приоритет"
-            >
-              <option value="">Средний</option>
-              <option value="high">Высокий</option>
-              <option value="medium">Средний</option>
-              <option value="low">Низкий</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              Дедлайн
-            </label>
-            <SingleDateField
-              date={deadlineDate}
-              onOpen={() => setIsDateSheetOpen(true)}
-              placeholder="Дедлайн"
-            />
-          </div>
-        </div>
-
-        {/* Tags */}
-        {draft.tags.length > 0 && (
-          <div className="mb-4">
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              Теги
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {draft.tags.map((tag, i) => (
-                <span
-                  key={i}
-                  className="rounded-full px-2.5 py-1 text-xs font-medium"
-                  style={{
-                    backgroundColor: 'rgba(255, 159, 10, 0.15)',
-                    color: 'var(--color-accent-amber)',
-                  }}
-                >
-                  {tag}
-                </span>
-              ))}
+          {/* Header */}
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="h-5 w-1 rounded"
+                style={{ backgroundColor: 'var(--color-accent-amber)' }}
+              />
+              <h2
+                className="m-0"
+                style={{
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-body-lg)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                Задача создана
+              </h2>
             </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={saving}
+              className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
+              style={{
+                backgroundColor: 'transparent',
+                color: 'var(--color-text-muted)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              aria-label="Закрыть"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
+                <line x1="5" y1="5" x2="19" y2="19" />
+                <line x1="19" y1="5" x2="5" y2="19" />
+              </svg>
+            </button>
           </div>
-        )}
 
-        {/* Metadata */}
-        <div className="mb-6 flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-line)' }}>
-          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {priorityLabel(draft.priority)}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Дедлайн: {formatDate(draft.deadline)}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Ясность: {Math.round(draft.clarity_score * 100)}%
-          </span>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <p className="mb-3 text-xs" style={{ color: 'var(--color-error)' }}>{error}</p>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={saving}
-            className="flex-1 rounded-xl py-3 text-sm font-medium transition-all active:scale-[0.98]"
+          {/* Title */}
+          <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            Название
+          </label>
+          <input
+            className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
             style={{
               backgroundColor: 'var(--color-bg-surface)',
-              color: 'var(--color-text-muted)',
-              border: `1px solid var(--color-line)`,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.5 : 1,
+              borderColor: 'var(--color-line)',
+              color: 'var(--color-text-primary)',
             }}
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaveDisabled}
-            className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
+            value={draft.title}
+            onChange={(e) => setField('title', e.target.value)}
+            aria-label="Название задачи"
+          />
+
+          {/* Description */}
+          <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            Описание
+          </label>
+          <textarea
+            className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
             style={{
-              backgroundColor: isSaveDisabled ? 'var(--color-line)' : 'var(--color-accent-amber)',
-              cursor: isSaveDisabled ? 'not-allowed' : 'pointer',
+              backgroundColor: 'var(--color-bg-surface)',
+              borderColor: 'var(--color-line)',
+              color: 'var(--color-text-primary)',
+              minHeight: '60px',
+              resize: 'vertical',
             }}
-          >
-            {saving ? 'Сохранение…' : 'Готово'}
-          </button>
-        </div>
+            value={draft.rewritten_description}
+            onChange={(e) => setField('rewritten_description', e.target.value)}
+            rows={3}
+            aria-label="Описание"
+          />
+
+          {/* Priority + Deadline row */}
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                Приоритет
+              </label>
+              <select
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
+                style={{
+                  backgroundColor: 'var(--color-bg-surface)',
+                  borderColor: 'var(--color-line)',
+                  color: 'var(--color-text-primary)',
+                }}
+                value={draft.priority ?? ''}
+                onChange={(e) => setField('priority', (e.target.value || null) as ParseResponseV2['priority'])}
+                aria-label="Приоритет"
+              >
+                <option value="">Средний</option>
+                <option value="high">Высокий</option>
+                <option value="medium">Средний</option>
+                <option value="low">Низкий</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                Дедлайн
+              </label>
+              <SingleDateField
+                date={deadlineDate}
+                onOpen={() => setIsDateSheetOpen(true)}
+                placeholder="Дедлайн"
+              />
+            </div>
+          </div>
+
+          {/* Tags */}
+          {draft.tags.length > 0 && (
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                Теги
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {draft.tags.map((tag, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full px-2.5 py-1 text-xs font-medium"
+                    style={{
+                      backgroundColor: 'rgba(255, 159, 10, 0.15)',
+                      color: 'var(--color-accent-amber)',
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div className="mb-6 flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-line)' }}>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {priorityLabel(draft.priority)}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Дедлайн: {formatDate(draft.deadline)}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Ясность: {Math.round(draft.clarity_score * 100)}%
+            </span>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <p className="mb-3 text-xs" style={{ color: 'var(--color-error)' }}>{error}</p>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={saving}
+              className="flex-1 rounded-xl py-3 text-sm font-medium transition-all active:scale-[0.98]"
+              style={{
+                backgroundColor: 'var(--color-bg-surface)',
+                color: 'var(--color-text-muted)',
+                border: `1px solid var(--color-line)`,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.5 : 1,
+              }}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaveDisabled}
+              className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
+              style={{
+                backgroundColor: isSaveDisabled ? 'var(--color-line)' : 'var(--color-accent-amber)',
+                cursor: isSaveDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? 'Сохранение…' : 'Готово'}
+            </button>
+          </div>
         </div>
       </BottomSheet>
 
