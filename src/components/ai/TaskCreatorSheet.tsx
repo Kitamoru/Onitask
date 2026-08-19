@@ -18,6 +18,7 @@ import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
 import { SingleDateField } from '@/components/ui/SingleDateField';
+import { AutoResizeTextarea } from '@/components/ui/AutoResizeTextarea';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
@@ -676,7 +677,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
 
   return (
     <>
-      <BottomSheet open={open} onClose={onCancel}>
+      <BottomSheet open={open} onClose={onCancel} preventSwipe>
         <div className="px-4 pb-6 pt-2">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
@@ -737,19 +738,17 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
           <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
             Описание
           </label>
-          <textarea
+          <AutoResizeTextarea
             className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
             style={{
               backgroundColor: 'var(--color-bg-surface)',
               borderColor: 'var(--color-line)',
               color: 'var(--color-text-primary)',
-              minHeight: '60px',
-              resize: 'vertical',
             }}
             value={draft.rewritten_description}
-            onChange={(e) => setField('rewritten_description', e.target.value)}
-            rows={3}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField('rewritten_description', e.target.value)}
             aria-label="Описание"
+            placeholder="Описание"
           />
 
           {/* Priority + Deadline row */}

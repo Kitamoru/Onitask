@@ -35,11 +35,14 @@ export function BottomSheet({
   onClose,
   children,
   stacked = false,
+  preventSwipe = false,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   stacked?: boolean;
+  /** When true, disables swipe-to-close gesture */
+  preventSwipe?: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | null>(null);
@@ -74,6 +77,7 @@ export function BottomSheet({
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
+      if (preventSwipe) return;
       const startX = e.touches[0].clientX;
       const startY = e.touches[0].clientY;
       const inHandleZone = startY - el.getBoundingClientRect().top <= HANDLE_ZONE_HEIGHT;
@@ -86,6 +90,7 @@ export function BottomSheet({
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      if (preventSwipe) return;
       if (dragStartY.current === null || dragStartX.current === null) return;
       const x = e.touches[0].clientX;
       const y = e.touches[0].clientY;
@@ -127,6 +132,16 @@ export function BottomSheet({
     };
 
     const onTouchEnd = () => {
+      if (preventSwipe) {
+        dragStartX.current = null;
+        dragStartY.current = null;
+        draggingRef.current = false;
+        dragOffsetRef.current = 0;
+        velocityRef.current = 0;
+        setIsDragging(false);
+        applyDrag(0);
+        return;
+      }
       if (dragStartY.current === null) return;
       const offset = dragOffsetRef.current;
       const velocity = velocityRef.current;
@@ -147,6 +162,16 @@ export function BottomSheet({
     };
 
     const onTouchCancel = () => {
+      if (preventSwipe) {
+        dragStartX.current = null;
+        dragStartY.current = null;
+        draggingRef.current = false;
+        dragOffsetRef.current = 0;
+        velocityRef.current = 0;
+        setIsDragging(false);
+        applyDrag(0);
+        return;
+      }
       // System cancelled the gesture — just reset, do NOT close
       dragStartX.current = null;
       dragStartY.current = null;
