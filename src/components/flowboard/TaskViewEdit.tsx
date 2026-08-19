@@ -183,20 +183,6 @@ export function TaskViewEdit({
     }
   };
 
-  const handleCancel = () => {
-    if (task) {
-      setTitle(task.title ?? '');
-      setDescription(task.description ?? '');
-      setStoryPoints(task.story_points ?? 1);
-      setCognitiveWeight(task.cognitive_weight ?? 1);
-      setDeadline(task.deadline ? new Date(task.deadline) : null);
-      setAssignedTo(task.assigned_to ?? null);
-      setReviewerId(task.reviewer_id ?? null);
-    }
-    setInternalMode('view');
-    onClose();
-  };
-
   const handleDeleteTask = async () => {
     if (!task?.id) return;
     setDeleting(true);
@@ -457,9 +443,6 @@ export function TaskViewEdit({
               className="w-full"
             >
               {loading ? 'Сохранение...' : 'Сохранить'}
-            </Button>
-            <Button onClick={handleCancel} variant="outline" className="w-full">
-              Отмена
             </Button>
             {/* Delete button — only for existing tasks */}
             <Button
