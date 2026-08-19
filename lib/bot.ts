@@ -44,6 +44,21 @@ export function escapeHtml(str: string): string {
 }
 
 /**
+ * Build welcome message for onboarding.
+ */
+export function buildWelcomeHTML(workspaceSlug: string): string {
+  return `
+<b>👋 Добро пожаловать в рабочее пространство @${escapeHtml(workspaceSlug)}!</b>
+Ты добавлен как участник.
+
+📖 Команды:
+/task — создать задачу (текст или голос)
+/call TASK-123 — показать задачу
+/backlog — задачи без исполнителя
+/help — справка
+`.trim();
+}
+/**
  * Sanitize output for Telegram rich messages.
  * Whitelist: <b>, <i>, <u>, <s>, <code>, <pre>, <tg-thinking>, <details>, <summary>
  */
