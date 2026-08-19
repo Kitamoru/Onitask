@@ -1,4 +1,4 @@
-'use client';
+                                                                                                                                  'use client';
 
 /**
  * TaskCreatorSheet — F-04 task creation bottom sheet.
@@ -17,6 +17,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
+import { SingleDateField } from '@/components/ui/SingleDateField';
+import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
 interface TaskCreatorSheetProps {
@@ -509,6 +511,18 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
   // Local draft for editing fields
   const [draft, setDraft] = useState<ParseResponseV2 | null>(parse);
 
+  // Date picker state — uses Date objects internally, converts to ISO string for save
+  const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
+  const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
+  // Sync deadlineDate when draft.deadline changes
+  useEffect(() => {
+    if (draft?.deadline) {
+      setDeadlineDate(new Date(draft.deadline));
+    } else {
+      setDeadlineDate(null);
+    }
+  }, [draft?.deadline]);
+
   // Sync when parse arrives
   useEffect(() => {
     if (parse) setDraft(parse);
@@ -566,8 +580,9 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
   };
 
   return (
-    <BottomSheet open={open} onClose={onCancel}>
-      <div className="px-4 pb-6 pt-2">
+    <>
+      <BottomSheet open={open} onClose={onCancel}>
+        <div className="px-4 pb-6 pt-2">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -669,17 +684,10 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
             <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
               Дедлайн
             </label>
-            <input
-              type="date"
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
-              style={{
-                backgroundColor: 'var(--color-bg-surface)',
-                borderColor: 'var(--color-line)',
-                color: 'var(--color-text-primary)',
-              }}
-              value={draft.deadline ?? ''}
-              onChange={(e) => setField('deadline', e.target.value || null)}
-              aria-label="Дедлайн"
+            <SingleDateField
+              date={deadlineDate}
+              onOpen={() => setIsDateSheetOpen(true)}
+              placeholder="Дедлайн"
             />
           </div>
         </div>
@@ -755,7 +763,19 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
             {saving ? 'Сохранение…' : 'Готово'}
           </button>
         </div>
-      </div>
-    </BottomSheet>
+        </div>
+      </BottomSheet>
+
+      {/* Date picker — rendered alongside BottomSheet (both use createPortal) */}
+      <SingleDateSheet
+        open={isDateSheetOpen}
+        onClose={() => setIsDateSheetOpen(false)}
+        date={deadlineDate}
+        onConfirm={(d: Date) => {
+          setDeadlineDate(d);
+          setField('deadline', d.toISOString());
+        }}
+      />
+    </>
   );
 }
