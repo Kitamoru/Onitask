@@ -13,8 +13,6 @@
  * Based on: onitask_ai_.md §3.1–§3.7, TASKS.md Stage 5 F-04
  */
 
-'use client';
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
@@ -81,6 +79,9 @@ export function TaskCreatorSheet({
   const animFrameRef = useRef<number | null>(null);
   /** Smoothed waveform levels — prevents jitter by interpolating between frames */
   const smoothedLevelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(3));
+
+  // Auto-sizing textarea ref — MUST be called unconditionally at top level (Rules of Hooks)
+  const textareaRef = useAutosizeTextarea(input);
 
   // Voice recorder — transcribed text appends to input
   const {
@@ -335,7 +336,7 @@ export function TaskCreatorSheet({
               ) : (
                 /* Idle state — auto-sizing textarea */
                 <textarea
-                  ref={useAutosizeTextarea(input)}
+                  ref={textareaRef}
                   className="flex-1 resize-none bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
                   style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-base)' }}
                   placeholder="Опишите задачу или запишите голосом…"
