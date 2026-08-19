@@ -79,8 +79,16 @@ export function TaskCreatorSheet({
     new Array(BAR_COUNT).fill(3)
   );
   const animFrameRef = useRef<number | null>(null);
-  /** Smoothed waveform levels — prevents jitter by interpolating between frames */
-  const smoothedLevelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(3));
+
+  // Timer state (seconds)
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Audio analyser for real waveform
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   // Auto-sizing textarea ref — MUST be called unconditionally at top level (Rules of Hooks)
   const textareaRef = useAutosizeTextarea(input);
@@ -113,54 +121,134 @@ export function TaskCreatorSheet({
       setPreviewParse(null);
       setPreviewOpen(false);
       setWaveformBars(new Array(BAR_COUNT).fill(3));
+      setRecordingSeconds(0);
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
       }
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      // Clean up audio nodes
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect(); } catch {}
+        sourceRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+      analyserRef.current = null;
+      dataArrayRef.current = null;
     }
   }, [open]);
 
-  // Animate waveform bars during recording — smooth interpolation
+  // Set up audio analyser when recording starts
   useEffect(() => {
-    if (recState !== 'recording') {
+    if (recState === 'recording') {
+      // Start timer
+      setRecordingSeconds(0);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
+
+      // Get cached stream from useVoiceRecorder (via module-level cache)
+      // We need to re-request the stream; but we can import the same cached stream.
+      // Since we don't have direct access, we'll get it via getUserMedia again but it will reuse the cached one.
+      // To avoid duplicate, we can access the module-level variable, but it's not exported.
+      // Simpler: we create a new analyser from the same stream by calling getUserMedia again – it will return the cached stream.
+      const setupAnalyser = async () => {
+        try {
+          // This will reuse the cached stream (due to module-level caching in useVoiceRecorder)
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          audioContextRef.current = audioContext;
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyserRef.current = analyser;
+          const bufferLength = analyser.frequencyBinCount;
+          dataArrayRef.current = new Uint8Array(bufferLength);
+
+          const source = audioContext.createMediaStreamSource(stream);
+          sourceRef.current = source;
+          source.connect(analyser);
+          // Start the audio context if suspended
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        } catch (err) {
+          console.error('Failed to setup audio analyser:', err);
+        }
+      };
+      setupAnalyser();
+
+      // Start animation loop for waveform
+      let frameId: number | null = null;
+      let isCancelled = false;
+
+      const updateWaveform = () => {
+        if (isCancelled || recState !== 'recording') return;
+        if (analyserRef.current && dataArrayRef.current) {
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+          // Map frequency data to bar heights (3–28 px)
+          const data = dataArrayRef.current;
+          const step = Math.floor(data.length / BAR_COUNT);
+          const bars = new Array(BAR_COUNT).fill(0).map((_, i) => {
+            let sum = 0;
+            for (let j = 0; j < step; j++) {
+              const idx = i * step + j;
+              if (idx < data.length) sum += data[idx];
+            }
+            const avg = sum / step;
+            // Normalize from 0–255 to 3–28
+            return Math.max(3, Math.min(28, (avg / 255) * 25 + 3));
+          });
+          setWaveformBars(bars);
+        }
+        frameId = requestAnimationFrame(updateWaveform);
+      };
+
+      frameId = requestAnimationFrame(updateWaveform);
+      animFrameRef.current = frameId;
+
+      return () => {
+        isCancelled = true;
+        if (frameId !== null) {
+          cancelAnimationFrame(frameId);
+          animFrameRef.current = null;
+        }
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
+        // Clean up audio nodes when recording stops
+        if (sourceRef.current) {
+          try { sourceRef.current.disconnect(); } catch {}
+          sourceRef.current = null;
+        }
+        if (audioContextRef.current) {
+          try { audioContextRef.current.close(); } catch {}
+          audioContextRef.current = null;
+        }
+        analyserRef.current = null;
+        dataArrayRef.current = null;
+      };
+    } else {
+      // Not recording: stop animation and timer
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
       }
-      return;
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      // Reset bars to flat when not recording
+      if (recState === 'idle' || recState === 'error') {
+        setWaveformBars(new Array(BAR_COUNT).fill(3));
+      }
     }
-
-    let frameId: number | null = null;
-    let isCancelled = false;
-
-    const updateWaveform = () => {
-      const now = performance.now() / 1000;
-      const target = new Array(BAR_COUNT).fill(0).map((_, i) => {
-        const wave1 = Math.sin(now * 2 + i * 0.3) * 8;
-        const wave2 = Math.sin(now * 3.7 + i * 0.5) * 4;
-        const noise = (Math.random() - 0.5) * 3;
-        return Math.max(3, Math.min(28, 10 + wave1 + wave2 + noise));
-      });
-
-      const prev = smoothedLevelsRef.current;
-      const smoothed = target.map((t, i) => prev[i] + (t - prev[i]) * 0.35);
-      smoothedLevelsRef.current = smoothed;
-      setWaveformBars(smoothed);
-
-      if (!isCancelled && recState === 'recording') {
-        frameId = requestAnimationFrame(updateWaveform);
-      }
-    };
-
-    frameId = requestAnimationFrame(updateWaveform);
-
-    return () => {
-      isCancelled = true;
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
-      }
-    };
   }, [recState]);
 
   const handleClose = useCallback(() => {
@@ -181,14 +269,13 @@ export function TaskCreatorSheet({
         body: JSON.stringify({
           init_data: initData,
           input: text.trim(),
-          workspace_id: workspaceId, // pass active workspace
+          workspace_id: workspaceId,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
 
       const result = json as CreateTaskResponse;
-      // Show preview sheet with parsed task
       setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
@@ -212,6 +299,13 @@ export function TaskCreatorSheet({
 
   const hasContent = input.trim().length > 0;
   const isSendDisabled = loading || recState === 'recording' || !hasContent;
+
+  // Format timer
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // ─── Icons ───────────────────────────────────────────────────────────────
 
@@ -298,12 +392,12 @@ export function TaskCreatorSheet({
           </div>
 
           {/* Capture row — text input + mic + send */}
-          <div className="mb-4 flex items-center gap-2">
-            {/* Input pill */}
+          <div className="mb-4 flex items-start gap-2">
+            {/* Input container — now adapts to textarea height */}
             <div
               className="relative flex flex-1 items-center overflow-hidden rounded-2xl border transition-colors"
               style={{
-                height: '56px',
+                minHeight: '56px',
                 borderColor: recState === 'recording'
                   ? 'rgba(255, 153, 0, 0.35)'
                   : 'var(--color-line)',
@@ -313,23 +407,19 @@ export function TaskCreatorSheet({
                   : 'none',
               }}
             >
-              {/* 
-                Textarea is ALWAYS in the DOM so that useAutosizeTextarea works correctly.
-                During recording it's visually hidden (pointer-events: none, opacity: 0)
-                and waveform overlays on top.
-              */}
+              {/* Textarea — in flow, not absolute */}
               <textarea
                 ref={textareaRef}
-                className="absolute inset-0 flex-1 resize-none bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
                 style={{
                   color: 'var(--color-text-primary)',
                   fontFamily: 'var(--font-family-base)',
-                  pointerEvents: recState === 'recording' ? 'none' : 'auto',
-                  opacity: recState === 'recording' ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
-                  // Max ~2000 chars ≈ ~8 lines at typical font size
+                  minHeight: '56px',
                   maxHeight: '240px',
                   overflowY: 'auto',
+                  opacity: recState === 'recording' ? 0 : 1,
+                  transition: 'opacity 0.15s ease',
+                  pointerEvents: recState === 'recording' ? 'none' : 'auto',
                 }}
                 placeholder="Опишите задачу или запишите голосом…"
                 value={input}
@@ -344,7 +434,7 @@ export function TaskCreatorSheet({
                 aria-label="Ввод задачи"
               />
 
-              {/* Waveform overlay — only visible during recording */}
+              {/* Waveform overlay — only visible during recording, positioned absolutely */}
               {recState === 'recording' && (
                 <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
                   <div
@@ -358,7 +448,7 @@ export function TaskCreatorSheet({
                     className="shrink-0 tabular-nums text-sm"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    0:00
+                    {formatTime(recordingSeconds)}
                   </span>
                   <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
                     {waveformBars.map((height, i) => (
@@ -421,7 +511,7 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* Description hint — always visible */}
+          {/* Description hint */}
           <p
             className="mb-6 text-sm leading-relaxed"
             style={{ color: 'var(--color-text-muted)' }}
@@ -506,13 +596,10 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Local draft for editing fields
   const [draft, setDraft] = useState<ParseResponseV2 | null>(parse);
 
-  // Date picker state — uses Date objects internally, converts to ISO string for save
   const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
   const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
-  // Sync deadlineDate when draft.deadline changes
   useEffect(() => {
     if (draft?.deadline) {
       setDeadlineDate(new Date(draft.deadline));
@@ -521,7 +608,6 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
     }
   }, [draft?.deadline]);
 
-  // Sync when parse arrives
   useEffect(() => {
     if (parse) setDraft(parse);
   }, [parse]);
@@ -534,7 +620,6 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
 
   const handleSave = async () => {
     if (!draft) return;
-    // Validate title
     const trimmedTitle = draft.title.trim();
     if (!trimmedTitle) {
       setError('Название задачи не может быть пустым');
@@ -543,7 +628,6 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
     setSaving(true);
     setError(null);
     try {
-      // PATCH the task with edited fields — always use user-edited title
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -590,7 +674,6 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
     <>
       <BottomSheet open={open} onClose={onCancel}>
         <div className="px-4 pb-6 pt-2">
-        {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div
@@ -773,7 +856,6 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
         </div>
       </BottomSheet>
 
-      {/* Date picker — rendered alongside BottomSheet (both use createPortal) */}
       <SingleDateSheet
         open={isDateSheetOpen}
         onClose={() => setIsDateSheetOpen(false)}
