@@ -28,11 +28,11 @@
   width: var(--loader-size);
   aspect-ratio: 1 / 1;
   border-radius: 4px;
+  /* TL + BR chamfer only — TR + BL are handled by border-radius */
   clip-path: polygon(
     16px 0,
     100% 0,
-    100% calc(100% - 16px),
-    calc(100% - 16px) 100%,
+    100% 100%,
     0 100%,
     0 16px
   );
@@ -49,11 +49,11 @@
   align-items: center;
   justify-content: center;
   border-radius: 3px;
+  /* TL + BR chamfer only — TR + BL are handled by border-radius */
   clip-path: polygon(
     15px 0,
     100% 0,
-    100% calc(100% - 15px),
-    calc(100% - 15px) 100%,
+    100% 100%,
     0 100%,
     0 15px
   );
