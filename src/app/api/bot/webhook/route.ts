@@ -48,7 +48,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
 
 /** Единый текст справки — /help, /start, fallback */
-export const HELP_TEXT =
+const HELP_TEXT =
   '📖 Команды:\n' +
   '/task — создать задачу (текст или голос)\n' +
   '/call TASK-123 — показать задачу\n' +
