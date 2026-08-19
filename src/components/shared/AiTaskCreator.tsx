@@ -8,12 +8,14 @@
  *
  * Flow:
  *   Center button → TaskCreatorSheet (text/voice input + waveform) →
- *   /api/ai/create-task (полный Route Handler §3.6: parse + INSERT tasks +
- *   enrichment_queue/task_enrichments + task_events) → условный CorrectionSheet (§3.7)
- *   → refresh FlowBoard data.
+ *   /api/ai/create-task (parse + INSERT tasks + enrichment_queue/task_enrichments
+ *   + task_events) → TaskPreviewSheet (show parsed result for review) →
+ *   PATCH edited fields → refresh FlowBoard data.
+ *
+ * Active workspace is passed from DataContext as default workspace_id.
  *
  * Based on: onitask_ai_.md §3.1–§3.7, TASKS.md Stage 5 F-04
- * INV-05: workspace_id is resolved server-side (workers.source_id = profileId)
+ * INV-05: All AI-outputs contain workspace_id
  */
 
 import React, { useState, useCallback } from 'react';
@@ -36,10 +38,7 @@ export function AiTaskCreator() {
   }, []);
 
   const handleTaskCreated = useCallback(
-    async (_taskId: string) => {
-      // Задача уже создана на сервере (/api/ai/create-task) со всеми полями.
-      // Здесь только закрываем оверлей и обновляем данные.
-      setOpen(false);
+    async () => {
       try {
         await loadBoardsData(state.activeWorkspaceId ?? undefined, { partial: true });
       } catch (err) {
@@ -59,6 +58,7 @@ export function AiTaskCreator() {
         open={open}
         onClose={handleClose}
         onTaskCreated={handleTaskCreated}
+        workspaceId={state.activeWorkspaceId}
       />
     </>
   );

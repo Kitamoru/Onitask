@@ -1,12 +1,14 @@
+'use client';
+
 /**
  * TaskCreatorSheet — F-04 task creation bottom sheet.
  *
- * Replaces the old AiInput overlay with a polished bottom sheet matching
- * the design prototype: dark theme, capture row (text input + mic + send),
- * waveform visualization during recording, CTA "Создать задачу", and
- * conditional CorrectionSheet for low-clarity tasks.
+ * Flow:
+ *   Text input → /api/ai/create-task → TaskPreviewSheet (show parsed result)
+ *   Voice recording → transcribe → /api/ai/create-task → TaskPreviewSheet
  *
- * Uses only existing design tokens from src/styles/tokens.css and globals.css.
+ * No CorrectionSheet — user sees the AI-parsed task in a preview sheet
+ * and confirms it directly. Active workspace is passed from DataContext.
  *
  * Based on: onitask_ai_.md §3.1–§3.7, TASKS.md Stage 5 F-04
  */
@@ -16,39 +18,60 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-import { CorrectionSheet } from './CorrectionSheet';
-import type { ParseResponseV2, EnrichmentStrategy } from '@/lib/ai/types';
+import type { ParseResponseV2 } from '@/lib/ai/types';
 
 interface TaskCreatorSheetProps {
   initData: string;
   open: boolean;
   onClose: () => void;
   onTaskCreated: (taskId: string) => void;
+  /** Optional explicit workspace_id — overrides auto-resolution */
+  workspaceId?: string | null;
 }
 
 interface CreateTaskResponse {
   task: { id: string };
   parse: ParseResponseV2;
-  strategy: EnrichmentStrategy;
-  showCorrectionSheet: boolean;
+}
+
+interface CreateTaskError {
+  error: string;
 }
 
 /** Number of bars in the waveform visualization */
 const BAR_COUNT = 44;
+
+/** Waveform bar component — static height */
+function Bar({ height, opacity }: { height: number; opacity: number }) {
+  return (
+    <div
+      className="shrink-0 rounded-sm"
+      style={{
+        width: '3px',
+        height: `${height}px`,
+        backgroundColor: 'var(--color-accent-amber)',
+        opacity,
+      }}
+    />
+  );
+}
 
 export function TaskCreatorSheet({
   initData,
   open,
   onClose,
   onTaskCreated,
+  workspaceId,
 }: TaskCreatorSheetProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [parse, setParse] = useState<ParseResponseV2 | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Preview state — shown after task is created
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
+  const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Waveform state
   const [waveformBars, setWaveformBars] = useState<number[]>(() =>
@@ -56,7 +79,7 @@ export function TaskCreatorSheet({
   );
   const animFrameRef = useRef<number | null>(null);
 
-  // Voice recorder
+  // Voice recorder — transcribed text appends to input
   const {
     state: recState,
     error: recError,
@@ -64,17 +87,18 @@ export function TaskCreatorSheet({
     stop: stopRec,
   } = useVoiceRecorder({
     initData,
-    onTranscribed: (text) => setInput((prev) => (prev ? prev + ' ' : '') + text),
+    onTranscribed: (text) =>
+      setInput((prev) => (prev ? prev + ' ' : '') + text.trim()),
   });
 
-  // Reset input when sheet closes
+  // Reset everything when sheet opens/closes
   useEffect(() => {
     if (!open) {
       setInput('');
       setError(null);
-      setTaskId(null);
-      setParse(null);
-      setSheetOpen(false);
+      setPreviewTaskId(null);
+      setPreviewParse(null);
+      setPreviewOpen(false);
       setWaveformBars(new Array(BAR_COUNT).fill(3));
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
@@ -94,18 +118,13 @@ export function TaskCreatorSheet({
     }
 
     const animate = () => {
-      setWaveformBars((prev) =>
-        prev.map(() => 3 + Math.random() * 25)
-      );
+      setWaveformBars((prev) => prev.map(() => 3 + Math.random() * 25));
       animFrameRef.current = requestAnimationFrame(animate);
     };
 
     animFrameRef.current = requestAnimationFrame(animate);
-
     return () => {
-      if (animFrameRef.current !== null) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
+      if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
     };
   }, [recState === 'recording']);
 
@@ -114,8 +133,9 @@ export function TaskCreatorSheet({
     onClose();
   }, [onClose, loading, recState]);
 
-  const handleSubmit = async () => {
-    if (!input.trim() || submittingRef.current) return;
+  /** Submit text or transcribed voice to /api/ai/create-task */
+  const handleSubmit = async (text: string) => {
+    if (!text.trim() || submittingRef.current) return;
     submittingRef.current = true;
     setLoading(true);
     setError(null);
@@ -123,20 +143,20 @@ export function TaskCreatorSheet({
       const res = await fetch('/api/ai/create-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: initData, input }),
+        body: JSON.stringify({
+          init_data: initData,
+          input: text.trim(),
+          workspace_id: workspaceId, // pass active workspace
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка AI-создания задачи');
+      const json = await res.json();
+      if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
 
-      const result = data as CreateTaskResponse;
-      if (result.showCorrectionSheet) {
-        setTaskId(result.task.id);
-        setParse(result.parse);
-        setSheetOpen(true);
-      } else {
-        setInput('');
-        onTaskCreated(result.task.id);
-      }
+      const result = json as CreateTaskResponse;
+      // Show preview sheet with parsed task
+      setPreviewTaskId(result.task.id);
+      setPreviewParse(result.parse);
+      setPreviewOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
@@ -145,23 +165,26 @@ export function TaskCreatorSheet({
     }
   };
 
-  const handleConfirm = (edited: ParseResponseV2) => {
-    setSheetOpen(false);
-    setInput('');
-    onTaskCreated(taskId ?? '');
+  const handleSendClick = () => {
+    handleSubmit(input);
   };
 
-  const hasContent = input.trim().length > 0 || recState === 'idle';
-  const isSendDisabled = loading || recState === 'recording' || !input.trim();
+  const handlePreviewConfirm = () => {
+    setPreviewOpen(false);
+    setInput('');
+    if (previewTaskId) onTaskCreated(previewTaskId);
+  };
 
-  // Mic icon SVG — changes based on recording state
+  const hasContent = input.trim().length > 0;
+  const isSendDisabled = loading || recState === 'recording' || !hasContent;
+
+  // ─── Icons ───────────────────────────────────────────────────────────────
+
   const micIcon = recState === 'recording' ? (
-    // Stop icon
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
       <rect x="7" y="7" width="10" height="10" rx="2" />
     </svg>
   ) : (
-    // Mic icon
     <svg
       viewBox="0 0 24 24"
       fill="none"
@@ -178,7 +201,6 @@ export function TaskCreatorSheet({
     </svg>
   );
 
-  // Send icon SVG
   const sendIcon = (
     <svg
       viewBox="0 0 24 24"
@@ -194,10 +216,12 @@ export function TaskCreatorSheet({
     </svg>
   );
 
+  // ─── Render ──────────────────────────────────────────────────────────────
+
   return (
     <>
+      {/* Main creation sheet */}
       <BottomSheet open={open} onClose={handleClose}>
-        {/* Sheet content */}
         <div className="px-4 pb-6 pt-2" style={{ paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px))' }}>
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
@@ -255,31 +279,27 @@ export function TaskCreatorSheet({
               }}
             >
               {recState === 'recording' ? (
-                /* Recording state — waveform visualization */
+                /* Recording state — live waveform */
                 <div className="flex h-full w-full items-center px-4 gap-2.5">
-                  {/* Red recording dot */}
                   <div
-                    className="shrink-0 h-2 w-2 rounded-full animate-pulse"
-                    style={{ backgroundColor: 'var(--color-error)' }}
+                    className="shrink-0 h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor: 'var(--color-error)',
+                      animation: 'pulse 1s step-start infinite',
+                    }}
                   />
-                  {/* Timer placeholder — actual timer can be added later */}
                   <span
                     className="shrink-0 tabular-nums text-sm"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
                     0:00
                   </span>
-                  {/* Waveform bars */}
                   <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
                     {waveformBars.map((height, i) => (
-                      <div
+                      <Bar
                         key={i}
-                        className="w-[3px] rounded-sm transition-none"
-                        style={{
-                          height: `${height}px`,
-                          backgroundColor: 'var(--color-accent-amber)',
-                          opacity: height <= 3 ? 0.3 : 0.9,
-                        }}
+                        height={height}
+                        opacity={height <= 3 ? 0.3 : 0.9}
                       />
                     ))}
                   </div>
@@ -292,7 +312,7 @@ export function TaskCreatorSheet({
                   placeholder="Опишите задачу или запишите голосом…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendClick()}
                   autoComplete="off"
                   aria-label="Ввод задачи"
                 />
@@ -325,7 +345,7 @@ export function TaskCreatorSheet({
             {/* Send button */}
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={handleSendClick}
               disabled={isSendDisabled}
               className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95"
               style={{
@@ -352,10 +372,10 @@ export function TaskCreatorSheet({
             className="mb-6 text-sm leading-relaxed"
             style={{ color: 'var(--color-text-muted)' }}
           >
-            Текст или голос превратятся в задачу автоматически — заголовок, теги и срок будут распознаны из того, что вы скажете или напишете.
+            Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
           </p>
 
-          {/* Error message */}
+          {/* Status messages */}
           {recState === 'processing' && (
             <p className="mb-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
               Распознавание речи…
@@ -375,7 +395,7 @@ export function TaskCreatorSheet({
           {/* CTA — Создать задачу */}
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={handleSendClick}
             disabled={!hasContent || loading || recState === 'recording'}
             className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
             style={{
@@ -407,18 +427,286 @@ export function TaskCreatorSheet({
         </div>
       </BottomSheet>
 
-      {/* Correction Sheet — shown conditionally for low-clarity tasks */}
-      <CorrectionSheet
-        open={sheetOpen}
-        taskId={taskId}
-        parse={parse}
-        initData={initData}
-        onConfirm={handleConfirm}
-        onCancel={() => setSheetOpen(false)}
+      {/* Task Preview Sheet — shows parsed task after creation */}
+      <TaskPreviewSheet
+        open={previewOpen}
+        taskId={previewTaskId ?? ''}
+        parse={previewParse}
+        onConfirm={handlePreviewConfirm}
+        onCancel={() => {
+          setPreviewOpen(false);
+          setPreviewTaskId(null);
+          setPreviewParse(null);
+        }}
       />
     </>
   );
 }
 
-// Note: Recording timer placeholder — actual elapsed time tracking can be
-// added to useVoiceRecorder later if needed.
+// ─── TaskPreviewSheet — confirmation/preview of AI-parsed task ─────────────
+
+interface TaskPreviewSheetProps {
+  open: boolean;
+  taskId: string;
+  parse: ParseResponseV2 | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPreviewSheetProps) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Local draft for editing fields
+  const [draft, setDraft] = useState<ParseResponseV2 | null>(parse);
+
+  // Sync when parse arrives
+  useEffect(() => {
+    if (parse) setDraft(parse);
+  }, [parse]);
+
+  if (!open || !draft) return null;
+
+  const setField = <K extends keyof ParseResponseV2>(key: K, value: ParseResponseV2[K]) => {
+    setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const handleSave = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // PATCH the task with edited fields
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.rewritten_title?.trim() || draft.title,
+          description: draft.rewritten_description,
+          priority: draft.priority,
+          deadline: draft.deadline,
+          tags: draft.tags,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
+      onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const formatDate = (d: string | null) => {
+    if (!d) return 'Не указан';
+    try {
+      const date = new Date(d);
+      return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return d;
+    }
+  };
+
+  const priorityLabel = (p: string | null) => {
+    switch (p) {
+      case 'high': return '🔴 Высокий';
+      case 'low': return '🟢 Низкий';
+      default: return '🟡 Средний';
+    }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onCancel}>
+      <div className="px-4 pb-6 pt-2">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div
+              className="h-5 w-1 rounded"
+              style={{ backgroundColor: 'var(--color-accent-amber)' }}
+            />
+            <h2
+              className="m-0"
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-lg)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Задача создана
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
+            style={{
+              backgroundColor: 'transparent',
+              color: 'var(--color-text-muted)',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Закрыть"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
+              <line x1="5" y1="5" x2="19" y2="19" />
+              <line x1="19" y1="5" x2="5" y2="19" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Title */}
+        <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          Название
+        </label>
+        <input
+          className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
+          style={{
+            backgroundColor: 'var(--color-bg-surface)',
+            borderColor: 'var(--color-line)',
+            color: 'var(--color-text-primary)',
+          }}
+          value={draft.title}
+          onChange={(e) => setField('title', e.target.value)}
+          aria-label="Название задачи"
+        />
+
+        {/* Description */}
+        <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          Описание
+        </label>
+        <textarea
+          className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
+          style={{
+            backgroundColor: 'var(--color-bg-surface)',
+            borderColor: 'var(--color-line)',
+            color: 'var(--color-text-primary)',
+            minHeight: '60px',
+            resize: 'vertical',
+          }}
+          value={draft.rewritten_description}
+          onChange={(e) => setField('rewritten_description', e.target.value)}
+          rows={3}
+          aria-label="Описание"
+        />
+
+        {/* Priority + Deadline row */}
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              Приоритет
+            </label>
+            <select
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
+              style={{
+                backgroundColor: 'var(--color-bg-surface)',
+                borderColor: 'var(--color-line)',
+                color: 'var(--color-text-primary)',
+              }}
+              value={draft.priority ?? ''}
+              onChange={(e) => setField('priority', (e.target.value || null) as ParseResponseV2['priority'])}
+              aria-label="Приоритет"
+            >
+              <option value="">Средний</option>
+              <option value="high">Высокий</option>
+              <option value="medium">Средний</option>
+              <option value="low">Низкий</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              Дедлайн
+            </label>
+            <input
+              type="date"
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent-amber)]"
+              style={{
+                backgroundColor: 'var(--color-bg-surface)',
+                borderColor: 'var(--color-line)',
+                color: 'var(--color-text-primary)',
+              }}
+              value={draft.deadline ?? ''}
+              onChange={(e) => setField('deadline', e.target.value || null)}
+              aria-label="Дедлайн"
+            />
+          </div>
+        </div>
+
+        {/* Tags */}
+        {draft.tags.length > 0 && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              Теги
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {draft.tags.map((tag, i) => (
+                <span
+                  key={i}
+                  className="rounded-full px-2.5 py-1 text-xs font-medium"
+                  style={{
+                    backgroundColor: 'rgba(255, 159, 10, 0.15)',
+                    color: 'var(--color-accent-amber)',
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Metadata */}
+        <div className="mb-6 flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-line)' }}>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {priorityLabel(draft.priority)}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Дедлайн: {formatDate(draft.deadline)}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Ясность: {Math.round(draft.clarity_score * 100)}%
+          </span>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p className="mb-3 text-xs" style={{ color: 'var(--color-error)' }}>{error}</p>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="flex-1 rounded-xl py-3 text-sm font-medium transition-all active:scale-[0.98]"
+            style={{
+              backgroundColor: 'var(--color-bg-surface)',
+              color: 'var(--color-text-muted)',
+              border: `1px solid var(--color-line)`,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.5 : 1,
+            }}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
+            style={{
+              backgroundColor: saving ? 'var(--color-line)' : 'var(--color-accent-amber)',
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {saving ? 'Сохранение…' : 'Готово'}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
