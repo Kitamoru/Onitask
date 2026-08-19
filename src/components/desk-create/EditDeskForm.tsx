@@ -432,7 +432,8 @@ export function EditDeskForm({
                 variant="solid"
                 onClick={handleDeleteWorkspace}
                 disabled={deletingWorkspace}
-                style={{ backgroundColor: '#EF4444', color: '#FAFAFA' }}
+                fill="#EF4444"
+                textColor="#FAFAFA"
               >
                 {deletingWorkspace ? 'Удаление...' : 'Удалить доску'}
               </Button>
@@ -467,7 +468,8 @@ export function EditDeskForm({
               variant="solid"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={saving || uploading || deletingWorkspace}
-              style={{ backgroundColor: '#EF4444', color: '#FAFAFA' }}
+              fill="#EF4444"
+              textColor="#FAFAFA"
             >
               Удалить доску
             </Button>

@@ -7,6 +7,10 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "solid";
   /** Additive: defaults to "action" so existing call sites are unaffected. /boards uses "field". */
   corner?: CornerStyle;
+  /** Override the solid fill color (e.g. "#EF4444" for delete buttons). */
+  fill?: string;
+  /** Override the text color for solid buttons. */
+  textColor?: string;
 };
 
 export function Button({
@@ -15,8 +19,25 @@ export function Button({
   className,
   children,
   disabled,
+  fill,
+  textColor,
+  style: inlineStyle,
   ...props
 }: ButtonProps) {
+  const resolvedFill =
+    variant === "outline" ? "var(--color-surface)" : (fill ?? "var(--color-accent)");
+
+  const resolvedContentClassName = cn(
+    "flex h-full w-full items-center justify-center gap-2 text-[15px] font-semibold",
+    variant === "outline" && "text-text",
+    variant === "solid" && !textColor && "text-accent-ink"
+  );
+
+  const resolvedStyle: React.CSSProperties = {
+    ...(inlineStyle || {}),
+    ...(textColor ? { color: textColor } : {}),
+  };
+
   return (
     <button
       {...props}
@@ -26,6 +47,7 @@ export function Button({
         disabled && "opacity-40",
         className
       )}
+      style={resolvedStyle}
     >
       <NotchedPanel
         corner={corner}
@@ -37,12 +59,8 @@ export function Button({
             ? ["var(--color-grad-add-from)", "var(--color-grad-add-to)"]
             : undefined
         }
-        fill={variant === "outline" ? "var(--color-surface)" : "var(--color-accent)"}
-        contentClassName={cn(
-          "flex h-full w-full items-center justify-center gap-2 text-[15px] font-semibold",
-          variant === "outline" && "text-text",
-          variant === "solid" && "text-accent-ink"
-        )}
+        fill={resolvedFill}
+        contentClassName={resolvedContentClassName}
         className="h-full"
       >
         {children}
