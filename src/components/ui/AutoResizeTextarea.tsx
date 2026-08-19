@@ -38,6 +38,7 @@ export function AutoResizeTextarea({
         boxSizing: 'border-box',
         ...style,
       }}
+      value={String(value ?? '')}
       onChange={(e) => onChange?.(e)}
       {...props}
     />

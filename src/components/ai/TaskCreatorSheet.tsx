@@ -599,8 +599,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lazy initializer: use `parse` only on first mount, not on every re-render
-  const [draft, setDraft] = useState<ParseResponseV2 | null>(() => parse);
+  const [draft, setDraft] = useState<ParseResponseV2 | null>(parse);
 
   const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
   const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
@@ -612,7 +611,6 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     }
   }, [draft?.deadline]);
 
-  // Sync draft when parse prop changes (new AI response arrived)
   useEffect(() => {
     if (parse) setDraft(parse);
   }, [parse]);
