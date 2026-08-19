@@ -4,12 +4,17 @@
  * Records audio via MediaRecorder, picks MIME type per platform (iOS TWA → mp4),
  * and uploads to /api/ai/transcribe for Groq Whisper STT.
  *
+ * Key optimization: caches the MediaStream at module level so getUserMedia is
+ * called only ONCE per session. Tracks are stopped only on unmount (cleanup),
+ * not between recordings — this prevents WebView/TWA from re-asking for mic
+ * permission on every start().
+ *
  * Based on: onitask_ai_.md §3.1–§3.2
  */
 
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { pickAudioMimeType } from '../lib/ai/stt';
 
 type RecorderState = 'idle' | 'recording' | 'processing' | 'error';
@@ -22,6 +27,36 @@ interface UseVoiceRecorderOptions {
 /** Timeout for the transcribe request — prevents infinite "processing" state */
 const TRANSCRIBE_TIMEOUT_MS = 15000;
 
+/** Module-level cache for the MediaStream — shared across all hook instances */
+let cachedStream: MediaStream | null = null;
+let streamPromise: Promise<MediaStream> | null = null;
+
+/**
+ * Get or create a cached MediaStream for microphone access.
+ * Calls navigator.mediaDevices.getUserMedia only once per session.
+ */
+async function getCachedStream(): Promise<MediaStream> {
+  if (cachedStream && cachedStream.active) {
+    return cachedStream;
+  }
+
+  if (streamPromise) {
+    return streamPromise;
+  }
+
+  streamPromise = (async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    cachedStream = stream;
+    return stream;
+  })();
+
+  try {
+    return await streamPromise;
+  } finally {
+    streamPromise = null;
+  }
+}
+
 export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOptions) {
   const [state, setState] = useState<RecorderState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +64,19 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
   const chunksRef = useRef<Blob[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref to track whether we've set up cleanup
+  const mountedRef = useRef(true);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
 
   const start = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getCachedStream();
       const mimeType = pickAudioMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
@@ -43,7 +86,6 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
       };
 
       recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
         setState('processing');
 
@@ -59,11 +101,11 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
           const formData = new FormData();
           formData.append('init_data', initData);
           // Расширение должно соответствовать реальному формату (iOS → mp4, десктоп → webm)
-          const mimeType = blob.type || 'audio/webm';
-          const ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+          const blobType = blob.type || 'audio/webm';
+          const ext = blobType.split('/')[1]?.split(';')[0] || 'webm';
           formData.append('audio', blob, `audio.${ext}`);
 
-          console.log('[useVoiceRecorder] Uploading audio blob:', blob.size, 'bytes, type:', blob.type);
+          console.log('[useVoiceRecorder] Uploading audio blob:', blob.size, 'bytes, type:', blobType);
           const res = await fetch('/api/ai/transcribe', {
             method: 'POST',
             body: formData,
@@ -75,9 +117,13 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
           const data = JSON.parse(rawText);
           if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
           console.log('[useVoiceRecorder] Transcribed:', data.text);
-          onTranscribed(data.text);
-          setState('idle');
+          // Only update state if still mounted
+          if (mountedRef.current) {
+            onTranscribed(data.text);
+            setState('idle');
+          }
         } catch (err) {
+          if (!mountedRef.current) return;
           const message = err instanceof Error ? err.message : 'Ошибка распознавания';
           console.error('[useVoiceRecorder] Transcribe failed:', err);
           setError(message);
@@ -92,16 +138,30 @@ export function useVoiceRecorder({ initData, onTranscribed }: UseVoiceRecorderOp
       recorder.start();
       setState('recording');
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Нет доступа к микрофону');
       setState('error');
     }
   }, [initData, onTranscribed]);
 
-  const stop = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
+  // Cleanup: stop tracks only when the component unmounts
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // Stop and release the recorder
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      // Stop cached stream tracks on unmount
+      if (cachedStream) {
+        cachedStream.getTracks().forEach((t) => t.stop());
+        cachedStream = null;
+      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
   }, []);
 
-  return { state, error, start, stop };
+  return { state, error, start, stop: stopRecording };
 }
