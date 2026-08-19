@@ -76,11 +76,12 @@ export async function PATCH(
     ];
 
     const update: Partial<TasksRow> = {};
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        update[field as keyof TasksRow] = body[field];
-      }
+  for (const field of allowedFields) {
+    // Only include fields that are defined and not null to avoid DB NOT NULL violations
+    if (body[field] != null) { // catches undefined and null
+      update[field as keyof TasksRow] = body[field];
     }
+  }
 
     // Auto-set moved_to_column_at when column changes
     if ('column' in body && update.moved_to_column_at === undefined) {

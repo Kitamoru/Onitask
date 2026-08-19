@@ -255,6 +255,7 @@ export function TaskCreatorSheet({
     setLoading(true);
     setError(null);
     try {
+      // Include a default priority to avoid DB NOT NULL violation if AI parsing omits it.
       const res = await fetch('/api/ai/create-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -262,6 +263,8 @@ export function TaskCreatorSheet({
           init_data: initData,
           input: text.trim(),
           workspace_id: workspaceId,
+          // Default priority – the server may ignore unknown fields, but if it respects this it will prevent null.
+          priority: 'medium',
         }),
       });
       const json = await res.json();
@@ -615,6 +618,11 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     if (parse) setDraft(parse);
   }, [parse]);
 
+  // Reset draft when the sheet is closed to avoid stale state on next open
+  useEffect(() => {
+    if (!open) setDraft(null);
+  }, [open]);
+
   if (!open || !draft) return null;
 
   const setField = <K extends keyof ParseResponseV2>(key: K, value: ParseResponseV2[K]) => {
@@ -631,6 +639,10 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     setSaving(true);
     setError(null);
     try {
+      // Ensure priority is never null to satisfy DB NOT NULL constraint.
+      // If the user left priority empty, default to "medium" (the UI label).
+      // Treat empty string as missing priority and fallback to "medium"
+      const safePriority = draft.priority && draft.priority.trim() !== '' ? draft.priority : 'medium';
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -638,7 +650,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
           init_data: initData,
           title: trimmedTitle,
           description: draft.rewritten_description,
-          priority: draft.priority,
+          priority: safePriority,
           deadline: draft.deadline,
           tags: draft.tags,
         }),
