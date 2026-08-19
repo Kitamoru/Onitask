@@ -6,65 +6,28 @@
 -- Date:    2026-08-19
 -- ============================================================
 
--- Add ON DELETE CASCADE to task_relations (source_task_id)
-ALTER TABLE public.task_relations
-  DROP CONSTRAINT IF EXISTS task_relations_source_task_id_fkey;
+-- 1. agent_events: change task_id FK from SET NULL to CASCADE
+ALTER TABLE public.agent_events
+  DROP CONSTRAINT agent_events_task_id_fkey;
 
-ALTER TABLE public.task_relations
-  ADD CONSTRAINT task_relations_source_task_id_fkey
-    FOREIGN KEY (source_task_id) REFERENCES public.tasks(id)
-    ON DELETE CASCADE;
-
--- Add ON DELETE CASCADE to task_relations (target_task_id)
-ALTER TABLE public.task_relations
-  DROP CONSTRAINT IF EXISTS task_relations_target_task_id_fkey;
-
-ALTER TABLE public.task_relations
-  ADD CONSTRAINT task_relations_target_task_id_fkey
-    FOREIGN KEY (target_task_id) REFERENCES public.tasks(id)
-    ON DELETE CASCADE;
-
--- Add ON DELETE CASCADE to task_column_history
-ALTER TABLE public.task_column_history
-  DROP CONSTRAINT IF EXISTS task_column_history_task_id_fkey;
-
-ALTER TABLE public.task_column_history
-  ADD CONSTRAINT task_column_history_task_id_fkey
+ALTER TABLE public.agent_events
+  ADD CONSTRAINT agent_events_task_id_fkey
     FOREIGN KEY (task_id) REFERENCES public.tasks(id)
     ON DELETE CASCADE;
 
--- Add ON DELETE CASCADE to assignment_history
+-- 2. assignment_history: change task_id FK from SET NULL to CASCADE
 ALTER TABLE public.assignment_history
-  DROP CONSTRAINT IF EXISTS assignment_history_task_id_fkey;
+  DROP CONSTRAINT assignment_history_task_id_fkey;
 
 ALTER TABLE public.assignment_history
   ADD CONSTRAINT assignment_history_task_id_fkey
     FOREIGN KEY (task_id) REFERENCES public.tasks(id)
     ON DELETE CASCADE;
 
--- Add ON DELETE CASCADE to enrichments
-ALTER TABLE public.enrichments
-  DROP CONSTRAINT IF EXISTS enrichments_task_id_fkey;
-
-ALTER TABLE public.enrichments
-  ADD CONSTRAINT enrichments_task_id_fkey
-    FOREIGN KEY (task_id) REFERENCES public.tasks(id)
-    ON DELETE CASCADE;
-
--- Add ON DELETE CASCADE to task_vector_chunks
-ALTER TABLE public.task_vector_chunks
-  DROP CONSTRAINT IF EXISTS task_vector_chunks_task_id_fkey;
-
-ALTER TABLE public.task_vector_chunks
-  ADD CONSTRAINT task_vector_chunks_task_id_fkey
-    FOREIGN KEY (task_id) REFERENCES public.tasks(id)
-    ON DELETE CASCADE;
-
--- Add ON DELETE CASCADE to bot_task_drafts
-ALTER TABLE public.bot_task_drafts
-  DROP CONSTRAINT IF EXISTS bot_task_drafts_task_id_fkey;
-
-ALTER TABLE public.bot_task_drafts
-  ADD CONSTRAINT bot_task_drafts_task_id_fkey
-    FOREIGN KEY (task_id) REFERENCES public.tasks(id)
-    ON DELETE CASCADE;
+-- NOTE: The following tables already have correct CASCADE constraints:
+--   - agent_memory (task_id → tasks.id ON DELETE CASCADE)
+--   - task_column_history (task_id → tasks.id ON DELETE CASCADE)
+--   - task_enrichments (task_id → tasks.id ON DELETE CASCADE)
+--   - task_events (task_id → tasks.id ON DELETE CASCADE)
+--   - task_relations (from_task_id → tasks.id ON DELETE CASCADE)
+--   - task_relations (to_task_id → tasks.id ON DELETE CASCADE)
