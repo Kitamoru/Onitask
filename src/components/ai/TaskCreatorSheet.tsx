@@ -570,6 +570,7 @@ export function TaskCreatorSheet({
         parse={previewParse}
         initData={initData}
         onConfirm={handlePreviewConfirm}
+        onClose={handleClose}
         onCancel={() => {
           setPreviewOpen(false);
           setPreviewTaskId(null);
@@ -589,9 +590,11 @@ interface TaskPreviewSheetProps {
   initData: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Called after successful save to close the main sheet */
+  onClose?: () => void;
 }
 
-function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel }: TaskPreviewSheetProps) {
+function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, onClose }: TaskPreviewSheetProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -642,6 +645,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
       onConfirm();
+      onClose?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка сохранения');
     } finally {
@@ -847,7 +851,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel }
               disabled={isSaveDisabled}
               className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
               style={{
-                backgroundColor: isSaveDisabled ? 'var(--color-line)' : 'var(--color-accent-amber)',
+                backgroundColor: isSaveDisabled ? 'rgba(255, 159, 10, 0.3)' : 'var(--color-accent-amber)',
                 cursor: isSaveDisabled ? 'not-allowed' : 'pointer',
               }}
             >
