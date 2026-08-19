@@ -158,7 +158,6 @@ export function TaskCreatorSheet({
         try {
           // This will reuse the cached stream (due to module-level caching in useVoiceRecorder)
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // Fixed: use window.AudioContext with fallback to webkitAudioContext
           const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
           audioContextRef.current = audioContext;
           const analyser = audioContext.createAnalyser();
@@ -187,7 +186,8 @@ export function TaskCreatorSheet({
       const updateWaveform = () => {
         if (isCancelled || recState !== 'recording') return;
         if (analyserRef.current && dataArrayRef.current) {
-          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+          // FIX: cast to Uint8Array to satisfy TypeScript
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current as Uint8Array);
           // Map frequency data to bar heights (3–28 px)
           const data = dataArrayRef.current;
           const step = Math.floor(data.length / BAR_COUNT);
