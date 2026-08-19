@@ -21,14 +21,12 @@ export default function OnitaskLoader() {
           className={styles.borderGlow}
           viewBox="0 0 280 280"
           preserveAspectRatio="none"
-          shapeRendering="geometricPrecision"
           aria-hidden="true"
         >
           <path
             className={styles.borderGlowPath}
             pathLength={100}
-            strokeDasharray="98 2"
-            strokeLinejoin="round"
+            strokeDasharray="18 82"
             d="M16,0 L276,0 A4,4 0 0 1 280,4 L280,264 L264,280 L4,280 A4,4 0 0 1 0,276 L0,16 Z"
           />
         </svg>

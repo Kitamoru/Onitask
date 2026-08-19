@@ -28,16 +28,12 @@
   width: var(--loader-size);
   aspect-ratio: 1 / 1;
   border-radius: 4px;
-  /* Matches SVG path geometry exactly:
-     TL chamfer 16px, TR arc r=4, BR chamfer 16px, BL arc r=4 */
   clip-path: polygon(
     16px 0,
-    calc(100% - 4px) 0,
-    100% 4px,
+    100% 0,
     100% calc(100% - 16px),
     calc(100% - 16px) 100%,
-    4px 100%,
-    0 calc(100% - 4px),
+    0 100%,
     0 16px
   );
   background: transparent;
@@ -53,15 +49,12 @@
   align-items: center;
   justify-content: center;
   border-radius: 3px;
-  /* Inner panel: TL chamfer 15px, TR arc r=3, BR chamfer 15px, BL arc r=3 */
   clip-path: polygon(
     15px 0,
-    calc(100% - 3px) 0,
-    100% 3px,
+    100% 0,
     100% calc(100% - 15px),
     calc(100% - 15px) 100%,
-    3px 100%,
-    0 calc(100% - 3px),
+    0 100%,
     0 15px
   );
   background:
