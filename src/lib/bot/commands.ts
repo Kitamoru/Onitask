@@ -1,10 +1,10 @@
-// src/lib/bot/commands.ts — Команды бота (v0.6.5 spec)
-// BOT-01: /create-task [text|voice] — создание задачи через F-04 pipeline
-// BOT-02: /run-task FULL_ID — просмотр задачи по full_id (ALPHA-123)
-// BOT-03: /help — справка
+// src/lib/bot/commands.ts — Команды бота
+// /task [text|voice] — создание задачи
+// /call FULL_ID — просмотр задачи
+// /backlog — задачи без исполнителя
+// /help — справка
 //
-// Reactions: 👀 при начале обработки, ✅ при успехе, ❌ при ошибке
-// Progress messages отправляются через sendChatAction('typing')
+// Reactions: 👀 при начале, ✅ при успехе, ❌ при ошибке
 
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -25,23 +25,18 @@ const supabase = createClient(
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MAX_MESSAGE_LENGTH = 4096;
 
-// ============================================================================
-// Command Router (v0.6.5: /create-task, /run-task, /help only)
-// ============================================================================
+const HELP_HTML =
+  `<b>📖 Команды:</b>\n` +
+  `/task — создать задачу (текст или голос)\n` +
+  `/call TASK-123 — показать задачу\n` +
+  `/backlog — задачи без исполнителя\n` +
+  `/help — справка`;
 
-/**
- * Commands that require workspace selection before execution.
- */
-export const COMMANDS_REQUIRING_WORKSPACE = ['create-task'];
-
-/**
- * Commands that work WITHOUT workspace (start, help).
- */
+export const COMMANDS_REQUIRING_WORKSPACE = ['task', 'backlog'];
 export const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
 
 /**
  * Route a command message to the appropriate handler.
- * Returns { handled: true } if command was processed, { handled: false } otherwise.
  */
 export async function handleCommand(
   msg: Message,
@@ -50,44 +45,57 @@ export async function handleCommand(
   workspaceId: string
 ): Promise<{ handled: boolean }> {
   const chatId = msg.chat.id;
-  const userId = msg.from?.id ?? 0;
   const messageId = msg.message_id;
 
   switch (command) {
-    case 'create-task':
-      // Order matters per spec §5.2: text/voice BEFORE lookup parse
+    case 'task':
+    case 'create-task': // alias
       if (msg.voice || msg.audio) {
-        // Voice: /create-task 🎤
         await handleVoiceTaskWithReaction(msg, workspaceId, messageId);
-      } else if (args && /^[A-Z]+-\d+$/.test(args)) {
-        // Mistake: user used /create-task ALPHA-123 — redirect to /run-task
+      } else if (args && /^[A-Z]+-\d+$/i.test(args)) {
+        // Пользователь перепутал с lookup
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          rich_message: { html: `🔍 Для просмотра задачи используйте <b>/run-task ${escapeHtml(args)}</b>` },
+          rich_message: {
+            html: `🔍 Для просмотра задачи используйте <b>/call ${escapeHtml(args.toUpperCase())}</b>`,
+          },
         });
         await setMessageReaction(BOT_TOKEN!, chatId, messageId, '❌').catch(() => {});
       } else if (args) {
-        // Text: /create-task <description>
         await handleTextTaskWithReaction(msg, args, workspaceId, messageId);
       } else {
-        // No args — show usage hint
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          rich_message: { html: '📝 Пришлите текст или голосовое сообщение для создания задачи.\nИли введите /run-task TASK-123 для просмотра задачи.' },
+          rich_message: {
+            html:
+              '📝 Пришлите текст или голосовое сообщение для создания задачи.\n' +
+              'Или <b>/call TASK-123</b> — показать задачу.',
+          },
         });
       }
       return { handled: true };
 
-    case 'run-task':
-      // /run-task TASK-123 — Lookup задачи по номеру (§5.3)
-      if (args && /^[A-Z]+-\d+$/.test(args)) {
-        await handleTaskLookupWithReaction(chatId, args, messageId, msg.message_thread_id);
+    case 'call':
+    case 'run-task': // alias
+      if (args && /^[A-Z]+-\d+$/i.test(args)) {
+        await handleTaskLookupWithReaction(
+          chatId,
+          args.toUpperCase(),
+          messageId,
+          msg.message_thread_id
+        );
       } else {
         await sendRichMessage(BOT_TOKEN!, {
           chat_id: chatId,
-          rich_message: { html: '📝 Введите полный ID задачи, например: <b>/run-task ALPHA-123</b>' },
+          rich_message: {
+            html: '📝 Введите ID задачи, например: <b>/call ALPHA-123</b>',
+          },
         });
       }
+      return { handled: true };
+
+    case 'backlog':
+      await handleBacklogCommand(chatId, workspaceId);
       return { handled: true };
 
     case 'help':
@@ -99,13 +107,6 @@ export async function handleCommand(
   }
 }
 
-// ============================================================================
-// Wrapper functions with reactions
-// ============================================================================
-
-/**
- * Handle text task with 👀 reaction at start.
- */
 async function handleTextTaskWithReaction(
   msg: Message,
   text: string,
@@ -113,34 +114,21 @@ async function handleTextTaskWithReaction(
   messageId: number
 ): Promise<void> {
   const chatId = msg.chat.id;
-  // Reaction 👀 at start
   await setMessageReaction(BOT_TOKEN!, chatId, messageId, '👀').catch(() => {});
-  // Typing indicator for progress
   await sendChatAction(BOT_TOKEN!, { chat_id: chatId, action: 'typing' }).catch(() => {});
   await handleTextTask(msg, text, workspaceId);
-  // Reaction ✅ will be set inside handleTextTask on success, or ❌ on error
 }
 
-/**
- * Handle voice task with 👀 reaction at start.
- */
 async function handleVoiceTaskWithReaction(
   msg: Message,
   workspaceId: string,
   messageId: number
 ): Promise<void> {
   const chatId = msg.chat.id;
-  // Reaction 👀 at start
   await setMessageReaction(BOT_TOKEN!, chatId, messageId, '👀').catch(() => {});
-  // Typing indicator for progress
   await sendChatAction(BOT_TOKEN!, { chat_id: chatId, action: 'typing' }).catch(() => {});
   await handleVoiceTask(msg, workspaceId);
-  // Reaction ✅ will be set inside handleVoiceTask on success, or ❌ on error
 }
-
-// ============================================================================
-// /run-task TASK-123 — Lookup задачи по номеру (§5.3)
-// ============================================================================
 
 async function handleTaskLookupWithReaction(
   chatId: number,
@@ -148,12 +136,12 @@ async function handleTaskLookupWithReaction(
   messageId: number,
   threadId?: number
 ): Promise<void> {
-  // Reaction 👀 at start
   await setMessageReaction(BOT_TOKEN!, chatId, messageId, '👀').catch(() => {});
 
   try {
-    // Use find_task_by_full_id RPC to get task UUID
-    const { data: taskId, error } = await supabase.rpc('find_task_by_full_id', { p_full_id: fullId });
+    const { data: taskId, error } = await supabase.rpc('find_task_by_full_id', {
+      p_full_id: fullId,
+    });
 
     if (error || !taskId) {
       await sendRichMessage(BOT_TOKEN!, {
@@ -161,12 +149,10 @@ async function handleTaskLookupWithReaction(
         message_thread_id: threadId,
         rich_message: { html: `Задача ${escapeHtml(fullId)} не найдена.` },
       });
-      // Reaction ❌ on error
       await setMessageReaction(BOT_TOKEN!, chatId, messageId, '❌').catch(() => {});
       return;
     }
 
-    // Fetch full task details
     const { data: task, error: taskErr } = await supabase
       .from('tasks')
       .select('*')
@@ -190,7 +176,9 @@ async function handleTaskLookupWithReaction(
       column: task.column as string | undefined,
       priority: task.priority as string | undefined,
       assignee_name: (task as any).assignee_name as string | undefined,
-      deadline: task.deadline ? new Date(task.deadline).toLocaleDateString() : undefined,
+      deadline: task.deadline
+        ? new Date(task.deadline).toLocaleDateString('ru-RU')
+        : undefined,
     });
 
     await sendRichMessage(BOT_TOKEN!, {
@@ -198,8 +186,6 @@ async function handleTaskLookupWithReaction(
       message_thread_id: threadId,
       rich_message: { html: html.slice(0, MAX_MESSAGE_LENGTH) },
     });
-
-    // Reaction ✅ on success
     await setMessageReaction(BOT_TOKEN!, chatId, messageId, '✅').catch(() => {});
   } catch (err) {
     console.error('[Bot Commands] handleTaskLookup error:', err);
@@ -211,22 +197,70 @@ async function handleTaskLookupWithReaction(
   }
 }
 
-// ============================================================================
-// /help — Список команд
-// ============================================================================
+async function handleBacklogCommand(chatId: number, workspaceId: string): Promise<void> {
+  if (!workspaceId) {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Сначала выберите рабочее пространство.' },
+    });
+    return;
+  }
 
-async function handleHelp(chatId: number): Promise<void> {
-  const html = `<b>📖 Команды:</b>
+  const { data: ws } = await supabase
+    .from('workspaces')
+    .select('task_prefix, name, slug')
+    .eq('id', workspaceId)
+    .maybeSingle();
 
-<b>/create-task</b> [текст] — создать задачу
-<b>/create-task</b> 🎤 — создать задачу голосом
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('id, title, task_number, column, priority')
+    .eq('workspace_id', workspaceId)
+    .is('assigned_to', null)
+    .neq('column', 'done')
+    .order('created_at', { ascending: false })
+    .limit(15);
 
-<b>/run-task</b> TASK-123 — показать задачу
+  if (error) {
+    console.error('[Bot Commands] backlog error:', error);
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '⚠️ Не удалось загрузить список задач.' },
+    });
+    return;
+  }
 
-<b>/help</b> — справка`;
+  if (!tasks || tasks.length === 0) {
+    await sendRichMessage(BOT_TOKEN!, {
+      chat_id: chatId,
+      rich_message: { html: '📥 Нет задач без исполнителя.' },
+    });
+    return;
+  }
+
+  const prefix = ws?.task_prefix || '?';
+  const boardName = ws?.name || ws?.slug || '';
+
+  const lines = tasks.map((t) => {
+    const fullId = `${prefix}-${t.task_number}`;
+    const pri =
+      t.priority === 'high' ? '🔴' : t.priority === 'low' ? '🟢' : '🟡';
+    return `${pri} <b>${escapeHtml(fullId)}</b> — ${escapeHtml(t.title || '')}`;
+  });
 
   await sendRichMessage(BOT_TOKEN!, {
     chat_id: chatId,
-    rich_message: { html: html.slice(0, MAX_MESSAGE_LENGTH) },
+    rich_message: {
+      html:
+        `📥 <b>Без исполнителя</b> · ${escapeHtml(boardName)}\n\n` +
+        lines.join('\n'),
+    },
+  });
+}
+
+async function handleHelp(chatId: number): Promise<void> {
+  await sendRichMessage(BOT_TOKEN!, {
+    chat_id: chatId,
+    rich_message: { html: HELP_HTML.slice(0, MAX_MESSAGE_LENGTH) },
   });
 }
