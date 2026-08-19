@@ -79,7 +79,7 @@
 
 .borderGlowPath {
   fill: none;
-  stroke: var(--color-signal-yellow, #f59e0b);
+  stroke: #F59E0B;
   stroke-width: 2;
   stroke-linecap: round;
   filter:
