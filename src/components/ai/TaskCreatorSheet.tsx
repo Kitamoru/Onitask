@@ -154,15 +154,12 @@ export function TaskCreatorSheet({
       }, 1000);
 
       // Get cached stream from useVoiceRecorder (via module-level cache)
-      // We need to re-request the stream; but we can import the same cached stream.
-      // Since we don't have direct access, we'll get it via getUserMedia again but it will reuse the cached one.
-      // To avoid duplicate, we can access the module-level variable, but it's not exported.
-      // Simpler: we create a new analyser from the same stream by calling getUserMedia again – it will return the cached stream.
       const setupAnalyser = async () => {
         try {
           // This will reuse the cached stream (due to module-level caching in useVoiceRecorder)
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          // Fixed: use window.AudioContext with fallback to webkitAudioContext
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
           audioContextRef.current = audioContext;
           const analyser = audioContext.createAnalyser();
           analyser.fftSize = 256;
