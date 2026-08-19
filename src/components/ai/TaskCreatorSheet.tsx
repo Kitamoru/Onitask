@@ -404,7 +404,7 @@ export function TaskCreatorSheet({
             >
               <textarea
                 ref={textareaRef}
-                className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)] box-border"
                 style={{
                   color: 'var(--color-text-primary)',
                   fontFamily: 'var(--font-family-base)',
@@ -415,7 +415,7 @@ export function TaskCreatorSheet({
                   transition: 'opacity 0.15s ease',
                   pointerEvents: recState === 'recording' ? 'none' : 'auto',
                 }}
-                placeholder="Опишите задачу…"
+                placeholder="Опишите задачу или запишите голосом…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
