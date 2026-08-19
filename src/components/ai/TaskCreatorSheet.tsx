@@ -1,4 +1,4 @@
-                                                                                                                                  'use client';
+'use client';
 
 /**
  * TaskCreatorSheet — F-04 task creation bottom sheet.
@@ -93,8 +93,15 @@ export function TaskCreatorSheet({
     stop: stopRec,
   } = useVoiceRecorder({
     initData,
-    onTranscribed: (text) =>
-      setInput((prev) => (prev ? prev + ' ' : '') + text.trim()),
+    onTranscribed: (text) => {
+      setInput((prev) => (prev ? prev + ' ' : '') + text.trim());
+      // Force textarea resize after transcription
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    },
   });
 
   // Reset everything when sheet opens/closes
@@ -114,7 +121,6 @@ export function TaskCreatorSheet({
   }, [open]);
 
   // Animate waveform bars during recording — smooth interpolation
-  // NOTE: MUST depend on recState (not a boolean expression) to satisfy Rules of Hooks
   useEffect(() => {
     if (recState !== 'recording') {
       if (animFrameRef.current !== null) {
@@ -124,37 +130,36 @@ export function TaskCreatorSheet({
       return;
     }
 
-    let ticking = false;
-    const animate = () => {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(() => {
-          // Generate target heights based on a combination of:
-          // - Sine waves at different frequencies for organic feel
-          // - Small random perturbation for natural variation
-          const now = performance.now() / 1000;
-          const target = new Array(BAR_COUNT).fill(0).map((_, i) => {
-            // Base wave pattern — clusters of bars moving together
-            const wave1 = Math.sin(now * 2 + i * 0.3) * 8;
-            const wave2 = Math.sin(now * 3.7 + i * 0.5) * 4;
-            const noise = (Math.random() - 0.5) * 3;
-            // Clamp between 3 and 28
-            return Math.max(3, Math.min(28, 10 + wave1 + wave2 + noise));
-          });
+    let frameId: number | null = null;
+    let isCancelled = false;
 
-          // Interpolate current smoothed levels toward target (smoothing factor 0.35)
-          const prev = smoothedLevelsRef.current;
-          const smoothed = target.map((t, i) => prev[i] + (t - prev[i]) * 0.35);
-          smoothedLevelsRef.current = smoothed;
-          setWaveformBars(smoothed);
-          ticking = false;
-        });
+    const updateWaveform = () => {
+      const now = performance.now() / 1000;
+      const target = new Array(BAR_COUNT).fill(0).map((_, i) => {
+        const wave1 = Math.sin(now * 2 + i * 0.3) * 8;
+        const wave2 = Math.sin(now * 3.7 + i * 0.5) * 4;
+        const noise = (Math.random() - 0.5) * 3;
+        return Math.max(3, Math.min(28, 10 + wave1 + wave2 + noise));
+      });
+
+      const prev = smoothedLevelsRef.current;
+      const smoothed = target.map((t, i) => prev[i] + (t - prev[i]) * 0.35);
+      smoothedLevelsRef.current = smoothed;
+      setWaveformBars(smoothed);
+
+      if (!isCancelled && recState === 'recording') {
+        frameId = requestAnimationFrame(updateWaveform);
       }
     };
 
-    animFrameRef.current = requestAnimationFrame(animate);
+    frameId = requestAnimationFrame(updateWaveform);
+
     return () => {
-      if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
+      isCancelled = true;
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
     };
   }, [recState]);
 
@@ -207,8 +212,6 @@ export function TaskCreatorSheet({
 
   const hasContent = input.trim().length > 0;
   const isSendDisabled = loading || recState === 'recording' || !hasContent;
-  /** Whether we're in recording or transcribing state — used to hide UI hints */
-  const isRecordingOrProcessing = recState === 'recording' || recState === 'processing';
 
   // ─── Icons ───────────────────────────────────────────────────────────────
 
@@ -418,7 +421,7 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-           {/* Description hint — always visible */}
+          {/* Description hint — always visible */}
           <p
             className="mb-6 text-sm leading-relaxed"
             style={{ color: 'var(--color-text-muted)' }}
@@ -426,12 +429,7 @@ export function TaskCreatorSheet({
             Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
           </p>
 
-          {/* Status messages */}
-          {recState === 'processing' && (
-            <p className="mb-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Распознавание речи…
-            </p>
-          )}
+          {/* Status messages — removed "processing" message */}
           {recState === 'error' && recError && (
             <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
               Ошибка распознавания: {recError}
@@ -536,15 +534,21 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
 
   const handleSave = async () => {
     if (!draft) return;
+    // Validate title
+    const trimmedTitle = draft.title.trim();
+    if (!trimmedTitle) {
+      setError('Название задачи не может быть пустым');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      // PATCH the task with edited fields
+      // PATCH the task with edited fields — always use user-edited title
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: draft.rewritten_title?.trim() || draft.title,
+          title: trimmedTitle,
           description: draft.rewritten_description,
           priority: draft.priority,
           deadline: draft.deadline,
@@ -578,6 +582,9 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
       default: return '🟡 Средний';
     }
   };
+
+  const isTitleEmpty = !draft.title.trim();
+  const isSaveDisabled = saving || isTitleEmpty;
 
   return (
     <>
@@ -753,11 +760,11 @@ function TaskPreviewSheet({ open, taskId, parse, onConfirm, onCancel }: TaskPrev
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={isSaveDisabled}
             className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
             style={{
-              backgroundColor: saving ? 'var(--color-line)' : 'var(--color-accent-amber)',
-              cursor: saving ? 'not-allowed' : 'pointer',
+              backgroundColor: isSaveDisabled ? 'var(--color-line)' : 'var(--color-accent-amber)',
+              cursor: isSaveDisabled ? 'not-allowed' : 'pointer',
             }}
           >
             {saving ? 'Сохранение…' : 'Готово'}
