@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
 interface TaskCreatorSheetProps {
@@ -78,6 +79,8 @@ export function TaskCreatorSheet({
     new Array(BAR_COUNT).fill(3)
   );
   const animFrameRef = useRef<number | null>(null);
+  /** Smoothed waveform levels — prevents jitter by interpolating between frames */
+  const smoothedLevelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(3));
 
   // Voice recorder — transcribed text appends to input
   const {
@@ -107,7 +110,7 @@ export function TaskCreatorSheet({
     }
   }, [open]);
 
-  // Animate waveform bars during recording
+  // Animate waveform bars during recording — smooth interpolation
   useEffect(() => {
     if (recState !== 'recording') {
       if (animFrameRef.current !== null) {
@@ -117,9 +120,32 @@ export function TaskCreatorSheet({
       return;
     }
 
+    let ticking = false;
     const animate = () => {
-      setWaveformBars((prev) => prev.map(() => 3 + Math.random() * 25));
-      animFrameRef.current = requestAnimationFrame(animate);
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          // Generate target heights based on a combination of:
+          // - Sine waves at different frequencies for organic feel
+          // - Small random perturbation for natural variation
+          const now = performance.now() / 1000;
+          const target = new Array(BAR_COUNT).fill(0).map((_, i) => {
+            // Base wave pattern — clusters of bars moving together
+            const wave1 = Math.sin(now * 2 + i * 0.3) * 8;
+            const wave2 = Math.sin(now * 3.7 + i * 0.5) * 4;
+            const noise = (Math.random() - 0.5) * 3;
+            // Clamp between 3 and 28
+            return Math.max(3, Math.min(28, 10 + wave1 + wave2 + noise));
+          });
+
+          // Interpolate current smoothed levels toward target (smoothing factor 0.35)
+          const prev = smoothedLevelsRef.current;
+          const smoothed = target.map((t, i) => prev[i] + (t - prev[i]) * 0.35);
+          smoothedLevelsRef.current = smoothed;
+          setWaveformBars(smoothed);
+          ticking = false;
+        });
+      }
     };
 
     animFrameRef.current = requestAnimationFrame(animate);
@@ -177,6 +203,8 @@ export function TaskCreatorSheet({
 
   const hasContent = input.trim().length > 0;
   const isSendDisabled = loading || recState === 'recording' || !hasContent;
+  /** Whether we're in recording or transcribing state — used to hide UI hints */
+  const isRecordingOrProcessing = recState === 'recording' || recState === 'processing';
 
   // ─── Icons ───────────────────────────────────────────────────────────────
 
@@ -305,14 +333,20 @@ export function TaskCreatorSheet({
                   </div>
                 </div>
               ) : (
-                /* Idle state — text input */
-                <input
-                  className="flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                /* Idle state — auto-sizing textarea */
+                <textarea
+                  ref={useAutosizeTextarea(input)}
+                  className="flex-1 resize-none bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
                   style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-base)' }}
                   placeholder="Опишите задачу или запишите голосом…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendClick()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendClick();
+                    }
+                  }}
                   autoComplete="off"
                   aria-label="Ввод задачи"
                 />
@@ -367,13 +401,15 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* Description hint */}
-          <p
-            className="mb-6 text-sm leading-relaxed"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
-          </p>
+           {/* Description hint — hidden during recording/transcribing */}
+          {!isRecordingOrProcessing && (
+            <p
+              className="mb-6 text-sm leading-relaxed"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
+            </p>
+          )}
 
           {/* Status messages */}
           {recState === 'processing' && (
@@ -381,7 +417,7 @@ export function TaskCreatorSheet({
               Распознавание речи…
             </p>
           )}
-          {(recState === 'error' && recError) && (
+          {recState === 'error' && recError && (
             <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
               Ошибка распознавания: {recError}
             </p>
