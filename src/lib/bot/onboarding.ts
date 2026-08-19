@@ -88,14 +88,12 @@ export async function handleStartCommand(msg: Message, args: string): Promise<vo
         html: `
 👋 <b>Привет, ${escapeHtml(firstName)}!</b>
 
-Я бот Onitask — AI-помощник для управления задачами.
+Я бот Onitask — платформы для управления задачами.
 
 ${COMMANDS_BLOCK}
 
 <b>Чтобы начать:</b>
-Введите код рабочего пространства:
-<code>/start ws_ABC123</code>
-Или перейдите в приложение и выберите workspace там.
+Перейдите в приложение
 `.trim().slice(0, MAX_MESSAGE_LENGTH),
       },
     });
