@@ -27,7 +27,7 @@ export default function OnitaskLoader() {
             className={styles.borderGlowPath}
             pathLength={100}
             strokeDasharray="18 82"
-            d="M16,0 L264,0 L280,16 L280,264 L264,280 L16,280 L0,264 L0,16 Z"
+            d="M16,0 L276,0 A4,4 0 0 1 280,4 L280,264 L264,280 L4,280 A4,4 0 0 1 0,276 L0,16 Z"
           />
         </svg>
 
