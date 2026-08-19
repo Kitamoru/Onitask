@@ -260,6 +260,29 @@ export async function answerCallbackQuery(
 }
 
 // ============================================================================
+// Bot Commands Registration (§6.2d)
+// ============================================================================
+
+/**
+ * Register bot commands in Telegram menu (appears when user types /).
+ * Call once per process — not on every webhook message.
+ */
+export async function setBotCommands(token: string): Promise<void> {
+  await botApiRequest(token, 'setMyCommands', {
+    commands: [
+      { command: 'task', description: 'Создать задачу' },
+      { command: 'call', description: 'Показать задачу' },
+      { command: 'backlog', description: 'Задачи без исполнителя' },
+      { command: 'help', description: 'Справка' },
+    ],
+  });
+}
+
+export async function deleteBotCommands(token: string): Promise<void> {
+  await botApiRequest(token, 'deleteMyCommands', {});
+}
+
+// ============================================================================
 // Rich Messages (Bot API 10.1+)
 // ============================================================================
 
@@ -743,11 +766,11 @@ export function buildFreemiumGateHTML(feature: string): string {
 
 export function buildWelcomeHTML(workspaceSlug: string): string {
   return `
-<b>👋 Добро пожаловать в рабочее пространство @${escapeHtml(workspaceSlug)}!</b>
+<b>👋 Добро пожаловать в @${escapeHtml(workspaceSlug)}!</b>
 Ты добавлен как участник.
 
 📖 Команды:
-/task — создать задачу (текст или голос)
+/task — создать задачу 
 /call TASK-123 — показать задачу
 /backlog — задачи без исполнителя
 /help — справка

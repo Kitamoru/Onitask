@@ -19,6 +19,7 @@ import {
   escapeHtml,
   buildTaskCard,
   setMessageReaction,
+  setBotCommands,
   TaskCardData,
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
@@ -46,6 +47,19 @@ const supabase = createClient(
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
+
+let commandsRegistered = false;
+
+async function ensureBotCommands(): Promise<void> {
+  if (commandsRegistered || !BOT_TOKEN) return;
+  try {
+    await setBotCommands(BOT_TOKEN);
+    commandsRegistered = true;
+    console.log('[Bot Webhook] setMyCommands OK');
+  } catch (err) {
+    console.warn('[Bot Webhook] setMyCommands failed:', err);
+  }
+}
 
 /** Единый текст справки — /help, /start, fallback */
 const HELP_TEXT =
@@ -1090,6 +1104,8 @@ export async function POST(req: NextRequest) {
   if (!providedSecret || !verifyTelegramWebhookSecret(providedSecret, WEBHOOK_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  void ensureBotCommands();
 
   let update: unknown;
   try {
