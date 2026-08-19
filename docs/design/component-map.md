@@ -146,7 +146,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | TelegramTheme | TelegramTheme.tsx | children | Theme provider |
 | | TelegramViewportBridge | TelegramViewportBridge.tsx | — | Viewport height bridge |
 | | AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
-| | GlobalLoader | GlobalLoader.tsx | — | Global loading spinner |
+| | GlobalLoader | GlobalLoader.tsx | ready | Global loading overlay wrapper (fade-out, z-[9999], aria-live). Renders <OnitaskLoader /> inside. |
+| | OnitaskLoader | OnitaskLoader.tsx | — | Branded splash loader: notched card, traveling amber border glow, logo mark, animated dots. Uses CSS module + design token (--color-signal-yellow for stroke). |
 
 ---
 

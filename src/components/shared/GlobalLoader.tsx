@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import OnitaskLoader from './OnitaskLoader';
 
 /**
  * GlobalLoader — фиксированный overlay, который блокирует весь контент
@@ -8,16 +9,15 @@ import React from 'react';
  *
  * Используется на уровне root layout для плавной загрузки без миганий.
  * Анимация fade-out через CSS transition.
+ * Содержит брендовый OnitaskLoader внутри.
  */
 
 interface GlobalLoaderProps {
   /** Когда true — лоадер скрывается с анимацией */
   ready: boolean;
-  /** Текст загрузки (по умолчанию "Загрузка...") */
-  text?: string;
 }
 
-export function GlobalLoader({ ready, text = 'Загрузка...' }: GlobalLoaderProps) {
+export function GlobalLoader({ ready }: GlobalLoaderProps) {
   const [visible, setVisible] = React.useState(true);
   const [animatingOut, setAnimatingOut] = React.useState(false);
 
@@ -49,18 +49,7 @@ export function GlobalLoader({ ready, text = 'Загрузка...' }: GlobalLoad
       aria-live="polite"
       aria-busy={!ready}
     >
-      <div className="text-center">
-        <p
-          style={{
-            color: '#FAFAFA',
-            fontFamily: "'Inter Display', system-ui, sans-serif",
-            fontSize: '16px',
-            lineHeight: '24px',
-          }}
-        >
-          {text}
-        </p>
-      </div>
+      <OnitaskLoader />
     </div>
   );
 }
