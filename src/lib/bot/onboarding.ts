@@ -1,14 +1,9 @@
 // src/lib/bot/onboarding.ts — Онбординг через invite (BOT-07)
-// /start ws_CODE → welcome Rich Message + worker registration
-// v0.6.5 spec: /start task_TASK-123 → lookup task via /run-task flow
-//
-// FIX: registerWorker теперь использует profile.id как source_id (INV-16).
-// findWorkspaceByCode запрашивает invite_links.code вместо workspaces.invite_code.
-// logBotEvent использует правильные столбцы agent_events.
-// escapeHtml правильно экранирует спецсимволы.
+// /start ws_CODE → welcome + worker registration
+// /start task_TASK-123 → подсказка /call
 
 import { createClient } from '@supabase/supabase-js';
-import { sendRichMessage, buildWelcomeHTML } from '../../../lib/bot';
+import { sendRichMessage, buildWelcomeHTML, escapeHtml } from '../../../lib/bot';
 import type { Message } from '../../../types/telegram';
 
 const supabase = createClient(
@@ -19,16 +14,18 @@ const supabase = createClient(
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MAX_MESSAGE_LENGTH = 4096;
 
-/**
- * Resolve profile UUID from Telegram user ID.
- * Creates a profile if it doesn't exist (find-or-create pattern per INV-16).
- */
+const COMMANDS_BLOCK =
+  `<b>Команды:</b>\n` +
+  `/task — создать задачу (текст или голос)\n` +
+  `/call TASK-123 — показать задачу\n` +
+  `/backlog — задачи без исполнителя\n` +
+  `/help — справка`;
+
 async function ensureProfile(
   telegramUserId: number,
   firstName: string,
   lastName?: string
 ): Promise<string | null> {
-  // Try to find existing profile
   const { data: existing } = await supabase
     .from('profiles')
     .select('id')
@@ -37,9 +34,9 @@ async function ensureProfile(
 
   if (existing?.id) return existing.id;
 
-  // Create new profile (find-or-create per INV-16)
   const userId = crypto.randomUUID();
-  const displayName = [firstName, lastName].filter(Boolean).join(' ') || `User_${telegramUserId}`;
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(' ') || `User_${telegramUserId}`;
 
   const { data: newProfile, error: insertError } = await supabase
     .from('profiles')
@@ -55,83 +52,71 @@ async function ensureProfile(
     console.error('[Bot Onboarding] Profile creation error:', insertError);
     return null;
   }
-
   return newProfile.id;
 }
 
-/**
- * Handle /start command with optional workspace code.
- * Format: /start ws_ABC123 or just /start
- */
-export async function handleStartCommand(
-  msg: Message,
-  args: string
-): Promise<void> {
+export async function handleStartCommand(msg: Message, args: string): Promise<void> {
   const chatId = msg.chat.id;
   const userId = msg.from?.id ?? 0;
   const firstName = msg.from?.first_name || 'Пользователь';
   const lastName = msg.from?.last_name;
 
-  // Parse args: check for task deep link first (startapp=task_TASK-123)
-  // Format from TWA: "task_ALPHA-123" (prefix added by taskUrl() in lib/bot.ts)
+  // Deep link: task_ALPHA-123
   const taskDeepLinkMatch = args.match(/^task_([A-Z]+-\d+)$/i);
   if (taskDeepLinkMatch) {
     const fullId = taskDeepLinkMatch[1].toUpperCase();
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
       rich_message: {
-        html: `🔍 <b>Просмотр задачи ${escapeHtml(fullId)}</b>\n\nИспользуйте команду: <b>/run-task ${escapeHtml(fullId)}</b>`,
+        html:
+          `🔍 <b>Просмотр задачи ${escapeHtml(fullId)}</b>\n\n` +
+          `Используйте команду: <b>/call ${escapeHtml(fullId)}</b>`,
       },
     });
     return;
   }
 
-  // Parse workspace code from args (format: ws_CODE or CODE)
   let workspaceCode: string | null = null;
   if (args) {
-    // Remove 'ws_' prefix if present
-    workspaceCode = args.replace(/^ws_/, '').replace(/^WS_/, '').trim();
+    workspaceCode = args.replace(/^ws_/i, '').trim();
   }
 
   if (!workspaceCode) {
-    // No code provided — show general welcome (v0.6.5 spec)
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
-      rich_message: { html: `
+      rich_message: {
+        html: `
 👋 <b>Привет, ${escapeHtml(firstName)}!</b>
 
-Я бот Onitask — ваш AI-помощник для управления задачами.
+Я бот Onitask — AI-помощник для управления задачами.
 
-<b>Команды:</b>
-• /create-task [текст] — создать задачу
-• /create-task 🎤 — создать задачу голосом
-• /run-task TASK-123 — посмотреть задачу
+${COMMANDS_BLOCK}
 
 <b>Чтобы начать:</b>
 Введите код рабочего пространства:
-<code>/ws_ABC123</code>
-
-Или перейдите в TWA и выберите workspace там.
-`.trim().slice(0, MAX_MESSAGE_LENGTH) },
+<code>/start ws_ABC123</code>
+Или перейдите в приложение и выберите workspace там.
+`.trim().slice(0, MAX_MESSAGE_LENGTH),
+      },
     });
     return;
   }
 
-  // Find workspace by invite code or slug
   const workspace = await findWorkspaceByCode(workspaceCode);
   if (!workspace) {
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
-      rich_message: { html: `
+      rich_message: {
+        html: `
 ⚠️ Рабочее пространство <code>${escapeHtml(workspaceCode)}</code> не найдено.
 
 Проверьте код и попробуйте снова.
-`.trim() },
+`.trim(),
+      },
     });
     return;
   }
 
-  // Ensure profile exists (find-or-create per INV-16)
   const profileId = await ensureProfile(userId, firstName, lastName);
   if (!profileId) {
     await sendRichMessage(BOT_TOKEN!, {
@@ -141,29 +126,23 @@ export async function handleStartCommand(
     return;
   }
 
-  // Register user as worker in this workspace
   await registerWorker(profileId, workspace.id, firstName, lastName);
 
-  // Send welcome message
   const welcomeHtml = buildWelcomeHTML(workspace.slug);
   await sendRichMessage(BOT_TOKEN!, {
     chat_id: chatId,
     rich_message: { html: welcomeHtml.slice(0, MAX_MESSAGE_LENGTH) },
   });
 
-  // Log in agent_events
   await logBotEvent(userId, workspace.id, 'onboarding_complete', {
     telegram_user_id: String(userId),
     workspace_id: workspace.id,
   });
 }
 
-/**
- * Find workspace by invite code or slug.
- * Uses invite_links table (not workspaces.invite_code which doesn't exist).
- */
-async function findWorkspaceByCode(code: string): Promise<{ id: string; slug: string; title?: string } | null> {
-  // Try as invite code first (invite_links.code)
+async function findWorkspaceByCode(
+  code: string
+): Promise<{ id: string; slug: string; title?: string } | null> {
   const { data: byInvite } = await supabase
     .from('invite_links')
     .select('workspace_id, workspaces(slug, name)')
@@ -179,7 +158,6 @@ async function findWorkspaceByCode(code: string): Promise<{ id: string; slug: st
     };
   }
 
-  // Try as slug
   const { data: bySlug } = await supabase
     .from('workspaces')
     .select('id, slug, name')
@@ -198,20 +176,16 @@ async function findWorkspaceByCode(code: string): Promise<{ id: string; slug: st
   return null;
 }
 
-/**
- * Register Telegram user as a worker in the workspace.
- * Uses find-or-create pattern (INV-16).
- * Uses profile.id as source_id (not telegram_user_id).
- */
 async function registerWorker(
   profileId: string,
   workspaceId: string,
   firstName: string,
   lastName?: string
 ): Promise<void> {
-  const displayName = [firstName, lastName].filter(Boolean).join(' ') || `User_${profileId.slice(0, 8)}`;
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(' ') ||
+    `User_${profileId.slice(0, 8)}`;
 
-  // Check if worker already exists
   const { data: existing } = await supabase
     .from('workers')
     .select('id')
@@ -220,7 +194,6 @@ async function registerWorker(
     .maybeSingle();
 
   if (existing) {
-    // Worker exists — just ensure active
     await supabase
       .from('workers')
       .update({ is_active: true })
@@ -229,7 +202,6 @@ async function registerWorker(
     return;
   }
 
-  // Create new worker record with correct columns (per 001_init.sql)
   await supabase.from('workers').insert({
     workspace_id: workspaceId,
     source_id: profileId,
@@ -240,24 +212,12 @@ async function registerWorker(
   });
 }
 
-/**
- * Log bot event to agent_events table.
- * Uses correct columns per 001_init.sql DDL.
- */
 async function logBotEvent(
   telegramUserId: number,
   workspaceId: string,
   tool: string,
   payload: Record<string, unknown>
 ): Promise<void> {
-  // Resolve worker ID for actor reference
-  const { data: worker } = await supabase
-    .from('workers')
-    .select('id')
-    .eq('source_id', String(telegramUserId))
-    .eq('workspace_id', workspaceId)
-    .maybeSingle();
-
   await supabase.from('agent_events').insert({
     workspace_id: workspaceId,
     tool: 'bot_command',
@@ -265,17 +225,4 @@ async function logBotEvent(
     summary: tool,
     metadata: payload,
   });
-}
-
-/**
- * Escape HTML special characters for safe insertion into Telegram messages.
- * Prevents interpretation of <, >, & as Telegram markup.
- * bot_.md v0.5.0, security_.md §4.1
- */
-function escapeHtml(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>');
 }
