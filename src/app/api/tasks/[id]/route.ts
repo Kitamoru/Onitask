@@ -151,3 +151,108 @@ export async function PATCH(
     );
   }
 }
+
+// ─── DELETE /api/tasks/[id] — Delete task with cascade cleanup ────────────────
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const worker = await getAuthenticatedWorker(request);
+    if (!worker) {
+      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    }
+
+    const { id: taskId } = await params;
+    const supabase = createServerClient();
+
+    // Verify the task belongs to the same workspace as the worker
+    const { data: taskData } = await supabase
+      .from('tasks')
+      .select('workspace_id')
+      .eq('id', taskId)
+      .single();
+
+    if (!taskData) {
+      return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
+    }
+
+    if ((taskData as any).workspace_id !== worker.workspace_id) {
+      return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
+    }
+
+    // Cascade delete related rows manually (tables without ON DELETE CASCADE)
+    const anySupabase = supabase as any;
+
+    // Clean up task_relations
+    await anySupabase
+      .from('task_relations')
+      .delete()
+      .or(`source_task_id.eq.${taskId},target_task_id.eq.${taskId}`);
+
+    // Clean up task_column_history
+    await anySupabase
+      .from('task_column_history')
+      .delete()
+      .eq('task_id', taskId);
+
+    // Clean up assignment_history
+    await anySupabase
+      .from('assignment_history')
+      .delete()
+      .eq('task_id', taskId);
+
+    // Clean up enrichments
+    await anySupabase
+      .from('enrichments')
+      .delete()
+      .eq('task_id', taskId);
+
+    // Clean up vector_chunks for this task
+    await anySupabase
+      .from('task_vector_chunks')
+      .delete()
+      .eq('task_id', taskId);
+
+    // Clean up bot_task_drafts
+    await anySupabase
+      .from('bot_task_drafts')
+      .delete()
+      .eq('task_id', taskId);
+
+    // Finally, delete the task itself
+    const { error: deleteError } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+
+    if (deleteError) {
+      console.error('tasks: delete error', deleteError);
+      return NextResponse.json(
+        { error: deleteError.message },
+        { status: 500 },
+      );
+    }
+
+    // Broadcast task_changed event for flow metrics cache invalidation
+    try {
+      await supabase
+        .channel('flowboard-metrics')
+        .send({
+          type: 'broadcast',
+          event: 'task_changed',
+          payload: { workspace_id: worker.workspace_id },
+        });
+    } catch {
+      // Broadcast is best-effort
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 500 },
+    );
+  }
+}

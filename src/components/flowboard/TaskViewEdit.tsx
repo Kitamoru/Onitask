@@ -31,7 +31,7 @@ import {
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
-import { patchTask, createTask } from '@/lib/api/flow';
+import { patchTask, createTask, deleteTask } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 
@@ -91,6 +91,8 @@ export function TaskViewEdit({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDateSheetOpen, setIsDateSheetOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Reset internal mode when the sheet opens or the task changes
   useEffect(() => {
@@ -193,6 +195,26 @@ export function TaskViewEdit({
     }
     setInternalMode('view');
     onClose();
+  };
+
+  const handleDeleteTask = async () => {
+    if (!task?.id) return;
+    setDeleting(true);
+    setShowDeleteConfirm(false);
+    try {
+      const result = await deleteTask(task.id);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      // Success - notify parent and close
+      onSave?.(task as TaskEntity);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка удаления');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Helper: find worker by ID
@@ -439,6 +461,63 @@ export function TaskViewEdit({
             <Button onClick={handleCancel} variant="outline" className="w-full">
               Отмена
             </Button>
+            {/* Delete button — only for existing tasks */}
+            <Button
+              variant="solid"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={loading || deleting}
+              fill="#EF4444"
+              textColor="#FAFAFA"
+            >
+              Удалить задачу
+            </Button>
+          </div>
+        )}
+
+        {/* Delete confirmation modal */}
+        {showDeleteConfirm && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl p-6"
+              style={{ backgroundColor: '#1A1A1A' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p
+                className="mb-2 text-center text-lg font-semibold"
+                style={{ color: '#FAFAFA' }}
+              >
+                Удалить задачу?
+              </p>
+              <p
+                className="mb-6 text-center text-sm"
+                style={{ color: '#8B8B8B' }}
+              >
+                Все связанные данные будут удалены без возможности восстановления.
+              </p>
+              <div className="flex flex-col gap-3">
+                <Button
+                  variant="solid"
+                  onClick={handleDeleteTask}
+                  disabled={deleting}
+                  fill="#EF4444"
+                  textColor="#FAFAFA"
+                >
+                  {deleting ? 'Удаление...' : 'Удалить задачу'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                  style={{ borderColor: '#333', color: '#8B8B8B' }}
+                >
+                  Отмена
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

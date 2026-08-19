@@ -136,6 +136,32 @@ export async function patchTask(
 }
 
 /**
+ * DELETE /api/tasks/:id — Delete a task with cascade cleanup.
+ */
+export async function deleteTask(
+  taskId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Delete failed' };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.
  */
