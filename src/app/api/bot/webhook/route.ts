@@ -1,18 +1,11 @@
 // POST /api/bot/webhook — Telegram Bot Webhook Endpoint
-// Handles incoming updates from Telegram Bot API
-// SEC-03: Secret token verification via timingSafeEqual
-// BOT-05: Lazy workspace selection — no initial board prompt
-// SERVERLESS-SAFE: No in-memory state — uses DB for drafts, callback_data for commands
-//
-// Commands (primary):
-// /create [text] → save draft → select workspace → F-04 pipeline
-// /task [text] → same as /create
-// /task TASK-123 → lookup task by full_id
-// /help → list commands
-// /start → onboarding
-// Aliases (compat):
-// /create-task … → /create
-// /run-task TASK-123 → /task lookup
+// Commands:
+// /task [text|voice] — создать задачу
+// /call TASK-123 — показать задачу
+// /backlog — задачи без исполнителя
+// /help — справка
+// /start — onboarding
+// Aliases: /create, /create-task → /task; /run-task, /run → /call
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -54,7 +47,14 @@ const supabase = createClient(
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_SECRET = process.env.TELEGRAM_BOT_SECRET;
 
-// ─── Module-level cache for bot username (lives until cold start) ───
+/** Единый текст справки — /help, /start, fallback */
+export const HELP_TEXT =
+  '📖 Команды:\n' +
+  '/task — создать задачу (текст или голос)\n' +
+  '/call TASK-123 — показать задачу\n' +
+  '/backlog — задачи без исполнителя\n' +
+  '/help — справка';
+
 let cachedBotUsername: string | null = null;
 
 async function getBotUsername(): Promise<string | null> {
@@ -73,10 +73,6 @@ async function getBotUsername(): Promise<string | null> {
   return null;
 }
 
-/**
- * Parse command from message text. Returns [command, args] or null.
- * Supports: /cmd, /cmd@botname, /cmd args, /create-task, /run-task
- */
 function parseCommand(text: string): [string, string] | null {
   const trimmed = text.trim();
   const match = trimmed.match(
@@ -86,19 +82,20 @@ function parseCommand(text: string): [string, string] | null {
   return [match[1].toLowerCase(), (match[2] || '').trim()];
 }
 
-/** Normalize aliases → canonical command name */
 function normalizeCommand(command: string): string {
   switch (command) {
+    case 'create':
     case 'create-task':
-      return 'create';
-    case 'run-task':
       return 'task';
+    case 'run-task':
+    case 'run':
+      return 'call';
     default:
       return command;
   }
 }
 
-const COMMANDS_REQUIRING_WORKSPACE = ['create', 'task'];
+const COMMANDS_REQUIRING_WORKSPACE = ['task', 'backlog'];
 const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
 
 function looksLikeTaskFullId(text: string): boolean {
@@ -145,11 +142,6 @@ async function checkBotMention(message: any): Promise<boolean> {
   return false;
 }
 
-/**
- * Download Telegram file by file_id → Blob.
- * Correct flow: getFile → file_path → download.
- * Forces audio/ogg MIME (Telegram voice/audio is always OGG/Opus).
- */
 async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
   if (!BOT_TOKEN) {
     console.error('[Bot Webhook] downloadTelegramFile: BOT_TOKEN missing');
@@ -197,7 +189,6 @@ async function safeSendChatAction(chatId: number): Promise<void> {
         setTimeout(() => reject(new Error('sendChatAction timeout 3s')), 3000)
       ),
     ]);
-    console.log('[Bot Webhook] sendChatAction OK');
   } catch (err: any) {
     console.warn(
       '[Bot Webhook] sendChatAction failed/timeout:',
@@ -207,33 +198,6 @@ async function safeSendChatAction(chatId: number): Promise<void> {
 }
 
 async function dispatchUpdate(update: any): Promise<void> {
-  const cb = update.callback_query;
-  const msg = update.message || update.edited_message;
-
-  if (cb) {
-    console.log(
-      '[Bot Webhook] UPDATE type=callback_query id=' +
-        cb.id +
-        ' data=' +
-        (cb.data ?? 'null') +
-        ' from_user=' +
-        (cb.from?.id ?? '?')
-    );
-  } else if (msg) {
-    console.log(
-      '[Bot Webhook] UPDATE type=message chat=' +
-        msg.chat?.id +
-        ' type=' +
-        msg.chat?.type +
-        ' text=' +
-        (msg.text ?? '[voice]') +
-        ' from=' +
-        (msg.from?.id ?? '?')
-    );
-  } else {
-    console.log('[Bot Webhook] UPDATE type=unknown (no callback_query, no message)');
-  }
-
   const callbackQuery = update.callback_query;
   if (callbackQuery) {
     await handleCallbackQuery(callbackQuery);
@@ -256,26 +220,8 @@ async function dispatchUpdate(update: any): Promise<void> {
   const text = message.text;
   const userId = message.from?.id;
 
-  console.log('[Bot Webhook] DEBUG message structure:', {
-    hasText: !!message.text,
-    hasVoice: !!message.voice,
-    hasAudio: !!message.audio,
-    hasVideoNote: !!message.video_note,
-    hasCaption: !!message.caption,
-    voiceDuration: message.voice?.duration ?? null,
-    audioDuration: message.audio?.duration ?? null,
-    audioMimeType: message.audio?.mime_type ?? null,
-    audioFileName: message.audio?.file_name ?? null,
-    videoNoteDuration: message.video_note?.duration ?? null,
-    caption: message.caption ?? null,
-    textPreview: text ? text.slice(0, 100) : null,
-  });
-
   if (!userId) {
-    console.error(
-      '[Bot Webhook] ERROR No user id in message:',
-      JSON.stringify(message).slice(0, 500)
-    );
+    console.error('[Bot Webhook] ERROR No user id in message');
     return;
   }
 
@@ -285,216 +231,179 @@ async function dispatchUpdate(update: any): Promise<void> {
   if (chatType !== 'private') {
     const botMentioned = await checkBotMention(message);
     if (!botMentioned) {
-      console.log(
-        '[Bot Webhook] Ignoring non-private chat without bot mention: type=' + chatType
-      );
+      console.log('[Bot Webhook] Ignoring non-private chat without bot mention');
       return;
     }
-
-    if (message.reply_to_message && message.reply_to_message.from) {
+    if (message.reply_to_message?.from) {
       effectiveUserId = message.reply_to_message.from.id;
-    } else {
-      effectiveUserId = userId;
     }
-
-    console.log(
-      '[Bot Webhook] Bot mentioned in ' +
-        chatType +
-        ' effectiveUserId=' +
-        effectiveUserId +
-        ' originalUserId=' +
-        userId
-    );
   }
 
-  console.log('[Bot Webhook] before sendChatAction');
   await safeSendChatAction(chatId);
 
   let parsedCommand: [string, string] | null = null;
-
   if (text && text.startsWith('/')) {
     parsedCommand = parseCommand(text);
   }
 
   if (parsedCommand && chatType !== 'private') {
-    const [_cmd, rawArgs] = parsedCommand;
     const resolvedBotUsername = await getBotUsername();
     if (resolvedBotUsername) {
-      const cleanedArgs = stripBotMentionFromArgs(rawArgs, resolvedBotUsername);
+      const cleanedArgs = stripBotMentionFromArgs(parsedCommand[1], resolvedBotUsername);
       parsedCommand = [parsedCommand[0], cleanedArgs];
     }
   }
 
   if (parsedCommand) {
     const [rawCmd, args] = parsedCommand;
-    const command = normalizeCommand(rawCmd);
-    parsedCommand = [command, args];
-    console.log(
-      '[Bot Webhook] parsedCommand=',
-      command,
-      'args=',
-      JSON.stringify(args),
-      'raw=',
-      rawCmd,
-      'chatType=',
-      chatType
-    );
-  } else {
-    console.log('[Bot Webhook] parsedCommand= null');
+    parsedCommand = [normalizeCommand(rawCmd), args];
+    console.log('[Bot Webhook] parsedCommand=', parsedCommand[0], 'args=', args);
   }
 
-  // ── /start FIRST ──
+  // ── /start ──
   if (parsedCommand && parsedCommand[0] === 'start') {
-    const [, args] = parsedCommand;
-    console.log('[Bot Webhook] Handling /start (workspace-free path)');
     try {
-      await handleStartCommand(message, args);
-      console.log('[Bot Webhook] handleStartCommand DONE');
+      await handleStartCommand(message, parsedCommand[1]);
     } catch (err) {
       console.error('[Bot Webhook] ERROR handleStartCommand:', err);
       await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
-        text: '⚠️ Ошибка при обработке /start.',
+        text: '⚠️ Ошибка при обработке /start.\n\n' + HELP_TEXT,
       }).catch(() => {});
     }
     return;
   }
 
-  // ── /task TASK-123 → lookup ──
-  if (parsedCommand && parsedCommand[0] === 'task' && looksLikeTaskFullId(parsedCommand[1])) {
-    const fullId = parsedCommand[1].trim().toUpperCase();
-    console.log('[Bot Webhook] Task lookup:', fullId);
-    await handleResolveTask(BOT_TOKEN, chatId, userId, message.message_id, fullId);
+  // ── /help ──
+  if (parsedCommand && parsedCommand[0] === 'help') {
+    try {
+      await handleCommand(message, 'help', parsedCommand[1], '');
+    } catch {
+      await sendMessage(BOT_TOKEN, { chat_id: chatId, text: HELP_TEXT });
+    }
     return;
   }
 
-  // ── /help ──
-  if (parsedCommand && parsedCommand[0] === 'help') {
-    console.log('[Bot Webhook] Handling /help (workspace-free path)');
-    try {
-      await handleCommand(message, 'help', parsedCommand[1], '');
-    } catch (err) {
-      console.error('[Bot Webhook] ERROR handleCommand (help):', err);
+  // ── /call TASK-123 — lookup (workspace not required) ──
+  if (parsedCommand && parsedCommand[0] === 'call') {
+    const args = parsedCommand[1];
+    if (looksLikeTaskFullId(args)) {
+      const fullId = args.trim().toUpperCase();
+      await handleResolveTask(BOT_TOKEN, chatId, userId, message.message_id, fullId);
+    } else {
       await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
-        text:
-          '📋 Команды:\n' +
-          '/create [текст] — создать задачу\n' +
-          '/task [текст] — создать задачу\n' +
-          '/task ALPHA-123 — показать задачу\n' +
-          '/help — эта справка',
+        text: '📝 Введите ID задачи, например:\n/call ALPHA-123',
       });
     }
     return;
   }
 
   // Step 2: Resolve workspace
-  let workspaceResult: { workspace_id: string } | null;
-  console.log(
-    '[Bot Webhook] >>> About to call resolveWorkspace, effectiveUserId=' +
-      effectiveUserId +
-      ', chatId=' +
-      chatId +
-      ', chatType=' +
-      chatType
-  );
+  let workspaceResult: { workspace_id: string } | null = null;
   try {
-    console.log('[Bot Webhook] >>> resolveWorkspace START');
     workspaceResult = await resolveWorkspace(effectiveUserId, chatId, chatType);
-    console.log(
-      '[Bot Webhook] >>> resolveWorkspace DONE, result=' +
-        (workspaceResult ? 'found' : 'null') +
-        ', userId=' +
-        userId
-    );
   } catch (err: any) {
-    console.error(
-      '[Bot Webhook] >>> resolveWorkspace THREW ERROR:',
-      err?.message || String(err)
-    );
-    console.error('[Bot Webhook] >>> resolveWorkspace STACK:', err?.stack || 'no stack');
-    workspaceResult = null;
+    console.error('[Bot Webhook] resolveWorkspace error:', err?.message || err);
   }
 
   if (workspaceResult && parsedCommand) {
     const [command, args] = parsedCommand;
     const workspaceId = workspaceResult.workspace_id;
 
-    if (command === 'create' || (command === 'task' && !looksLikeTaskFullId(args))) {
-      const gateMessage = await checkFreemiumBoundary('create-task', effectiveUserId, workspaceId);
+    if (command === 'task') {
+      const gateMessage = await checkFreemiumBoundary(
+        'create-task',
+        effectiveUserId,
+        workspaceId
+      );
       if (gateMessage) {
         await sendMessage(BOT_TOKEN, { chat_id: chatId, text: gateMessage });
         return;
       }
-      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args, message);
+      await handleCommandRequiringWorkspace(
+        chatId,
+        effectiveUserId,
+        'task',
+        args,
+        message
+      );
       return;
     }
 
-    const gateMessage = await checkFreemiumBoundary(command, effectiveUserId, workspaceId);
-    if (gateMessage) {
-      await sendMessage(BOT_TOKEN, { chat_id: chatId, text: gateMessage });
+    if (command === 'backlog') {
+      const gateMessage = await checkFreemiumBoundary(
+        'backlog',
+        effectiveUserId,
+        workspaceId
+      );
+      if (gateMessage) {
+        await sendMessage(BOT_TOKEN, { chat_id: chatId, text: gateMessage });
+        return;
+      }
+      await handleBacklog(BOT_TOKEN, chatId, workspaceId);
       return;
     }
 
-    try {
-      await handleCommand(message, command, args, workspaceId);
-    } catch (err) {
-      console.error('[Bot Webhook] ERROR handleCommand (' + command + '):', err);
-      await sendMessage(BOT_TOKEN, {
-        chat_id: chatId,
-        text: '⚠️ Ошибка при выполнении команды.',
-      });
-    }
+    // unknown with workspace
+    await sendMessage(BOT_TOKEN, { chat_id: chatId, text: HELP_TEXT });
     return;
   }
 
-  // Step 3: No workspace resolved — command still present
+  // Step 3: No workspace + command
   if (parsedCommand) {
     const [command, args] = parsedCommand;
 
     if (WORKSPACE_FREE_COMMANDS.includes(command)) {
-      console.log('[Bot Webhook] Workspace-free command:', command);
       await handleCommand(message, command, args, '');
       return;
     }
 
-    if (
-      COMMANDS_REQUIRING_WORKSPACE.includes(command) &&
-      !(command === 'task' && looksLikeTaskFullId(args))
-    ) {
-      await handleCommandRequiringWorkspace(chatId, effectiveUserId, 'create', args, message);
+    if (command === 'task') {
+      await handleCommandRequiringWorkspace(
+        chatId,
+        effectiveUserId,
+        'task',
+        args,
+        message
+      );
       return;
     }
 
-    await sendMessage(BOT_TOKEN, {
-      chat_id: chatId,
-      text:
-        '⚠️ Неизвестная команда.\n\n' +
-        '/create [текст] — создать задачу\n' +
-        '/task [текст] — создать задачу\n' +
-        '/task ALPHA-123 — показать задачу\n' +
-        '/help — справка',
-    });
+    if (command === 'backlog') {
+      // need workspace selection first — reuse workspace flow
+      const available = await getUserAvailableWorkspaces(effectiveUserId);
+      if (available.length === 0) {
+        await sendMessage(BOT_TOKEN, {
+          chat_id: chatId,
+          text: 'У вас нет доступных рабочих пространств.',
+        });
+        return;
+      }
+      if (available.length === 1) {
+        await handleBacklog(BOT_TOKEN, chatId, available[0].id);
+        return;
+      }
+      const keyboard = buildWorkspaceSelectionKeyboard(available, {
+        command: 'backlog',
+      });
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: 'Выберите доску:',
+        reply_markup: keyboard,
+      });
+      return;
+    }
+
+    await sendMessage(BOT_TOKEN, { chat_id: chatId, text: HELP_TEXT });
     return;
   }
 
   // Step 4: Pending task mode
   const pendingActive = await isPendingTaskMode(chatId);
-  console.log(
-    '[Bot Webhook] Step 4: pendingActive=',
-    pendingActive,
-    'chatId=',
-    chatId,
-    'textLen=',
-    text?.length,
-    'hasVoice=',
-    !!message?.voice
-  );
 
   if (pendingActive) {
     const profileId = await resolveProfileId(effectiveUserId);
-    console.log('[Bot Webhook] Step 4: profileId=', profileId);
-
     if (!profileId) {
       await clearPendingTask(chatId);
       await sendMessage(BOT_TOKEN, {
@@ -511,7 +420,7 @@ async function dispatchUpdate(update: any): Promise<void> {
       taskText = text.trim();
       source = 'nl';
     } else if (message.voice) {
-      if (message.caption && message.caption.trim().length > 0) {
+      if (message.caption?.trim()) {
         taskText = message.caption.trim();
         source = 'voice_with_caption';
       } else {
@@ -525,9 +434,7 @@ async function dispatchUpdate(update: any): Promise<void> {
           try {
             const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
               method: 'POST',
-              headers: {
-                Authorization: `Bearer ${serviceKey}`,
-              },
+              headers: { Authorization: `Bearer ${serviceKey}` },
               body: formData,
             });
             if (sttResp.ok) {
@@ -535,12 +442,10 @@ async function dispatchUpdate(update: any): Promise<void> {
               taskText = sttData.text || '[Голосовое сообщение]';
               source = 'voice';
             } else {
-              console.warn('[Bot Webhook] STT failed for voice');
               taskText = '[Голосовое сообщение — текст недоступен]';
               source = 'voice';
             }
-          } catch (err) {
-            console.error('[Bot Webhook] STT error (voice):', err);
+          } catch {
             taskText = '[Голосовое сообщение — текст недоступен]';
             source = 'voice';
           }
@@ -550,7 +455,6 @@ async function dispatchUpdate(update: any): Promise<void> {
         }
       }
     } else if (message.audio) {
-      console.log('[Bot Webhook] Received audio file, downloading...');
       const blob = await downloadTelegramFile(message.audio.file_id);
       if (blob) {
         const formData = new FormData();
@@ -561,9 +465,7 @@ async function dispatchUpdate(update: any): Promise<void> {
         try {
           const sttResp = await fetch(`${baseUrl}/api/ai/transcribe`, {
             method: 'POST',
-            headers: {
-              Authorization: `Bearer ${serviceKey}`,
-            },
+            headers: { Authorization: `Bearer ${serviceKey}` },
             body: formData,
           });
           if (sttResp.ok) {
@@ -571,12 +473,10 @@ async function dispatchUpdate(update: any): Promise<void> {
             taskText = sttData.text || '[Аудио сообщение]';
             source = 'audio_file';
           } else {
-            console.warn('[Bot Webhook] STT failed for audio file');
             taskText = '[Аудио сообщение — текст недоступен]';
             source = 'audio_file';
           }
-        } catch (err) {
-          console.error('[Bot Webhook] STT error (audio):', err);
+        } catch {
           taskText = '[Аудио сообщение — текст недоступен]';
           source = 'audio_file';
         }
@@ -585,19 +485,12 @@ async function dispatchUpdate(update: any): Promise<void> {
         source = 'audio_file';
       }
     } else if (message.video_note) {
-      console.log('[Bot Webhook] Received video_note (circular video), cannot transcribe');
       taskText =
         '[Круглое видео — бот не может распознать текст. Отправьте обычное голосовое сообщение]';
       source = 'video_note';
     }
 
     if (taskText.length > 0) {
-      console.log(
-        '[Bot Webhook] Step 4: Creating draft, taskText=',
-        taskText.slice(0, 100),
-        'source=',
-        source
-      );
       await clearPendingTask(chatId);
 
       const { data: draftResult, error: draftError } = await supabase.rpc(
@@ -612,22 +505,14 @@ async function dispatchUpdate(update: any): Promise<void> {
       );
 
       if (draftError || !draftResult) {
-        console.error('[Bot Webhook] Failed to create draft from pending:', draftError);
         await sendMessage(BOT_TOKEN, {
           chat_id: chatId,
-          text: '⚠️ Не удалось сохранить черновик. Отправьте задачу заново через /create.',
+          text: '⚠️ Не удалось сохранить черновик. Отправьте задачу заново через /task.',
         });
         return;
       }
 
-      console.log('[Bot Webhook] Draft created successfully, draftId=', draftResult);
-
       const availableWorkspaces = await getUserAvailableWorkspaces(effectiveUserId);
-      console.log(
-        '[Bot Webhook] Step 4: availableWorkspaces count=',
-        availableWorkspaces.length
-      );
-
       if (availableWorkspaces.length === 0) {
         await sendMessage(BOT_TOKEN, {
           chat_id: chatId,
@@ -664,16 +549,8 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
-  // No pending — regular help
-  await sendMessage(BOT_TOKEN, {
-    chat_id: chatId,
-    text:
-      '📝 Команды:\n' +
-      '/create [текст] — создать задачу\n' +
-      '/task [текст] — создать задачу\n' +
-      '/task ALPHA-123 — показать задачу\n' +
-      '/help — справка',
-  });
+  // No pending — help
+  await sendMessage(BOT_TOKEN, { chat_id: chatId, text: HELP_TEXT });
 }
 
 async function handleCommandRequiringWorkspace(
@@ -683,10 +560,7 @@ async function handleCommandRequiringWorkspace(
   args: string,
   message?: any
 ): Promise<void> {
-  if (!BOT_TOKEN) {
-    console.error('[Bot Webhook] handleCommandRequiringWorkspace: BOT_TOKEN missing');
-    return;
-  }
+  if (!BOT_TOKEN) return;
 
   const profileId = await resolveProfileId(userId);
   if (!profileId) {
@@ -734,7 +608,6 @@ async function handleCommandRequiringWorkspace(
     });
 
     if (error || !draftResult) {
-      console.error('[Bot Webhook] Failed to create draft:', error);
       await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
@@ -767,7 +640,6 @@ async function handleCommandRequiringWorkspace(
   });
 
   if (error || !draftResult) {
-    console.error('[Bot Webhook] Failed to create draft:', error);
     await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text: '⚠️ Не удалось сохранить черновик. Попробуйте ещё раз.',
@@ -785,12 +657,64 @@ async function handleCommandRequiringWorkspace(
   });
 }
 
-async function handleCallbackQuery(callbackQuery: any): Promise<void> {
-  const token = BOT_TOKEN;
-  if (!token) {
-    console.error('[Bot Webhook] handleCallbackQuery: BOT_TOKEN missing');
+async function handleBacklog(
+  token: string,
+  chatId: number,
+  workspaceId: string
+): Promise<void> {
+  const { data: ws } = await supabase
+    .from('workspaces')
+    .select('task_prefix, name, slug')
+    .eq('id', workspaceId)
+    .maybeSingle();
+
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('id, title, task_number, column, priority, deadline')
+    .eq('workspace_id', workspaceId)
+    .is('assigned_to', null)
+    .neq('column', 'done')
+    .order('created_at', { ascending: false })
+    .limit(15);
+
+  if (error) {
+    console.error('[Bot Webhook] handleBacklog error:', error);
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: '⚠️ Не удалось загрузить список задач.',
+    });
     return;
   }
+
+  if (!tasks || tasks.length === 0) {
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: '📥 Нет задач без исполнителя.',
+    });
+    return;
+  }
+
+  const prefix = ws?.task_prefix || '?';
+  const boardName = ws?.name || ws?.slug || '';
+
+  const lines = tasks.map((t) => {
+    const fullId = `${prefix}-${t.task_number}`;
+    const pri =
+      t.priority === 'high' ? '🔴' : t.priority === 'low' ? '🟢' : '🟡';
+    return `${pri} <b>${escapeHtml(fullId)}</b> — ${escapeHtml(t.title || '')}`;
+  });
+
+  await sendMessage(token, {
+    chat_id: chatId,
+    text:
+      `📥 <b>Без исполнителя</b> · ${escapeHtml(boardName)}\n\n` + lines.join('\n'),
+    parse_mode: 'HTML',
+  });
+}
+
+async function handleCallbackQuery(callbackQuery: any): Promise<void> {
+  const token = BOT_TOKEN;
+  if (!token) return;
 
   const chatId = callbackQuery.message?.chat.id;
   const messageId = callbackQuery.message?.message_id;
@@ -804,7 +728,7 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
         ...opts,
       });
     } catch (err) {
-      console.warn('[Bot Webhook] answerCallbackQuery failed (stale?):', err);
+      console.warn('[Bot Webhook] answerCallbackQuery failed:', err);
     }
   };
 
@@ -850,14 +774,14 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   }
 
   if (type === 'command') {
-    await executeCommandInWorkspace(token, chatId, userId, workspaceId, extra);
+    if (extra === 'backlog') {
+      await handleBacklog(token, chatId, workspaceId);
+    } else {
+      await executeCommandInWorkspace(token, chatId, userId, workspaceId, extra);
+    }
   } else if (type === 'draft') {
     await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
   }
-
-  console.log(
-    `[Bot Webhook] User ${userId} selected workspace ${wsData?.slug || ''} (${workspaceId}), type=${type}, extra=${extra}`
-  );
 }
 
 async function executeCommandInWorkspace(
@@ -878,6 +802,11 @@ async function executeCommandInWorkspace(
     args = '';
   }
 
+  if (command === 'backlog') {
+    await handleBacklog(token, chatId, workspaceId);
+    return;
+  }
+
   const fakeMessage = {
     chat: { id: chatId },
     from: { id: userId },
@@ -893,21 +822,14 @@ async function executeDraftInWorkspaceByChat(
   userId: number,
   workspaceId: string
 ): Promise<void> {
-  console.log('[Bot Webhook] executeDraftInWorkspaceByChat:', {
-    chatId,
-    userId,
-    workspaceId,
-  });
-
   const { data: draft, error } = await supabase.rpc('consume_latest_bot_task_draft', {
     p_chat_id: chatId,
   });
 
   if (error || !draft || draft.length === 0) {
-    console.warn('[Bot Webhook] Draft not found or expired:', { chatId, error });
     await sendMessage(token, {
       chat_id: chatId,
-      text: '⚠️ Черновик не найден или истёк. Отправьте задачу заново через /create.',
+      text: '⚠️ Черновик не найден или истёк. Отправьте задачу заново через /task.',
     });
     return;
   }
@@ -916,19 +838,29 @@ async function executeDraftInWorkspaceByChat(
   if (!draftRow.title) {
     await sendMessage(token, {
       chat_id: chatId,
-      text: '⚠️ Черновик пустой. Отправьте задачу заново через /create.',
+      text: '⚠️ Черновик пустой. Отправьте задачу заново через /task.',
     });
     return;
   }
 
   const taskText = draftRow.title;
-
-  // Resolve profile for created_by + explicit source
   const profileId = await resolveProfileId(userId);
 
   let aiResult: {
-    task?: { id: string; title: string; column: string; priority: string };
-    parse?: { rewritten_title?: string; clarity_score?: number };
+    task?: {
+      id: string;
+      title: string;
+      description?: string | null;
+      column: string;
+      priority: string;
+      deadline?: string | null;
+    };
+    parse?: {
+      rewritten_title?: string;
+      rewritten_description?: string;
+      clarity_score?: number;
+      deadline?: string | null;
+    };
     showCorrectionSheet?: boolean;
   };
 
@@ -953,20 +885,18 @@ async function executeDraftInWorkspaceByChat(
 
     if (!resp.ok) {
       const errBody = await resp.json().catch(() => ({}));
-      console.error('[Bot Webhook] /api/ai/create-task failed:', resp.status, errBody);
       throw new Error(errBody.error || `HTTP ${resp.status}`);
     }
 
     aiResult = await resp.json();
   } catch (err) {
-    console.error('[Bot Webhook] F-04 create-task call failed:', err);
+    console.error('[Bot Webhook] F-04 create-task failed:', err);
     await createTaskFallback(token, chatId, userId, workspaceId, draftRow);
     return;
   }
 
   const task = aiResult.task;
   if (!task) {
-    console.error('[Bot Webhook] No task returned from F-04');
     await sendMessage(token, {
       chat_id: chatId,
       text: '⚠️ Задача не создана. Попробуйте ещё раз.',
@@ -976,7 +906,7 @@ async function executeDraftInWorkspaceByChat(
 
   const { data: wsWithPrefix } = await supabase
     .from('workspaces')
-    .select('task_prefix, slug')
+    .select('task_prefix, slug, name')
     .eq('id', workspaceId)
     .maybeSingle();
 
@@ -988,29 +918,20 @@ async function executeDraftInWorkspaceByChat(
 
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
 
-  console.log('[Bot Webhook] Task created via F-04:', {
-    taskId: task.id,
-    fullId,
-    chatId,
-    profileId,
-  });
-
   const cardData: TaskCardData = {
-  fullId,
-  title: task.title,
-  description:
-    (aiResult as any).parse?.rewritten_description ??
-    (task as any).description ??
-    null,
-  column: task.column,
-  isInbox: false,
-  isBlocked: false,
-  priority: task.priority as 'high' | 'medium' | 'low' | null,
-  dueDate: (task as any).deadline ?? (aiResult as any).parse?.deadline ?? null,
-  assigneeName: null,
-  workspaceHandle: wsWithPrefix?.slug || '',
-  clarityScore: aiResult.parse?.clarity_score ?? null,
-};
+    fullId,
+    title: task.title,
+    description:
+      aiResult.parse?.rewritten_description ?? task.description ?? null,
+    column: task.column,
+    isInbox: false,
+    isBlocked: false,
+    priority: task.priority as 'high' | 'medium' | 'low' | null,
+    dueDate: task.deadline ?? aiResult.parse?.deadline ?? null,
+    assigneeName: null,
+    workspaceHandle: wsWithPrefix?.name || wsWithPrefix?.slug || '',
+    clarityScore: aiResult.parse?.clarity_score ?? null,
+  };
 
   const taskCard = buildTaskCard(cardData, 'created');
 
@@ -1023,14 +944,10 @@ async function executeDraftInWorkspaceByChat(
     });
   } catch (err) {
     console.error('[Bot Webhook] sendMessage (task card) failed:', err);
-    try {
-      await sendMessage(token, {
-        chat_id: chatId,
-        text: `✅ Задача создана: ${fullId} · «${task.title}»`,
-      });
-    } catch (err2) {
-      console.error('[Bot Webhook] sendMessage (fallback) failed:', err2);
-    }
+    await sendMessage(token, {
+      chat_id: chatId,
+      text: `✅ Задача создана: ${fullId} · «${task.title}»`,
+    }).catch(() => {});
   }
 }
 
@@ -1066,11 +983,10 @@ async function createTaskFallback(
       priority: 'medium',
       version: 0,
     })
-    .select('id, title, column, priority, version')
+    .select('id, title, description, column, priority, version')
     .single();
 
   if (taskError || !task) {
-    console.error('[Bot Webhook] Fallback task creation failed:', taskError);
     await sendMessage(token, {
       chat_id: chatId,
       text: `⚠️ Не удалось создать задачу: ${taskError?.message || 'неизвестная ошибка'}`,
@@ -1080,7 +996,7 @@ async function createTaskFallback(
 
   const { data: wsForFallback } = await supabase
     .from('workspaces')
-    .select('task_prefix, slug')
+    .select('task_prefix, slug, name')
     .eq('id', workspaceId)
     .maybeSingle();
 
@@ -1092,22 +1008,17 @@ async function createTaskFallback(
 
   const fullId = `${wsForFallback?.task_prefix || '?'}-${taskWithNumber2?.task_number || '?'}`;
 
-  console.log('[Bot Webhook] Task created via fallback:', {
-    taskId: task.id,
-    fullId,
-    chatId,
-  });
-
   const cardData: TaskCardData = {
     fullId,
     title: task.title,
+    description: task.description ?? null,
     column: task.column,
     isInbox: false,
     isBlocked: false,
     priority: task.priority as 'high' | 'medium' | 'low' | null,
     dueDate: null,
     assigneeName: null,
-    workspaceHandle: wsForFallback?.slug || '',
+    workspaceHandle: wsForFallback?.name || wsForFallback?.slug || '',
     clarityScore: null,
   };
 
@@ -1141,7 +1052,6 @@ async function handleResolveTask(
     );
 
     if (rpcError || !cardData) {
-      console.error('[Bot Webhook] get_task_card_data_by_full_id error:', rpcError);
       await sendMessage(token, {
         chat_id: chatId,
         text: `⚠️ Задача ${escapeHtml(fullId)} не найдена. Проверьте формат (например, ALPHA-123).`,
@@ -1174,20 +1084,12 @@ export async function POST(req: NextRequest) {
   const providedSecret = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
 
   if (!WEBHOOK_SECRET) {
-    console.error('[Bot Webhook] TELEGRAM_BOT_SECRET not configured');
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
   if (!providedSecret || !verifyTelegramWebhookSecret(providedSecret, WEBHOOK_SECRET)) {
-    console.warn('[Bot Webhook] Invalid secret token');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  console.log('[Bot Webhook] env check', {
-    hasToken: !!BOT_TOKEN,
-    hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    hasKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-  });
 
   let update: unknown;
   try {
