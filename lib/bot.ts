@@ -44,21 +44,6 @@ export function escapeHtml(str: string): string {
 }
 
 /**
- * Build welcome message for onboarding.
- */
-export function buildWelcomeHTML(workspaceSlug: string): string {
-  return `
-<b>👋 Добро пожаловать в рабочее пространство @${escapeHtml(workspaceSlug)}!</b>
-Ты добавлен как участник.
-
-📖 Команды:
-/task — создать задачу (текст или голос)
-/call TASK-123 — показать задачу
-/backlog — задачи без исполнителя
-/help — справка
-`.trim();
-}
-/**
  * Sanitize output for Telegram rich messages.
  * Whitelist: <b>, <i>, <u>, <s>, <code>, <pre>, <tg-thinking>, <details>, <summary>
  */
@@ -756,19 +741,16 @@ export function buildFreemiumGateHTML(feature: string): string {
   return `<tg-callout>Создание задач через бот доступно с плана Solo (290₽/мес). Перейти: [ссылка на TWA настройки]</tg-callout>`;
 }
 
-/**
- * Build welcome message for onboarding (v0.6.5 spec).
- */
 export function buildWelcomeHTML(workspaceSlug: string): string {
   return `
-<b>👋 Добро пожаловать в @${escapeHtml(workspaceSlug)}!</b>
+<b>👋 Добро пожаловать в рабочее пространство @${escapeHtml(workspaceSlug)}!</b>
 Ты добавлен как участник.
-<details>
-<summary>📖 Что можно делать</summary>
-• /create-task [текст] — создать задачу
-• /create-task 🎤 — создать задачу голосом
-• /run-task TASK-123 — посмотреть задачу
-</details>
+
+📖 Команды:
+/task — создать задачу (текст или голос)
+/call TASK-123 — показать задачу
+/backlog — задачи без исполнителя
+/help — справка
 `.trim();
 }
 
