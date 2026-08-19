@@ -745,7 +745,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
               borderColor: 'var(--color-line)',
               color: 'var(--color-text-primary)',
             }}
-            value={draft.rewritten_description}
+            value={draft.rewritten_description ?? ''}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField('rewritten_description', e.target.value)}
             aria-label="Описание"
             placeholder="Описание"

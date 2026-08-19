@@ -234,7 +234,7 @@ export function BottomSheet({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80"
-        onClick={onClose}
+        onClick={preventSwipe ? undefined : onClose}
         aria-hidden="true"
       />
 

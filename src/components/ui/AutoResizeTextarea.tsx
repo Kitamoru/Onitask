@@ -7,10 +7,13 @@ import { useLayoutEffect, useRef } from 'react';
  * Uses the "collapse to auto, read scrollHeight" technique.
  */
 interface AutoResizeTextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+  extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value'> {
+  /** Current textarea value (string or anything coerced to string) */
+  value?: string | number | null | undefined;
+}
 
 export function AutoResizeTextarea({
-  value,
+  value = '',
   onChange,
   className,
   style,
@@ -21,6 +24,7 @@ export function AutoResizeTextarea({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Collapse first so scrollHeight reflects the true content height
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
