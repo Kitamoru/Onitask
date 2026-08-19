@@ -112,6 +112,7 @@ export function TaskCreatorSheet({
   }, [open]);
 
   // Animate waveform bars during recording — smooth interpolation
+  // NOTE: MUST depend on recState (not a boolean expression) to satisfy Rules of Hooks
   useEffect(() => {
     if (recState !== 'recording') {
       if (animFrameRef.current !== null) {
@@ -153,7 +154,7 @@ export function TaskCreatorSheet({
     return () => {
       if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [recState === 'recording']);
+  }, [recState]);
 
   const handleClose = useCallback(() => {
     if (loading || recState === 'recording') return;
@@ -307,9 +308,40 @@ export function TaskCreatorSheet({
                   : 'none',
               }}
             >
-              {recState === 'recording' ? (
-                /* Recording state — live waveform */
-                <div className="flex h-full w-full items-center px-4 gap-2.5">
+              {/* 
+                Textarea is ALWAYS in the DOM so that useAutosizeTextarea works correctly.
+                During recording it's visually hidden (pointer-events: none, opacity: 0)
+                and waveform overlays on top.
+              */}
+              <textarea
+                ref={textareaRef}
+                className="absolute inset-0 flex-1 resize-none bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                style={{
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'var(--font-family-base)',
+                  pointerEvents: recState === 'recording' ? 'none' : 'auto',
+                  opacity: recState === 'recording' ? 0 : 1,
+                  transition: 'opacity 0.15s ease',
+                  // Max ~2000 chars ≈ ~8 lines at typical font size
+                  maxHeight: '240px',
+                  overflowY: 'auto',
+                }}
+                placeholder="Опишите задачу или запишите голосом…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendClick();
+                  }
+                }}
+                autoComplete="off"
+                aria-label="Ввод задачи"
+              />
+
+              {/* Waveform overlay — only visible during recording */}
+              {recState === 'recording' && (
+                <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
                   <div
                     className="shrink-0 h-2 w-2 rounded-full"
                     style={{
@@ -333,24 +365,6 @@ export function TaskCreatorSheet({
                     ))}
                   </div>
                 </div>
-              ) : (
-                /* Idle state — auto-sizing textarea */
-                <textarea
-                  ref={textareaRef}
-                  className="flex-1 resize-none bg-transparent px-4 py-2 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
-                  style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-base)' }}
-                  placeholder="Опишите задачу или запишите голосом…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendClick();
-                    }
-                  }}
-                  autoComplete="off"
-                  aria-label="Ввод задачи"
-                />
               )}
             </div>
 
@@ -402,15 +416,13 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-           {/* Description hint — hidden during recording/transcribing */}
-          {!isRecordingOrProcessing && (
-            <p
-              className="mb-6 text-sm leading-relaxed"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
-            </p>
-          )}
+           {/* Description hint — always visible */}
+          <p
+            className="mb-6 text-sm leading-relaxed"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
+          </p>
 
           {/* Status messages */}
           {recState === 'processing' && (
