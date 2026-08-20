@@ -335,58 +335,19 @@ export function TaskCreatorSheet({
       <style>{pulseBorderStyles}</style>
 
       <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
-        {/* ★★★ Весь контент обёрнут в относительный контейнер ★★★ */}
         <div
-          className="relative px-4 pb-6 pt-2"
+          className="relative flex h-full flex-col px-4 pb-6 pt-2"
           style={{
             paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
           }}
         >
-          {/* Заголовок */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="h-5 w-1 rounded"
-                style={{ backgroundColor: 'var(--color-accent-amber)' }}
-              />
-              <h2
-                className="m-0"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-body-lg)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  color: 'var(--color-text-primary)',
-                }}
-              >
-                Новая задача
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={loading || recState === 'recording'}
-              className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
-              style={{
-                backgroundColor: 'transparent',
-                color: 'var(--color-text-muted)',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-              aria-label="Закрыть"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
-                <line x1="5" y1="5" x2="19" y2="19" />
-                <line x1="19" y1="5" x2="5" y2="19" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Форма (видна, когда loading === false) */}
+          {/* Основной контент (форма) */}
           <div
             style={{
               opacity: loading ? 0 : 1,
               pointerEvents: loading ? 'none' : 'auto',
               transition: 'opacity 0.2s ease',
+              flex: 1,
             }}
           >
             {/* Capture row — текстовое поле + кнопки */}
@@ -583,9 +544,24 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* ★★★ Лоадер — абсолютно поверх всего ★★★ */}
+          {/* Лоадер — абсолютно по центру BottomSheet */}
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm">
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '16px',
+                backgroundColor: 'rgba(16, 16, 16, 0.4)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 10,
+              }}
+            >
               <ProgressContent />
             </div>
           )}
