@@ -114,8 +114,12 @@ export function TaskCreatorSheet({
           textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }));
         }
       });
+      setIsProcessingVoice(false); // ✅ Reset processing flag when transcription finishes
     },
   });
+
+  // ✅ Local state to indicate that voice is being processed (transcription in progress)
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   // Reset everything when sheet opens/closes
   useEffect(() => {
@@ -128,6 +132,7 @@ export function TaskCreatorSheet({
       setPreviewOpen(false);
       setWaveformBars(new Array(BAR_COUNT).fill(3));
       setRecordingSeconds(0);
+      setIsProcessingVoice(false);
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
@@ -149,6 +154,13 @@ export function TaskCreatorSheet({
       dataArrayRef.current = null;
     }
   }, [open]);
+
+  // ✅ Reset processing flag when recorder goes to idle or error
+  useEffect(() => {
+    if (recState === 'idle' || recState === 'error') {
+      setIsProcessingVoice(false);
+    }
+  }, [recState, recError]);
 
   // Set up audio analyser when recording starts
   useEffect(() => {
@@ -411,8 +423,6 @@ export function TaskCreatorSheet({
               {/* Capture row — text input + mic + send */}
               <div className="mb-4 flex items-end gap-2">
                 {/* Input container — now adapts to textarea height */}
-                {/* Input container — now adapts to textarea height */}
-                {/* Input container — now adapts to textarea height */}
                 <div
                   className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
                   style={{
@@ -494,17 +504,18 @@ export function TaskCreatorSheet({
                   border={recState === 'recording'
                     ? 'var(--color-error)'
                     : 'var(--color-line-strong)'}
-                  fill={recState === 'recording'
-                    ? 'rgba(255, 59, 48, 0.1)'
-                    : 'var(--color-bg-surface)'}
+                  fill="var(--color-bg-surface)"   // ← всегда обычный фон, красный только бордер
                   className="shrink-0 self-end"
                 >
                   <button
                     type="button"
-                    onClick={recState === 'recording' ? stopRec : startRec}
+                    onClick={recState === 'recording' ? () => {
+                      stopRec();
+                      setIsProcessingVoice(true);
+                    } : startRec}
                     className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
                     style={{ width: '56px', height: '56px' }}
-                    disabled={recState === 'transcribing'}
+                    disabled={isProcessingVoice}
                     aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
                   >
                     {micIcon}
@@ -918,10 +929,3 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     </>
   );
 }
-
-
-
-
-
-
-
