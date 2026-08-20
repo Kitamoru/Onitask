@@ -275,6 +275,7 @@ export default function CreateBoardPage() {
             borderWidth={1.5}
             borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
             fill="#101010"
+            className="h-full"
             contentClassName="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
           >
             Назад
