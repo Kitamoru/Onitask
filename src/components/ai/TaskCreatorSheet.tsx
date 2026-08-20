@@ -411,6 +411,8 @@ export function TaskCreatorSheet({
               {/* Capture row — text input + mic + send */}
               <div className="mb-4 flex items-end gap-2">
                 {/* Input container — now adapts to textarea height */}
+                {/* Input container — now adapts to textarea height */}
+                {/* Input container — now adapts to textarea height */}
                 <div
                   className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
                   style={{
@@ -418,6 +420,7 @@ export function TaskCreatorSheet({
                     borderColor: recState === 'recording'
                       ? 'rgba(255, 153, 0, 0.35)'
                       : 'var(--color-line)',
+                    borderWidth: 1,
                     backgroundColor: 'var(--color-bg-surface)',
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
@@ -492,8 +495,10 @@ export function TaskCreatorSheet({
                     ? 'var(--color-error)'
                     : 'var(--color-line-strong)'}
                   fill={recState === 'recording'
+                  fill={recState === 'recording'
+                  fill={recState === 'recording'
                     ? 'rgba(255, 59, 48, 0.1)'
-                    : 'transparent'}
+                    : 'var(--color-bg-surface)'}
                   className="shrink-0 self-end"
                 >
                   <button
@@ -501,6 +506,7 @@ export function TaskCreatorSheet({
                     onClick={recState === 'recording' ? stopRec : startRec}
                     className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
                     style={{ width: '56px', height: '56px' }}
+                    disabled={recState === 'transcribing'}
                     aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
                   >
                     {micIcon}
@@ -514,9 +520,11 @@ export function TaskCreatorSheet({
                   notch={8}
                   borderWidth={1}
                   border={isSendDisabled
+                  border={isSendDisabled
+                  border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
-                  fill="transparent"
+                  fill="var(--color-bg-surface)"
                   className="shrink-0 self-end"
                 >
                   <button
@@ -914,4 +922,6 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     </>
   );
 }
+
+
 
