@@ -41,7 +41,6 @@ export function EditDeskForm({
   initialData,
   serverDocuments,
   isOwner,
-  onAddColleague,
 }: {
   workspaceId: string;
   initialData: {
@@ -61,7 +60,6 @@ export function EditDeskForm({
   };
   serverDocuments?: ServerDocument[];
   isOwner: boolean;
-  onAddColleague: () => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);

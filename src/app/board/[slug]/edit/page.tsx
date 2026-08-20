@@ -218,7 +218,6 @@ export default function BoardEditPage() {
         initialData={initialData}
         serverDocuments={serverDocuments}
         isOwner={isOwner}
-        onAddColleague={() => router.push(`/board/${slug}/members`)}
       />
     </main>
   );

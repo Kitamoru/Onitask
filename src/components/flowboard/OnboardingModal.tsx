@@ -120,10 +120,13 @@ export function OnboardingModal({ onSuccess, onClose }: OnboardingModalProps) {
              </div>
            </div>
          )}
-        <CreateDeskForm
-          onSubmit={handleSubmit}
-          onAddColleague={() => console.log('add colleague')}
-        />
+         <CreateDeskForm
+           onSubmit={handleSubmit}
+           availableColleagues={[]}
+           selectedColleagues={[]}
+           onToggleColleague={() => {}}
+           onOpenSelect={() => {}}
+         />
       </div>
     </div>
   );

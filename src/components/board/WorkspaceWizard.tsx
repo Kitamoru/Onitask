@@ -122,7 +122,10 @@ export function WorkspaceWizard({ onSuccess }: WorkspaceWizardProps) {
       )}
       <CreateDeskForm
         onSubmit={handleSubmit}
-        onAddColleague={() => console.log('add colleague')}
+        availableColleagues={[]}
+        selectedColleagues={[]}
+        onToggleColleague={() => {}}
+        onOpenSelect={() => {}}
       />
     </div>
   );
