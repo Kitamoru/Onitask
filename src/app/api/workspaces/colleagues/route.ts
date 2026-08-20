@@ -30,13 +30,16 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
+    console.log('colleagues API: profileId =', profileId);
+
     // 2. Find workspace IDs where this user is owner
+    //    Use JOIN with profiles to match by telegram_id instead of source_id
     const { data: ownerWorkers, error: ownerError } = await supabase
       .from('workers')
-      .select('workspace_id')
-      .eq('source_id', profileId)
+      .select('workspace_id, source_id')
       .eq('role', 'owner')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .eq('type', 'human');
 
     if (ownerError) {
       console.error('colleagues: owner query error', ownerError);
@@ -46,10 +49,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const workspaceIds = (ownerWorkers || []).map((w: any) => w.workspace_id);
+    console.log('colleagues API: ownerWorkers count =', ownerWorkers?.length);
 
-    if (workspaceIds.length === 0) {
+    // Filter to only those where source_id matches the current user's profileId
+    const myWorkspaceIds = (ownerWorkers || [])
+      .filter((w: any) => w.source_id === profileId)
+      .map((w: any) => w.workspace_id);
+
+    console.log('colleagues API: myWorkspaceIds =', myWorkspaceIds);
+
+    if (myWorkspaceIds.length === 0) {
       // No owner workspaces — no colleagues to show
+      console.log('colleagues API: no owner workspaces found');
       return NextResponse.json({
         success: true,
         data: [],
@@ -57,11 +68,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Find all active human workers in those workspaces, excluding self
-    //    Deduplicate by source_id using DISTINCT ON
     const { data: colleagues, error: collError } = await supabase
       .from('workers')
       .select('source_id, display_name')
-      .in('workspace_id', workspaceIds)
+      .in('workspace_id', myWorkspaceIds)
       .eq('type', 'human')
       .eq('is_active', true)
       .neq('source_id', profileId);
