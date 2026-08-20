@@ -26,6 +26,30 @@ import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import { ProgressContent } from '@/components/ai/ProgressSheet';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
+/** ─── Running border animation keyframes (injected once) ─── */
+const RUNNING_BORDER_STYLE_ID = 'task-creator-running-border';
+
+function injectRunningBorderStyles() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(RUNNING_BORDER_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = RUNNING_BORDER_STYLE_ID;
+  style.textContent = `
+    @keyframes taskBorderChase {
+      to { stroke-dashoffset: -100; }
+    }
+    @keyframes taskBorderPulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+if (typeof document !== 'undefined') {
+  injectRunningBorderStyles();
+}
+
 interface TaskCreatorSheetProps {
   initData: string;
   open: boolean;
@@ -427,14 +451,19 @@ export function TaskCreatorSheet({
                   className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
                   style={{
                     minHeight: '56px',
+                    borderRadius: '0.5rem',
                     borderColor: recState === 'recording'
                       ? 'rgba(255, 153, 0, 0.35)'
-                      : 'var(--color-line)',
+                      : isProcessingVoice
+                        ? 'var(--color-accent-amber)'
+                        : 'var(--color-line)',
                     borderWidth: 1,
                     backgroundColor: 'var(--color-bg-surface)',
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
-                      : 'none',
+                      : isProcessingVoice
+                        ? '0 0 0 4px rgba(245, 158, 11, 0.12)'
+                        : 'none',
                   }}
                 >
                   <textarea
@@ -465,6 +494,29 @@ export function TaskCreatorSheet({
                     autoComplete="off"
                     aria-label="Ввод задачи"
                   />
+
+                  {/* Running amber border overlay — matches GlobalLoader style */}
+                  {isProcessingVoice && (
+                    <svg
+                      className="pointer-events-none absolute inset-0 z-10"
+                      viewBox="0 0 300 72"
+                      preserveAspectRatio="none"
+                      style={{ width: '100%', height: '100%' }}
+                    >
+                      <path
+                        fill="none"
+                        stroke="#f59e0b"
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                        strokeDasharray="18 82"
+                        style={{
+                          filter: 'drop-shadow(0 0 2px rgba(245,158,11,0.9)) drop-shadow(0 0 6px rgba(245,158,11,0.5))',
+                          animation: 'taskBorderChase 2.4s linear infinite, taskBorderPulse 2.4s ease-in-out infinite',
+                        }}
+                        d="M4,0 L296,0 A4,4 0 0 1 300,4 L300,68 A4,4 0 0 1 296,72 L4,72 A4,4 0 0 1 0,68 L0,4 A4,4 0 0 1 4,0 Z"
+                      />
+                    </svg>
+                  )}
 
                   {/* Waveform overlay */}
                   {recState === 'recording' && (
