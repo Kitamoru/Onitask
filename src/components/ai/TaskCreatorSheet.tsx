@@ -361,10 +361,43 @@ export function TaskCreatorSheet({
     </svg>
   );
 
+  // ─── CSS для анимации бегущей линии ────────────────────────────────────
+  // Добавьте эти стили в ваш глобальный CSS или в CSS-модуль компонента.
+  // .border-animate – применяется к контейнеру инпута во время обработки голоса.
+  // --------------------------------------------------------------------
+  const borderAnimationStyles = `
+    .border-animate {
+      border: 2px solid transparent !important;
+      background-clip: padding-box;
+      position: relative;
+    }
+    .border-animate::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 8px;
+      padding: 2px;
+      background: linear-gradient(90deg, #f59e0b, #f59e0b, transparent, #f59e0b);
+      background-size: 300% 100%;
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: moveBorder 1.8s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes moveBorder {
+      0% { background-position: 0% 0%; }
+      100% { background-position: 300% 0%; }
+    }
+  `;
+
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
     <>
+      {/* Вставка стилей (можно вынести в глобальный CSS) */}
+      <style>{borderAnimationStyles}</style>
+
       {/* Main creation sheet */}
       <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
         <div
@@ -424,16 +457,18 @@ export function TaskCreatorSheet({
             >
               {/* Capture row — текстовое поле + кнопки */}
               <div className="mb-4 flex items-end gap-2">
-                {/* Input container */}
+                {/* Input container — добавляем класс border-animate при обработке голоса */}
                 <div
-                  className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
+                  className={`relative flex flex-1 items-center overflow-hidden rounded border transition-colors ${
+                    isProcessingVoice ? 'border-animate' : ''
+                  }`}
                   style={{
                     minHeight: '56px',
                     borderColor: recState === 'recording'
                       ? 'rgba(255, 153, 0, 0.35)'
                       : 'var(--color-line)',
                     borderWidth: 1,
-                    backgroundColor: '#0A0A0A',
+                    backgroundColor: '#101010', // изменён фон на #101010
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
                       : 'none',
@@ -497,7 +532,7 @@ export function TaskCreatorSheet({
                   )}
                 </div>
 
-                {/* CHANGED: Mic button с fill="#0A0A0A" и стилями disabled */}
+                {/* CHANGED: Mic button с fill="#101010" и стилями disabled */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
@@ -506,7 +541,7 @@ export function TaskCreatorSheet({
                   border={recState === 'recording'
                     ? 'var(--color-error)'
                     : 'var(--color-line-strong)'}
-                  fill="#0A0A0A"
+                  fill="#101010" // изменён фон панели
                   className="shrink-0 self-end"
                 >
                   <button
@@ -530,7 +565,7 @@ export function TaskCreatorSheet({
                   </button>
                 </NotchedPanel>
 
-                {/* CHANGED: Send button с fill="#0A0A0A" */}
+                {/* CHANGED: Send button с fill="#101010" */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
@@ -539,7 +574,7 @@ export function TaskCreatorSheet({
                   border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
-                  fill="#0A0A0A"
+                  fill="#101010" // изменён фон панели
                   className="shrink-0 self-end"
                 >
                   <button
