@@ -495,8 +495,6 @@ export function TaskCreatorSheet({
                     ? 'var(--color-error)'
                     : 'var(--color-line-strong)'}
                   fill={recState === 'recording'
-                  fill={recState === 'recording'
-                  fill={recState === 'recording'
                     ? 'rgba(255, 59, 48, 0.1)'
                     : 'var(--color-bg-surface)'}
                   className="shrink-0 self-end"
@@ -519,8 +517,6 @@ export function TaskCreatorSheet({
                   radius={4}
                   notch={8}
                   borderWidth={1}
-                  border={isSendDisabled
-                  border={isSendDisabled
                   border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
@@ -922,6 +918,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     </>
   );
 }
+
 
 
 
