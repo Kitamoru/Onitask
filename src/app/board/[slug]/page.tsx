@@ -240,7 +240,9 @@ export default function BoardDetailPage() {
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}
     >
-      {/* Back button */}
+      <BoardDetail {...detailProps} />
+
+      {/* Back button — below BoardDetail */}
       <div className="px-4 pt-4">
         <button
           type="button"
@@ -254,17 +256,12 @@ export default function BoardDetailPage() {
             borderWidth={1.5}
             borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
             fill="#101010"
-            contentClassName="flex h-full w-full items-center justify-center gap-2 text-[15px] font-semibold text-text"
+            contentClassName="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
             Назад
           </NotchedPanel>
         </button>
       </div>
-
-      <BoardDetail {...detailProps} />
     </main>
   );
 }

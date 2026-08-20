@@ -246,30 +246,6 @@ export default function CreateBoardPage() {
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}
     >
-      {/* Back button */}
-      <div className="px-4 pt-4">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="block h-10 w-full appearance-none border-0 bg-transparent p-0"
-        >
-          <NotchedPanel
-            corner="action"
-            notch={8}
-            radius={8}
-            borderWidth={1.5}
-            borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-            fill="#101010"
-            contentClassName="flex h-full w-full items-center justify-center gap-2 text-[15px] font-semibold text-text"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Назад
-          </NotchedPanel>
-        </button>
-      </div>
-
       {error && (
         <div className="px-4 pt-4">
           <div className="rounded-[10px] bg-accent-amber/10 px-4 py-2 text-sm text-[#F59E0B]" role="alert">
@@ -284,6 +260,27 @@ export default function CreateBoardPage() {
         onToggleColleague={handleToggleColleague}
         onOpenSelect={() => setSelectOpen(true)}
       />
+
+      {/* Back button — below the form CTA */}
+      <div className="px-4 pt-4">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="block h-10 w-full appearance-none border-0 bg-transparent p-0"
+        >
+          <NotchedPanel
+            corner="action"
+            notch={8}
+            radius={8}
+            borderWidth={1.5}
+            borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+            fill="#101010"
+            contentClassName="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
+          >
+            Назад
+          </NotchedPanel>
+        </button>
+      </div>
 
       {/* Colleague selection bottom sheet */}
       <ColleagueSelectSheet

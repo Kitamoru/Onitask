@@ -451,7 +451,7 @@ export function EditDeskForm({
 
       {/* Inline CTA */}
       <div
-        className="px-4 pt-2 lg:hidden"
+        className="px-4 pt-4 lg:hidden"
         style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <div className="flex flex-col gap-3">
