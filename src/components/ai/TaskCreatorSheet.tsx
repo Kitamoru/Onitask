@@ -82,6 +82,21 @@ export function TaskCreatorSheet({
   const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // ── Measure form height to prevent BottomSheet collapse during loading ──
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [formHeight, setFormHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (viewMode === 'form' && containerRef.current) {
+      const h = containerRef.current.getBoundingClientRect().height;
+      setFormHeight(Math.round(h));
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!open) setFormHeight(null);
+  }, [open]);
+
   // Waveform state
   const [waveformBars, setWaveformBars] = useState<number[]>(() =>
     new Array(BAR_COUNT).fill(3)
@@ -363,9 +378,13 @@ export function TaskCreatorSheet({
       {/* Main creation sheet — единый лист с тремя режимами */}
       <BottomSheet open={open} onClose={handleClose} preventSwipe={viewMode === 'loading'}>
         <div
+          ref={containerRef}
           className="px-4 pb-6 pt-2"
           style={{
             paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
+            ...(formHeight && viewMode === 'loading'
+              ? { minHeight: `${formHeight}px`, height: `${formHeight}px` }
+              : {}),
           }}
         >
           {/* ── Form view ── */}
@@ -587,8 +606,12 @@ export function TaskCreatorSheet({
             </>
           )}
 
-          {/* ── Loading view (ProgressContent) ── */}
-          {viewMode === 'loading' && <ProgressContent />}
+          {/* ── Loading view (ProgressContent) — centered inside fixed-height container ── */}
+          {viewMode === 'loading' && (
+            <div className="flex h-full w-full items-center justify-center">
+              <ProgressContent />
+            </div>
+          )}
         </div>
       </BottomSheet>
 
