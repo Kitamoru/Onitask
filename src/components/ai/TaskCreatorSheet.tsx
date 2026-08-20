@@ -458,7 +458,7 @@ export function TaskCreatorSheet({
                         ? 'var(--color-accent-amber)'
                         : 'var(--color-line)',
                     borderWidth: 1,
-                    backgroundColor: 'var(--color-bg-surface)',
+                    backgroundColor: 'transparent', // ← прозрачный фон, совпадает с BottomSheet
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
                       : isProcessingVoice
@@ -553,10 +553,14 @@ export function TaskCreatorSheet({
                   radius={4}
                   notch={8}
                   borderWidth={1}
-                  border={recState === 'recording'
-                    ? 'var(--color-error)'
-                    : 'var(--color-line-strong)'}
-                  fill="var(--color-bg-surface)"   // ← всегда обычный фон, красный только бордер
+                  border={
+                    isProcessingVoice
+                      ? 'var(--color-line)'
+                      : recState === 'recording'
+                        ? 'var(--color-error)'
+                        : 'var(--color-line-strong)'
+                  }
+                  fill="transparent" // ← прозрачный фон, совпадает с BottomSheet
                   className="shrink-0 self-end"
                 >
                   <button
@@ -566,7 +570,13 @@ export function TaskCreatorSheet({
                       setIsProcessingVoice(true);
                     } : startRec}
                     className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
-                    style={{ width: '56px', height: '56px' }}
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      opacity: isProcessingVoice ? 0.32 : 1,
+                      cursor: isProcessingVoice ? 'not-allowed' : 'pointer',
+                      color: isProcessingVoice ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                    }}
                     disabled={isProcessingVoice}
                     aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
                   >
@@ -583,7 +593,7 @@ export function TaskCreatorSheet({
                   border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
-                  fill="var(--color-bg-surface)"
+                  fill="transparent" // ← прозрачный фон
                   className="shrink-0 self-end"
                 >
                   <button
