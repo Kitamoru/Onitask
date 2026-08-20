@@ -29,7 +29,8 @@ export interface BoardDetailProps {
   spHours?: typeof DEFAULT_SP_HOURS;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
-  colleagueCount: number;
+  availableColleagueCount: number;
+  selectedColleagues: import('@/components/desk-create/CoworkingSection').ColleagueItem[];
   context: string;
   documentsEnabled: boolean;
   linksEnabled: boolean;
@@ -48,7 +49,8 @@ export function BoardDetail({
   spHours = DEFAULT_SP_HOURS,
   spSprintEnabled,
   cognitiveWeightEnabled,
-  colleagueCount,
+  availableColleagueCount,
+  selectedColleagues,
   context,
   documentsEnabled,
   linksEnabled,
@@ -110,8 +112,9 @@ export function BoardDetail({
         </section>
 
         <CoworkingSection
-          colleagueCount={colleagueCount}
-          onAddColleague={() => {}}
+          availableCount={availableColleagueCount}
+          selectedColleagues={selectedColleagues}
+          onOpenSelect={() => {}}
           disabled
           readOnly
         />
