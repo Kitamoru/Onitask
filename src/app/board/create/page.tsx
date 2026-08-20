@@ -47,10 +47,17 @@ export default function CreateBoardPage() {
 
     async function loadColleagues() {
       try {
-        const res = await fetch('/api/workspaces/colleagues');
-        if (!res.ok) return;
+        const initData = getTelegramInitData();
+        const url = `/api/workspaces/colleagues?init_data=${encodeURIComponent(initData)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.error('colleagues API error:', res.status, errText);
+          return;
+        }
         const json = await res.json();
         if (json.success && !cancelled) {
+          console.log('colleagues loaded:', json.data?.length || 0);
           setAllColleagues(json.data || []);
         }
       } catch (e) {
