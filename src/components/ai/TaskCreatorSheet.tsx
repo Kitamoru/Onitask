@@ -17,6 +17,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
 import { SingleDateField } from '@/components/ui/SingleDateField';
@@ -411,7 +412,7 @@ export function TaskCreatorSheet({
               <div className="mb-4 flex items-end gap-2">
                 {/* Input container — now adapts to textarea height */}
                 <div
-                  className="relative flex flex-1 items-center overflow-hidden rounded-2xl border transition-colors"
+                  className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
                   style={{
                     minHeight: '56px',
                     borderColor: recState === 'recording'
@@ -481,52 +482,62 @@ export function TaskCreatorSheet({
                   )}
                 </div>
 
-                {/* Mic button */}
-                <button
-                  type="button"
-                  onClick={recState === 'recording' ? stopRec : startRec}
-                  className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
-                  style={{
-                    width: '56px',
-                    height: '56px',
-                    borderColor: recState === 'recording'
-                      ? 'var(--color-error)'
-                      : 'var(--color-line-strong)',
-                    backgroundColor: recState === 'recording'
-                      ? 'rgba(255, 59, 48, 0.1)'
-                      : 'transparent',
-                    color: recState === 'recording'
-                      ? 'var(--color-error)'
-                      : 'var(--color-text-primary)',
-                  }}
-                  aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
+                {/* Mic button — notch action style */}
+                <NotchedPanel
+                  corner="action"
+                  radius={4}
+                  notch={8}
+                  borderWidth={1}
+                  border={recState === 'recording'
+                    ? 'var(--color-error)'
+                    : 'var(--color-line-strong)'}
+                  fill={recState === 'recording'
+                    ? 'rgba(255, 59, 48, 0.1)'
+                    : 'transparent'}
+                  className="shrink-0 self-end"
                 >
-                  {micIcon}
-                </button>
+                  <button
+                    type="button"
+                    onClick={recState === 'recording' ? stopRec : startRec}
+                    className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
+                    style={{ width: '56px', height: '56px' }}
+                    aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
+                  >
+                    {micIcon}
+                  </button>
+                </NotchedPanel>
 
-                {/* Send button */}
-                <button
-                  type="button"
-                  onClick={handleSendClick}
-                  disabled={isSendDisabled}
-                  className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
-                  style={{
-                    width: '56px',
-                    height: '56px',
-                    borderColor: isSendDisabled
-                      ? 'var(--color-line)'
-                      : 'var(--color-line-strong)',
-                    backgroundColor: 'transparent',
-                    color: isSendDisabled
-                      ? 'var(--color-text-muted)'
-                      : 'var(--color-text-primary)',
-                    opacity: isSendDisabled ? 0.32 : 1,
-                    cursor: isSendDisabled ? 'not-allowed' : 'pointer',
-                  }}
-                  aria-label="Отправить"
+                {/* Send button — notch action style */}
+                <NotchedPanel
+                  corner="action"
+                  radius={4}
+                  notch={8}
+                  borderWidth={1}
+                  border={isSendDisabled
+                    ? 'var(--color-line)'
+                    : 'var(--color-line-strong)'}
+                  fill="transparent"
+                  className="shrink-0 self-end"
                 >
-                  {sendIcon}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleSendClick}
+                    disabled={isSendDisabled}
+                    className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      color: isSendDisabled
+                        ? 'var(--color-text-muted)'
+                        : 'var(--color-text-primary)',
+                      opacity: isSendDisabled ? 0.32 : 1,
+                      cursor: isSendDisabled ? 'not-allowed' : 'pointer',
+                    }}
+                    aria-label="Отправить"
+                  >
+                    {sendIcon}
+                  </button>
+                </NotchedPanel>
               </div>
 
               {/* Description hint */}
@@ -903,3 +914,4 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     </>
   );
 }
+

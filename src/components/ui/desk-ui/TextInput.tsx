@@ -26,7 +26,8 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
     // instead of branching the DOM shape, and costs nothing visually
     // when there's no prefix (input still fills the row edge-to-edge).
     const heightClass = corner === "panel" ? "h-12" : "h-10";
-    const fieldNotch = corner === "field" ? 8 : undefined;
+      // For "field" style inputs, we want a subtle notch of 4px to match design specs.
+      const fieldNotch = corner === "field" ? 4 : undefined;
     return (
       <NotchedPanel corner={corner} notch={fieldNotch} fill="var(--color-surface)">
         <div className={cn("flex items-center", heightClass)}>
