@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreateDeskForm, type CreateDeskFormValue } from '@/components/desk-create';
+import { ColleagueSelectSheet, type ColleagueItem } from '@/components/desk-create/ColleagueSelectSheet';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
 /**
  * Create Board page — renders the desk/create design from Figma.
- * 
+ *
  * Route: /board/create
  * Uses the pixel‑perfect CreateDeskForm with NotchedPanel, chamfered corners,
  * TrafficLight steppers, and all Telegram‑optimised safe‑area handling.
- * 
+ *
  * Flow:
  * 1. User arrives here either from root redirect (new user) or manually
  * 2. If user already has a workspace (not new), redirect to /flowboard
@@ -29,9 +30,38 @@ export default function CreateBoardPage() {
   const { isLoading: authLoading, error: authError, refresh } = useTelegramAuth();
   const { loadBoardsData } = useData();
 
+  // Colleagues state
+  const [allColleagues, setAllColleagues] = useState<ColleagueItem[]>([]);
+  const [selectedColleagues, setSelectedColleagues] = useState<ColleagueItem[]>([]);
+  const [selectOpen, setSelectOpen] = useState(false);
+  const [colleaguesLoaded, setColleaguesLoaded] = useState(false);
+
   // Сброс скролла при переходе на страницу
   useEffect(() => {
     window.scrollTo(0, 0);
+  }, []);
+
+  // Load available colleagues from owner workspaces
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadColleagues() {
+      try {
+        const res = await fetch('/api/workspaces/colleagues');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.success && !cancelled) {
+          setAllColleagues(json.data || []);
+        }
+      } catch (e) {
+        console.error('Failed to load colleagues:', e);
+      } finally {
+        if (!cancelled) setColleaguesLoaded(true);
+      }
+    }
+
+    loadColleagues();
+    return () => { cancelled = true; };
   }, []);
 
   // This page is accessible to all authenticated users for creating boards.
@@ -70,6 +100,21 @@ export default function CreateBoardPage() {
 
     return true;
   };
+
+  /**
+   * Toggle a colleague's selection.
+   */
+  const handleToggleColleague = useCallback((sourceId: string) => {
+    setSelectedColleagues((prev) => {
+      const exists = prev.find((c) => c.source_id === sourceId);
+      if (exists) {
+        return prev.filter((c) => c.source_id !== sourceId);
+      }
+      const item = allColleagues.find((c) => c.source_id === sourceId);
+      if (!item) return prev;
+      return [...prev, item];
+    });
+  }, [allColleagues]);
 
   /**
    * Maps the new CreateDeskForm format to the API payload.
@@ -118,6 +163,11 @@ export default function CreateBoardPage() {
           : undefined,
 
         doc_kb_enabled: value.documentsEnabled,
+
+        // Coworking: add selected colleagues as workers
+        coworking_members: value.colleagueIds.length > 0
+          ? value.colleagueIds.map((sid) => ({ source_id: sid }))
+          : undefined,
       };
 
       const res = await fetch('/api/workspaces', {
@@ -154,7 +204,7 @@ export default function CreateBoardPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || !colleaguesLoaded) {
     return (
       <div
         className="flex items-center justify-center h-full min-h-dvh"
@@ -197,7 +247,21 @@ export default function CreateBoardPage() {
       )}
       <CreateDeskForm
         onSubmit={handleSubmit}
-        onAddColleague={() => console.log('add colleague')}
+        availableColleagues={allColleagues}
+        selectedColleagues={selectedColleagues}
+        onToggleColleague={handleToggleColleague}
+        onOpenSelect={() => setSelectOpen(true)}
+      />
+
+      {/* Colleague selection bottom sheet */}
+      <ColleagueSelectSheet
+        open={selectOpen}
+        onClose={() => setSelectOpen(false)}
+        colleagues={allColleagues}
+        selectedIds={new Set(selectedColleagues.map((c) => c.source_id))}
+        onToggle={handleToggleColleague}
+        onConfirm={() => {}} // handled by CreateDeskForm submit
+        stacked={true}
       />
     </main>
   );

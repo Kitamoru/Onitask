@@ -6,6 +6,8 @@ export { BasicInfoSection } from './BasicInfoSection';
 export { StoryPointCostCard } from './StoryPointCostCard';
 export { CognitiveWeightCard } from './CognitiveWeightCard';
 export { CoworkingSection } from './CoworkingSection';
+export type { ColleagueItem } from './CoworkingSection';
+export { ColleagueSelectSheet } from './ColleagueSelectSheet';
 export { ContextSection } from './ContextSection';
 export { DocumentsCard } from './DocumentsCard';
 export { ExternalLinksCard } from './ExternalLinksCard';

@@ -8,6 +8,7 @@ import { SprintActivationCard } from "@/components/desk-create/SprintActivationC
 import { StoryPointCostCard } from "@/components/desk-create/StoryPointCostCard";
 import { CognitiveWeightCard } from "@/components/desk-create/CognitiveWeightCard";
 import { CoworkingSection } from "@/components/desk-create/CoworkingSection";
+import type { ColleagueItem } from "@/components/desk-create/CoworkingSection";
 import { ContextSection } from "@/components/desk-create/ContextSection";
 import { DocumentsCard } from "@/components/desk-create/DocumentsCard";
 import {
@@ -25,7 +26,10 @@ export type CreateDeskFormValue = {
   spHours: typeof DEFAULT_SP_HOURS;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
-  colleagueCount: number;
+  /** Selected colleagues' source_ids to add as members */
+  colleagueIds: string[];
+  /** Total available colleagues count (for display) */
+  availableColleagueCount: number;
   context: string;
   documentsEnabled: boolean;
   documents: File[];
@@ -38,10 +42,20 @@ export type CreateDeskFormValue = {
 
 export function CreateDeskForm({
   onSubmit,
-  onAddColleague,
+  availableColleagues,
+  selectedColleagues,
+  onToggleColleague,
+  onOpenSelect,
 }: {
   onSubmit: (value: CreateDeskFormValue) => void;
-  onAddColleague: () => void;
+  /** All available colleagues from owner workspaces */
+  availableColleagues: ColleagueItem[];
+  /** Currently selected colleagues */
+  selectedColleagues: ColleagueItem[];
+  /** Toggle a colleague selection */
+  onToggleColleague: (sourceId: string) => void;
+  /** Open the colleague select sheet */
+  onOpenSelect: () => void;
 }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -49,7 +63,6 @@ export function CreateDeskForm({
   const [spHours, setSpHours] = useState(DEFAULT_SP_HOURS);
   const [spSprintEnabled, setSpSprintEnabled] = useState(false);
   const [cognitiveWeightEnabled, setCognitiveWeightEnabled] = useState(false);
-  const [colleagueCount] = useState(0);
   const [context, setContext] = useState("");
   const [documentsEnabled, setDocumentsEnabled] = useState(false);
   const [documents, setDocuments] = useState<File[]>([]);
@@ -61,6 +74,9 @@ export function CreateDeskForm({
 
   const canSubmit = name.trim().length > 0 && slug.trim().length > 0;
 
+  // Build colleague IDs array from selected items
+  const colleagueIds = selectedColleagues.map((c) => c.source_id);
+
   const handleSubmit = () => {
     if (!canSubmit) return;
     onSubmit({
@@ -70,7 +86,8 @@ export function CreateDeskForm({
       spHours,
       spSprintEnabled,
       cognitiveWeightEnabled,
-      colleagueCount,
+      colleagueIds,
+      availableColleagueCount: availableColleagues.length,
       context,
       documentsEnabled,
       documents,
@@ -122,8 +139,9 @@ export function CreateDeskForm({
         </section>
 
         <CoworkingSection
-          colleagueCount={colleagueCount}
-          onAddColleague={onAddColleague}
+          availableCount={availableColleagues.length}
+          selectedColleagues={selectedColleagues}
+          onOpenSelect={onOpenSelect}
         />
 
         <ContextSection value={context} onChange={setContext} />

@@ -482,6 +482,7 @@ export async function POST(req: NextRequest) {
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
     const doc_kb_enabled = body.doc_kb_enabled as boolean | undefined;
+    const coworking_members = body.coworking_members as Array<{ source_id: string }> | undefined;
 
     if (!init_data) {
       return NextResponse.json(
@@ -610,6 +611,37 @@ export async function POST(req: NextRequest) {
 
       if (workerError) {
         console.error('workspaces: worker creation error', workerError);
+      }
+
+      // 4b. Add coworking members (colleagues from other boards)
+      if (coworking_members && coworking_members.length > 0) {
+        // Fetch display_name for each colleague from their existing profiles
+        const profileIds = coworking_members.map((m) => m.source_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, display_name')
+          .in('id', profileIds);
+
+        const profilesMap = new Map<string, string>();
+        for (const p of (profiles as any[]) || []) {
+          profilesMap.set(p.id, p.display_name || '');
+        }
+
+        const workersToInsert = coworking_members.map((m) => ({
+          workspace_id: workspaceId,
+          source_id: m.source_id,
+          type: 'human',
+          role: 'member',
+          display_name: profilesMap.get(m.source_id) || '',
+        }));
+
+        const { error: coworkingError } = await supabase
+          .from('workers')
+          .insert(workersToInsert);
+
+        if (coworkingError) {
+          console.error('workspaces: coworking member creation error', coworkingError);
+        }
       }
 
       // 5. Create workspace_settings with form-provided configuration
