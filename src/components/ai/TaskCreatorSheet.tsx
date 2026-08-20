@@ -433,7 +433,7 @@ export function TaskCreatorSheet({
                       ? 'rgba(255, 153, 0, 0.35)'
                       : 'var(--color-line)',
                     borderWidth: 1,
-                    backgroundColor: 'var(--color-bg-surface)',
+                    backgroundColor: '#0A0A0A',
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
                       : 'none',
@@ -497,7 +497,7 @@ export function TaskCreatorSheet({
                   )}
                 </div>
 
-                {/* CHANGED: Mic button с fill="transparent" вместо условного фона */}
+                {/* CHANGED: Mic button с fill="#0A0A0A" и стилями disabled */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
@@ -506,7 +506,7 @@ export function TaskCreatorSheet({
                   border={recState === 'recording'
                     ? 'var(--color-error)'
                     : 'var(--color-line-strong)'}
-                  fill="transparent"
+                  fill="#0A0A0A"
                   className="shrink-0 self-end"
                 >
                   <button
@@ -516,8 +516,13 @@ export function TaskCreatorSheet({
                       setIsProcessingVoice(true);
                     } : startRec}
                     className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
-                    style={{ width: '56px', height: '56px' }}
-                    // CHANGED: disabled теперь привязан к isProcessingVoice
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      opacity: isProcessingVoice ? 0.32 : 1,
+                      cursor: isProcessingVoice ? 'not-allowed' : 'pointer',
+                      color: isProcessingVoice ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                    }}
                     disabled={isProcessingVoice}
                     aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
                   >
@@ -525,7 +530,7 @@ export function TaskCreatorSheet({
                   </button>
                 </NotchedPanel>
 
-                {/* CHANGED: Send button с fill="transparent" */}
+                {/* CHANGED: Send button с fill="#0A0A0A" */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
@@ -534,7 +539,7 @@ export function TaskCreatorSheet({
                   border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
-                  fill="transparent"
+                  fill="#0A0A0A"
                   className="shrink-0 self-end"
                 >
                   <button
