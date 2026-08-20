@@ -322,38 +322,17 @@ export function TaskCreatorSheet({
     </svg>
   );
 
-  // ─── CSS для SVG-анимации (исправлено: короткая полоска, без теней) ──────
-  const svgAnimationStyles = `
-    .border-chase-svg {
-      position: absolute;
-      inset: -1px;
-      width: calc(100% + 2px);
-      height: calc(100% + 2px);
-      pointer-events: none;
-      z-index: 2;
-      border-radius: 8px;
-      overflow: visible;
-    }
-    .border-chase-path {
-      fill: none;
-      stroke: #f59e0b;
-      stroke-width: 1.5;
-      stroke-linecap: round;
-      stroke-dasharray: 50 270;   /* 50px закрашено, 270px пусто = ~16% от периметра */
-      stroke-dashoffset: 0;
-      animation: borderChase 2.4s linear infinite;
-      /* drop-shadow полностью удалён */
-    }
-    @keyframes borderChase {
-      to {
-        stroke-dashoffset: -320;  /* общая длина = 50+270 */
-      }
+  // CSS для мягкого мигания бордера
+  const pulseBorderStyles = `
+    @keyframes pulse-border {
+      0%, 100% { border-color: rgba(245, 158, 11, 0.4); }
+      50% { border-color: rgba(245, 158, 11, 1); }
     }
   `;
 
   return (
     <>
-      <style>{svgAnimationStyles}</style>
+      <style>{pulseBorderStyles}</style>
 
       <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
         <div
@@ -413,39 +392,24 @@ export function TaskCreatorSheet({
             >
               {/* Capture row — текстовое поле + кнопки */}
               <div className="mb-4 flex items-end gap-2">
-                {/* Input container с SVG-анимацией */}
+                {/* Input container с анимацией мигания бордера */}
                 <div
                   className="relative flex flex-1 items-center rounded"
                   style={{
                     minHeight: '56px',
                     border: recState === 'recording'
                       ? '1px solid rgba(255, 153, 0, 0.35)'
+                      : isProcessingVoice
+                      ? '1px solid rgba(245, 158, 11, 0.4)'
                       : '1px solid var(--color-line)',
                     backgroundColor: '#101010',
                     borderRadius: '8px',
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
                       : 'none',
+                    animation: isProcessingVoice ? 'pulse-border 1.5s ease-in-out infinite' : 'none',
                   }}
                 >
-                  {/* SVG-анимация поверх инпута */}
-                  {isProcessingVoice && (
-                    <svg
-                      className="border-chase-svg"
-                      viewBox="0 0 100 56"
-                      preserveAspectRatio="none"
-                    >
-                      <rect
-                        x="1"
-                        y="1"
-                        width="98"
-                        height="54"
-                        rx="7"
-                        className="border-chase-path"
-                      />
-                    </svg>
-                  )}
-
                   <textarea
                     ref={textareaRef}
                     className="flex-1 resize-none bg-transparent px-4 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
