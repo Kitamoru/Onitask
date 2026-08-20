@@ -29,9 +29,6 @@ export function CoworkingSection({
   disabled = false,
   readOnly = false,
 }: CoworkingSectionProps) {
-  // Badge shows count of SELECTED colleagues (the ones being added to new board)
-  const badgeCount = selectedColleagues.length;
-
   return (
     <section>
       <SectionHeader title="Коворкинг" />
@@ -40,9 +37,7 @@ export function CoworkingSection({
           <span className="text-[15px] font-medium text-text">
             Список коллег
           </span>
-          <CountBadge>
-            {badgeCount > 0 ? `${badgeCount} выбрано` : `${availableCount} доступно`}
-          </CountBadge>
+          <CountBadge>{availableCount}</CountBadge>
         </div>
 
         {/* Selected colleagues list preview */}
@@ -66,9 +61,7 @@ export function CoworkingSection({
 
         {!readOnly && (
           <Button variant="outline" onClick={onOpenSelect} disabled={disabled}>
-            {selectedColleagues.length > 0
-              ? `Изменить (${selectedColleagues.length})`
-              : 'Добавить коллегу'}
+            {selectedColleagues.length > 0 ? 'Изменить' : 'Добавить коллегу'}
           </Button>
         )}
       </Card>

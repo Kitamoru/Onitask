@@ -118,7 +118,7 @@ export function ColleagueSelectSheet({
           disabled={selectedIds.size === 0}
           className="w-full"
         >
-          Готово ({selectedIds.size})
+          Готово
         </Button>
       </div>
     </BottomSheet>
