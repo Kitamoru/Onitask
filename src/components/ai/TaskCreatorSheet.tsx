@@ -26,30 +26,6 @@ import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import { ProgressContent } from '@/components/ai/ProgressSheet';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
-/** ─── Running border animation keyframes (injected once) ─── */
-const RUNNING_BORDER_STYLE_ID = 'task-creator-running-border';
-
-function injectRunningBorderStyles() {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(RUNNING_BORDER_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = RUNNING_BORDER_STYLE_ID;
-  style.textContent = `
-    @keyframes taskBorderChase {
-      to { stroke-dashoffset: -100; }
-    }
-    @keyframes taskBorderPulse {
-      0%, 100% { opacity: 0.55; }
-      50% { opacity: 1; }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-if (typeof document !== 'undefined') {
-  injectRunningBorderStyles();
-}
-
 interface TaskCreatorSheetProps {
   initData: string;
   open: boolean;
@@ -138,11 +114,11 @@ export function TaskCreatorSheet({
           textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }));
         }
       });
-      setIsProcessingVoice(false); // ✅ Reset processing flag when transcription finishes
+      setIsProcessingVoice(false);
     },
   });
 
-  // ✅ Local state to indicate that voice is being processed (transcription in progress)
+  // Local state to indicate that voice is being processed (transcription in progress)
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   // Reset everything when sheet opens/closes
@@ -179,7 +155,7 @@ export function TaskCreatorSheet({
     }
   }, [open]);
 
-  // ✅ Reset processing flag when recorder goes to idle or error
+  // Reset processing flag when recorder goes to idle or error
   useEffect(() => {
     if (recState === 'idle' || recState === 'error') {
       setIsProcessingVoice(false);
@@ -395,7 +371,7 @@ export function TaskCreatorSheet({
             paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
           }}
         >
-          {/* Header — always visible */}
+          {/* Header — всегда видим */}
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
@@ -434,36 +410,31 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* Loading overlay — replaces form while submitting */}
-          {loading && (
-            <div className="mb-6 flex w-full items-center justify-center" style={{ minHeight: '200px' }}>
-              <ProgressContent />
-            </div>
-          )}
-
-          {/* Form content — hidden while submitting */}
-          {!loading && (
-            <>
-              {/* Capture row — text input + mic + send */}
+          {/* Основной контейнер формы и лоадера */}
+          <div className="relative">
+            {/* Форма — всегда в DOM, но при loading скрыта */}
+            <div
+              style={{
+                opacity: loading ? 0 : 1,
+                pointerEvents: loading ? 'none' : 'auto',
+                transition: 'opacity 0.2s ease',
+              }}
+            >
+              {/* Capture row — текстовое поле + кнопки */}
               <div className="mb-4 flex items-end gap-2">
-                {/* Input container — now adapts to textarea height */}
+                {/* Input container */}
                 <div
                   className="relative flex flex-1 items-center overflow-hidden rounded border transition-colors"
                   style={{
                     minHeight: '56px',
-                    borderRadius: '0.5rem',
                     borderColor: recState === 'recording'
                       ? 'rgba(255, 153, 0, 0.35)'
-                      : isProcessingVoice
-                        ? 'var(--color-accent-amber)'
-                        : 'var(--color-line)',
+                      : 'var(--color-line)',
                     borderWidth: 1,
-                    backgroundColor: 'transparent', // ← прозрачный фон, совпадает с BottomSheet
+                    backgroundColor: 'var(--color-bg-surface)',
                     boxShadow: recState === 'recording'
                       ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
-                      : isProcessingVoice
-                        ? '0 0 0 4px rgba(245, 158, 11, 0.12)'
-                        : 'none',
+                      : 'none',
                   }}
                 >
                   <textarea
@@ -495,29 +466,6 @@ export function TaskCreatorSheet({
                     aria-label="Ввод задачи"
                   />
 
-                  {/* Running amber border overlay — matches GlobalLoader style */}
-                  {isProcessingVoice && (
-                    <svg
-                      className="pointer-events-none absolute inset-0 z-10"
-                      viewBox="0 0 300 72"
-                      preserveAspectRatio="none"
-                      style={{ width: '100%', height: '100%' }}
-                    >
-                      <path
-                        fill="none"
-                        stroke="#f59e0b"
-                        strokeWidth={1.5}
-                        strokeLinecap="round"
-                        strokeDasharray="18 82"
-                        style={{
-                          filter: 'drop-shadow(0 0 2px rgba(245,158,11,0.9)) drop-shadow(0 0 6px rgba(245,158,11,0.5))',
-                          animation: 'taskBorderChase 2.4s linear infinite, taskBorderPulse 2.4s ease-in-out infinite',
-                        }}
-                        d="M4,0 L296,0 A4,4 0 0 1 300,4 L300,68 A4,4 0 0 1 296,72 L4,72 A4,4 0 0 1 0,68 L0,4 A4,4 0 0 1 4,0 Z"
-                      />
-                    </svg>
-                  )}
-
                   {/* Waveform overlay */}
                   {recState === 'recording' && (
                     <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
@@ -547,20 +495,16 @@ export function TaskCreatorSheet({
                   )}
                 </div>
 
-                {/* Mic button — notch action style */}
+                {/* Mic button */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
                   notch={8}
                   borderWidth={1}
-                  border={
-                    isProcessingVoice
-                      ? 'var(--color-line)'
-                      : recState === 'recording'
-                        ? 'var(--color-error)'
-                        : 'var(--color-line-strong)'
-                  }
-                  fill="transparent" // ← прозрачный фон, совпадает с BottomSheet
+                  border={recState === 'recording'
+                    ? 'var(--color-error)'
+                    : 'var(--color-line-strong)'}
+                  fill="transparent"
                   className="shrink-0 self-end"
                 >
                   <button
@@ -570,13 +514,7 @@ export function TaskCreatorSheet({
                       setIsProcessingVoice(true);
                     } : startRec}
                     className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      opacity: isProcessingVoice ? 0.32 : 1,
-                      cursor: isProcessingVoice ? 'not-allowed' : 'pointer',
-                      color: isProcessingVoice ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-                    }}
+                    style={{ width: '56px', height: '56px' }}
                     disabled={isProcessingVoice}
                     aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
                   >
@@ -584,7 +522,7 @@ export function TaskCreatorSheet({
                   </button>
                 </NotchedPanel>
 
-                {/* Send button — notch action style */}
+                {/* Send button */}
                 <NotchedPanel
                   corner="action"
                   radius={4}
@@ -593,7 +531,7 @@ export function TaskCreatorSheet({
                   border={isSendDisabled
                     ? 'var(--color-line)'
                     : 'var(--color-line-strong)'}
-                  fill="transparent" // ← прозрачный фон
+                  fill="transparent"
                   className="shrink-0 self-end"
                 >
                   <button
@@ -669,8 +607,15 @@ export function TaskCreatorSheet({
                   <span>Создать задачу</span>
                 )}
               </button>
-            </>
-          )}
+            </div>
+
+            {/* Лоадер — абсолютно позиционирован поверх формы */}
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm">
+                <ProgressContent />
+              </div>
+            )}
+          </div>
         </div>
       </BottomSheet>
 
