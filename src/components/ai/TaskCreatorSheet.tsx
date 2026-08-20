@@ -7,8 +7,7 @@
  *   Text input → /api/ai/create-task → TaskPreviewSheet (show parsed result)
  *   Voice recording → transcribe → /api/ai/create-task → TaskPreviewSheet
  *
- * Single BottomSheet with three view modes:
- *   'form' → 'loading' → 'preview'
+ * Loading overlay replaces the form while submitting, then transitions to preview.
  *
  * No CorrectionSheet — user sees the AI-parsed task in a preview sheet
  * and confirms it directly. Active workspace is passed from DataContext.
@@ -74,28 +73,10 @@ export function TaskCreatorSheet({
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
-  // View mode state — single sheet with three views
-  const [viewMode, setViewMode] = useState<'form' | 'loading' | 'preview'>('form');
-
   // Preview state — shown after task is created
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-
-  // ── Measure form height to prevent BottomSheet collapse during loading ──
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [formHeight, setFormHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (viewMode === 'form' && containerRef.current) {
-      const h = containerRef.current.getBoundingClientRect().height;
-      setFormHeight(Math.round(h));
-    }
-  }, [viewMode]);
-
-  useEffect(() => {
-    if (!open) setFormHeight(null);
-  }, [open]);
 
   // Waveform state
   const [waveformBars, setWaveformBars] = useState<number[]>(() =>
@@ -140,7 +121,7 @@ export function TaskCreatorSheet({
     if (!open) {
       setInput('');
       setError(null);
-      setViewMode('form');
+      setLoading(false);
       setPreviewTaskId(null);
       setPreviewParse(null);
       setPreviewOpen(false);
@@ -277,10 +258,7 @@ export function TaskCreatorSheet({
     submittingRef.current = true;
     setLoading(true);
     setError(null);
-    // Переключаемся на режим лоадера внутри того же листа
-    setViewMode('loading');
     try {
-      // Include a default priority to avoid DB NOT NULL violation if AI parsing omits it.
       const res = await fetch('/api/ai/create-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -288,7 +266,6 @@ export function TaskCreatorSheet({
           init_data: initData,
           input: text.trim(),
           workspace_id: workspaceId,
-          // Default priority – the server may ignore unknown fields, but if it respects this it will prevent null.
           priority: 'medium',
         }),
       });
@@ -301,12 +278,10 @@ export function TaskCreatorSheet({
         Promise.resolve(),
         new Promise((r) => setTimeout(r, 400)),
       ]);
-      setViewMode('preview');
       setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
     } catch (err) {
-      setViewMode('form');
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
       submittingRef.current = false;
@@ -375,62 +350,63 @@ export function TaskCreatorSheet({
 
   return (
     <>
-      {/* Main creation sheet — единый лист с тремя режимами */}
-      <BottomSheet open={open} onClose={handleClose} preventSwipe={viewMode === 'loading'}>
-          <div
-            ref={containerRef}
-            className="px-4 pb-6 pt-2"
-            style={{
-              paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
-              // In loading mode force the container to fill the full sheet height so the loader
-              // stays visible above the bottom menu instead of collapsing to a tiny strip.
-              ...(viewMode === 'loading'
-                ? { minHeight: 'calc(90vh - 40px)', height: 'calc(90vh - 40px)' }
-                : {}),
-            }}
-          >
-          {/* ── Form view ── */}
-          {viewMode === 'form' && (
-            <>
-              {/* Header */}
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-1 rounded"
-                    style={{ backgroundColor: 'var(--color-accent-amber)' }}
-                  />
-                  <h2
-                    className="m-0"
-                    style={{
-                      fontFamily: 'var(--font-family-display)',
-                      fontSize: 'var(--text-body-lg)',
-                      fontWeight: 'var(--font-weight-medium)',
-                      color: 'var(--color-text-primary)',
-                    }}
-                  >
-                    Новая задача
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  disabled={loading || recState === 'recording'}
-                  className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
-                  style={{
-                    backgroundColor: 'transparent',
-                    color: 'var(--color-text-muted)',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Закрыть"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
-                    <line x1="5" y1="5" x2="19" y2="19" />
-                    <line x1="19" y1="5" x2="5" y2="19" />
-                  </svg>
-                </button>
-              </div>
+      {/* Main creation sheet */}
+      <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
+        <div
+          className="px-4 pb-6 pt-2"
+          style={{
+            paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
+          }}
+        >
+          {/* Header — always visible */}
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="h-5 w-1 rounded"
+                style={{ backgroundColor: 'var(--color-accent-amber)' }}
+              />
+              <h2
+                className="m-0"
+                style={{
+                  fontFamily: 'var(--font-family-display)',
+                  fontSize: 'var(--text-body-lg)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                Новая задача
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={loading || recState === 'recording'}
+              className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
+              style={{
+                backgroundColor: 'transparent',
+                color: 'var(--color-text-muted)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              aria-label="Закрыть"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
+                <line x1="5" y1="5" x2="19" y2="19" />
+                <line x1="19" y1="5" x2="5" y2="19" />
+              </svg>
+            </button>
+          </div>
 
+          {/* Loading overlay — replaces form while submitting */}
+          {loading && (
+            <div className="mb-6 flex w-full items-center justify-center" style={{ minHeight: '200px' }}>
+              <ProgressContent />
+            </div>
+          )}
+
+          {/* Form content — hidden while submitting */}
+          {!loading && (
+            <>
               {/* Capture row — text input + mic + send */}
               <div className="mb-4 flex items-end gap-2">
                 {/* Input container — now adapts to textarea height */}
@@ -606,13 +582,6 @@ export function TaskCreatorSheet({
                 )}
               </button>
             </>
-          )}
-
-          {/* ── Loading view (ProgressContent) — centered inside fixed-height container ── */}
-          {viewMode === 'loading' && (
-            <div className="flex w-full items-center justify-center" style={{ minHeight: '200px' }}>
-              <ProgressContent />
-            </div>
           )}
         </div>
       </BottomSheet>
