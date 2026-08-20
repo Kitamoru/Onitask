@@ -254,6 +254,36 @@ function extractRawInput(msg: TelegramMessage): { text: string; sourceAuthor?: T
 - По умолчанию: тихий режим (`on_inbox_move: false`, `on_overload: false`)
 - Транспорт — Postgres-триггер → `enrichment_queue` → pg_cron drain-воркер, см. §6.4
 
+#### 5.4.1 Личные уведомления (v0.7.0)
+
+Два новых типа персональных уведомлений, доставляемых **в личный чат исполнителя/участника**
+с ботом (не broadcast в группу):
+
+| alert_type | Триггер | Получатель | Сообщение |
+|---|---|---|---|
+| `task_assignment` | `trg_task_assignment_notify` (AFTER UPDATE OF `assigned_to` ON `tasks`) | Новый исполнитель задачи (`workers.id`) | 📋 `ALPHA-12` — задача назначена на тебя + название, статус, приоритет, кнопка «Открыть задачу →» (Mini App deep link) |
+| `member_added` | `trg_worker_added_notify` (AFTER INSERT ON `workers` WHERE `type='human'`) | Новый участник workspace | 👋 «Тебя добавили в рабочее пространство onitask» + роль + кнопка «Открыть доску →» |
+
+**Механика доставки** (`supabase/functions/bot-notify/index.ts`, v0.7.0):
+
+1. Триггер вставляет запись в `enrichment_queue` (`type='bot_notify'`) с `alert_type`, `assignee_id`/`worker_id`, `full_id`, `title`, `column`, `priority`.
+2. pg_cron job `bot-notify-worker` (раз в минуту) вызывает Edge Function через `net.http_post`.
+3. Edge Function резолвит получателя: `workers.id` → `workers.source_id` (profiles.id) → `profiles.telegram_id`.
+4. Отправляет `sendMessage` с `text` (+`parse_mode: HTML`) в личный чат пользователя с ботом.
+
+**Настройки:** добавляются в `workspace_telegram_chats.notification_settings` (дефолт — включены):
+```json
+{
+  "on_task_assignment": true,
+  "on_member_added": true
+}
+```
+
+**Зависимости (INV/аксиомы):**
+- INV-01: `tasks.assigned_to` → `workers(id)` — резолюция через FK
+- A-7: payload содержит `workspace_id`, Edge Function выполняет tenant-изоляции через FK-джойны
+- Скип для агентов (`workers.type='agent'`) — у агентов нет Telegram
+
 ### 5.5 Daily Standup (авто-дайджест)
 
 Каждое утро в `standup_config.time_utc` бот пишет в привязанный чат:
