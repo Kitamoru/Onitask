@@ -7,6 +7,9 @@
  *   Text input → /api/ai/create-task → TaskPreviewSheet (show parsed result)
  *   Voice recording → transcribe → /api/ai/create-task → TaskPreviewSheet
  *
+ * Single BottomSheet with three view modes:
+ *   'form' → 'loading' → 'preview'
+ *
  * No CorrectionSheet — user sees the AI-parsed task in a preview sheet
  * and confirms it directly. Active workspace is passed from DataContext.
  *
@@ -15,12 +18,12 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { ProgressSheet } from '@/components/ai/ProgressSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import { AutoResizeTextarea } from '@/components/ui/AutoResizeTextarea';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
+import { ProgressContent } from '@/components/ai/ProgressSheet';
 import type { ParseResponseV2 } from '@/lib/ai/types';
 
 interface TaskCreatorSheetProps {
@@ -71,8 +74,8 @@ export function TaskCreatorSheet({
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Progress sheet state — shown while /api/ai/create-task is running
-  const [progressOpen, setProgressOpen] = useState(false);
+  // View mode state — single sheet with three views
+  const [viewMode, setViewMode] = useState<'form' | 'loading' | 'preview'>('form');
 
   // Preview state — shown after task is created
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export function TaskCreatorSheet({
     if (!open) {
       setInput('');
       setError(null);
-      setProgressOpen(false);
+      setViewMode('form');
       setPreviewTaskId(null);
       setPreviewParse(null);
       setPreviewOpen(false);
@@ -259,8 +262,8 @@ export function TaskCreatorSheet({
     submittingRef.current = true;
     setLoading(true);
     setError(null);
-    // Показываем промежуточный лоадер сразу — мгновенный отклик UI
-    setProgressOpen(true);
+    // Переключаемся на режим лоадера внутри того же листа
+    setViewMode('loading');
     try {
       // Include a default priority to avoid DB NOT NULL violation if AI parsing omits it.
       const res = await fetch('/api/ai/create-task', {
@@ -283,12 +286,12 @@ export function TaskCreatorSheet({
         Promise.resolve(),
         new Promise((r) => setTimeout(r, 400)),
       ]);
-      setProgressOpen(false);
+      setViewMode('preview');
       setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
     } catch (err) {
-      setProgressOpen(false);
+      setViewMode('form');
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
       submittingRef.current = false;
@@ -357,232 +360,237 @@ export function TaskCreatorSheet({
 
   return (
     <>
-      {/* Main creation sheet */}
-      <BottomSheet open={open} onClose={handleClose}>
+      {/* Main creation sheet — единый лист с тремя режимами */}
+      <BottomSheet open={open} onClose={handleClose} preventSwipe={viewMode === 'loading'}>
         <div
           className="px-4 pb-6 pt-2"
           style={{
             paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
           }}
         >
-          {/* Header */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="h-5 w-1 rounded"
-                style={{ backgroundColor: 'var(--color-accent-amber)' }}
-              />
-              <h2
-                className="m-0"
-                style={{
-                  fontFamily: 'var(--font-family-display)',
-                  fontSize: 'var(--text-body-lg)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  color: 'var(--color-text-primary)',
-                }}
-              >
-                Новая задача
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={loading || recState === 'recording'}
-              className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
-              style={{
-                backgroundColor: 'transparent',
-                color: 'var(--color-text-muted)',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-              aria-label="Закрыть"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
-                <line x1="5" y1="5" x2="19" y2="19" />
-                <line x1="19" y1="5" x2="5" y2="19" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Capture row — text input + mic + send */}
-          <div className="mb-4 flex items-end gap-2">
-            {/* Input container — now adapts to textarea height */}
-            <div
-              className="relative flex flex-1 items-center overflow-hidden rounded-2xl border transition-colors"
-              style={{
-                minHeight: '56px',
-                borderColor: recState === 'recording'
-                  ? 'rgba(255, 153, 0, 0.35)'
-                  : 'var(--color-line)',
-                backgroundColor: 'var(--color-bg-surface)',
-                boxShadow: recState === 'recording'
-                  ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
-                  : 'none',
-              }}
-            >
-              <textarea
-                ref={textareaRef}
-                className="flex-1 resize-none bg-transparent px-4 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
-                style={{
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-base)',
-                  minHeight: '56px',
-                  maxHeight: '240px',
-                  overflowY: 'auto',
-                  paddingTop: '8px',
-                  paddingBottom: '8px',
-                  boxSizing: 'border-box',
-                  opacity: recState === 'recording' ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
-                  pointerEvents: recState === 'recording' ? 'none' : 'auto',
-                }}
-                placeholder="Опишите задачу или запишите голосом…"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendClick();
-                  }
-                }}
-                autoComplete="off"
-                aria-label="Ввод задачи"
-              />
-
-              {/* Waveform overlay */}
-              {recState === 'recording' && (
-                <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
+          {/* ── Form view ── */}
+          {viewMode === 'form' && (
+            <>
+              {/* Header */}
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <div
-                    className="shrink-0 h-2 w-2 rounded-full"
+                    className="h-5 w-1 rounded"
+                    style={{ backgroundColor: 'var(--color-accent-amber)' }}
+                  />
+                  <h2
+                    className="m-0"
                     style={{
-                      backgroundColor: 'var(--color-error)',
-                      animation: 'pulse 1s step-start infinite',
+                      fontFamily: 'var(--font-family-display)',
+                      fontSize: 'var(--text-body-lg)',
+                      fontWeight: 'var(--font-weight-medium)',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    Новая задача
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={loading || recState === 'recording'}
+                  className="rounded-lg px-2 py-1 text-sm transition-opacity hover:opacity-80 disabled:opacity-30"
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: 'var(--color-text-muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Закрыть"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5">
+                    <line x1="5" y1="5" x2="19" y2="19" />
+                    <line x1="19" y1="5" x2="5" y2="19" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Capture row — text input + mic + send */}
+              <div className="mb-4 flex items-end gap-2">
+                {/* Input container — now adapts to textarea height */}
+                <div
+                  className="relative flex flex-1 items-center overflow-hidden rounded-2xl border transition-colors"
+                  style={{
+                    minHeight: '56px',
+                    borderColor: recState === 'recording'
+                      ? 'rgba(255, 153, 0, 0.35)'
+                      : 'var(--color-line)',
+                    backgroundColor: 'var(--color-bg-surface)',
+                    boxShadow: recState === 'recording'
+                      ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
+                      : 'none',
+                  }}
+                >
+                  <textarea
+                    ref={textareaRef}
+                    className="flex-1 resize-none bg-transparent px-4 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                    style={{
+                      color: 'var(--color-text-primary)',
+                      fontFamily: 'var(--font-family-base)',
+                      minHeight: '56px',
+                      maxHeight: '240px',
+                      overflowY: 'auto',
+                      paddingTop: '8px',
+                      paddingBottom: '8px',
+                      boxSizing: 'border-box',
+                      opacity: recState === 'recording' ? 0 : 1,
+                      transition: 'opacity 0.15s ease',
+                      pointerEvents: recState === 'recording' ? 'none' : 'auto',
+                    }}
+                    placeholder="Опишите задачу или запишите голосом…"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendClick();
+                      }
+                    }}
+                    autoComplete="off"
+                    aria-label="Ввод задачи"
+                  />
+
+                  {/* Waveform overlay */}
+                  {recState === 'recording' && (
+                    <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
+                      <div
+                        className="shrink-0 h-2 w-2 rounded-full"
+                        style={{
+                          backgroundColor: 'var(--color-error)',
+                          animation: 'pulse 1s step-start infinite',
+                        }}
+                      />
+                      <span
+                        className="shrink-0 tabular-nums text-sm"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        {formatTime(recordingSeconds)}
+                      </span>
+                      <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
+                        {waveformBars.map((height, i) => (
+                          <Bar
+                            key={i}
+                            height={height}
+                            opacity={height <= 3 ? 0.3 : 0.9}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mic button */}
+                <button
+                  type="button"
+                  onClick={recState === 'recording' ? stopRec : startRec}
+                  className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderColor: recState === 'recording'
+                      ? 'var(--color-error)'
+                      : 'var(--color-line-strong)',
+                    backgroundColor: recState === 'recording'
+                      ? 'rgba(255, 59, 48, 0.1)'
+                      : 'transparent',
+                    color: recState === 'recording'
+                      ? 'var(--color-error)'
+                      : 'var(--color-text-primary)',
+                  }}
+                  aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
+                >
+                  {micIcon}
+                </button>
+
+                {/* Send button */}
+                <button
+                  type="button"
+                  onClick={handleSendClick}
+                  disabled={isSendDisabled}
+                  className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderColor: isSendDisabled
+                      ? 'var(--color-line)'
+                      : 'var(--color-line-strong)',
+                    backgroundColor: 'transparent',
+                    color: isSendDisabled
+                      ? 'var(--color-text-muted)'
+                      : 'var(--color-text-primary)',
+                    opacity: isSendDisabled ? 0.32 : 1,
+                    cursor: isSendDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                  aria-label="Отправить"
+                >
+                  {sendIcon}
+                </button>
+              </div>
+
+              {/* Description hint */}
+              <p
+                className="mb-6 text-sm leading-relaxed"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
+              </p>
+
+              {/* Status messages */}
+              {recState === 'error' && recError && (
+                <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
+                  Ошибка распознавания: {recError}
+                </p>
+              )}
+              {error && (
+                <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
+                  {error}
+                </p>
+              )}
+
+              {/* CTA — Создать задачу */}
+              <button
+                type="button"
+                onClick={handleSendClick}
+                disabled={!hasContent || loading || recState === 'recording'}
+                className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
+                style={{
+                  backgroundColor: hasContent && !loading && recState !== 'recording'
+                    ? 'var(--color-accent-amber)'
+                    : 'var(--color-line)',
+                  color: hasContent && !loading && recState !== 'recording'
+                    ? 'var(--color-accent-ink)'
+                    : 'var(--color-text-muted)',
+                  cursor: hasContent && !loading && recState !== 'recording'
+                    ? 'pointer'
+                    : 'not-allowed',
+                }}
+                aria-label="Создать задачу"
+              >
+                {loading ? (
+                  <div
+                    className="inline-block h-4 w-4 rounded-full border-2"
+                    style={{
+                      borderColor: 'rgba(26, 18, 0, 0.25)',
+                      borderTopColor: '#141008',
+                      animation: 'spin 0.7s linear infinite',
                     }}
                   />
-                  <span
-                    className="shrink-0 tabular-nums text-sm"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    {formatTime(recordingSeconds)}
-                  </span>
-                  <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
-                    {waveformBars.map((height, i) => (
-                      <Bar
-                        key={i}
-                        height={height}
-                        opacity={height <= 3 ? 0.3 : 0.9}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Mic button */}
-            <button
-              type="button"
-              onClick={recState === 'recording' ? stopRec : startRec}
-              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
-              style={{
-                width: '56px',
-                height: '56px',
-                borderColor: recState === 'recording'
-                  ? 'var(--color-error)'
-                  : 'var(--color-line-strong)',
-                backgroundColor: recState === 'recording'
-                  ? 'rgba(255, 59, 48, 0.1)'
-                  : 'transparent',
-                color: recState === 'recording'
-                  ? 'var(--color-error)'
-                  : 'var(--color-text-primary)',
-              }}
-              aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
-            >
-              {micIcon}
-            </button>
-
-            {/* Send button */}
-            <button
-              type="button"
-              onClick={handleSendClick}
-              disabled={isSendDisabled}
-              className="flex shrink-0 items-center justify-center rounded-2xl border p-[14px] transition-all active:scale-95 self-end"
-              style={{
-                width: '56px',
-                height: '56px',
-                borderColor: isSendDisabled
-                  ? 'var(--color-line)'
-                  : 'var(--color-line-strong)',
-                backgroundColor: 'transparent',
-                color: isSendDisabled
-                  ? 'var(--color-text-muted)'
-                  : 'var(--color-text-primary)',
-                opacity: isSendDisabled ? 0.32 : 1,
-                cursor: isSendDisabled ? 'not-allowed' : 'pointer',
-              }}
-              aria-label="Отправить"
-            >
-              {sendIcon}
-            </button>
-          </div>
-
-          {/* Description hint */}
-          <p
-            className="mb-6 text-sm leading-relaxed"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
-          </p>
-
-          {/* Status messages */}
-          {recState === 'error' && recError && (
-            <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
-              Ошибка распознавания: {recError}
-            </p>
-          )}
-          {error && (
-            <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
-              {error}
-            </p>
+                ) : (
+                  <span>Создать задачу</span>
+                )}
+              </button>
+            </>
           )}
 
-          {/* CTA — Создать задачу */}
-          <button
-            type="button"
-            onClick={handleSendClick}
-            disabled={!hasContent || loading || recState === 'recording'}
-            className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
-            style={{
-              backgroundColor: hasContent && !loading && recState !== 'recording'
-                ? 'var(--color-accent-amber)'
-                : 'var(--color-line)',
-              color: hasContent && !loading && recState !== 'recording'
-                ? 'var(--color-accent-ink)'
-                : 'var(--color-text-muted)',
-              cursor: hasContent && !loading && recState !== 'recording'
-                ? 'pointer'
-                : 'not-allowed',
-            }}
-            aria-label="Создать задачу"
-          >
-            {loading ? (
-              <div
-                className="inline-block h-4 w-4 rounded-full border-2"
-                style={{
-                  borderColor: 'rgba(26, 18, 0, 0.25)',
-                  borderTopColor: '#141008',
-                  animation: 'spin 0.7s linear infinite',
-                }}
-              />
-            ) : (
-              <span>Создать задачу</span>
-            )}
-          </button>
+          {/* ── Loading view (ProgressContent) ── */}
+          {viewMode === 'loading' && <ProgressContent />}
         </div>
       </BottomSheet>
-
-      {/* Progress Sheet — показывается пока /api/ai/create-task работает */}
-      <ProgressSheet open={progressOpen} />
 
       {/* Task Preview Sheet */}
       <TaskPreviewSheet

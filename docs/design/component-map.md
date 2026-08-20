@@ -139,7 +139,9 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | ProgressSheet | ProgressSheet.tsx | open | Intermediate bottom sheet with stage progress while /api/ai/create-task runs. Timer-based decorative stages («Распознаю данные…» → «Собираю контекст…» → «Создаю задачу…» → «Почти готово…»), pulsing amber dot, `preventSwipe` so it can't be dismissed during loading. Used by TaskCreatorSheet. |
+| | TaskCreatorSheet | TaskCreatorSheet.tsx | initData, open, onClose, onTaskCreated, workspaceId | Main task creation bottom sheet with three view modes: 'form' → 'loading' → 'preview'. Contains voice recording with waveform, textarea input, and submit button. Uses ProgressContent for loading state. |
+| | ProgressContent | ProgressSheet.tsx | — | Loading indicator with pulsing amber dot and animated stage labels («Распознаю данные…» → «Собираю контекст…» → «Создаю задачу…» → «Почти готово…»). Used inside TaskCreatorSheet at viewMode === 'loading'. |
+| | TaskPreviewSheet | TaskCreatorSheet.tsx (internal) | open, taskId, parse, initData, onConfirm, onCancel, onClose | Confirmation/preview of AI-parsed task. Shows editable title, description, priority, deadline, tags, metadata (priority label, deadline, clarity score). |
 
 ---
 
