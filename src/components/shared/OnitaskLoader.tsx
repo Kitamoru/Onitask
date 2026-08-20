@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import styles from './OnitaskLoader.module.css';
+import { useEffect, useState } from "react";
+import styles from "./OnitaskLoader.module.css";
 
 export default function OnitaskLoader() {
   const [activeDot, setActiveDot] = useState(0);
@@ -10,36 +10,19 @@ export default function OnitaskLoader() {
     const interval = setInterval(() => {
       setActiveDot((prev) => (prev + 1) % 3);
     }, 650);
-
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className={styles.loader} role="status" aria-label="Onitask загружается">
       <div className={styles.cardOuter}>
-        <svg
-          className={styles.borderGlow}
-          viewBox="0 0 280 280"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <path
-            className={styles.borderGlowPath}
-            pathLength={100}
-            strokeDasharray="18 82"
-            d="M16,0 L276,0 A4,4 0 0 1 280,4 L280,264 L264,280 L4,280 A4,4 0 0 1 0,276 L0,16 Z"
-          />
-        </svg>
+        <div className={styles.borderSpin} />
 
         <div className={styles.card}>
           <div className={styles.ambientGlow} />
 
           <div className={styles.logoContainer}>
-            <svg
-              className={styles.mark}
-              viewBox="200 190 250 260"
-              aria-hidden="true"
-            >
+            <svg className={styles.mark} viewBox="200 190 250 260" aria-hidden="true">
               <path
                 d="
                   M422 203
@@ -77,7 +60,7 @@ export default function OnitaskLoader() {
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
-                  className={`${styles.dot} ${activeDot === i ? styles.active : ''}`}
+                  className={`${styles.dot} ${activeDot === i ? styles.active : ""}`}
                 />
               ))}
             </div>
