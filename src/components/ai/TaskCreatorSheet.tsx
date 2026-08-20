@@ -377,16 +377,18 @@ export function TaskCreatorSheet({
     <>
       {/* Main creation sheet — единый лист с тремя режимами */}
       <BottomSheet open={open} onClose={handleClose} preventSwipe={viewMode === 'loading'}>
-        <div
-          ref={containerRef}
-          className="px-4 pb-6 pt-2"
-          style={{
-            paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
-            ...(formHeight && viewMode === 'loading'
-              ? { minHeight: `${formHeight}px`, height: `${formHeight}px` }
-              : {}),
-          }}
-        >
+          <div
+            ref={containerRef}
+            className="px-4 pb-6 pt-2"
+            style={{
+              paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
+              // In loading mode force the container to fill the full sheet height so the loader
+              // stays visible above the bottom menu instead of collapsing to a tiny strip.
+              ...(viewMode === 'loading'
+                ? { minHeight: 'calc(90vh - 40px)', height: 'calc(90vh - 40px)' }
+                : {}),
+            }}
+          >
           {/* ── Form view ── */}
           {viewMode === 'form' && (
             <>
@@ -608,7 +610,7 @@ export function TaskCreatorSheet({
 
           {/* ── Loading view (ProgressContent) — centered inside fixed-height container ── */}
           {viewMode === 'loading' && (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex w-full items-center justify-center" style={{ minHeight: '200px' }}>
               <ProgressContent />
             </div>
           )}
