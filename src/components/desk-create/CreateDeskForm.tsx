@@ -177,10 +177,9 @@ export function CreateDeskForm({
         </section>
       </div>
 
-      {/* Inline CTA – сохранены старые отступы (pt-2 + pb-6),
-          адаптированы через safe-area для нижней части */}
+      {/* Inline CTA — компактный отступ сверху, адаптирован через safe-area */}
       <div
-        className="px-4 pt-2 lg:hidden"
+        className="px-4 lg:hidden"
         style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <Button variant="solid" disabled={!canSubmit} onClick={handleSubmit}>

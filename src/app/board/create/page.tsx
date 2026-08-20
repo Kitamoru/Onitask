@@ -263,7 +263,7 @@ export default function CreateBoardPage() {
 
       {/* Back button — below the form CTA */}
       <div
-        className="px-4 pt-3"
+        className="px-4 pt-1"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <button
@@ -274,7 +274,7 @@ export default function CreateBoardPage() {
           <NotchedPanel
             corner="action"
             notch={8}
-            radius={8}
+            radius={4}
             borderWidth={1.5}
             borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
             fill="#101010"
