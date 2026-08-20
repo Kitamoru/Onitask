@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * TaskCreatorSheet — F-04 task creation bottom sheet.
- *
- * Flow:
- *   Text input → /api/ai/create-task → TaskPreviewSheet (show parsed result)
- *   Voice recording → transcribe → /api/ai/create-task → TaskPreviewSheet
- *
- * Loading overlay replaces the form while submitting, then transitions to preview.
- *
- * No CorrectionSheet — user sees the AI-parsed task in a preview sheet
- * and confirms it directly. Active workspace is passed from DataContext.
- *
- * Based on: onitask_ai_.md §3.1–§3.7, TASKS.md Stage 5 F-04
- */
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
@@ -31,7 +16,6 @@ interface TaskCreatorSheetProps {
   open: boolean;
   onClose: () => void;
   onTaskCreated: (taskId: string) => void;
-  /** Optional explicit workspace_id — overrides auto-resolution */
   workspaceId?: string | null;
 }
 
@@ -44,10 +28,8 @@ interface CreateTaskError {
   error: string;
 }
 
-/** Number of bars in the waveform visualization */
 const BAR_COUNT = 44;
 
-/** Waveform bar component — static height */
 function Bar({ height, opacity }: { height: number; opacity: number }) {
   return (
     <div
@@ -74,34 +56,26 @@ export function TaskCreatorSheet({
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Preview state — shown after task is created
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Waveform state
   const [waveformBars, setWaveformBars] = useState<number[]>(() =>
     new Array(BAR_COUNT).fill(3)
   );
   const animFrameRef = useRef<number | null>(null);
-
-  // Timer state (seconds)
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Audio analyser for real waveform
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
-  // Auto-sizing textarea ref — MUST be called unconditionally at top level (Rules of Hooks)
   const textareaRef = useAutosizeTextarea(input);
 
-  // CHANGED: Добавлено локальное состояние для обработки голоса
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
-  // Voice recorder — transcribed text appends to input
   const {
     state: recState,
     error: recError,
@@ -111,13 +85,11 @@ export function TaskCreatorSheet({
     initData,
     onTranscribed: (text) => {
       setInput((prev) => (prev ? prev + ' ' : '') + text.trim());
-      // Force textarea resize after transcription
       requestAnimationFrame(() => {
         if (textareaRef.current) {
           textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }));
         }
       });
-      // CHANGED: Сброс флага обработки после транскрипции
       setIsProcessingVoice(false);
     },
   });
@@ -133,7 +105,6 @@ export function TaskCreatorSheet({
       setPreviewOpen(false);
       setWaveformBars(new Array(BAR_COUNT).fill(3));
       setRecordingSeconds(0);
-      // CHANGED: Сброс флага обработки голоса
       setIsProcessingVoice(false);
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
@@ -143,7 +114,6 @@ export function TaskCreatorSheet({
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      // Clean up audio nodes
       if (sourceRef.current) {
         try { sourceRef.current.disconnect(); } catch {}
         sourceRef.current = null;
@@ -157,26 +127,22 @@ export function TaskCreatorSheet({
     }
   }, [open]);
 
-  // CHANGED: Эффект для сброса флага при ошибке или завершении записи
   useEffect(() => {
     if (recState === 'idle' || recState === 'error') {
       setIsProcessingVoice(false);
     }
   }, [recState, recError]);
 
-  // Set up audio analyser when recording starts
+  // Audio analyser setup (unchanged)
   useEffect(() => {
     if (recState === 'recording') {
-      // Start timer
       setRecordingSeconds(0);
       timerIntervalRef.current = setInterval(() => {
         setRecordingSeconds((s) => s + 1);
       }, 1000);
 
-      // Get cached stream from useVoiceRecorder (via module-level cache)
       const setupAnalyser = async () => {
         try {
-          // This will reuse the cached stream (due to module-level caching in useVoiceRecorder)
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
           audioContextRef.current = audioContext;
@@ -189,7 +155,6 @@ export function TaskCreatorSheet({
           const source = audioContext.createMediaStreamSource(stream);
           sourceRef.current = source;
           source.connect(analyser);
-          // Start the audio context if suspended
           if (audioContext.state === 'suspended') {
             await audioContext.resume();
           }
@@ -199,7 +164,6 @@ export function TaskCreatorSheet({
       };
       setupAnalyser();
 
-      // Start animation loop for waveform
       let frameId: number | null = null;
       let isCancelled = false;
 
@@ -267,7 +231,6 @@ export function TaskCreatorSheet({
     onClose();
   }, [onClose, loading, recState]);
 
-  /** Submit text or transcribed voice to /api/ai/create-task */
   const handleSubmit = async (text: string) => {
     if (!text.trim() || submittingRef.current) return;
     submittingRef.current = true;
@@ -288,7 +251,6 @@ export function TaskCreatorSheet({
       if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
 
       const result = json as CreateTaskResponse;
-      // Минимальная задержка показа, чтобы лоадер не «мигал» при быстром ответе
       await Promise.all([
         Promise.resolve(),
         new Promise((r) => setTimeout(r, 400)),
@@ -323,8 +285,7 @@ export function TaskCreatorSheet({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ─── Icons ───────────────────────────────────────────────────────────────
-
+  // Icons
   const micIcon = recState === 'recording' ? (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
       <rect x="7" y="7" width="10" height="10" rx="2" />
@@ -361,8 +322,8 @@ export function TaskCreatorSheet({
     </svg>
   );
 
-  // ─── SVG-анимация бордера (скопирована из OnitaskLoader.module.css) ──
-  const borderChaseStyles = `
+  // ─── CSS для SVG-анимации (длина пути 200px) ──────────────────────────
+  const svgAnimationStyles = `
     .border-chase-svg {
       position: absolute;
       inset: -1px;
@@ -376,9 +337,9 @@ export function TaskCreatorSheet({
     .border-chase-path {
       fill: none;
       stroke: #f59e0b;
-      stroke-width: 2;
+      stroke-width: 1;
       stroke-linecap: round;
-      stroke-dasharray: 600;
+      stroke-dasharray: 200; /* ← длина пути 200px */
       stroke-dashoffset: 0;
       animation: borderChase 2.4s linear infinite;
       filter:
@@ -388,18 +349,15 @@ export function TaskCreatorSheet({
     }
     @keyframes borderChase {
       to {
-        stroke-dashoffset: -600;
+        stroke-dashoffset: -200; /* смещение равно длине пути */
       }
     }
   `;
 
-  // ─── Render ──────────────────────────────────────────────────────────────
-
   return (
     <>
-      <style>{borderChaseStyles}</style>
+      <style>{svgAnimationStyles}</style>
 
-      {/* Main creation sheet */}
       <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
         <div
           className="px-4 pb-6 pt-2"
@@ -407,7 +365,7 @@ export function TaskCreatorSheet({
             paddingBottom: 'calc(var(--spacing-bottom-menu-padding) + env(safe-area-inset-bottom, 0px) + 16px)',
           }}
         >
-          {/* Header — всегда видим */}
+          {/* Header */}
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
@@ -446,11 +404,14 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* CHANGED: Контейнер с минимальной высотой для схлопывания */}
+          {/* Основной контейнер — форма или лоадер */}
           <div className="relative min-h-[180px]">
             {loading ? (
-              // Лоадер занимает место, лист схлопывается
-              <div className="flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm h-full min-h-[180px]">
+              // Лоадер создания задачи — поднят на 40px вверх
+              <div
+                className="flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm h-full min-h-[180px]"
+                style={{ marginTop: '-40px' }}
+              >
                 <ProgressContent />
               </div>
             ) : (
@@ -458,7 +419,7 @@ export function TaskCreatorSheet({
               <div>
                 {/* Capture row — текстовое поле + кнопки */}
                 <div className="mb-4 flex items-end gap-2">
-                  {/* Input container */}
+                  {/* Input container с SVG-анимацией */}
                   <div
                     className="relative flex flex-1 items-center rounded"
                     style={{
@@ -473,7 +434,7 @@ export function TaskCreatorSheet({
                         : 'none',
                     }}
                   >
-                    {/* SVG-анимация поверх инпута при isProcessingVoice */}
+                    {/* SVG-анимация поверх инпута */}
                     {isProcessingVoice && (
                       <svg
                         className="border-chase-svg"
@@ -549,15 +510,13 @@ export function TaskCreatorSheet({
                     )}
                   </div>
 
-                  {/* CHANGED: Mic button с fill="#101010" и стилями disabled */}
+                  {/* Mic button */}
                   <NotchedPanel
                     corner="action"
                     radius={4}
                     notch={8}
                     borderWidth={1}
-                    border={recState === 'recording'
-                      ? 'var(--color-error)'
-                      : 'var(--color-line-strong)'}
+                    border={recState === 'recording' ? 'var(--color-error)' : 'var(--color-line-strong)'}
                     fill="#101010"
                     className="shrink-0 self-end"
                   >
@@ -582,15 +541,13 @@ export function TaskCreatorSheet({
                     </button>
                   </NotchedPanel>
 
-                  {/* CHANGED: Send button с fill="#101010" */}
+                  {/* Send button */}
                   <NotchedPanel
                     corner="action"
                     radius={4}
                     notch={8}
                     borderWidth={1}
-                    border={isSendDisabled
-                      ? 'var(--color-line)'
-                      : 'var(--color-line-strong)'}
+                    border={isSendDisabled ? 'var(--color-line)' : 'var(--color-line-strong)'}
                     fill="#101010"
                     className="shrink-0 self-end"
                   >
@@ -635,7 +592,7 @@ export function TaskCreatorSheet({
                   </p>
                 )}
 
-                {/* CTA — Создать задачу */}
+                {/* CTA */}
                 <button
                   type="button"
                   onClick={handleSendClick}
@@ -691,7 +648,7 @@ export function TaskCreatorSheet({
   );
 }
 
-// ─── TaskPreviewSheet — confirmation/preview of AI-parsed task ─────────────
+// ─── TaskPreviewSheet (без изменений) ──────────────────────────────────────
 
 interface TaskPreviewSheetProps {
   open: boolean;
@@ -700,7 +657,6 @@ interface TaskPreviewSheetProps {
   initData: string;
   onConfirm: () => void;
   onCancel: () => void;
-  /** Called after successful save to close the main sheet */
   onClose?: () => void;
 }
 
@@ -724,7 +680,6 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     if (parse) setDraft(parse);
   }, [parse]);
 
-  // Reset draft when the sheet is closed to avoid stale state on next open
   useEffect(() => {
     if (!open) setDraft(null);
   }, [open]);
@@ -745,9 +700,6 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     setSaving(true);
     setError(null);
     try {
-      // Ensure priority is never null to satisfy DB NOT NULL constraint.
-      // If the user left priority empty, default to "medium" (the UI label).
-      // Treat empty string as missing priority and fallback to "medium"
       const safePriority = draft.priority && draft.priority.trim() !== '' ? draft.priority : 'medium';
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
