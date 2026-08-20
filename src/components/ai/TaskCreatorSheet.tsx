@@ -322,7 +322,7 @@ export function TaskCreatorSheet({
     </svg>
   );
 
-  // ─── CSS для SVG-анимации (длина пути 200px) ──────────────────────────
+  // ─── CSS для SVG-анимации (длина пути 270px) ──────────────────────────
   const svgAnimationStyles = `
     .border-chase-svg {
       position: absolute;
@@ -339,7 +339,7 @@ export function TaskCreatorSheet({
       stroke: #f59e0b;
       stroke-width: 1;
       stroke-linecap: round;
-      stroke-dasharray: 200; /* ← длина пути 200px */
+      stroke-dasharray: 270;
       stroke-dashoffset: 0;
       animation: borderChase 2.4s linear infinite;
       filter:
@@ -349,7 +349,7 @@ export function TaskCreatorSheet({
     }
     @keyframes borderChase {
       to {
-        stroke-dashoffset: -200; /* смещение равно длине пути */
+        stroke-dashoffset: -270;
       }
     }
   `;
@@ -405,13 +405,10 @@ export function TaskCreatorSheet({
           </div>
 
           {/* Основной контейнер — форма или лоадер */}
-          <div className="relative min-h-[180px]">
+          <div className="relative">
             {loading ? (
-              // Лоадер создания задачи — поднят на 40px вверх
-              <div
-                className="flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm h-full min-h-[180px]"
-                style={{ marginTop: '-40px' }}
-              >
+              // Лоадер без смещения — лист схлопывается до его высоты
+              <div className="flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm py-8">
                 <ProgressContent />
               </div>
             ) : (
