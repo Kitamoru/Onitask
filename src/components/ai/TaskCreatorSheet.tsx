@@ -361,33 +361,35 @@ export function TaskCreatorSheet({
     </svg>
   );
 
-  // ─── CSS для анимации бегущей линии ────────────────────────────────────
-  // Добавьте эти стили в ваш глобальный CSS или в CSS-модуль компонента.
-  // .border-animate – применяется к контейнеру инпута во время обработки голоса.
-  // --------------------------------------------------------------------
-  const borderAnimationStyles = `
-    .border-animate {
-      border: 2px solid transparent !important;
-      background-clip: padding-box;
-      position: relative;
-    }
-    .border-animate::before {
-      content: '';
+  // ─── SVG-анимация бордера (скопирована из OnitaskLoader.module.css) ──
+  const borderChaseStyles = `
+    .border-chase-svg {
       position: absolute;
-      inset: -2px;
-      border-radius: 8px;
-      padding: 2px;
-      background: linear-gradient(90deg, #f59e0b, #f59e0b, transparent, #f59e0b);
-      background-size: 300% 100%;
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      animation: moveBorder 1.8s linear infinite;
+      inset: -1px;
+      width: calc(100% + 2px);
+      height: calc(100% + 2px);
       pointer-events: none;
+      z-index: 2;
+      border-radius: 8px;
+      overflow: visible;
     }
-    @keyframes moveBorder {
-      0% { background-position: 0% 0%; }
-      100% { background-position: 300% 0%; }
+    .border-chase-path {
+      fill: none;
+      stroke: #f59e0b;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-dasharray: 600;
+      stroke-dashoffset: 0;
+      animation: borderChase 2.4s linear infinite;
+      filter:
+        drop-shadow(0 0 2px rgba(245, 158, 11, 0.95))
+        drop-shadow(0 0 8px rgba(245, 158, 11, 0.6))
+        drop-shadow(0 0 16px rgba(245, 158, 11, 0.35));
+    }
+    @keyframes borderChase {
+      to {
+        stroke-dashoffset: -600;
+      }
     }
   `;
 
@@ -395,8 +397,7 @@ export function TaskCreatorSheet({
 
   return (
     <>
-      {/* Вставка стилей (можно вынести в глобальный CSS) */}
-      <style>{borderAnimationStyles}</style>
+      <style>{borderChaseStyles}</style>
 
       {/* Main creation sheet */}
       <BottomSheet open={open} onClose={handleClose} preventSwipe={loading}>
@@ -445,217 +446,227 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* CHANGED: Контейнер для формы и лоадера с относительным позиционированием */}
-          <div className="relative">
-            {/* CHANGED: Форма всегда в DOM, но с opacity/pointerEvents при loading */}
-            <div
-              style={{
-                opacity: loading ? 0 : 1,
-                pointerEvents: loading ? 'none' : 'auto',
-                transition: 'opacity 0.2s ease',
-              }}
-            >
-              {/* Capture row — текстовое поле + кнопки */}
-              <div className="mb-4 flex items-end gap-2">
-                {/* Input container — добавляем класс border-animate при обработке голоса */}
-                <div
-                  className={`relative flex flex-1 items-center overflow-hidden rounded border transition-colors ${
-                    isProcessingVoice ? 'border-animate' : ''
-                  }`}
-                  style={{
-                    minHeight: '56px',
-                    borderColor: recState === 'recording'
-                      ? 'rgba(255, 153, 0, 0.35)'
-                      : 'var(--color-line)',
-                    borderWidth: 1,
-                    backgroundColor: '#101010', // изменён фон на #101010
-                    boxShadow: recState === 'recording'
-                      ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
-                      : 'none',
-                  }}
-                >
-                  <textarea
-                    ref={textareaRef}
-                    className="flex-1 resize-none bg-transparent px-4 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+          {/* CHANGED: Контейнер с минимальной высотой для схлопывания */}
+          <div className="relative min-h-[180px]">
+            {loading ? (
+              // Лоадер занимает место, лист схлопывается
+              <div className="flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm h-full min-h-[180px]">
+                <ProgressContent />
+              </div>
+            ) : (
+              // Форма
+              <div>
+                {/* Capture row — текстовое поле + кнопки */}
+                <div className="mb-4 flex items-end gap-2">
+                  {/* Input container */}
+                  <div
+                    className="relative flex flex-1 items-center rounded"
                     style={{
-                      color: 'var(--color-text-primary)',
-                      fontFamily: 'var(--font-family-base)',
                       minHeight: '56px',
-                      maxHeight: '240px',
-                      overflowY: 'auto',
-                      paddingTop: '8px',
-                      paddingBottom: '8px',
-                      boxSizing: 'border-box',
-                      opacity: recState === 'recording' ? 0 : 1,
-                      transition: 'opacity 0.15s ease',
-                      pointerEvents: recState === 'recording' ? 'none' : 'auto',
+                      border: recState === 'recording'
+                        ? '1px solid rgba(255, 153, 0, 0.35)'
+                        : '1px solid var(--color-line)',
+                      backgroundColor: '#101010',
+                      borderRadius: '8px',
+                      boxShadow: recState === 'recording'
+                        ? '0 0 0 0 rgba(255, 153, 0, 0.4)'
+                        : 'none',
                     }}
-                    placeholder="Опишите задачу или запишите голосом…"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendClick();
-                      }
-                    }}
-                    autoComplete="off"
-                    aria-label="Ввод задачи"
-                  />
-
-                  {/* Waveform overlay */}
-                  {recState === 'recording' && (
-                    <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
-                      <div
-                        className="shrink-0 h-2 w-2 rounded-full"
-                        style={{
-                          backgroundColor: 'var(--color-error)',
-                          animation: 'pulse 1s step-start infinite',
-                        }}
-                      />
-                      <span
-                        className="shrink-0 tabular-nums text-sm"
-                        style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {/* SVG-анимация поверх инпута при isProcessingVoice */}
+                    {isProcessingVoice && (
+                      <svg
+                        className="border-chase-svg"
+                        viewBox="0 0 100 56"
+                        preserveAspectRatio="none"
                       >
-                        {formatTime(recordingSeconds)}
-                      </span>
-                      <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
-                        {waveformBars.map((height, i) => (
-                          <Bar
-                            key={i}
-                            height={height}
-                            opacity={height <= 3 ? 0.3 : 0.9}
-                          />
-                        ))}
+                        <rect
+                          x="1"
+                          y="1"
+                          width="98"
+                          height="54"
+                          rx="7"
+                          className="border-chase-path"
+                        />
+                      </svg>
+                    )}
+
+                    <textarea
+                      ref={textareaRef}
+                      className="flex-1 resize-none bg-transparent px-4 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+                      style={{
+                        color: 'var(--color-text-primary)',
+                        fontFamily: 'var(--font-family-base)',
+                        minHeight: '56px',
+                        maxHeight: '240px',
+                        overflowY: 'auto',
+                        paddingTop: '8px',
+                        paddingBottom: '8px',
+                        boxSizing: 'border-box',
+                        opacity: recState === 'recording' ? 0 : 1,
+                        transition: 'opacity 0.15s ease',
+                        pointerEvents: recState === 'recording' ? 'none' : 'auto',
+                      }}
+                      placeholder="Опишите задачу или запишите голосом…"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendClick();
+                        }
+                      }}
+                      autoComplete="off"
+                      aria-label="Ввод задачи"
+                    />
+
+                    {/* Waveform overlay */}
+                    {recState === 'recording' && (
+                      <div className="pointer-events-none absolute inset-0 flex h-full w-full items-center px-4 gap-2.5">
+                        <div
+                          className="shrink-0 h-2 w-2 rounded-full"
+                          style={{
+                            backgroundColor: 'var(--color-error)',
+                            animation: 'pulse 1s step-start infinite',
+                          }}
+                        />
+                        <span
+                          className="shrink-0 tabular-nums text-sm"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          {formatTime(recordingSeconds)}
+                        </span>
+                        <div className="flex flex-1 items-center gap-[3px] overflow-hidden">
+                          {waveformBars.map((height, i) => (
+                            <Bar
+                              key={i}
+                              height={height}
+                              opacity={height <= 3 ? 0.3 : 0.9}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  {/* CHANGED: Mic button с fill="#101010" и стилями disabled */}
+                  <NotchedPanel
+                    corner="action"
+                    radius={4}
+                    notch={8}
+                    borderWidth={1}
+                    border={recState === 'recording'
+                      ? 'var(--color-error)'
+                      : 'var(--color-line-strong)'}
+                    fill="#101010"
+                    className="shrink-0 self-end"
+                  >
+                    <button
+                      type="button"
+                      onClick={recState === 'recording' ? () => {
+                        stopRec();
+                        setIsProcessingVoice(true);
+                      } : startRec}
+                      className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        opacity: isProcessingVoice ? 0.32 : 1,
+                        cursor: isProcessingVoice ? 'not-allowed' : 'pointer',
+                        color: isProcessingVoice ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                      }}
+                      disabled={isProcessingVoice}
+                      aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
+                    >
+                      {micIcon}
+                    </button>
+                  </NotchedPanel>
+
+                  {/* CHANGED: Send button с fill="#101010" */}
+                  <NotchedPanel
+                    corner="action"
+                    radius={4}
+                    notch={8}
+                    borderWidth={1}
+                    border={isSendDisabled
+                      ? 'var(--color-line)'
+                      : 'var(--color-line-strong)'}
+                    fill="#101010"
+                    className="shrink-0 self-end"
+                  >
+                    <button
+                      type="button"
+                      onClick={handleSendClick}
+                      disabled={isSendDisabled}
+                      className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        color: isSendDisabled
+                          ? 'var(--color-text-muted)'
+                          : 'var(--color-text-primary)',
+                        opacity: isSendDisabled ? 0.32 : 1,
+                        cursor: isSendDisabled ? 'not-allowed' : 'pointer',
+                      }}
+                      aria-label="Отправить"
+                    >
+                      {sendIcon}
+                    </button>
+                  </NotchedPanel>
                 </div>
 
-                {/* CHANGED: Mic button с fill="#101010" и стилями disabled */}
-                <NotchedPanel
-                  corner="action"
-                  radius={4}
-                  notch={8}
-                  borderWidth={1}
-                  border={recState === 'recording'
-                    ? 'var(--color-error)'
-                    : 'var(--color-line-strong)'}
-                  fill="#101010" // изменён фон панели
-                  className="shrink-0 self-end"
+                {/* Description hint */}
+                <p
+                  className="mb-6 text-sm leading-relaxed"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
-                  <button
-                    type="button"
-                    onClick={recState === 'recording' ? () => {
-                      stopRec();
-                      setIsProcessingVoice(true);
-                    } : startRec}
-                    className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      opacity: isProcessingVoice ? 0.32 : 1,
-                      cursor: isProcessingVoice ? 'not-allowed' : 'pointer',
-                      color: isProcessingVoice ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-                    }}
-                    disabled={isProcessingVoice}
-                    aria-label={recState === 'recording' ? 'Остановить запись' : 'Голосовой ввод'}
-                  >
-                    {micIcon}
-                  </button>
-                </NotchedPanel>
-
-                {/* CHANGED: Send button с fill="#101010" */}
-                <NotchedPanel
-                  corner="action"
-                  radius={4}
-                  notch={8}
-                  borderWidth={1}
-                  border={isSendDisabled
-                    ? 'var(--color-line)'
-                    : 'var(--color-line-strong)'}
-                  fill="#101010" // изменён фон панели
-                  className="shrink-0 self-end"
-                >
-                  <button
-                    type="button"
-                    onClick={handleSendClick}
-                    disabled={isSendDisabled}
-                    className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      color: isSendDisabled
-                        ? 'var(--color-text-muted)'
-                        : 'var(--color-text-primary)',
-                      opacity: isSendDisabled ? 0.32 : 1,
-                      cursor: isSendDisabled ? 'not-allowed' : 'pointer',
-                    }}
-                    aria-label="Отправить"
-                  >
-                    {sendIcon}
-                  </button>
-                </NotchedPanel>
-              </div>
-
-              {/* Description hint */}
-              <p
-                className="mb-6 text-sm leading-relaxed"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
-              </p>
-
-              {/* Status messages */}
-              {recState === 'error' && recError && (
-                <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
-                  Ошибка распознавания: {recError}
+                  Текст или голос превратятся в задачу — заголовок, теги и срок будут распознаны автоматически.
                 </p>
-              )}
-              {error && (
-                <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
-                  {error}
-                </p>
-              )}
 
-              {/* CTA — Создать задачу */}
-              <button
-                type="button"
-                onClick={handleSendClick}
-                disabled={!hasContent || loading || recState === 'recording'}
-                className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
-                style={{
-                  backgroundColor: hasContent && !loading && recState !== 'recording'
-                    ? 'var(--color-accent-amber)'
-                    : 'var(--color-line)',
-                  color: hasContent && !loading && recState !== 'recording'
-                    ? 'var(--color-accent-ink)'
-                    : 'var(--color-text-muted)',
-                  cursor: hasContent && !loading && recState !== 'recording'
-                    ? 'pointer'
-                    : 'not-allowed',
-                }}
-                aria-label="Создать задачу"
-              >
-                {loading ? (
-                  <div
-                    className="inline-block h-4 w-4 rounded-full border-2"
-                    style={{
-                      borderColor: 'rgba(26, 18, 0, 0.25)',
-                      borderTopColor: '#141008',
-                      animation: 'spin 0.7s linear infinite',
-                    }}
-                  />
-                ) : (
-                  <span>Создать задачу</span>
+                {/* Status messages */}
+                {recState === 'error' && recError && (
+                  <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
+                    Ошибка распознавания: {recError}
+                  </p>
                 )}
-              </button>
-            </div>
+                {error && (
+                  <p className="mb-2 text-xs" style={{ color: 'var(--color-error)' }}>
+                    {error}
+                  </p>
+                )}
 
-            {/* CHANGED: Лоадер — абсолютно позиционирован поверх формы */}
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm">
-                <ProgressContent />
+                {/* CTA — Создать задачу */}
+                <button
+                  type="button"
+                  onClick={handleSendClick}
+                  disabled={!hasContent || loading || recState === 'recording'}
+                  className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
+                  style={{
+                    backgroundColor: hasContent && !loading && recState !== 'recording'
+                      ? 'var(--color-accent-amber)'
+                      : 'var(--color-line)',
+                    color: hasContent && !loading && recState !== 'recording'
+                      ? 'var(--color-accent-ink)'
+                      : 'var(--color-text-muted)',
+                    cursor: hasContent && !loading && recState !== 'recording'
+                      ? 'pointer'
+                      : 'not-allowed',
+                  }}
+                  aria-label="Создать задачу"
+                >
+                  {loading ? (
+                    <div
+                      className="inline-block h-4 w-4 rounded-full border-2"
+                      style={{
+                        borderColor: 'rgba(26, 18, 0, 0.25)',
+                        borderTopColor: '#141008',
+                        animation: 'spin 0.7s linear infinite',
+                      }}
+                    />
+                  ) : (
+                    <span>Создать задачу</span>
+                  )}
+                </button>
               </div>
             )}
           </div>
