@@ -243,7 +243,10 @@ export default function BoardDetailPage() {
       <BoardDetail {...detailProps} />
 
       {/* Back button — below BoardDetail */}
-      <div className="px-4 pt-4">
+      <div
+        className="px-4 pt-3"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <button
           type="button"
           onClick={() => router.back()}
