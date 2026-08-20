@@ -135,18 +135,26 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
+### ai/ — AI Task Creation
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| | ProgressSheet | ProgressSheet.tsx | open | Intermediate bottom sheet with stage progress while /api/ai/create-task runs. Timer-based decorative stages («Распознаю данные…» → «Собираю контекст…» → «Создаю задачу…» → «Почти готово…»), pulsing amber dot, `preventSwipe` so it can't be dismissed during loading. Used by TaskCreatorSheet. |
+
+---
+
 ### shared/ — Shared
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | | BottomMenu | BottomMenu.tsx | onCenterClick | Bottom navigation bar. Central button triggers `onCenterClick` or shows fallback notice. "Доска" button toggles between `/flowboard` and `/flowboard?view=stream` when already on flowboard |
-| | AiTaskCreator | AiTaskCreator.tsx | — | Global wrapper: BottomMenu + AI task creation overlay (AiInput + CorrectionSheet). Opens on center button click, creates task via `/api/tasks`, refreshes metrics |
+| | AiTaskCreator | AiTaskCreator.tsx | — | Global wrapper: BottomMenu + AI task creation overlay (TaskCreatorSheet → ProgressSheet → TaskPreviewSheet). Opens on center button click, refreshes board data after task creation |
 | | TelegramInit | TelegramInit.tsx | — | Telegram WebApp init |
 | | TelegramProvider | TelegramProvider.tsx | children | Telegram context provider |
 | | TelegramTheme | TelegramTheme.tsx | children | Theme provider |
 | | TelegramViewportBridge | TelegramViewportBridge.tsx | — | Viewport height bridge |
 | | AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
-| | GlobalLoader | GlobalLoader.tsx | ready | Global loading overlay wrapper (fade-out, z-[9999], aria-live). Renders <OnitaskLoader /> inside. |
+| | GlobalLoader | GlobalLoader.tsx | ready | Global loading overlay wrapper (fade-out, z-[9999], aria-live). Renders `OnitaskLoader` inside. |
 | | OnitaskLoader | OnitaskLoader.tsx | — | Branded splash loader: notched card, traveling amber border glow, logo mark, animated dots. Uses CSS module + design token (--color-signal-yellow for stroke). |
 
 ---

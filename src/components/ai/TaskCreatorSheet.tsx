@@ -15,6 +15,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { ProgressSheet } from '@/components/ai/ProgressSheet';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea';
 import { SingleDateField } from '@/components/ui/SingleDateField';
@@ -70,6 +71,9 @@ export function TaskCreatorSheet({
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Progress sheet state — shown while /api/ai/create-task is running
+  const [progressOpen, setProgressOpen] = useState(false);
+
   // Preview state — shown after task is created
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
@@ -118,6 +122,7 @@ export function TaskCreatorSheet({
     if (!open) {
       setInput('');
       setError(null);
+      setProgressOpen(false);
       setPreviewTaskId(null);
       setPreviewParse(null);
       setPreviewOpen(false);
@@ -254,6 +259,8 @@ export function TaskCreatorSheet({
     submittingRef.current = true;
     setLoading(true);
     setError(null);
+    // Показываем промежуточный лоадер сразу — мгновенный отклик UI
+    setProgressOpen(true);
     try {
       // Include a default priority to avoid DB NOT NULL violation if AI parsing omits it.
       const res = await fetch('/api/ai/create-task', {
@@ -271,10 +278,17 @@ export function TaskCreatorSheet({
       if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
 
       const result = json as CreateTaskResponse;
+      // Минимальная задержка показа, чтобы лоадер не «мигал» при быстром ответе
+      await Promise.all([
+        Promise.resolve(),
+        new Promise((r) => setTimeout(r, 400)),
+      ]);
+      setProgressOpen(false);
       setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
     } catch (err) {
+      setProgressOpen(false);
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
       submittingRef.current = false;
@@ -566,6 +580,9 @@ export function TaskCreatorSheet({
           </button>
         </div>
       </BottomSheet>
+
+      {/* Progress Sheet — показывается пока /api/ai/create-task работает */}
+      <ProgressSheet open={progressOpen} />
 
       {/* Task Preview Sheet */}
       <TaskPreviewSheet
