@@ -6,6 +6,7 @@ import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { BoardDetail } from '@/components/board';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
+import type { ColleagueItem } from '@/components/desk-create/CoworkingSection';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -42,7 +43,8 @@ export default function BoardDetailPage() {
     spSprintEnabled: boolean;
     spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
     cognitiveWeightEnabled: boolean;
-    colleagueCount: number;
+    availableColleagueCount: number;
+    selectedColleagues: ColleagueItem[];
     context: string;
     documentsEnabled: boolean;
     linksEnabled: boolean;
@@ -161,7 +163,8 @@ export default function BoardDetailPage() {
             | { 1: string; 3: string; 5: string; 7: string; 13: string }
             | undefined,
           cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
-          colleagueCount: memberWorkers.length,
+          availableColleagueCount: memberWorkers.length,
+          selectedColleagues: [],
           context: settingsData?.workspace_context || '',
           // Show documents section if feature was enabled OR if there are existing documents
           documentsEnabled: (settingsData?.doc_kb_config?.enabled ?? false) || serverDocuments.length > 0,

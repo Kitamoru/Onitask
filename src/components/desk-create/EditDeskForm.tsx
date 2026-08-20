@@ -26,7 +26,6 @@ export type EditDeskFormValue = {
   spHours: typeof DEFAULT_SP_HOURS;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
-  colleagueCount: number;
   context: string;
   documentsEnabled: boolean;
   documents: File[];
@@ -93,7 +92,6 @@ export function EditDeskForm({
   const [spHours, setSpHours] = useState(initialData.spHours || DEFAULT_SP_HOURS);
   const [spSprintEnabled, setSpSprintEnabled] = useState(initialData.spSprintEnabled ?? false);
   const [cognitiveWeightEnabled, setCognitiveWeightEnabled] = useState(initialData.cognitiveWeightEnabled);
-  const [colleagueCount] = useState(0);
   const [context, setContext] = useState(initialData.context);
   const [documentsEnabled, setDocumentsEnabled] = useState(initialData.documentsEnabled);
   // Local files for new uploads (edit flow)
