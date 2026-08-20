@@ -362,8 +362,11 @@ export function EditDeskForm({
         </section>
 
         <CoworkingSection
-          colleagueCount={colleagueCount}
-          onAddColleague={onAddColleague}
+          availableCount={0}
+          selectedColleagues={[]}
+          onOpenSelect={() => {}}
+          readOnly
+          disabled
         />
 
         <ContextSection value={context} onChange={setContext} />
