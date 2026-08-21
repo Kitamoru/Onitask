@@ -1,5 +1,4 @@
 'use client';
-
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
@@ -187,7 +186,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
     }
-
     case 'PATCH_TASK': {
       // Guard: невалидный payload (undefined/null/без id) не должен ронять reducer
       if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) {
@@ -228,7 +226,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
     }
-
     case 'REMOVE_TASK':
       return {
         ...state,
@@ -237,7 +234,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'SET_METRICS':
       return {
         ...state,
@@ -246,7 +242,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'PATCH_METRICS': {
       const current = state.metrics.data;
       if (!current) return state;
@@ -258,7 +253,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
     }
-
     case 'SET_WORKSPACES':
       return {
         ...state,
@@ -267,7 +261,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'REMOVE_WORKSPACE':
       return {
         ...state,
@@ -281,7 +274,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'SET_WORKERS':
       return {
         ...state,
@@ -290,13 +282,11 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'SET_ACTIVE_WORKSPACE':
       return {
         ...state,
         activeWorkspaceId: action.payload,
       };
-
     case 'SET_BOARDS':
       return {
         ...state,
@@ -305,16 +295,12 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           lastUpdated: Date.now(),
         },
       };
-
     case 'SET_BOARDS_LOADED':
       return { ...state, _boardsLoaded: true };
-
     case 'SET_FIRST_LOAD_DONE':
       return { ...state, _firstLoadDone: true };
-
     case 'CLEAR_ALL':
       return { ...initialState, _boardsLoaded: state._boardsLoaded, _firstLoadDone: state._firstLoadDone };
-
     default:
       return state;
   }
@@ -344,13 +330,11 @@ const DataContext = createContext<DataContextValue | null>(null);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
   const { data: authData, isLoading: isLoadingAuth, initData } = useTelegramAuth();
-
   // Ref for initData (avoids stale closure in loadBoardsData callback)
   const initDataRef = useRef('');
   useEffect(() => {
     initDataRef.current = initData;
   }, [initData]);
-
   // State for data loading error and workspace switching
   const [dataError, setDataError] = useState<string | null>(null);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
@@ -362,13 +346,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.warn('[DataContext] loadBoardsData called before initData is available');
       return;
     }
-
     const isPartial = options?.partial ?? false;
-
     // Timeout protection — abort after 10 seconds
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-
     try {
       const res = await fetch('/api/workspaces/my-data', {
         method: 'POST',
@@ -380,21 +361,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }),
         signal: controller.signal,
       });
-
       clearTimeout(timeoutId);
-
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(errData.error || 'Failed to load board data');
       }
-
       const json = await res.json();
       if (!json.success) {
         throw new Error(json.error || 'Failed to load board data');
       }
-
       const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData, tasks, metrics } = json.data;
-
       // Map full task rows to TaskEntity
       const tasksList = tasks ?? [];
       const wsById = new Map<string, string>((wsData ?? []).map((w: any) => [w.id, w.task_prefix ?? 'TASK']));
@@ -410,6 +386,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         } as TaskEntity;
       });
 
+      // ── Tenant isolation ────────────────────────────────────────────────
+      // Full load (без partial): сервер отдаёт задачи ВСЕХ workspace —
+      // они нужны для board cards / riskData на /board.
+      // В state.tasks должны оставаться только задачи активного workspace,
+      // иначе после возврата на FlowBoard видны задачи чужих досок.
+      const tasksForStore =
+        isPartial || !workspaceId
+          ? taskEntities
+          : taskEntities.filter((t) => (t as any).workspace_id === workspaceId);
+
       // Partial load: update workers (for FlowBoard colleagues) + tasks + metrics
       // Full load: update workspaces + tasks + metrics (for /boards page)
       if (isPartial) {
@@ -421,7 +407,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
       }
 
-      dispatch({ type: 'SET_TASKS', payload: taskEntities });
+      dispatch({ type: 'SET_TASKS', payload: tasksForStore });
 
       // Dispatch metrics if present (consolidated endpoint)
       if (metrics) {
@@ -429,16 +415,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Only compute + dispatch board cards on full load (not partial)
+      // Здесь по-прежнему используем полный tasksList — для статистики по всем доскам
       if (!isPartial) {
         // Resolve variables needed in the card mapping closure
         const allWorkspaceWorkers = allWorkersData ?? [];
         const metricsWorkspaceId = (wsData?.[0]?.id as string | undefined) ?? null;
-
         // Compute boards risk data
         const peopleSet = new Set<string>();
         let processCount = 0;
         let escalationCount = 0;
-
         tasksList.forEach((task: any) => {
           if (task.assigned_to) {
             peopleSet.add(task.assigned_to);
@@ -450,13 +435,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             escalationCount++;
           }
         });
-
         const cards = (wsData ?? []).map((ws: any) => {
           const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
-
           // Use allWorkspaceWorkers for accurate member counts across the entire workspace
           const wsAllWorkers = allWorkspaceWorkers.filter((w: any) => w.workspace_id === ws.id);
-
           // Attach sprint data only when the sprint's workspace_id matches this workspace
           const cardSprint = (metrics?.sprint?.workspace_id === ws.id && metrics?.sprint)
             ? {
@@ -466,7 +448,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 totalDays: metrics.sprint.totalDays,
               }
             : undefined;
-
           return {
             id: ws.id,
             name: ws.name,
@@ -482,7 +463,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             sprint: cardSprint,
           };
         });
-
         dispatch({
           type: 'SET_BOARDS',
           payload: {
@@ -495,7 +475,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           },
         });
       }
-
       // Mark first load as done + clear any previous error
       dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
       setDataError(null);
@@ -519,7 +498,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Tradeoff: +200-800ms initial load delay (waiting for auth), but zero race conditions.
   useEffect(() => {
     if (!authData?.worker) return;
-
     const worker: Worker = {
       id: authData.worker.id,
       workspace_id: authData.worker.workspace_id,
@@ -530,9 +508,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       is_active: true,
       created_at: new Date().toISOString(),
     };
-
     dispatch({ type: 'SET_WORKERS', payload: [worker] });
-
     // Sync all workspaces from auth response
     if (authData.workspaces.length > 0) {
       const now = new Date().toISOString();
@@ -552,14 +528,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
       dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
     }
-
     // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
     const activeWsId = (authData as any).last_active_workspace_id ?? null;
     const targetWorkspaceId = activeWsId || authData.worker.workspace_id;
-
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
-
       // Always load data for the target workspace with partial=true so that ONLY tasks
       // for this specific workspace are fetched. Without partial=true, the server returns
       // tasks for ALL workspaces (workspaceIds), which causes stale tasks from other boards
@@ -576,16 +549,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.warn('[DataContext] setActiveWorkspace called before initData is available');
       return;
     }
-
     // Optimistic update
     dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
-
-    // Reset stale metrics immediately so FlowBoard shows loading state
+    // Reset stale data immediately so FlowBoard shows loading state
+    // and never flashes tasks from the previous workspace
     dispatch({ type: 'SET_METRICS', payload: null });
-
+    dispatch({ type: 'SET_TASKS', payload: [] });
     // Show loading state during switch (fixes flash of empty content #4)
     setIsSwitchingWorkspace(true);
-
     // Persist to server (fire and forget — don't block UI on this)
     // The server save is non-critical for the UI; if it fails, the next load
     // will just use the previous workspace. This saves 1 HTTP RTT on board switch.
@@ -594,7 +565,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
     }).catch((err) => console.error('[DataContext] Failed to save active workspace:', err));
-
     // Reload data with partial load (only tasks + metrics for this workspace)
     // This skips fetching all workspaces + board cards, reducing response size
     try {
@@ -614,18 +584,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
-
     // Resolve prefix once — prefer stored workspaces, fallback to 'TASK'
     const getPrefix = (wsId: string) => {
       const items = workspacesRef.current;
       const ws = items.find(w => w.id === wsId);
       return ws?.task_prefix ?? 'TASK';
     };
-
     const prefix = getPrefix(workspaceId);
-
     const supabase = getClient();
-
     // Realtime callback — plain function (no useRef inside useEffect, which
     // violates Rules of Hooks and crashes at runtime).
     const handleRealtime = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
@@ -676,7 +642,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         console.debug('[DataContext] REMOVE_TASK:', oldTask.id, '(full_id:', fullId, ')');
       }
     };
-
     const channel = supabase
       .channel(`global-tasks-${workspaceId}`)
       .on(
@@ -692,7 +657,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       .subscribe({
         status: 'SUBSCRIBED',
       });
-
     return () => {
       try {
         supabase.removeChannel(channel);
@@ -712,7 +676,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const prevWorkspaceId = prevActiveWorkspaceIdRef.current;
     // Update ref regardless of whether we reload
     prevActiveWorkspaceIdRef.current = workspaceId;
-
     if (workspaceId && prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
       // User explicitly switched workspaces — reload data for the new workspace
       loadBoardsData(workspaceId, { partial: true });
