@@ -1,11 +1,9 @@
 'use client';
-
 /**
  * ProgressSheet — промежуточный bottom sheet с индикацией прогресса создания задачи.
  *
  * Based on: onitask_ai_.md §3.1–§3.7, A-1 (Vercel Hot Path), A-6 (single model call)
  */
-
 import { useEffect, useRef, useState } from 'react';
 
 /** Стадии создания задачи — декоративная последовательность */
@@ -39,7 +37,7 @@ export function ProgressContent() {
       role="status"
       aria-live="polite"
       aria-busy
-      className="flex w-full items-center gap-3"
+      className="flex items-center justify-center gap-3"
       style={{ minHeight: 56 }}
     >
       <span
@@ -67,7 +65,6 @@ export function ProgressContent() {
 }
 
 // ─── StageText — animated stage labels (fade transitions) ──────────────────
-
 function StageText() {
   const [stageIndex, setStageIndex] = useState(0);
   const [fading, setFading] = useState(false);
