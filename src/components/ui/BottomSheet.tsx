@@ -34,12 +34,14 @@ export function BottomSheet({
   open,
   onClose,
   children,
+  overlay,
   stacked = false,
   preventSwipe = false,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  overlay?: ReactNode;
   stacked?: boolean;
   /** When true, disables swipe-to-close gesture */
   preventSwipe?: boolean;
@@ -273,6 +275,8 @@ export function BottomSheet({
         </div>
 
         {children}
+
+        {overlay}
       </div>
     </div>,
     document.body,
