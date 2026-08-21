@@ -1,5 +1,14 @@
 'use client';
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
@@ -9,26 +18,39 @@ import { buildFullId } from '@/lib/realtime/tasks';
 /**
  * Defensive helper: гарантирует наличие full_id/workspace_prefix в TaskEntity.
  * Сервер — источник правды, но если какой-либо endpoint вернёт задачу без
- * этих полей (баг, будущий роут), клиент не упадёт — вычисляем fallback.
+ * этих полей, клиент не упадёт — вычисляем fallback через buildFullId.
  */
 function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
-  // Guard: если payload не объект или нет id — возвращаем как есть,
-  // чтобы не упасть на buildFullId(prefix, task_number, undefined).slice()
   if (!task || typeof task !== 'object' || !task.id) {
-    // Диагностика: показываем точный источник мусорного объекта, чтобы найти
-    // корневую причину (realtime / optimistic / server) вместо маскировки симптома.
-    console.error('[DataContext] ensureFullId: task without id received:', {
-      task,
-      fallbackPrefix,
-      keys: task && typeof task === 'object' ? Object.keys(task) : undefined,
-      stack: new Error('ensureFullId guard').stack,
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[DataContext] ensureFullId: task without id received:', {
+        task,
+        fallbackPrefix,
+        keys: task && typeof task === 'object' ? Object.keys(task) : undefined,
+        stack: new Error('ensureFullId guard').stack,
+      });
+    }
     return task;
   }
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
   const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id);
   return { ...task, full_id: fullId, workspace_prefix: prefix };
+}
+
+/** Map raw API / DB task row → TaskEntity (единый путь для load + realtime). */
+function toTaskEntity(
+  raw: Record<string, unknown> & { id: string; task_number?: number | null; workspace_id?: string },
+  prefix: string,
+): TaskEntity {
+  const fullId = buildFullId(prefix, raw.task_number as number | null | undefined, raw.id);
+  return {
+    ...raw,
+    full_id: fullId,
+    workspace_prefix: prefix,
+    ai_hint: (raw as any).ai_hint ?? null,
+    story_points: (raw as any).story_points ?? null,
+  } as TaskEntity;
 }
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -52,9 +74,7 @@ export interface FlowMetrics {
     onReview: number;
     isActive: boolean;
     status?: string;
-    /** Number of completed tasks in this sprint */
     doneTasks?: number;
-    /** Total number of tasks in this sprint */
     totalTasks?: number;
   } | null;
   columns: Array<{
@@ -94,7 +114,7 @@ interface DataStore {
     items: Worker[];
     lastUpdated: number | null;
   };
-  /** UUID of the user's currently selected workspace/board (from profiles.last_active_workspace_id) */
+  /** UUID of the user's currently selected workspace/board */
   activeWorkspaceId: string | null;
   boards: {
     riskData: {
@@ -118,8 +138,6 @@ interface DataStore {
     }>;
     lastUpdated: number | null;
   };
-  /** Whether boards data has been loaded at least once (for dedup guard) */
-  _boardsLoaded: boolean;
   /** Whether the very first load from server has completed */
   _firstLoadDone: boolean;
 }
@@ -135,34 +153,16 @@ type Action =
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
   | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
-  | { type: 'SET_BOARDS_LOADED'; payload: true }
   | { type: 'SET_FIRST_LOAD_DONE'; payload: true }
   | { type: 'CLEAR_ALL'; payload: null };
 
 const initialState: DataStore = {
-  tasks: {
-    items: [],
-    lastUpdated: null,
-  },
-  metrics: {
-    data: null,
-    lastUpdated: null,
-  },
-  workspaces: {
-    items: [],
-    lastUpdated: null,
-  },
-  workers: {
-    items: [],
-    lastUpdated: null,
-  },
+  tasks: { items: [], lastUpdated: null },
+  metrics: { data: null, lastUpdated: null },
+  workspaces: { items: [], lastUpdated: null },
+  workers: { items: [], lastUpdated: null },
   activeWorkspaceId: null,
-  boards: {
-    riskData: null,
-    cards: [],
-    lastUpdated: null,
-  },
-  _boardsLoaded: false,
+  boards: { riskData: null, cards: [], lastUpdated: null },
   _firstLoadDone: false,
 };
 
@@ -170,8 +170,7 @@ function dataReducer(state: DataStore, action: Action): DataStore {
   switch (action.type) {
     case 'SET_TASKS': {
       const invalid = action.payload.filter((t) => !t || !t.id);
-      if (invalid.length > 0) {
-        // Диагностика: часть задач от сервера пришла без id
+      if (invalid.length > 0 && process.env.NODE_ENV === 'development') {
         console.error('[DataContext] SET_TASKS: ignored tasks without id:', {
           count: invalid.length,
           sample: invalid.slice(0, 3),
@@ -187,26 +186,28 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       };
     }
     case 'PATCH_TASK': {
-      // Guard: невалидный payload (undefined/null/без id) не должен ронять reducer
       if (!action.payload || typeof action.payload !== 'object' || !action.payload.id) {
-        // Диагностика: показываем точный объект, который прилетел в reducer.
-        // JSON.stringify — чтобы payload не обрезался в консоли ({…}).
-        let serialized = 'N/A';
-        try {
-          serialized = JSON.stringify(action.payload);
-        } catch (e) {
-          serialized = `[unserializable: ${e instanceof Error ? e.message : String(e)}]`;
+        if (process.env.NODE_ENV === 'development') {
+          let serialized = 'N/A';
+          try {
+            serialized = JSON.stringify(action.payload);
+          } catch (e) {
+            serialized = `[unserializable: ${e instanceof Error ? e.message : String(e)}]`;
+          }
+          console.error('[DataContext] PATCH_TASK: ignored invalid payload:', {
+            payload: action.payload,
+            serialized,
+            keys:
+              action.payload && typeof action.payload === 'object'
+                ? Object.keys(action.payload)
+                : undefined,
+            stack: new Error('PATCH_TASK guard').stack,
+          });
         }
-        console.error('[DataContext] PATCH_TASK: ignored invalid payload:', {
-          payload: action.payload,
-          serialized,
-          keys: action.payload && typeof action.payload === 'object' ? Object.keys(action.payload) : undefined,
-          stack: new Error('PATCH_TASK guard').stack,
-        });
         return state;
       }
       const safeTask = ensureFullId(action.payload);
-      const idx = state.tasks.items.findIndex(t => t.id === safeTask.id);
+      const idx = state.tasks.items.findIndex((t) => t.id === safeTask.id);
       if (idx === -1) {
         return {
           ...state,
@@ -220,27 +221,21 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       next[idx] = safeTask;
       return {
         ...state,
-        tasks: {
-          items: next,
-          lastUpdated: Date.now(),
-        },
+        tasks: { items: next, lastUpdated: Date.now() },
       };
     }
     case 'REMOVE_TASK':
       return {
         ...state,
         tasks: {
-          items: state.tasks.items.filter(t => t.id !== action.payload),
+          items: state.tasks.items.filter((t) => t.id !== action.payload),
           lastUpdated: Date.now(),
         },
       };
     case 'SET_METRICS':
       return {
         ...state,
-        metrics: {
-          data: action.payload,
-          lastUpdated: Date.now(),
-        },
+        metrics: { data: action.payload, lastUpdated: Date.now() },
       };
     case 'PATCH_METRICS': {
       const current = state.metrics.data;
@@ -256,10 +251,7 @@ function dataReducer(state: DataStore, action: Action): DataStore {
     case 'SET_WORKSPACES':
       return {
         ...state,
-        workspaces: {
-          items: action.payload,
-          lastUpdated: Date.now(),
-        },
+        workspaces: { items: action.payload, lastUpdated: Date.now() },
       };
     case 'REMOVE_WORKSPACE':
       return {
@@ -277,30 +269,19 @@ function dataReducer(state: DataStore, action: Action): DataStore {
     case 'SET_WORKERS':
       return {
         ...state,
-        workers: {
-          items: action.payload,
-          lastUpdated: Date.now(),
-        },
+        workers: { items: action.payload, lastUpdated: Date.now() },
       };
     case 'SET_ACTIVE_WORKSPACE':
-      return {
-        ...state,
-        activeWorkspaceId: action.payload,
-      };
+      return { ...state, activeWorkspaceId: action.payload };
     case 'SET_BOARDS':
       return {
         ...state,
-        boards: {
-          ...action.payload,
-          lastUpdated: Date.now(),
-        },
+        boards: { ...action.payload, lastUpdated: Date.now() },
       };
-    case 'SET_BOARDS_LOADED':
-      return { ...state, _boardsLoaded: true };
     case 'SET_FIRST_LOAD_DONE':
       return { ...state, _firstLoadDone: true };
     case 'CLEAR_ALL':
-      return { ...initialState, _boardsLoaded: state._boardsLoaded, _firstLoadDone: state._firstLoadDone };
+      return { ...initialState, _firstLoadDone: state._firstLoadDone };
     default:
       return state;
   }
@@ -310,18 +291,12 @@ interface DataContextValue {
   state: DataStore;
   dispatch: React.Dispatch<Action>;
   loadBoardsData: (workspaceId?: string, options?: { partial?: boolean }) => Promise<void>;
-  /** Set the active workspace — persists to server and reloads flow data */
   setActiveWorkspace: (workspaceId: string) => Promise<void>;
-  /** Whether auth data is available from useAuth */
   authData: import('../../types/api').InitResponse | null;
   isLoadingAuth: boolean;
-  /** Whether the very first server load has completed */
   firstLoadDone: boolean;
-  /** Error message if data loading failed, null otherwise */
   dataError: string | null;
-  /** Whether the user is currently switching workspaces (for loading states) */
   isSwitchingWorkspace: boolean;
-  /** Remove a workspace/board from state (called after successful deletion) */
   removeWorkspace: (workspaceId: string) => void;
 }
 
@@ -330,174 +305,180 @@ const DataContext = createContext<DataContextValue | null>(null);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
   const { data: authData, isLoading: isLoadingAuth, initData } = useTelegramAuth();
-  // Ref for initData (avoids stale closure in loadBoardsData callback)
+
   const initDataRef = useRef('');
   useEffect(() => {
     initDataRef.current = initData;
   }, [initData]);
-  // State for data loading error and workspace switching
+
+  // Active workspace id in a ref — used by realtime handler to ignore stale events
+  const activeWorkspaceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeWorkspaceIdRef.current = state.activeWorkspaceId;
+  }, [state.activeWorkspaceId]);
+
   const [dataError, setDataError] = useState<string | null>(null);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
 
-  const loadBoardsData = useCallback(async (workspaceId?: string, options?: { partial?: boolean }) => {
-    // Guard: require initData before making any API call (fixes race condition #2)
-    const currentInitData = initDataRef.current;
-    if (!currentInitData) {
-      console.warn('[DataContext] loadBoardsData called before initData is available');
-      return;
-    }
-    const isPartial = options?.partial ?? false;
-    // Timeout protection — abort after 10 seconds
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    try {
-      const res = await fetch('/api/workspaces/my-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          init_data: currentInitData,
-          ...(workspaceId && { workspace_id: workspaceId }),
-          ...(isPartial && { partial: true }),
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(errData.error || 'Failed to load board data');
-      }
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.error || 'Failed to load board data');
-      }
-      const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData, tasks, metrics } = json.data;
-      // Map full task rows to TaskEntity
-      const tasksList = tasks ?? [];
-      const wsById = new Map<string, string>((wsData ?? []).map((w: any) => [w.id, w.task_prefix ?? 'TASK']));
-      const taskEntities: TaskEntity[] = tasksList.map((task: any) => {
-        const prefix = wsById.get(task.workspace_id) ?? 'TASK';
-        const fullId = prefix && task.task_number ? `${prefix}-${task.task_number}` : task.id.slice(0, 8);
-        return {
-          ...task,
-          full_id: fullId,
-          workspace_prefix: prefix,
-          ai_hint: null,
-          story_points: null,
-        } as TaskEntity;
-      });
-
-      // ── Tenant isolation ────────────────────────────────────────────────
-      // Full load (без partial): сервер отдаёт задачи ВСЕХ workspace —
-      // они нужны для board cards / riskData на /board.
-      // В state.tasks должны оставаться только задачи активного workspace,
-      // иначе после возврата на FlowBoard видны задачи чужих досок.
-      const tasksForStore =
-        isPartial || !workspaceId
-          ? taskEntities
-          : taskEntities.filter((t) => (t as any).workspace_id === workspaceId);
-
-      // Partial load: update workers (for FlowBoard colleagues) + tasks + metrics
-      // Full load: update workspaces + tasks + metrics (for /boards page)
-      if (isPartial) {
-        // For partial loads, use allWorkspaceWorkers so FlowBoard shows ALL colleagues
-        // This ensures new invitees appear without full reload
-        dispatch({ type: 'SET_WORKERS', payload: allWorkersData ?? workersData ?? [] });
-      } else {
-        dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
-        dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+  const loadBoardsData = useCallback(
+    async (workspaceId?: string, options?: { partial?: boolean }) => {
+      const currentInitData = initDataRef.current;
+      if (!currentInitData) {
+        console.warn('[DataContext] loadBoardsData called before initData is available');
+        return;
       }
 
-      dispatch({ type: 'SET_TASKS', payload: tasksForStore });
+      const isPartial = options?.partial ?? false;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      // Dispatch metrics if present (consolidated endpoint)
-      if (metrics) {
-        dispatch({ type: 'SET_METRICS', payload: metrics });
-      }
-
-      // Only compute + dispatch board cards on full load (not partial)
-      // Здесь по-прежнему используем полный tasksList — для статистики по всем доскам
-      if (!isPartial) {
-        // Resolve variables needed in the card mapping closure
-        const allWorkspaceWorkers = allWorkersData ?? [];
-        const metricsWorkspaceId = (wsData?.[0]?.id as string | undefined) ?? null;
-        // Compute boards risk data
-        const peopleSet = new Set<string>();
-        let processCount = 0;
-        let escalationCount = 0;
-        tasksList.forEach((task: any) => {
-          if (task.assigned_to) {
-            peopleSet.add(task.assigned_to);
-          }
-          if (task.column === 'in_progress') {
-            processCount++;
-          }
-          if (task.escalation_reason) {
-            escalationCount++;
-          }
+      try {
+        const res = await fetch('/api/workspaces/my-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            init_data: currentInitData,
+            ...(workspaceId && { workspace_id: workspaceId }),
+            ...(isPartial && { partial: true }),
+          }),
+          signal: controller.signal,
         });
-        const cards = (wsData ?? []).map((ws: any) => {
-          const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
-          // Use allWorkspaceWorkers for accurate member counts across the entire workspace
-          const wsAllWorkers = allWorkspaceWorkers.filter((w: any) => w.workspace_id === ws.id);
-          // Attach sprint data only when the sprint's workspace_id matches this workspace
-          const cardSprint = (metrics?.sprint?.workspace_id === ws.id && metrics?.sprint)
-            ? {
-                name: metrics.sprint.name,
-                topic: metrics.sprint.topic,
-                daysElapsed: metrics.sprint.daysElapsed,
-                totalDays: metrics.sprint.totalDays,
-              }
-            : undefined;
-          return {
-            id: ws.id,
-            name: ws.name,
-            slug: ws.slug,
-            memberCount: wsAllWorkers.filter((w: any) => w.type === 'human').length,
-            agentCount: wsAllWorkers.filter((w: any) => w.type === 'agent').length,
-            stats: {
-              inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
-              inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
-              onReview: wsTasks.filter((t: any) => t.column === 'review').length,
-              done: wsTasks.filter((t: any) => t.column === 'done').length,
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(errData.error || 'Failed to load board data');
+        }
+
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to load board data');
+        }
+
+        const {
+          workers: workersData,
+          allWorkspaceWorkers: allWorkersData,
+          workspaces: wsData,
+          tasks,
+          metrics,
+        } = json.data;
+
+        const tasksList = tasks ?? [];
+        const wsById = new Map<string, string>(
+          (wsData ?? []).map((w: any) => [w.id, w.task_prefix ?? 'TASK']),
+        );
+
+        const taskEntities: TaskEntity[] = tasksList
+          .filter((task: any) => task && task.id)
+          .map((task: any) => {
+            const prefix = wsById.get(task.workspace_id) ?? 'TASK';
+            return toTaskEntity(task, prefix);
+          });
+
+        // Tenant isolation: full load может вернуть задачи всех workspace —
+        // в state.tasks оставляем только активный (если workspaceId задан).
+        const tasksForStore =
+          isPartial || !workspaceId
+            ? taskEntities
+            : taskEntities.filter((t) => (t as any).workspace_id === workspaceId);
+
+        if (isPartial) {
+          dispatch({ type: 'SET_WORKERS', payload: allWorkersData ?? workersData ?? [] });
+        } else {
+          dispatch({ type: 'SET_WORKERS', payload: workersData ?? [] });
+          dispatch({ type: 'SET_WORKSPACES', payload: wsData ?? [] });
+        }
+
+        dispatch({ type: 'SET_TASKS', payload: tasksForStore });
+
+        if (metrics) {
+          dispatch({ type: 'SET_METRICS', payload: metrics });
+        }
+
+        // Board cards / riskData — только на full load
+        if (!isPartial) {
+          const allWorkspaceWorkers = allWorkersData ?? [];
+          const peopleSet = new Set<string>();
+          let processCount = 0;
+          let escalationCount = 0;
+
+          tasksList.forEach((task: any) => {
+            if (task.assigned_to) peopleSet.add(task.assigned_to);
+            if (task.column === 'in_progress') processCount++;
+            if (task.escalation_reason) escalationCount++;
+          });
+
+          const cards = (wsData ?? []).map((ws: any) => {
+            const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
+            const wsAllWorkers = allWorkspaceWorkers.filter(
+              (w: any) => w.workspace_id === ws.id,
+            );
+            const cardSprint =
+              metrics?.sprint?.workspace_id === ws.id && metrics?.sprint
+                ? {
+                    name: metrics.sprint.name,
+                    topic: metrics.sprint.topic,
+                    daysElapsed: metrics.sprint.daysElapsed,
+                    totalDays: metrics.sprint.totalDays,
+                  }
+                : undefined;
+
+            return {
+              id: ws.id,
+              name: ws.name,
+              slug: ws.slug,
+              memberCount: wsAllWorkers.filter((w: any) => w.type === 'human').length,
+              agentCount: wsAllWorkers.filter((w: any) => w.type === 'agent').length,
+              stats: {
+                inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
+                inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
+                onReview: wsTasks.filter((t: any) => t.column === 'review').length,
+                done: wsTasks.filter((t: any) => t.column === 'done').length,
+              },
+              sprint: cardSprint,
+            };
+          });
+
+          dispatch({
+            type: 'SET_BOARDS',
+            payload: {
+              riskData: {
+                people: peopleSet.size,
+                processes: processCount,
+                escalations: escalationCount,
+              },
+              cards,
             },
-            sprint: cardSprint,
-          };
-        });
-        dispatch({
-          type: 'SET_BOARDS',
-          payload: {
-            riskData: {
-              people: peopleSet.size,
-              processes: processCount,
-              escalations: escalationCount,
-            },
-            cards,
-          },
-        });
-      }
-      // Mark first load as done + clear any previous error
-      dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
-      setDataError(null);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const message = err instanceof Error ? err.message : 'failed_to_load_boards_data';
-      console.error('[DataContext] failed to load boards data:', err);
-      setDataError(message);
-    }
-  }, []);
+          });
+        }
 
-  // Single source of truth: wait for auth response, then load data for the correct workspace.
-  // This eliminates the race condition where a parallel "first workspace" load could
-  // overwrite the correct workspace data with stale tasks from a different board.
-  //
-  // Flow:
-  // 1. App mounts → auth starts verifying
-  // 2. Auth completes → we know last_active_workspace_id from profiles table
-  // 3. Load boards data FOR THAT WORKSPACE ONLY
-  //
-  // Tradeoff: +200-800ms initial load delay (waiting for auth), but zero race conditions.
+        dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
+        setDataError(null);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const isAbort =
+          (err instanceof DOMException && err.name === 'AbortError') ||
+          (err instanceof Error && err.name === 'AbortError');
+        const message = isAbort
+          ? 'timeout_loading_boards_data'
+          : err instanceof Error
+            ? err.message
+            : 'failed_to_load_boards_data';
+        console.error('[DataContext] failed to load boards data:', err);
+        setDataError(message);
+      }
+    },
+    [],
+  );
+
+  // Stable key for workspaces list — avoids re-running when array identity changes
+  const workspacesKey =
+    authData?.workspaces?.map((w: any) => w.id).join(',') ?? '';
+
+  // Single source of truth: wait for auth, then load data for the correct workspace.
   useEffect(() => {
     if (!authData?.worker) return;
+
     const worker: Worker = {
       id: authData.worker.id,
       workspace_id: authData.worker.workspace_id,
@@ -509,7 +490,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     dispatch({ type: 'SET_WORKERS', payload: [worker] });
-    // Sync all workspaces from auth response
+
     if (authData.workspaces.length > 0) {
       const now = new Date().toISOString();
       const workspaces: Workspace[] = authData.workspaces.map((ws: any) => ({
@@ -528,54 +509,53 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
       dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
     }
-    // Initialize activeWorkspaceId from authData (comes from profiles.last_active_workspace_id)
+
     const activeWsId = (authData as any).last_active_workspace_id ?? null;
     const targetWorkspaceId = activeWsId || authData.worker.workspace_id;
+
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
-      // Always load data for the target workspace with partial=true so that ONLY tasks
-      // for this specific workspace are fetched. Without partial=true, the server returns
-      // tasks for ALL workspaces (workspaceIds), which causes stale tasks from other boards
-      // to appear when the user's last_active_workspace_id differs from their first board.
+      // partial=true → только задачики этого workspace (tenant isolation)
       loadBoardsData(targetWorkspaceId, { partial: true });
     }
-  }, [authData?.worker?.id, authData?.workspaces, loadBoardsData]);
+  }, [authData?.worker?.id, workspacesKey, loadBoardsData]);
 
-  /** Set the active workspace — persists to server and reloads flow data */
-  const setActiveWorkspace = useCallback(async (workspaceId: string) => {
-    // Guard: require initData before making any API call
-    const currentInitData = initDataRef.current;
-    if (!currentInitData) {
-      console.warn('[DataContext] setActiveWorkspace called before initData is available');
-      return;
-    }
-    // Optimistic update
-    dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
-    // Reset stale data immediately so FlowBoard shows loading state
-    // and never flashes tasks from the previous workspace
-    dispatch({ type: 'SET_METRICS', payload: null });
-    dispatch({ type: 'SET_TASKS', payload: [] });
-    // Show loading state during switch (fixes flash of empty content #4)
-    setIsSwitchingWorkspace(true);
-    // Persist to server (fire and forget — don't block UI on this)
-    // The server save is non-critical for the UI; if it fails, the next load
-    // will just use the previous workspace. This saves 1 HTTP RTT on board switch.
-    fetch('/api/workspaces/active-workspace', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
-    }).catch((err) => console.error('[DataContext] Failed to save active workspace:', err));
-    // Reload data with partial load (only tasks + metrics for this workspace)
-    // This skips fetching all workspaces + board cards, reducing response size
-    try {
-      await loadBoardsData(workspaceId, { partial: true });
-    } finally {
-      setIsSwitchingWorkspace(false);
-    }
-  }, [loadBoardsData]);
+  /** Set the active workspace — persists to server and reloads flow data.
+   *  Единственный путь переключения workspace (load вызывается здесь, не в useEffect).
+   */
+  const setActiveWorkspace = useCallback(
+    async (workspaceId: string) => {
+      const currentInitData = initDataRef.current;
+      if (!currentInitData) {
+        console.warn('[DataContext] setActiveWorkspace called before initData is available');
+        return;
+      }
 
-  // Subscribe to realtime task changes
-  // Use refs to avoid recreating the channel on every render
+      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
+      // Сразу сбрасываем stale data — FlowBoard не должен показывать чужие задачи
+      dispatch({ type: 'SET_METRICS', payload: null });
+      dispatch({ type: 'SET_TASKS', payload: [] });
+      setIsSwitchingWorkspace(true);
+
+      // Persist (fire-and-forget)
+      fetch('/api/workspaces/active-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
+      }).catch((err) =>
+        console.error('[DataContext] Failed to save active workspace:', err),
+      );
+
+      try {
+        await loadBoardsData(workspaceId, { partial: true });
+      } finally {
+        setIsSwitchingWorkspace(false);
+      }
+    },
+    [loadBoardsData],
+  );
+
+  // ── Realtime subscription ──────────────────────────────────────────────
   const workspacesRef = useRef(state.workspaces.items);
   useEffect(() => {
     workspacesRef.current = state.workspaces.items;
@@ -584,64 +564,70 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
     if (!workspaceId) return;
-    // Resolve prefix once — prefer stored workspaces, fallback to 'TASK'
+
     const getPrefix = (wsId: string) => {
-      const items = workspacesRef.current;
-      const ws = items.find(w => w.id === wsId);
+      const ws = workspacesRef.current.find((w) => w.id === wsId);
       return ws?.task_prefix ?? 'TASK';
     };
     const prefix = getPrefix(workspaceId);
     const supabase = getClient();
-    // Realtime callback — plain function (no useRef inside useEffect, which
-    // violates Rules of Hooks and crashes at runtime).
-    const handleRealtime = (payload: { eventType: string; new: TasksRow | null; old: TasksRow | null }) => {
-      // Диагностика: логируем сырой realtime-payload, чтобы увидеть, что именно
-      // приходит от Supabase (и почему _updatePostgresBindings падает).
-      try {
-        console.debug('[DataContext] realtime event:', {
-          eventType: payload.eventType,
-          newKeys: payload.new && typeof payload.new === 'object' ? Object.keys(payload.new) : undefined,
-          newSerialized: payload.new ? JSON.stringify(payload.new).slice(0, 500) : null,
-          oldKeys: payload.old && typeof payload.old === 'object' ? Object.keys(payload.old) : undefined,
-        });
-      } catch (e) {
-        console.debug('[DataContext] realtime event (log failed):', e);
+
+    const handleRealtime = (payload: {
+      eventType: string;
+      new: TasksRow | null;
+      old: TasksRow | null;
+    }) => {
+      // Игнорируем события, пришедшие после switch (stale channel / race)
+      if (activeWorkspaceIdRef.current !== workspaceId) {
+        return;
       }
+
+      if (process.env.NODE_ENV === 'development') {
+        try {
+          console.debug('[DataContext] realtime event:', {
+            eventType: payload.eventType,
+            newKeys:
+              payload.new && typeof payload.new === 'object'
+                ? Object.keys(payload.new)
+                : undefined,
+            newSerialized: payload.new
+              ? JSON.stringify(payload.new).slice(0, 500)
+              : null,
+          });
+        } catch {
+          /* ignore log errors */
+        }
+      }
+
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const raw = payload.new as TasksRow | null;
-        // Guard: realtime может прислать malformed payload (пустой объект {}),
-        // который проходит `if (!raw)` (пустой объект truthy), но не имеет id.
-        // Это и есть корневая причина PATCH_TASK с пустым payload.
         if (!raw || typeof raw !== 'object' || !raw.id) {
-          console.warn('[DataContext] realtime: skipped malformed task payload:', {
-            eventType: payload.eventType,
-            raw,
-            rawKeys: raw && typeof raw === 'object' ? Object.keys(raw) : undefined,
-          });
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[DataContext] realtime: skipped malformed task payload:', {
+              eventType: payload.eventType,
+              raw,
+              rawKeys: raw && typeof raw === 'object' ? Object.keys(raw) : undefined,
+            });
+          }
           return;
         }
-        // Use shared buildFullId for consistency with API and useTasksRealtime
-        const fullId = buildFullId(prefix, raw.task_number, raw.id);
-        const taskEntity: TaskEntity = {
-          ...raw,
-          full_id: fullId,
-          workspace_prefix: prefix,
-          ai_hint: null,
-          story_points: null,
-        } as TaskEntity;
+        // Доп. tenant guard: фильтр канала + явная проверка
+        if (raw.workspace_id && raw.workspace_id !== workspaceId) {
+          return;
+        }
+
+        const taskEntity = toTaskEntity(raw as any, prefix);
         dispatch({ type: 'PATCH_TASK', payload: taskEntity });
       } else if (payload.eventType === 'DELETE') {
-        const oldTask = payload.old as TasksRow;
-        if (!oldTask) return;
-        // For DELETE, try to resolve prefix from old task's workspace_id
-        const oldPrefix = getPrefix(oldTask.workspace_id);
-        const fullId = buildFullId(oldPrefix, oldTask.task_number, oldTask.id);
-        // Remove by UUID (primary key) — this is the correct identifier
+        const oldTask = payload.old as TasksRow | null;
+        if (!oldTask?.id) return;
+        if (oldTask.workspace_id && oldTask.workspace_id !== workspaceId) {
+          return;
+        }
         dispatch({ type: 'REMOVE_TASK', payload: oldTask.id });
-        // Log for debugging: show the full_id that was removed
-        console.debug('[DataContext] REMOVE_TASK:', oldTask.id, '(full_id:', fullId, ')');
       }
     };
+
     const channel = supabase
       .channel(`global-tasks-${workspaceId}`)
       .on(
@@ -654,47 +640,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         },
         handleRealtime,
       )
-      .subscribe({
-        status: 'SUBSCRIBED',
-      });
+      .subscribe();
+
     return () => {
       try {
         supabase.removeChannel(channel);
       } catch (err) {
-        // Realtime cleanup не должен ронять UI при размонтировании
         console.warn('[DataContext] Failed to remove realtime channel:', err);
       }
     };
   }, [state.activeWorkspaceId]);
 
-  // Load boards data when active workspace changes (e.g., user selects different board)
-  // Initial load is handled in the auth useEffect above.
-  // Only reload when the user explicitly switches workspaces (from one value to another).
-  const prevActiveWorkspaceIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const workspaceId = state.activeWorkspaceId;
-    const prevWorkspaceId = prevActiveWorkspaceIdRef.current;
-    // Update ref regardless of whether we reload
-    prevActiveWorkspaceIdRef.current = workspaceId;
-    if (workspaceId && prevWorkspaceId !== null && prevWorkspaceId !== workspaceId) {
-      // User explicitly switched workspaces — reload data for the new workspace
-      loadBoardsData(workspaceId, { partial: true });
-    }
-  }, [state.activeWorkspaceId, loadBoardsData]);
+  // Удалён useEffect, который повторно вызывал loadBoardsData при смене
+  // activeWorkspaceId — load теперь только в setActiveWorkspace и auth-эффекте.
+  // Если activeWorkspaceId начнут менять через dispatch напрямую — добавьте
+  // вызов loadBoardsData рядом с этим dispatch.
 
   return (
-    <DataContext.Provider value={{
-      state,
-      dispatch,
-      loadBoardsData,
-      setActiveWorkspace,
-      authData,
-      isLoadingAuth,
-      firstLoadDone: state._firstLoadDone,
-      dataError,
-      isSwitchingWorkspace,
-      removeWorkspace: (workspaceId: string) => dispatch({ type: 'REMOVE_WORKSPACE', payload: workspaceId }),
-    }}>
+    <DataContext.Provider
+      value={{
+        state,
+        dispatch,
+        loadBoardsData,
+        setActiveWorkspace,
+        authData,
+        isLoadingAuth,
+        firstLoadDone: state._firstLoadDone,
+        dataError,
+        isSwitchingWorkspace,
+        removeWorkspace: (workspaceId: string) =>
+          dispatch({ type: 'REMOVE_WORKSPACE', payload: workspaceId }),
+      }}
+    >
       {children}
     </DataContext.Provider>
   );
