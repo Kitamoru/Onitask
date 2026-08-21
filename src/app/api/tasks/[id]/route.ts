@@ -161,10 +161,20 @@ export async function DELETE(
   try {
     const worker = await getAuthenticatedWorker(request);
     if (!worker) {
+      console.error('[DELETE /api/tasks/:id] Auth failed — worker not found');
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
 
+    console.log('[DELETE /api/tasks/:id] Authenticated worker:', JSON.stringify({
+      workerId: worker.id,
+      workspaceId: worker.workspace_id,
+      sourceId: worker.source_id,
+      type: worker.type,
+    }));
+
     const { id: taskId } = await params;
+    console.log('[DELETE /api/tasks/:id] Task ID:', taskId);
+
     const supabase = createServerClient();
 
     // Verify the task belongs to the same workspace as the worker
@@ -175,12 +185,24 @@ export async function DELETE(
       .single();
 
     if (!taskData) {
+      console.warn('[DELETE /api/tasks/:id] Task not found:', taskId);
       return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
     }
 
-    if ((taskData as any).workspace_id !== worker.workspace_id) {
+    const taskWorkspaceId = (taskData as any).workspace_id;
+    console.log('[DELETE /api/tasks/:id] Task workspace_id:', taskWorkspaceId);
+
+    if (taskWorkspaceId !== worker.workspace_id) {
+      console.error('[DELETE /api/tasks/:id] Access denied — workspace mismatch:', {
+        taskId,
+        workerId: worker.id,
+        workerWorkspaceId: worker.workspace_id,
+        taskWorkspaceId,
+      });
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
+
+    console.log('[DELETE /api/tasks/:id] Workspace check passed, proceeding with cascade delete');
 
     // Cascade delete related rows manually (tables without ON DELETE CASCADE)
     const anySupabase = supabase as any;
