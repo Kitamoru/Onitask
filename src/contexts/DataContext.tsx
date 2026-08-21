@@ -134,7 +134,12 @@ interface DataStore {
         onReview: number;
         done: number;
       };
-      sprint?: any;
+      sprint?: {
+        name: string;
+        topic: string;
+        daysElapsed: number;
+        totalDays: number;
+      };
     }>;
     lastUpdated: number | null;
   };
@@ -273,11 +278,24 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       };
     case 'SET_ACTIVE_WORKSPACE':
       return { ...state, activeWorkspaceId: action.payload };
-    case 'SET_BOARDS':
+    case 'SET_BOARDS': {
+      // Не затираем sprint у карточки, если новый payload его не принёс
+      const prevById = new Map(state.boards.cards.map((c) => [c.id, c]));
+      const cards = action.payload.cards.map((card) => {
+        if (card.sprint != null) return card;
+        const prev = prevById.get(card.id);
+        if (prev?.sprint != null) return { ...card, sprint: prev.sprint };
+        return card;
+      });
       return {
         ...state,
-        boards: { ...action.payload, lastUpdated: Date.now() },
+        boards: {
+          ...action.payload,
+          cards,
+          lastUpdated: Date.now(),
+        },
       };
+    }
     case 'SET_FIRST_LOAD_DONE':
       return { ...state, _firstLoadDone: true };
     case 'CLEAR_ALL':
@@ -311,7 +329,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     initDataRef.current = initData;
   }, [initData]);
 
-  // Active workspace id in a ref — used by realtime handler to ignore stale events
   const activeWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeWorkspaceIdRef.current = state.activeWorkspaceId;
@@ -361,6 +378,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           workspaces: wsData,
           tasks,
           metrics,
+          sprintsByWorkspace,
         } = json.data;
 
         const tasksList = tasks ?? [];
@@ -398,6 +416,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // Board cards / riskData — только на full load
         if (!isPartial) {
           const allWorkspaceWorkers = allWorkersData ?? [];
+          const sprintMap: Record<
+            string,
+            { name: string; topic: string; daysElapsed: number; totalDays: number }
+          > = sprintsByWorkspace ?? {};
+
           const peopleSet = new Set<string>();
           let processCount = 0;
           let escalationCount = 0;
@@ -413,15 +436,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             const wsAllWorkers = allWorkspaceWorkers.filter(
               (w: any) => w.workspace_id === ws.id,
             );
-            const cardSprint =
-              metrics?.sprint?.workspace_id === ws.id && metrics?.sprint
-                ? {
-                    name: metrics.sprint.name,
-                    topic: metrics.sprint.topic,
-                    daysElapsed: metrics.sprint.daysElapsed,
-                    totalDays: metrics.sprint.totalDays,
-                  }
-                : undefined;
+
+            const sp = sprintMap[ws.id];
+            const cardSprint = sp
+              ? {
+                  name: sp.name,
+                  topic: sp.topic,
+                  daysElapsed: sp.daysElapsed,
+                  totalDays: sp.totalDays,
+                }
+              : undefined;
 
             return {
               id: ws.id,
@@ -471,11 +495,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  // Stable key for workspaces list — avoids re-running when array identity changes
   const workspacesKey =
     authData?.workspaces?.map((w: any) => w.id).join(',') ?? '';
 
-  // Single source of truth: wait for auth, then load data for the correct workspace.
   useEffect(() => {
     if (!authData?.worker) return;
 
@@ -515,14 +537,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
-      // partial=true → только задачики этого workspace (tenant isolation)
       loadBoardsData(targetWorkspaceId, { partial: true });
     }
   }, [authData?.worker?.id, workspacesKey, loadBoardsData]);
 
-  /** Set the active workspace — persists to server and reloads flow data.
-   *  Единственный путь переключения workspace (load вызывается здесь, не в useEffect).
-   */
   const setActiveWorkspace = useCallback(
     async (workspaceId: string) => {
       const currentInitData = initDataRef.current;
@@ -532,12 +550,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspaceId });
-      // Сразу сбрасываем stale data — FlowBoard не должен показывать чужие задачи
       dispatch({ type: 'SET_METRICS', payload: null });
       dispatch({ type: 'SET_TASKS', payload: [] });
       setIsSwitchingWorkspace(true);
 
-      // Persist (fire-and-forget)
       fetch('/api/workspaces/active-workspace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -555,7 +571,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [loadBoardsData],
   );
 
-  // ── Realtime subscription ──────────────────────────────────────────────
   const workspacesRef = useRef(state.workspaces.items);
   useEffect(() => {
     workspacesRef.current = state.workspaces.items;
@@ -577,7 +592,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       new: TasksRow | null;
       old: TasksRow | null;
     }) => {
-      // Игнорируем события, пришедшие после switch (stale channel / race)
       if (activeWorkspaceIdRef.current !== workspaceId) {
         return;
       }
@@ -595,7 +609,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               : null,
           });
         } catch {
-          /* ignore log errors */
+          /* ignore */
         }
       }
 
@@ -611,11 +625,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
           return;
         }
-        // Доп. tenant guard: фильтр канала + явная проверка
         if (raw.workspace_id && raw.workspace_id !== workspaceId) {
           return;
         }
-
         const taskEntity = toTaskEntity(raw as any, prefix);
         dispatch({ type: 'PATCH_TASK', payload: taskEntity });
       } else if (payload.eventType === 'DELETE') {
@@ -650,11 +662,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     };
   }, [state.activeWorkspaceId]);
-
-  // Удалён useEffect, который повторно вызывал loadBoardsData при смене
-  // activeWorkspaceId — load теперь только в setActiveWorkspace и auth-эффекте.
-  // Если activeWorkspaceId начнут менять через dispatch напрямую — добавьте
-  // вызов loadBoardsData рядом с этим dispatch.
 
   return (
     <DataContext.Provider
