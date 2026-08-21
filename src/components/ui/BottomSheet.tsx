@@ -263,6 +263,7 @@ export function BottomSheet({
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',
+            position: 'relative', 
           } as React.CSSProperties
         }
       >
