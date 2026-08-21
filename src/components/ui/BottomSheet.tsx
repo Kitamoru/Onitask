@@ -29,22 +29,28 @@ const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
  * - Reserves space at the top of the viewport so the sheet's content clears
  *   Telegram's top controls (e.g. the close button in the corner) via
  *   `calc(max(16px, var(--tg-content-safe-top, 0px)) + 40px)` on the container.
+ *
+ * @param overlay - Optional React node rendered inside the sheet panel,
+ *                  centered absolutely over the content (e.g. a loading spinner).
+ *                  When provided, the sheet panel gains `position: relative`
+ *                  so the overlay is positioned relative to the panel bounds.
  */
 export function BottomSheet({
   open,
   onClose,
   children,
-  overlay,
   stacked = false,
   preventSwipe = false,
+  overlay,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
-  overlay?: ReactNode;
   stacked?: boolean;
   /** When true, disables swipe-to-close gesture */
   preventSwipe?: boolean;
+  /** Optional overlay rendered absolutely centered over the sheet content */
+  overlay?: ReactNode;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | null>(null);
@@ -198,7 +204,7 @@ export function BottomSheet({
         rafRef.current = null;
       }
     };
-  }, [open, onClose]);
+  }, [open, onClose, preventSwipe]);
 
   useEffect(() => {
     if (!open) return;
@@ -240,7 +246,7 @@ export function BottomSheet({
         aria-hidden="true"
       />
 
-      {/* Sheet panel — background matches RiskPulse cards (var(--color-surface)) */}
+      {/* Sheet panel */}
       <div
         ref={sheetRef}
         role="dialog"
@@ -250,6 +256,9 @@ export function BottomSheet({
         }`}
         style={
           {
+            // Добавляем position: relative только если есть overlay,
+            // чтобы не влиять на другие компоненты, использующие BottomSheet без overlay.
+            position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
@@ -265,7 +274,6 @@ export function BottomSheet({
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',
-            position: 'relative', 
           } as React.CSSProperties
         }
       >
@@ -274,9 +282,18 @@ export function BottomSheet({
           <div className="w-10 h-1 rounded-full bg-text-muted/40" />
         </div>
 
+        {/* Children (content) */}
         {children}
 
-        {overlay}
+        {/* Overlay — центрируется относительно панели, если передан */}
+        {overlay && (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm"
+            style={{ zIndex: 10001 }} // выше панели (у панели z-index 10 или 10000)
+          >
+            {overlay}
+          </div>
+        )}
       </div>
     </div>,
     document.body,
