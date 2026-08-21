@@ -1,4 +1,4 @@
- 'use server';
+'use server';
 
 /**
  * POST /api/workspaces/my-data — Returns authenticated user's workspace data + flow metrics.
@@ -7,19 +7,11 @@
  * in a single HTTP call.
  *
  * Optimization: when `partial: true` + `workspace_id` is provided, only tasks for the
- * requested workspace are fetched (not all tasks across all workspaces). This significantly
- * reduces query time and bandwidth when switching boards.
+ * requested workspace are fetched (not all tasks across all workspaces).
  *
- * DB queries are parallelized: workspaces, tasks, settings, and sprints are fetched
- * concurrently after the workers query (which provides workspaceIds).
- *
- * Response:
- *   workers: Array of worker records for the authenticated user
- *   workspaces: Array of workspace records the user belongs to
- *   tasks: Full task records (filtered to workspace_id when partial=true)
- *   metrics: Pre-computed flow metrics (sprint, columns, alerts)
+ * Full load additionally returns `sprintsByWorkspace` — active/planning sprint summary
+ * per workspace for BoardCard on /boards.
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import { authenticateRequest } from '../../../../../lib/api-auth';
@@ -48,13 +40,9 @@ interface FlowMetricsResponse {
     onReview: number;
     isActive: boolean;
     status?: string;
-    /** Sprint capacity as string (for UI form binding) */
     capacity?: string | null;
-    /** Number of completed tasks in this sprint */
     doneTasks?: number;
-    /** Total number of tasks in this sprint */
     totalTasks?: number;
-    /** IDs of tasks assigned to this sprint (for edit sheet pre-selection) */
     taskIds?: string[];
   } | null;
   columns: Array<{
@@ -79,6 +67,16 @@ interface FlowMetricsResponse {
   cache_ttl: { columns: number; workers: number; alerts: number };
 }
 
+/** Краткая сводка спринта для BoardCard на /boards */
+type BoardSprintSummary = {
+  name: string;
+  topic: string;
+  daysElapsed: number;
+  totalDays: number;
+  status?: string;
+  isActive?: boolean;
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -86,7 +84,6 @@ export async function POST(req: NextRequest) {
     const requestedWorkspaceId = body.workspace_id as string | undefined;
     const isPartial = body.partial as boolean | undefined;
 
-    // Authenticate via Telegram initData
     const auth = await authenticateRequest(initData);
     if (!auth.authenticated) {
       return NextResponse.json(
@@ -98,7 +95,6 @@ export async function POST(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    // 1. Get all active workers for this profile (needed for workspaceIds + board cards)
     const { data: userWorkersData, error: userWorkersError } = await supabase
       .from('workers')
       .select('*')
@@ -114,69 +110,105 @@ export async function POST(req: NextRequest) {
     const workspaceIds = userWorkers.map((w: any) => w.workspace_id).filter(Boolean);
     const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
 
-    // When partial load with workspace_id, only fetch tasks for that workspace
-    // (full load fetches tasks across all workspaces for board cards)
-    const taskWorkspaceIds = (isPartial && requestedWorkspaceId) ? [requestedWorkspaceId] : workspaceIds;
+    const taskWorkspaceIds =
+      isPartial && requestedWorkspaceId ? [requestedWorkspaceId] : workspaceIds;
 
-    // 2. Parallelize: fetch workspaces, tasks, settings, sprints, AND all workspace workers concurrently
-    // This reduces 4+ sequential DB roundtrips to 1 parallel roundtrip
-    // All workspace workers are needed for FlowBoard metrics (shows ALL colleagues, not just current user)
-    const [allWorkspaceWorkersResult, wsResult, taskResult, settingsResult, sprintResult] = await Promise.all([
-      // All active workers in user's workspaces (for FlowBoard metrics)
+    // Full load: спринты по всем workspace. Partial: только активный.
+    const sprintQueryWorkspaceIds =
+      isPartial && requestedWorkspaceId ? [requestedWorkspaceId] : workspaceIds;
+
+    const [
+      allWorkspaceWorkersResult,
+      wsResult,
+      taskResult,
+      settingsResult,
+      sprintResult,
+    ] = await Promise.all([
       workspaceIds.length > 0
-        ? supabase.from('workers').select('*').in('workspace_id', workspaceIds).eq('is_active', true)
+        ? supabase
+            .from('workers')
+            .select('*')
+            .in('workspace_id', workspaceIds)
+            .eq('is_active', true)
         : Promise.resolve({ data: [], error: null as any }),
-      // Workspaces (always fetch all — needed for board cards on full load)
+
       workspaceIds.length > 0
         ? supabase.from('workspaces').select('*').in('id', workspaceIds)
         : Promise.resolve({ data: [], error: null as any }),
-      // Tasks (filtered to single workspace when partial load)
+
       taskWorkspaceIds.length > 0
         ? supabase.from('tasks').select('*').in('workspace_id', taskWorkspaceIds)
         : Promise.resolve({ data: [], error: null as any }),
-      // Workspace settings (for sprint_enabled flag)
+
       metricsWorkspaceId
-        ? supabase.from('workspace_settings').select('story_points_config').eq('workspace_id', metricsWorkspaceId).single()
+        ? supabase
+            .from('workspace_settings')
+            .select('story_points_config')
+            .eq('workspace_id', metricsWorkspaceId)
+            .single()
         : Promise.resolve({ data: null, error: null as any }),
-      // Active sprint (for sprint metrics)
-      metricsWorkspaceId
-        ? supabase.from('sprints').select('*').eq('workspace_id', metricsWorkspaceId).in('status', ['active', 'planning']).order('created_at', { ascending: false }).limit(1)
-        : Promise.resolve({ data: null, error: null as any }),
+
+      sprintQueryWorkspaceIds.length > 0
+        ? supabase
+            .from('sprints')
+            .select('*')
+            .in('workspace_id', sprintQueryWorkspaceIds)
+            .in('status', ['active', 'planning'])
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null as any }),
     ]);
 
-    if (allWorkspaceWorkersResult.error) console.error('my-data: all workers query error', allWorkspaceWorkersResult.error);
-
-    if (wsResult.error) console.error('my-data: workspaces query error', wsResult.error);
-    if (taskResult.error) console.error('my-data: tasks query error', taskResult.error);
+    if (allWorkspaceWorkersResult.error) {
+      console.error('my-data: all workers query error', allWorkspaceWorkersResult.error);
+    }
+    if (wsResult.error) {
+      console.error('my-data: workspaces query error', wsResult.error);
+    }
+    if (taskResult.error) {
+      console.error('my-data: tasks query error', taskResult.error);
+    }
+    if (sprintResult.error) {
+      console.error('my-data: sprints query error', sprintResult.error);
+    }
 
     const allWorkspaceWorkers = allWorkspaceWorkersResult.data || [];
     const workspaces = wsResult.data || [];
     const rawTasks = taskResult.data || [];
-    
-    // Enrich tasks with workspace_name, created_by_name, assigned_to_name (batch — single DB query)
-    const tasks: EnrichedTask[] = await enrichTaskRowsBatch(rawTasks as TasksRow[]);
-    
-    const relevantTasks = metricsWorkspaceId ? tasks.filter((t: EnrichedTask) => t.workspace_id === metricsWorkspaceId) : tasks;
 
-    // 3. Compute metrics from ALL workspace workers (not just current user's workers)
-    // This ensures FlowBoard shows all colleagues, including those who joined via invite links
+    const tasks: EnrichedTask[] = await enrichTaskRowsBatch(rawTasks as TasksRow[]);
+
+    const relevantTasks = metricsWorkspaceId
+      ? tasks.filter((t: EnrichedTask) => t.workspace_id === metricsWorkspaceId)
+      : tasks;
+
+    const allSprints = (sprintResult.data as SprintsRow[] | null) ?? [];
+
+    // Metrics: только спринт активного (metrics) workspace
+    const sprintsForMetrics = metricsWorkspaceId
+      ? allSprints.filter((s) => s.workspace_id === metricsWorkspaceId)
+      : [];
+
     const metrics = computeMetricsFromData(
       allWorkspaceWorkers,
       tasks,
       metricsWorkspaceId,
       relevantTasks,
       settingsResult.data as any,
-      sprintResult.data as any,
+      sprintsForMetrics,
     );
+
+    // Per-workspace sprint summaries для BoardCard
+    const sprintsByWorkspace = buildSprintsByWorkspace(allSprints);
 
     return NextResponse.json({
       success: true,
       data: {
-        workers: userWorkers, // Keep user-specific workers for backward compat (board cards)
-        allWorkspaceWorkers, // New field: all workers in workspace (for FlowBoard metrics)
+        workers: userWorkers,
+        allWorkspaceWorkers,
         workspaces,
         tasks,
         metrics,
+        sprintsByWorkspace,
       },
     });
   } catch (err) {
@@ -186,9 +218,62 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Compute flow metrics from pre-fetched data (no DB queries).
- * This is separated from the route handler to enable parallel DB queries.
+ * По каждому workspace — последний active/planning спринт
+ * (строки уже отсортированы по created_at desc).
  */
+function buildSprintsByWorkspace(
+  sprints: SprintsRow[],
+): Record<string, BoardSprintSummary> {
+  const byWs = new Map<string, SprintsRow>();
+
+  for (const sp of sprints) {
+    if (!sp.workspace_id) continue;
+    if (!byWs.has(sp.workspace_id)) {
+      byWs.set(sp.workspace_id, sp);
+    }
+  }
+
+  const result: Record<string, BoardSprintSummary> = {};
+
+  for (const [wsId, sp] of byWs) {
+    const startDate = sp.start_date ? new Date(sp.start_date) : null;
+    const endDate = sp.end_date ? new Date(sp.end_date) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let daysElapsed = 0;
+    let totalDays = 7;
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      totalDays = Math.max(
+        1,
+        Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      if (today >= start) {
+        daysElapsed = Math.min(
+          totalDays,
+          Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+        );
+      }
+    }
+
+    result[wsId] = {
+      name: sp.name || '',
+      topic: sp.goal || '',
+      daysElapsed,
+      totalDays,
+      status: sp.status,
+      isActive: sp.status === 'active',
+    };
+  }
+
+  return result;
+}
+
 function computeMetricsFromData(
   workers: WorkersRow[],
   tasks: EnrichedTask[],
@@ -201,14 +286,11 @@ function computeMetricsFromData(
   let sprintEnabled = false;
 
   if (workspaceId) {
-    // Sprint enabled flag from pre-fetched settings
-    sprintEnabled = (settingsData?.story_points_config as any)?.sprint_enabled ?? false;
+    sprintEnabled =
+      (settingsData?.story_points_config as any)?.sprint_enabled ?? false;
 
-    // Sprint data from pre-fetched query
     if (sprintData && (sprintData as SprintsRow[]).length > 0) {
       const sp = (sprintData as SprintsRow[])[0];
-
-      // Calculate sprint metrics from actual data
       const startDate = sp.start_date ? new Date(sp.start_date) : null;
       const endDate = sp.end_date ? new Date(sp.end_date) : null;
       const today = new Date();
@@ -223,25 +305,31 @@ function computeMetricsFromData(
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-
-        totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-
+        totalDays = Math.max(
+          1,
+          Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+        );
         if (today >= start) {
-          daysElapsed = Math.min(totalDays, Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+          daysElapsed = Math.min(
+            totalDays,
+            Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+          );
         } else {
           daysElapsed = 0;
         }
-
         progress = totalDays > 0 ? Math.round((daysElapsed / totalDays) * 100) : 0;
         progress = Math.min(100, Math.max(0, progress));
       }
 
-      // Count tasks by status for this sprint
-      const sprintTasks = (relevantTasks || tasks).filter((t: any) => t.sprint_id === sp.id);
+      const sprintTasks = (relevantTasks || tasks).filter(
+        (t: any) => t.sprint_id === sp.id,
+      );
       const doneSP = sprintTasks
         .filter((t: any) => t.column === 'done' && t.story_points)
         .reduce((sum: number, t: any) => sum + (t.story_points as number), 0);
-      const inProgress = sprintTasks.filter((t: any) => t.column === 'in_progress').length;
+      const inProgress = sprintTasks.filter(
+        (t: any) => t.column === 'in_progress',
+      ).length;
       const onReview = sprintTasks.filter((t: any) => t.column === 'review').length;
       const doneTasks = sprintTasks.filter((t: any) => t.column === 'done').length;
       const totalTasks = sprintTasks.length;
@@ -265,14 +353,17 @@ function computeMetricsFromData(
         capacity: sp.capacity != null ? String(sp.capacity) : null,
         doneTasks,
         totalTasks,
-        // IDs of tasks assigned to this sprint (for edit sheet pre-selection)
         taskIds: sprintTasks.map((t: any) => t.id),
       };
     }
   }
 
-  // Column counts
-  const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
+  const columnMap: Record<string, number> = {
+    backlog: 0,
+    in_progress: 0,
+    review: 0,
+    done: 0,
+  };
   relevantTasks.forEach((t) => {
     if (t.column in columnMap) {
       columnMap[t.column]++;
@@ -280,19 +371,25 @@ function computeMetricsFromData(
   });
 
   const wipLimits: Record<string, number | null> = {
-    backlog: 15, in_progress: 5, review: 4, done: null,
+    backlog: 15,
+    in_progress: 5,
+    review: 4,
+    done: null,
   };
 
-  const columns: FlowMetricsResponse['columns'] = Object.entries(columnMap).map(([name, wip_current]) => {
-    const wip_limit = wipLimits[name] ?? null;
-    let health: 'green' | 'yellow' | 'red' = 'green';
-    if (wip_limit !== null && wip_current > wip_limit) health = 'red';
-    else if (wip_limit !== null && wip_current >= wip_limit * 0.8) health = 'yellow';
-    return { name, wip_current, wip_limit, health };
-  });
+  const columns: FlowMetricsResponse['columns'] = Object.entries(columnMap).map(
+    ([name, wip_current]) => {
+      const wip_limit = wipLimits[name] ?? null;
+      let health: 'green' | 'yellow' | 'red' = 'green';
+      if (wip_limit !== null && wip_current > wip_limit) health = 'red';
+      else if (wip_limit !== null && wip_current >= wip_limit * 0.8) health = 'yellow';
+      return { name, wip_current, wip_limit, health };
+    },
+  );
 
-  // Worker load — filter workers for this workspace
-  const relevantWorkers = workspaceId ? workers.filter((w) => w.workspace_id === workspaceId) : workers;
+  const relevantWorkers = workspaceId
+    ? workers.filter((w) => w.workspace_id === workspaceId)
+    : workers;
   const overloadThreshold = 6;
   const workersMetrics: FlowMetricsResponse['workers'] = relevantWorkers.map((w) => {
     const cognitive_load = w.type === 'human' ? Math.min(3, 1) : 0;
@@ -305,7 +402,6 @@ function computeMetricsFromData(
     };
   });
 
-  // Alerts
   const alerts: FlowMetricsResponse['alerts'] = [];
   for (const wm of workersMetrics) {
     if (wm.status === 'overloaded') {
