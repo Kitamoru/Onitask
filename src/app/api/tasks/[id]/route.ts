@@ -192,11 +192,21 @@ export async function DELETE(
     const taskWorkspaceId = (taskData as any).workspace_id;
     console.log('[DELETE /api/tasks/:id] Task workspace_id:', taskWorkspaceId);
 
-    if (taskWorkspaceId !== worker.workspace_id) {
+    // Get profile's last_active_workspace_id for access check
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('last_active_workspace_id')
+      .eq('id', worker.source_id)
+      .maybeSingle();
+
+    const activeWorkspaceId = (profileData as any)?.last_active_workspace_id;
+    console.log('[DELETE /api/tasks/:id] Profile last_active_workspace_id:', activeWorkspaceId);
+
+    if (activeWorkspaceId !== taskWorkspaceId) {
       console.error('[DELETE /api/tasks/:id] Access denied — workspace mismatch:', {
         taskId,
         workerId: worker.id,
-        workerWorkspaceId: worker.workspace_id,
+        profileActiveWorkspaceId: activeWorkspaceId,
         taskWorkspaceId,
       });
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
