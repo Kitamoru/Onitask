@@ -132,6 +132,7 @@ type Action =
   | { type: 'SET_METRICS'; payload: FlowMetrics | null }
   | { type: 'PATCH_METRICS'; payload: Partial<FlowMetrics> }
   | { type: 'SET_WORKSPACES'; payload: Workspace[] }
+  | { type: 'REMOVE_WORKSPACE'; payload: string }
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
   | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
@@ -267,6 +268,20 @@ function dataReducer(state: DataStore, action: Action): DataStore {
         },
       };
 
+    case 'REMOVE_WORKSPACE':
+      return {
+        ...state,
+        workspaces: {
+          items: state.workspaces.items.filter((w) => w.id !== action.payload),
+          lastUpdated: Date.now(),
+        },
+        boards: {
+          ...state.boards,
+          cards: state.boards.cards.filter((c) => c.id !== action.payload),
+          lastUpdated: Date.now(),
+        },
+      };
+
     case 'SET_WORKERS':
       return {
         ...state,
@@ -320,6 +335,8 @@ interface DataContextValue {
   dataError: string | null;
   /** Whether the user is currently switching workspaces (for loading states) */
   isSwitchingWorkspace: boolean;
+  /** Remove a workspace/board from state (called after successful deletion) */
+  removeWorkspace: (workspaceId: string) => void;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -713,6 +730,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       firstLoadDone: state._firstLoadDone,
       dataError,
       isSwitchingWorkspace,
+      removeWorkspace: (workspaceId: string) => dispatch({ type: 'REMOVE_WORKSPACE', payload: workspaceId }),
     }}>
       {children}
     </DataContext.Provider>

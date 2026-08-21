@@ -48,6 +48,8 @@ export interface TaskViewEditProps {
   mode?: 'view' | 'edit';
   /** Callback on save */
   onSave?: (task: TaskEntity) => void;
+  /** Called immediately after successful task deletion (before onClose) */
+  onDelete?: (taskId: string) => void;
   /** Custom className */
   className?: string;
 }
@@ -59,6 +61,7 @@ export function TaskViewEdit({
   workers,
   mode = 'view',
   onSave,
+  onDelete,
   className = '',
 }: TaskViewEditProps) {
   const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
@@ -193,8 +196,8 @@ export function TaskViewEdit({
         setError(result.error);
         return;
       }
-      // Success - notify parent and close
-      onSave?.(task as TaskEntity);
+      // Optimistic: remove from state immediately so UI updates instantly
+      onDelete?.(task.id);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка удаления');

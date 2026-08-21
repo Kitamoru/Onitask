@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
@@ -44,16 +44,38 @@ export default function BoardsPage() {
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
   const { state, setActiveWorkspace, loadBoardsData } = useData();
 
+  // Check if we should force-refresh boards list (e.g., after board deletion)
+  const [forceRefresh, setForceRefresh] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const timestamp = sessionStorage.getItem('boards-needs-refresh');
+      if (timestamp) {
+        setForceRefresh(true);
+        sessionStorage.removeItem('boards-needs-refresh');
+      }
+    }
+  }, []);
+
   // Load boards data on mount (in case it wasn't loaded yet)
   // TTL check: skip if data was loaded less than 30 seconds ago
   // Pass activeWorkspaceId to ensure correct metrics (fixes tenant isolation #11)
   useEffect(() => {
     if (authLoading) return;
+    // Skip if force-refresh was triggered (data will be loaded by the next effect)
+    if (forceRefresh) return;
     const lastUpdated = state.boards.lastUpdated ?? 0;
     const ageMs = Date.now() - lastUpdated;
     if (ageMs < 30000) return; // Data is still fresh (reduced from 60s to 30s)
     loadBoardsData(state.activeWorkspaceId ?? undefined);
-  }, [authLoading, loadBoardsData, state.activeWorkspaceId, state.boards.lastUpdated]);
+  }, [authLoading, loadBoardsData, state.activeWorkspaceId, state.boards.lastUpdated, forceRefresh]);
+
+  // Force refresh on mount after deletion
+  useEffect(() => {
+    if (!forceRefresh || authLoading) return;
+    loadBoardsData(state.activeWorkspaceId ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceRefresh, authLoading]);
 
   const workspaces = state.workspaces.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {

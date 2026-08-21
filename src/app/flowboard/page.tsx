@@ -428,6 +428,11 @@ function FlowBoardPageContent() {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             setSelectedTask(null);
           }}
+          onDelete={(taskId) => {
+            // Optimistic: remove from state immediately so UI updates instantly
+            dispatch({ type: 'REMOVE_TASK', payload: taskId });
+            setSelectedTask(null);
+          }}
         />
 
         {/* Debug panel for swipe logging (development only) */}

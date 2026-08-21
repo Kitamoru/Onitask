@@ -186,6 +186,10 @@ export function EditDeskForm({
         throw new Error(data.error || 'Failed to delete workspace');
       }
 
+      // Signal boards page to skip TTL and reload immediately
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('boards-needs-refresh', Date.now().toString());
+      }
       // Success - navigate to boards list
       router.push('/boards');
     } catch (err) {
