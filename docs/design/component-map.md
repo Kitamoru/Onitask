@@ -93,6 +93,19 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
+### settings/ — Settings Page
+
+| Component | File | Key Props | Purpose |
+|-----------|------|-----------|---------|
+| | SettingsRow | SettingsRow.tsx | label, value, onClick | Shared settings row using NotchedPanel with chamfered corners |
+| | UserProfileCard | UserProfileCard.tsx | username, planName, price, statusLabel | User profile section (avatar, name, plan badge, status) |
+| | WorkspaceSettingsCard | WorkspaceSettingsCard.tsx | onMcpClick, onPlansClick, onColleaguesClick | Workspace settings section |
+| | OtherSettingsCard | OtherSettingsCard.tsx | language, onLanguageClick, onSupportClick | Other preferences section |
+| | CalendarSettingsCard | CalendarSettingsCard.tsx | workspaceId | Calendar integrations section |
+| | PlanBadge | PlanBadge.tsx | planName, price | Tariff badge display |
+
+---
+
 ### stream/ — Task Stream
 
 | Component | File | Key Props | Purpose |

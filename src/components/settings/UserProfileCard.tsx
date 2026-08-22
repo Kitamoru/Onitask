@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronRight } from 'lucide-react';
 import { PlanBadge } from './PlanBadge';
+import { SettingsRow } from './SettingsRow';
 
 /**
  * UserProfileCard — секция "personal" на Figma-макете.
@@ -50,40 +50,6 @@ export function UserProfileCard({
       {statusLabel && (
         <SettingsRow label="Статус" value={statusLabel} />
       )}
-    </div>
-  );
-}
-
-function SettingsRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      className="flex items-center justify-between w-full px-3 py-[14px] cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
-      style={{
-        backgroundColor: 'var(--color-surface)',
-        borderRadius: 6,
-        border: '1px solid var(--color-line)',
-        // Chamfered corners: top-left + bottom-right (action style)
-        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`${label}: ${value}`}
-    >
-      <span
-        className="text-base font-medium leading-5 text-white"
-        style={{ fontFamily: 'var(--font-family-display)' }}
-      >
-        {label}
-      </span>
-      <div className="flex items-center gap-2">
-        <span
-          className="text-base font-medium leading-5 text-white"
-          style={{ fontFamily: 'var(--font-family-display)' }}
-        >
-          {value}
-        </span>
-        <ChevronRight className="h-5 w-5 text-text-secondary shrink-0" />
-      </div>
     </div>
   );
 }
