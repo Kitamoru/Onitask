@@ -228,10 +228,12 @@ function CalendarContent() {
     }
   }
 
+  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+
   // Loading state while auth or workspace is loading
   if (authLoading || (!workspaceId && !state.tasks.items.length)) {
     return (
-      <div className="flex items-center justify-center h-full min-h-dvh">
+      <div className="flex items-center justify-center h-full min-h-dvh" style={bgStyle}>
         <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
       </div>
     );
@@ -240,7 +242,7 @@ function CalendarContent() {
   // No workspace selected
   if (!workspaceId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4">
+      <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4" style={bgStyle}>
         <span className="mb-3 text-5xl">🏢</span>
         <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
           Рабочая область не выбрана
@@ -254,9 +256,9 @@ function CalendarContent() {
 
   return (
     <div
-      className="flex flex-col h-full min-h-dvh bg-primary-dark"
+      className="flex flex-col h-full min-h-dvh"
       style={{ 
-        backgroundColor: 'var(--color-bg-primary-dark)',
+        ...bgStyle,
         paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px)',
       }}
@@ -417,7 +419,7 @@ function CalendarContent() {
             style={{
               maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - 16px)',
               overflowY: 'auto',
-              backgroundColor: 'var(--color-bg-primary-dark)',
+              background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
             }}
           >
             {/* Header */}

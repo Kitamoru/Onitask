@@ -90,12 +90,11 @@ export default function BoardsPage() {
   const boardCards = state.boards.cards;
 
   // ── Auth loading ────────────────────────────────────────────────────────
+  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+
   if (authLoading) {
     return (
-      <div
-        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]"
-        style={{ backgroundColor: "#0A0A0A" }}
-      >
+      <div className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]" style={bgStyle}>
         <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
       </div>
     );
@@ -104,10 +103,7 @@ export default function BoardsPage() {
   // ── Auth error ──────────────────────────────────────────────────────────
   if (authError) {
     return (
-      <div
-        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)] p-4"
-        style={{ backgroundColor: "#0A0A0A" }}
-      >
+      <div className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)] p-4" style={bgStyle}>
         <div className="text-center max-w-sm">
           <p style={{ color: "#EF4444", fontFamily: "system-ui" }}>
             Ошибка авторизации. Откройте приложение через Telegram Web App.
@@ -120,10 +116,7 @@ export default function BoardsPage() {
   // ── Data error (full load failed) ───────────────────────────────────────
   if (dataError && !state.boards.lastUpdated) {
     return (
-      <div
-        className="flex flex-col items-center justify-center gap-4 min-h-[var(--tg-viewport-stable-height,100dvh)] p-4"
-        style={{ backgroundColor: "#0A0A0A" }}
-      >
+      <div className="flex flex-col items-center justify-center gap-4 min-h-[var(--tg-viewport-stable-height,100dvh)] p-4" style={bgStyle}>
         <p style={{ color: "#EF4444", fontFamily: "system-ui", textAlign: "center" }}>
           Не удалось загрузить доски.
           {dataError === "timeout_loading_boards_data"
@@ -140,10 +133,7 @@ export default function BoardsPage() {
   // ── Skeleton: boards ещё не загружались ─────────────────────────────────
   if (!state.boards.lastUpdated) {
     return (
-      <div
-        className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]"
-        style={{ backgroundColor: "#0A0A0A" }}
-      >
+      <div className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]" style={bgStyle}>
         <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
       </div>
     );
@@ -168,8 +158,9 @@ export default function BoardsPage() {
 
   return (
     <main
-      className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
+      className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
+        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
         paddingTop: "max(64px, var(--tg-content-safe-top, 0px))",
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}

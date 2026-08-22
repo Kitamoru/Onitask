@@ -332,7 +332,7 @@ function SettingsContent() {
       <div
         className="min-h-[var(--tg-viewport-stable-height,100dvh)] flex items-center justify-center"
         style={{
-          background: 'var(--color-bg-primary-dark, #0A0A0A)',
+          background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
           paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         }}
       >
@@ -345,7 +345,7 @@ function SettingsContent() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
-        background: 'var(--color-bg-primary-dark, #0A0A0A)',
+        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
         paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         paddingBottom: 'calc(var(--size-bottom-menu-height, 96px) + 16px)',
       }}
@@ -403,7 +403,7 @@ function SettingsContent() {
         {/* ═══ BOTTOM FILLER ═══ */}
         <div
           className="w-full"
-          style={{ height: '64px', background: 'var(--color-bg-primary-dark, #0A0A0A)' }}
+          style={{ height: '64px', background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' }}
         />
       </div>
     </main>
@@ -419,7 +419,7 @@ export default function SettingsPage() {
       fallback={
         <div
           className="flex items-center justify-center min-h-dvh"
-          style={{ background: 'var(--color-bg-primary-dark, #0A0A0A)' }}
+          style={{ background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' }}
         >
           <p style={{ color: 'var(--color-text-muted, #8B8B8B)' }}>Загрузка...</p>
         </div>
