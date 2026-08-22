@@ -127,7 +127,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
       style={{ minHeight: '48px' }}
     >
       <RefBgShape />
-      <div className="relative z-10 flex flex-col items-end gap-1">
+      <div className="relative z-10 flex items-center justify-between w-full">
         <span
           className="font-display font-medium"
           style={{
