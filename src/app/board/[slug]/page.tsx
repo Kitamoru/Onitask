@@ -191,9 +191,11 @@ export default function BoardDetailPage() {
     loadData();
   }, [authLoading, authError, authData, slug, router]);
 
+  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+
   if (authLoading || loading) {
     return (
-      <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="flex items-center justify-center h-full min-h-dvh" style={bgStyle}>
         <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
       </div>
     );
@@ -201,7 +203,7 @@ export default function BoardDetailPage() {
 
   if (authError || error) {
     return (
-      <div className="flex items-center justify-center h-full min-h-dvh p-4" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="flex items-center justify-center h-full min-h-dvh p-4" style={bgStyle}>
         <div className="text-center max-w-sm">
           <p style={{ color: '#EF4444', fontFamily: 'system-ui' }}>
             {authError || error}
@@ -234,8 +236,9 @@ export default function BoardDetailPage() {
 
   return (
     <main
-      className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
+      className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
+        ...bgStyle,
         paddingTop: "max(64px, var(--tg-content-safe-top, 0px))",
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}

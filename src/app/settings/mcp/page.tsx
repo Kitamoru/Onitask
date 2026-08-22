@@ -352,8 +352,9 @@ export default function McpSettingsPage() {
 
   return (
     <main
-      className="min-h-[var(--tg-viewport-stable-height,100dvh)] bg-bg"
+      className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
+        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
         paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         paddingBottom: 'calc(var(--size-bottom-menu-height) + 16px)',
       }}

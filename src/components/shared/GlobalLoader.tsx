@@ -41,7 +41,7 @@ export function GlobalLoader({ ready }: GlobalLoaderProps) {
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{
-        backgroundColor: '#0A0A0A',
+        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
         opacity: animatingOut ? 0 : 1,
         transition: 'opacity 0.3s ease-out',
         pointerEvents: animatingOut ? 'none' : 'auto',
