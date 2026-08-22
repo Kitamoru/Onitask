@@ -169,8 +169,14 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
   return (
     <button
       onClick={onClick}
-      className="relative flex items-center justify-between px-3 py-3 rounded-[6px] w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors overflow-hidden group"
-      style={{ minHeight: '42px' }}
+      className="relative flex items-center justify-between px-3 py-3 w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors overflow-hidden group"
+      style={{
+        minHeight: '42px',
+        borderRadius: '4px',
+        borderWidth: '1px',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        clipPath: 'inset(0 round 8px)',
+      }}
     >
       <RefBgShape />
       <span
