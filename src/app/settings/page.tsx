@@ -174,7 +174,7 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
         minHeight: '42px',
         borderRadius: '4px',
         borderWidth: '1px',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'var(--color-line)',
         clipPath: 'inset(0 round 8px)',
       }}
     >
