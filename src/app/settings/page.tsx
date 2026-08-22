@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getClient } from '@/lib/supabase/client';
-import { NotchButton } from '@/components/ui/desk-ui/NotchButton';
 
 /**
  * Settings page — Figma node 65:14537 "settings".
@@ -159,7 +158,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
   );
 }
 
-// ─── Action Button (NotchButton wrapper) ─────────────────────────────────────
+// ─── Action Button (Figma button-group item pattern) ────────────────────────
 
 interface ActionButtonProps {
   label: string;
@@ -168,7 +167,29 @@ interface ActionButtonProps {
 
 function ActionButton({ label, onClick }: ActionButtonProps) {
   return (
-    <NotchButton label={label} onClick={onClick} />
+    <button
+      onClick={onClick}
+      className="relative flex items-center justify-between px-3 py-3 rounded-[6px] w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors overflow-hidden group"
+      style={{ minHeight: '42px' }}
+    >
+      <RefBgShape />
+      <span
+        className="relative z-10 font-display font-medium"
+        style={{
+          fontSize: '14px',
+          lineHeight: '18px',
+          color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+        }}
+      >
+        {label}
+      </span>
+      <div
+        className="relative z-10 text-text-muted group-hover:text-text-primary transition-colors"
+        style={{ flexShrink: 0 }}
+      >
+        <ChevronRightIcon />
+      </div>
+    </button>
   );
 }
 
