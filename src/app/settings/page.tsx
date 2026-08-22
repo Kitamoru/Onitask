@@ -133,7 +133,7 @@ function InteractiveRow({ label, value, trailingIcon = 'chevron', onClick }: Int
           style={{
             fontSize: '16px',
             lineHeight: '20px',
-            color: 'var(--color-accent-amber, #ff9900)',
+            color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
           }}
         >
           {label}
@@ -201,19 +201,6 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
 // ─── Avatar Component (Figma instance "user-img" #33:5574) ─────────────────
 
 function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegramPhotoUrl?: string }) {
-  const getColor = (name: string) => {
-    const colors = [
-      '#6366F1', '#8B5CF6', '#EC4899', '#F43F5E',
-      '#F97316', '#EAB308', '#22C55E', '#14B8A6',
-      '#06B6D4', '#3B82F6',
-    ];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
-  };
-
   const initial = username.replace('@', '').charAt(0).toUpperCase();
 
   return (
@@ -237,7 +224,7 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
       ) : (
         <div
           className="w-full h-full flex items-center justify-center text-white text-3xl font-medium"
-          style={{ backgroundColor: getColor(username) }}
+          style={{ backgroundColor: 'var(--color-bg-secondary, #1A1A1A)' }}
         >
           {initial}
         </div>
@@ -250,27 +237,18 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
 
 function PlanBadge({ name, price }: { name: string; price: string }) {
   return (
-    <div
-      className="inline-flex items-center gap-2 px-1 py-1 rounded-[4px]"
+    <span
+      className="inline-block font-display font-medium"
       style={{
-        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-        border: '1px solid #F59E0B',
+        fontFamily: 'var(--font-family-display, system-ui, sans-serif)',
+        fontSize: '12px',
+        lineHeight: '14px',
+        fontWeight: 500,
+        color: '#FFFFFF',
       }}
     >
-      <span
-        className="inline-block px-1 py-0.5 rounded-[4px]"
-        style={{
-          backgroundColor: '#FFFFFF',
-          fontFamily: 'var(--font-family-display, system-ui, sans-serif)',
-          fontSize: '12px',
-          lineHeight: '14px',
-          fontWeight: 500,
-          color: '#0A0A0A',
-        }}
-      >
-        {name} | {price}
-      </span>
-    </div>
+      {name} | {price}
+    </span>
   );
 }
 
@@ -380,11 +358,30 @@ function SettingsContent() {
           </div>
 
           {/* Status Row */}
-          <InteractiveRow
-            label="Статус"
-            value="💼 Работаю"
-            onClick={() => console.log('Toggle status')}
-          />
+          <div className="flex items-center justify-between w-full px-3 py-3">
+            <div className="flex flex-col items-end gap-1">
+              <span
+                className="font-display font-medium"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                Статус
+              </span>
+              <span
+                className="font-display font-medium"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                💼 Работаю
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ═══ WORKSPACE SETTINGS SECTION ═══ */}
@@ -400,17 +397,56 @@ function SettingsContent() {
         {/* ═══ OTHER SECTION ═══ */}
         <div className="flex flex-col gap-3 w-full">
           <SectionHeading title="Прочее" />
-          <InteractiveRow
-            label="Язык"
-            value="🇷🇺 Русский"
-            onClick={handleLanguageClick}
-          />
-          <InteractiveRow
-            label="Техподдержка"
-            value="Написать"
-            trailingIcon="telegram"
-            onClick={handleSupportClick}
-          />
+          <div className="flex items-center justify-between w-full px-3 py-3">
+            <div className="flex flex-col items-end gap-1">
+              <span
+                className="font-display font-medium"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                Язык
+              </span>
+              <span
+                className="font-display font-medium flex items-center gap-1"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                🇷🇺 Русский
+              </span>
+            </div>
+            <ChevronRightIcon />
+          </div>
+          <div className="flex items-center justify-between w-full px-3 py-3">
+            <div className="flex flex-col items-end gap-1">
+              <span
+                className="font-display font-medium"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                Техподдержка
+              </span>
+              <span
+                className="font-display font-medium flex items-center gap-1"
+                style={{
+                  fontSize: '16px',
+                  lineHeight: '20px',
+                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+                }}
+              >
+                Написать
+                <TelegramIcon />
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ═══ BOTTOM FILLER (safe area) ═══ */}
