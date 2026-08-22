@@ -57,36 +57,6 @@ function TelegramIcon({ className = '' }: { className?: string }) {
   );
 }
 
-// ─── Ref Background Shape (Figma EL-d8353599 / EL-6349d532) ─────────────────
-
-function RefBgShape() {
-  return (
-    <svg
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      viewBox="0 0 358 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      preserveAspectRatio="none"
-    >
-      <rect width="358" height="48" fill="url(#bg-gradient)" opacity="0.06" />
-      <defs>
-        <linearGradient
-          id="bg-gradient"
-          x1="0"
-          y1="24"
-          x2="358"
-          y2="24"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="var(--color-text-muted)" stopOpacity="0" />
-          <stop offset="0.5" stopColor="var(--color-text-muted)" stopOpacity="0.3" />
-          <stop offset="1" stopColor="var(--color-text-muted)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
 // ─── Section Heading (Figma EL-bb582553 pattern) ────────────────────────────
 
 function SectionHeading({ title }: { title: string }) {
@@ -110,7 +80,7 @@ function SectionHeading({ title }: { title: string }) {
   );
 }
 
-// ─── Gray Row Component — gray label left, white value right, chevron/telegram icon ──
+// ─── Gray Row Component — срезанные углы и рамка ──────────────────────────
 
 interface GrayRowProps {
   label: string;
@@ -120,14 +90,37 @@ interface GrayRowProps {
 }
 
 function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowProps) {
+  // Общий клип-пат: срез верхнего левого и нижнего правого углов на 8px
+  const clipPath = `polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)`;
+  const borderRadius = '0 4px 0 4px'; // скругление верхнего правого и нижнего левого
+
   return (
-    <button
-      onClick={onClick}
-      className="relative flex items-center justify-between px-3 py-3 rounded-[6px] w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors overflow-hidden group"
-      style={{ minHeight: '48px' }}
+    <div
+      className="relative"
+      style={{
+        clipPath,
+        borderRadius,
+        background: 'var(--color-line)', // цвет рамки
+        padding: '1px',                 // толщина рамки
+        width: '100%',
+        minHeight: '48px',
+      }}
     >
-      <RefBgShape />
-      <div className="relative z-10 flex items-center justify-between w-full">
+      <button
+        onClick={onClick}
+        className="flex items-center justify-between w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors"
+        style={{
+          clipPath,
+          borderRadius,
+          background: 'transparent',
+          minHeight: 'inherit',
+          width: '100%',
+          border: 'none',
+          outline: 'none',
+          cursor: 'pointer',
+          padding: '12px',
+        }}
+      >
         <span
           className="font-display font-medium"
           style={{
@@ -147,18 +140,14 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
           }}
         >
           {value}
-          {trailingIcon === 'chevron' ? (
-            <ChevronRightIcon />
-          ) : (
-            <TelegramIcon />
-          )}
+          {trailingIcon === 'chevron' ? <ChevronRightIcon /> : <TelegramIcon />}
         </span>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
-// ─── Action Button (Figma button-group item pattern) ────────────────────────
+// ─── Action Button — такие же углы и рамка ─────────────────────────────────
 
 interface ActionButtonProps {
   label: string;
@@ -166,36 +155,54 @@ interface ActionButtonProps {
 }
 
 function ActionButton({ label, onClick }: ActionButtonProps) {
+  const clipPath = `polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)`;
+  const borderRadius = '0 4px 0 4px';
+
   return (
-    <button
-      onClick={onClick}
-      className="relative flex items-center justify-between px-3 py-3 w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors overflow-hidden group"
+    <div
+      className="relative"
       style={{
+        clipPath,
+        borderRadius,
+        background: 'var(--color-line)',
+        padding: '1px',
+        width: '100%',
         minHeight: '42px',
-        borderRadius: '4px',
-        borderWidth: '1px',
-        borderColor: 'var(--color-line)',
-        clipPath: 'inset(0 round 8px)',
       }}
     >
-      <RefBgShape />
-      <span
-        className="relative z-10 font-display font-medium"
+      <button
+        onClick={onClick}
+        className="flex items-center justify-between w-full hover:bg-white/[0.03] active:bg-white/[0.06] transition-colors"
         style={{
-          fontSize: '14px',
-          lineHeight: '18px',
-          color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+          clipPath,
+          borderRadius,
+          background: 'transparent',
+          minHeight: 'inherit',
+          width: '100%',
+          border: 'none',
+          outline: 'none',
+          cursor: 'pointer',
+          padding: '12px',
         }}
       >
-        {label}
-      </span>
-      <div
-        className="relative z-10 text-text-muted group-hover:text-text-primary transition-colors"
-        style={{ flexShrink: 0 }}
-      >
-        <ChevronRightIcon />
-      </div>
-    </button>
+        <span
+          className="font-display font-medium"
+          style={{
+            fontSize: '14px',
+            lineHeight: '18px',
+            color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+          }}
+        >
+          {label}
+        </span>
+        <div
+          className="text-text-muted group-hover:text-text-primary transition-colors"
+          style={{ flexShrink: 0 }}
+        >
+          <ChevronRightIcon />
+        </div>
+      </button>
+    </div>
   );
 }
 
@@ -285,7 +292,6 @@ function SettingsContent() {
             : user.email?.split('@')[0] || '@kitamoru';
           setUsername(displayUsername);
 
-          // Try to get Telegram photo if available
           if (user.user_metadata?.telegram_photo_url) {
             setTelegramPhotoUrl(user.user_metadata.telegram_photo_url);
           }
@@ -348,10 +354,7 @@ function SettingsContent() {
       <div className="flex flex-col gap-6 px-4 pb-[64px] pt-6">
         {/* ═══ PERSONAL SECTION ═══ */}
         <div className="flex flex-col items-center gap-4 w-full">
-          {/* Avatar */}
           <UserAvatar username={username} telegramPhotoUrl={telegramPhotoUrl} />
-
-          {/* Username & Plan Badge */}
           <div className="flex items-center gap-2 w-full justify-center flex-wrap">
             <span
               className="font-display font-medium truncate"
@@ -365,8 +368,6 @@ function SettingsContent() {
             </span>
             <PlanBadge />
           </div>
-
-          {/* Status Row */}
           <GrayRow
             label="Статус"
             value="💼 Работаю"
@@ -400,7 +401,7 @@ function SettingsContent() {
           />
         </div>
 
-        {/* ═══ BOTTOM FILLER (safe area) ═══ */}
+        {/* ═══ BOTTOM FILLER ═══ */}
         <div
           className="w-full"
           style={{ height: '64px', background: 'var(--color-bg-primary-dark, #0A0A0A)' }}
