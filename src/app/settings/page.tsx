@@ -110,16 +110,16 @@ function SectionHeading({ title }: { title: string }) {
   );
 }
 
-// ─── Interactive Row (Figma EL-c7474eb0 pattern) ────────────────────────────
+// ─── Gray Row Component — gray label left, white value right, chevron/telegram icon ──
 
-interface InteractiveRowProps {
+interface GrayRowProps {
   label: string;
   value: string;
   trailingIcon?: 'chevron' | 'telegram';
   onClick?: () => void;
 }
 
-function InteractiveRow({ label, value, trailingIcon = 'chevron', onClick }: InteractiveRowProps) {
+function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowProps) {
   return (
     <button
       onClick={onClick}
@@ -139,25 +139,20 @@ function InteractiveRow({ label, value, trailingIcon = 'chevron', onClick }: Int
           {label}
         </span>
         <span
-          className="font-display font-medium"
+          className="font-display font-medium flex items-center gap-1"
           style={{
             fontSize: '16px',
             lineHeight: '20px',
-            color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+            color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
           }}
         >
           {value}
+          {trailingIcon === 'chevron' ? (
+            <ChevronRightIcon />
+          ) : (
+            <TelegramIcon />
+          )}
         </span>
-      </div>
-      <div
-        className="relative z-10 text-text-muted group-hover:text-text-primary transition-colors"
-        style={{ flexShrink: 0 }}
-      >
-        {trailingIcon === 'chevron' ? (
-          <ChevronRightIcon />
-        ) : (
-          <TelegramIcon />
-        )}
       </div>
     </button>
   );
@@ -235,20 +230,28 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
 
 // ─── Plan Badge (Figma instance "badge" #17:8819) ──────────────────────────
 
-function PlanBadge({ name, price }: { name: string; price: string }) {
+function PlanBadge() {
   return (
-    <span
-      className="inline-block font-display font-medium"
+    <div
+      className="inline-flex items-center px-2 py-1 rounded-[4px]"
       style={{
-        fontFamily: 'var(--font-family-display, system-ui, sans-serif)',
-        fontSize: '12px',
-        lineHeight: '14px',
-        fontWeight: 500,
-        color: '#FFFFFF',
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        border: '1px solid #F59E0B',
       }}
     >
-      {name} | {price}
-    </span>
+      <span
+        className="font-display font-medium"
+        style={{
+          fontFamily: 'var(--font-family-display, system-ui, sans-serif)',
+          fontSize: '12px',
+          lineHeight: '14px',
+          fontWeight: 500,
+          color: '#FFFFFF',
+        }}
+      >
+        free
+      </span>
+    </div>
   );
 }
 
@@ -354,34 +357,15 @@ function SettingsContent() {
             >
               {username}
             </span>
-            <PlanBadge name="Solo" price="290₽/мес" />
+            <PlanBadge />
           </div>
 
           {/* Status Row */}
-          <div className="flex items-center justify-between w-full px-3 py-3">
-            <div className="flex flex-col items-end gap-1">
-              <span
-                className="font-display font-medium"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                Статус
-              </span>
-              <span
-                className="font-display font-medium"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                💼 Работаю
-              </span>
-            </div>
-          </div>
+          <GrayRow
+            label="Статус"
+            value="💼 Работаю"
+            onClick={() => console.log('Toggle status')}
+          />
         </div>
 
         {/* ═══ WORKSPACE SETTINGS SECTION ═══ */}
@@ -397,56 +381,17 @@ function SettingsContent() {
         {/* ═══ OTHER SECTION ═══ */}
         <div className="flex flex-col gap-3 w-full">
           <SectionHeading title="Прочее" />
-          <div className="flex items-center justify-between w-full px-3 py-3">
-            <div className="flex flex-col items-end gap-1">
-              <span
-                className="font-display font-medium"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                Язык
-              </span>
-              <span
-                className="font-display font-medium flex items-center gap-1"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                🇷🇺 Русский
-              </span>
-            </div>
-            <ChevronRightIcon />
-          </div>
-          <div className="flex items-center justify-between w-full px-3 py-3">
-            <div className="flex flex-col items-end gap-1">
-              <span
-                className="font-display font-medium"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                Техподдержка
-              </span>
-              <span
-                className="font-display font-medium flex items-center gap-1"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '20px',
-                  color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
-                }}
-              >
-                Написать
-                <TelegramIcon />
-              </span>
-            </div>
-          </div>
+          <GrayRow
+            label="Язык"
+            value="🇷🇺 Русский"
+            onClick={handleLanguageClick}
+          />
+          <GrayRow
+            label="Техподдержка"
+            value="Написать"
+            trailingIcon="telegram"
+            onClick={handleSupportClick}
+          />
         </div>
 
         {/* ═══ BOTTOM FILLER (safe area) ═══ */}
