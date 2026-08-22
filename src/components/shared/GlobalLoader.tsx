@@ -1,8 +1,7 @@
 'use client';
 
 import React from 'react';
-import OnitaskLoader from './OnitaskLoader';
-
+import { OnitaskLoader } from './OnitaskLoader';
 /**
  * GlobalLoader — фиксированный overlay, который блокирует весь контент
  * пока приложение не готово к работе.
