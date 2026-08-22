@@ -39,9 +39,9 @@ export function OtherSettingsCard({
       <SectionHeading title="Прочее" />
       <div className="flex flex-col gap-3 w-full">
         {language && (
-          <SettingsRow label="Язык" value={language} onClick={onLanguageClick} />
+          <SettingsRow label="Язык" onClick={onLanguageClick} />
         )}
-        <SettingsRow label="Техподдержка" value="Написать" onClick={onSupportClick} />
+        <SettingsRow label="Техподдержка" onClick={onSupportClick} />
       </div>
     </div>
   );

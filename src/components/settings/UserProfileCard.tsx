@@ -48,7 +48,7 @@ export function UserProfileCard({
 
       {/* Status row */}
       {statusLabel && (
-        <SettingsRow label="Статус" value={statusLabel} />
+        <SettingsRow label="Статус" onClick={() => {}} />
       )}
     </div>
   );
