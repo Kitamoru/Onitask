@@ -8,15 +8,15 @@
  * Edit mode: all fields are active with save/cancel actions.
  *
  * Layout: single canvas (no wizard steps) with sections:
- *   - Ключевой контекст (название, описание, дедлайн)
- *   - Стоимость (SP/CW steppers)
- *   - Ответственность (исполнитель, проверяющий)
- *   - Дополнительный контекст (чеклист, связанные, зависимые, внешние ссылки)
+ * - Ключевой контекст (название, описание, дедлайн)
+ * - Стоимость (SP/CW steppers)
+ * - Ответственность (исполнитель, проверяющий)
+ * - Дополнительный контекст (чеклист, связанные, зависимые, внешние ссылки)
  *
  * Segments: "Общее" (active) / "Комментарии" (inactive — later).
  */
-
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import {
   TextInput,
@@ -77,7 +77,9 @@ export function TaskViewEdit({
   const [description, setDescription] = useState(task?.description ?? '');
   const [storyPoints, setStoryPoints] = useState(task?.story_points ?? 1);
   const [cognitiveWeight, setCognitiveWeight] = useState(task?.cognitive_weight ?? 1);
-  const [deadline, setDeadline] = useState<Date | null>(task?.deadline ? new Date(task.deadline) : null);
+  const [deadline, setDeadline] = useState<Date | null>(
+    task?.deadline ? new Date(task.deadline) : null,
+  );
   const [checklistEnabled, setChecklistEnabled] = useState(false);
   const [relatedEnabled, setRelatedEnabled] = useState(false);
   const [dependentEnabled, setDependentEnabled] = useState(false);
@@ -103,6 +105,7 @@ export function TaskViewEdit({
       setInternalMode(mode);
       setTab('general');
       setError(null);
+      setShowDeleteConfirm(false);
     }
   }, [open, mode]);
 
@@ -124,10 +127,8 @@ export function TaskViewEdit({
       setError('Название обязательно');
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       const metadata: Record<string, unknown> = {
         ...(task?.metadata ?? {}),
@@ -145,12 +146,10 @@ export function TaskViewEdit({
           cognitive_weight: cognitiveWeight,
           deadline: deadline ? deadline.toISOString() : undefined,
         });
-
         if (result.error) {
           setError(result.error);
           return;
         }
-
         if (result.task) {
           onSave?.(result.task);
           onClose();
@@ -163,17 +162,13 @@ export function TaskViewEdit({
           deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
         };
-
-        // Only include assignment changes for existing tasks
         if (assignedTo !== task.assigned_to) {
           patch.assigned_to = assignedTo;
         }
         if (reviewerId !== task.reviewer_id) {
           patch.reviewer_id = reviewerId;
         }
-
         const result = await patchTask(task.id, patch);
-
         if (result.task) {
           onSave?.(result.task);
           onClose();
@@ -196,7 +191,6 @@ export function TaskViewEdit({
         setError(result.error);
         return;
       }
-      // Optimistic: remove from state immediately so UI updates instantly
       onDelete?.(task.id);
       onClose();
     } catch (err) {
@@ -206,322 +200,341 @@ export function TaskViewEdit({
     }
   };
 
-  // Helper: find worker by ID
   const findWorker = (id: string | null): WorkerCardData | undefined => {
     if (!id) return undefined;
-    return workers.find(w => w.id === id);
+    return workers.find((w) => w.id === id);
   };
 
   const assigneeWorker = findWorker(assignedTo);
   const reviewerWorker = findWorker(reviewerId);
 
-  // Filter out already-assigned workers:
-  // - Assignee list excludes current reviewer (and current assignee can't be re-selected as assignee)
-  // - Reviewer list excludes current assignee (and current reviewer can't be re-selected as reviewer)
   const availableForAssignee = workers.filter(
-    w => w.id !== reviewerId && w.type === 'human',
+    (w) => w.id !== reviewerId && w.type === 'human',
   );
   const availableForReviewer = workers.filter(
-    w => w.id !== assignedTo && w.type === 'human',
+    (w) => w.id !== assignedTo && w.type === 'human',
   );
 
-  return (
-    <>
-    <BottomSheet open={open} onClose={onClose}>
+  // Confirm вне BottomSheet: fixed внутри transform-шита цепляется к нему,
+  // а не к viewport — после скролла длинной задачи модалку не видно.
+  const deleteConfirmModal =
+    showDeleteConfirm &&
+    typeof document !== 'undefined' &&
+    createPortal(
       <div
-        className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
-        aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
+        onClick={() => {
+          if (!deleting) setShowDeleteConfirm(false);
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-task-title"
       >
-        {/* Segments: Общее / Комментарии */}
-        <Segments
-          value={tab}
-          onChange={(v) => setTab(v)}
-          disabled={isEdit}
-          options={[
-            { value: 'general', label: 'Общее' },
-            { value: 'comments', label: 'Комментарии' },
-          ]}
-        />
-
-        {/* Ключевой контекст */}
-        <section>
-          <SectionHeader title="Ключевой контекст" />
-          <div className="flex flex-col gap-3">
-            <TextArea
-              value={title}
-              onChange={(v) => setTitle(v)}
-              placeholder="Название задачи"
-              disabled={isView}
-              maxLength={500}
-              corner="field"
-            />
-            <TextArea
-              value={description}
-              onChange={setDescription}
-              placeholder="Описание задачи"
-              disabled={isView}
-              maxLength={5000}
-              corner="field"
-            />
-            <SingleDateField
-              date={deadline}
-              onOpen={() => setIsDateSheetOpen(true)}
-              placeholder="Дата окончания"
-              disabled={isView}
-            />
-          </div>
-        </section>
-
-        {/* Стоимость */}
-        <section>
-          <SectionHeader title="Стоимость" />
-          <div className="flex flex-col gap-3">
-            <Stepper
-              value={storyPoints}
-              unitLabel={(n) => `${n} SP`}
-              min={1}
-              max={30}
-              onChange={setStoryPoints}
-              borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-              disabled={isView}
-            />
-            <Stepper
-              value={cognitiveWeight}
-              unitLabel={(n) => `${n} CW`}
-              min={1}
-              max={10}
-              onChange={setCognitiveWeight}
-              borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-              disabled={isView}
-            />
-          </div>
-        </section>
-
-        {/* Ответственность */}
-        <section>
-          <SectionHeader title="Ответственность" />
-          <div className="flex flex-col gap-3">
-            {/* Карточка постановщика */}
-            {task?.created_by && (() => {
-              const creatorWorker = workers.find(w => w.id === task.created_by)
-                ?? workers.find(w => w.displayName === task.created_by);
-              if (!creatorWorker) return null;
-              return (
-                <ParticipantCard
-                  id={creatorWorker.id}
-                  displayName={creatorWorker.displayName}
-                  avatarUrl={creatorWorker.avatarUrl}
-                  role="Постановщик"
-                />
-              );
-            })()}
-
-            {/* Карточка исполнителя */}
-            {assigneeWorker && (
-              <ParticipantCard
-                id={assigneeWorker.id}
-                displayName={assigneeWorker.displayName}
-                avatarUrl={assigneeWorker.avatarUrl}
-                role="Исполнитель"
-              />
-            )}
-
-            {/* Карточка проверяющего */}
-            {reviewerWorker && (
-              <ParticipantCard
-                id={reviewerWorker.id}
-                displayName={reviewerWorker.displayName}
-                avatarUrl={reviewerWorker.avatarUrl}
-                role="Проверяющий"
-              />
-            )}
-
-            {/* Buttons (only in edit mode) */}
-            {!isView && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setAssigneeSheetOpen(true)}
-                  className="w-full"
-                >
-                  {assigneeWorker ? 'Сменить исполнителя' : 'Добавить исполнителя'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setReviewerSheetOpen(true)}
-                  className="w-full"
-                >
-                  {reviewerWorker ? 'Сменить проверяющего' : 'Добавить проверяющего'}
-                </Button>
-              </>
-            )}
-          </div>
-        </section>
-
-        {/* Дополнительный контекст */}
-        <section>
-          <SectionHeader title="Дополнительный контекст" />
-          <div className="flex flex-col gap-3">
-            <Card>
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-text">Чеклист задачи</span>
-                <ToggleSwitch
-                  checked={checklistEnabled}
-                  onChange={setChecklistEnabled}
-                  label="Чеклист задачи"
-                  disabled={isView}
-                />
-              </div>
-            </Card>
-            <Card>
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-text">Связанные задачи</span>
-                <ToggleSwitch
-                  checked={relatedEnabled}
-                  onChange={setRelatedEnabled}
-                  label="Связанные задачи"
-                  disabled={isView}
-                />
-              </div>
-            </Card>
-            <Card>
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-text">Зависимые задачи</span>
-                <ToggleSwitch
-                  checked={dependentEnabled}
-                  onChange={setDependentEnabled}
-                  label="Зависимые задачи"
-                  disabled={isView}
-                />
-              </div>
-            </Card>
-            <Card>
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-text">Внешние ссылки</span>
-                <ToggleSwitch
-                  checked={linksEnabled}
-                  onChange={setLinksEnabled}
-                  label="Внешние ссылки"
-                  disabled={isView}
-                />
-              </div>
-            </Card>
-          </div>
-        </section>
-
-        {/* Error */}
-        {error && (
-          <div
-            className="px-3 py-2 rounded text-sm"
-            style={{
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              color: 'var(--color-priority-red-text)',
-              border: '1px solid var(--color-priority-red-border)',
-              borderRadius: 'var(--radius-flowboard-section)',
-            }}
-            role="alert"
+        <div
+          className="w-full max-w-sm rounded-2xl p-6"
+          style={{ backgroundColor: '#1A1A1A' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p
+            id="delete-task-title"
+            className="mb-2 text-center text-lg font-semibold"
+            style={{ color: '#FAFAFA' }}
           >
-            {error}
-          </div>
-        )}
-
-        {/* Actions */}
-        {isView && !isNew && (
-          <div className="mt-2">
+            Удалить задачу?
+          </p>
+          <p className="mb-6 text-center text-sm" style={{ color: '#8B8B8B' }}>
+            Все связанные данные будут удалены без возможности восстановления.
+          </p>
+          <div className="flex flex-col gap-3">
             <Button
               variant="solid"
-              onClick={() => setInternalMode('edit')}
-              className="w-full"
-            >
-              Редактировать
-            </Button>
-          </div>
-        )}
-        {isEdit && (
-          <div className="mt-2 flex flex-col gap-2">
-            <Button
-              onClick={handleSave}
-              disabled={loading || !title.trim()}
-              variant="solid"
-              className="w-full"
-            >
-              {loading ? 'Сохранение...' : 'Сохранить'}
-            </Button>
-            {/* Delete button — only for existing tasks */}
-            <Button
-              variant="solid"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={loading || deleting}
+              onClick={handleDeleteTask}
+              disabled={deleting}
               fill="#EF4444"
               textColor="#FAFAFA"
             >
-              Удалить задачу
+              {deleting ? 'Удаление...' : 'Удалить задачу'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={deleting}
+              style={{ borderColor: '#333', color: '#8B8B8B' }}
+            >
+              Отмена
             </Button>
           </div>
-        )}
+        </div>
+      </div>,
+      document.body,
+    );
 
-        {/* Delete confirmation modal */}
-        {showDeleteConfirm && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center px-4"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
-            onClick={() => setShowDeleteConfirm(false)}
-          >
-            <div
-              className="w-full max-w-sm rounded-2xl p-6"
-              style={{ backgroundColor: '#1A1A1A' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p
-                className="mb-2 text-center text-lg font-semibold"
-                style={{ color: '#FAFAFA' }}
-              >
-                Удалить задачу?
-              </p>
-              <p
-                className="mb-6 text-center text-sm"
-                style={{ color: '#8B8B8B' }}
-              >
-                Все связанные данные будут удалены без возможности восстановления.
-              </p>
-              <div className="flex flex-col gap-3">
-                <Button
-                  variant="solid"
-                  onClick={handleDeleteTask}
-                  disabled={deleting}
-                  fill="#EF4444"
-                  textColor="#FAFAFA"
-                >
-                  {deleting ? 'Удаление...' : 'Удалить задачу'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={deleting}
-                  style={{ borderColor: '#333', color: '#8B8B8B' }}
-                >
-                  Отмена
-                </Button>
-              </div>
+  return (
+    <>
+      <BottomSheet open={open} onClose={onClose}>
+        <div
+          className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
+          aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}
+        >
+          {/* Segments: Общее / Комментарии */}
+          <Segments
+            value={tab}
+            onChange={(v) => setTab(v)}
+            disabled={isEdit}
+            options={[
+              { value: 'general', label: 'Общее' },
+              { value: 'comments', label: 'Комментарии' },
+            ]}
+          />
+
+          {/* Ключевой контекст */}
+          <section>
+            <SectionHeader title="Ключевой контекст" />
+            <div className="flex flex-col gap-3">
+              <TextArea
+                value={title}
+                onChange={(v) => setTitle(v)}
+                placeholder="Название задачи"
+                disabled={isView}
+                maxLength={500}
+                corner="field"
+              />
+              <TextArea
+                value={description}
+                onChange={setDescription}
+                placeholder="Описание задачи"
+                disabled={isView}
+                maxLength={5000}
+                corner="field"
+              />
+              <SingleDateField
+                date={deadline}
+                onOpen={() => setIsDateSheetOpen(true)}
+                placeholder="Дата окончания"
+                disabled={isView}
+              />
             </div>
-          </div>
-        )}
+          </section>
 
-        <SingleDateSheet
-          open={isDateSheetOpen}
-          onClose={() => setIsDateSheetOpen(false)}
-          date={deadline}
-          onConfirm={(d: Date) => {
-            setDeadline(d);
-            setIsDateSheetOpen(false);
-          }}
-        />
-      </div>
-    </BottomSheet>
+          {/* Стоимость */}
+          <section>
+            <SectionHeader title="Стоимость" />
+            <div className="flex flex-col gap-3">
+              <Stepper
+                value={storyPoints}
+                unitLabel={(n) => `${n} SP`}
+                min={1}
+                max={30}
+                onChange={setStoryPoints}
+                borderGradient={[
+                  'var(--color-grad-add-from)',
+                  'var(--color-grad-add-to)',
+                ]}
+                disabled={isView}
+              />
+              <Stepper
+                value={cognitiveWeight}
+                unitLabel={(n) => `${n} CW`}
+                min={1}
+                max={10}
+                onChange={setCognitiveWeight}
+                borderGradient={[
+                  'var(--color-grad-add-from)',
+                  'var(--color-grad-add-to)',
+                ]}
+                disabled={isView}
+              />
+            </div>
+          </section>
 
-      {/* Worker select sheets — rendered OUTSIDE BottomSheet because they also use
-          createPortal. Nesting portals causes them to render as siblings at
-          document.body level instead of visually stacking. */}
+          {/* Ответственность */}
+          <section>
+            <SectionHeader title="Ответственность" />
+            <div className="flex flex-col gap-3">
+              {task?.created_by &&
+                (() => {
+                  const creatorWorker =
+                    workers.find((w) => w.id === task.created_by) ??
+                    workers.find((w) => w.displayName === task.created_by);
+                  if (!creatorWorker) return null;
+                  return (
+                    <ParticipantCard
+                      id={creatorWorker.id}
+                      displayName={creatorWorker.displayName}
+                      avatarUrl={creatorWorker.avatarUrl}
+                      role="Постановщик"
+                    />
+                  );
+                })()}
+
+              {assigneeWorker && (
+                <ParticipantCard
+                  id={assigneeWorker.id}
+                  displayName={assigneeWorker.displayName}
+                  avatarUrl={assigneeWorker.avatarUrl}
+                  role="Исполнитель"
+                />
+              )}
+
+              {reviewerWorker && (
+                <ParticipantCard
+                  id={reviewerWorker.id}
+                  displayName={reviewerWorker.displayName}
+                  avatarUrl={reviewerWorker.avatarUrl}
+                  role="Проверяющий"
+                />
+              )}
+
+              {!isView && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setAssigneeSheetOpen(true)}
+                    className="w-full"
+                  >
+                    {assigneeWorker ? 'Сменить исполнителя' : 'Добавить исполнителя'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setReviewerSheetOpen(true)}
+                    className="w-full"
+                  >
+                    {reviewerWorker
+                      ? 'Сменить проверяющего'
+                      : 'Добавить проверяющего'}
+                  </Button>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Дополнительный контекст */}
+          <section>
+            <SectionHeader title="Дополнительный контекст" />
+            <div className="flex flex-col gap-3">
+              <Card>
+                <div className="flex items-center justify-between">
+                  <span className="text-[15px] font-medium text-text">
+                    Чеклист задачи
+                  </span>
+                  <ToggleSwitch
+                    checked={checklistEnabled}
+                    onChange={setChecklistEnabled}
+                    label="Чеклист задачи"
+                    disabled={isView}
+                  />
+                </div>
+              </Card>
+              <Card>
+                <div className="flex items-center justify-between">
+                  <span className="text-[15px] font-medium text-text">
+                    Связанные задачи
+                  </span>
+                  <ToggleSwitch
+                    checked={relatedEnabled}
+                    onChange={setRelatedEnabled}
+                    label="Связанные задачи"
+                    disabled={isView}
+                  />
+                </div>
+              </Card>
+              <Card>
+                <div className="flex items-center justify-between">
+                  <span className="text-[15px] font-medium text-text">
+                    Зависимые задачи
+                  </span>
+                  <ToggleSwitch
+                    checked={dependentEnabled}
+                    onChange={setDependentEnabled}
+                    label="Зависимые задачи"
+                    disabled={isView}
+                  />
+                </div>
+              </Card>
+              <Card>
+                <div className="flex items-center justify-between">
+                  <span className="text-[15px] font-medium text-text">
+                    Внешние ссылки
+                  </span>
+                  <ToggleSwitch
+                    checked={linksEnabled}
+                    onChange={setLinksEnabled}
+                    label="Внешние ссылки"
+                    disabled={isView}
+                  />
+                </div>
+              </Card>
+            </div>
+          </section>
+
+          {/* Error */}
+          {error && (
+            <div
+              className="px-3 py-2 rounded text-sm"
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                color: 'var(--color-priority-red-text)',
+                border: '1px solid var(--color-priority-red-border)',
+                borderRadius: 'var(--radius-flowboard-section)',
+              }}
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          {isView && !isNew && (
+            <div className="mt-2">
+              <Button
+                variant="solid"
+                onClick={() => setInternalMode('edit')}
+                className="w-full"
+              >
+                Редактировать
+              </Button>
+            </div>
+          )}
+
+          {isEdit && (
+            <div className="mt-2 flex flex-col gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={loading || !title.trim()}
+                variant="solid"
+                className="w-full"
+              >
+                {loading ? 'Сохранение...' : 'Сохранить'}
+              </Button>
+              <Button
+                variant="solid"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={loading || deleting}
+                fill="#EF4444"
+                textColor="#FAFAFA"
+              >
+                Удалить задачу
+              </Button>
+            </div>
+          )}
+
+          <SingleDateSheet
+            open={isDateSheetOpen}
+            onClose={() => setIsDateSheetOpen(false)}
+            date={deadline}
+            onConfirm={(d: Date) => {
+              setDeadline(d);
+              setIsDateSheetOpen(false);
+            }}
+          />
+        </div>
+      </BottomSheet>
+
+      {/* Delete confirm — portal to body, above BottomSheet transform context */}
+      {deleteConfirmModal}
+
+      {/* Worker select sheets — outside BottomSheet (same portal stacking reason) */}
       <WorkerSelectSheet
         open={assigneeSheetOpen}
         onClose={() => setAssigneeSheetOpen(false)}
@@ -529,7 +542,6 @@ export function TaskViewEdit({
         selectedId={assignedTo}
         onSelect={(id) => {
           setAssignedTo(id);
-          // If this worker was the reviewer, clear reviewer
           if (reviewerId === id) {
             setReviewerId(null);
           }
@@ -537,7 +549,6 @@ export function TaskViewEdit({
         title="Выберите исполнителя"
         stacked
       />
-
       <WorkerSelectSheet
         open={reviewerSheetOpen}
         onClose={() => setReviewerSheetOpen(false)}
@@ -545,7 +556,6 @@ export function TaskViewEdit({
         selectedId={reviewerId}
         onSelect={(id) => {
           setReviewerId(id);
-          // If this worker was the assignee, clear assignee
           if (assignedTo === id) {
             setAssignedTo(null);
           }

@@ -1,81 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
-
-// Сброс скролла при переходе на страницу
-function useScrollReset() {
-  useEffect(() => { window.scrollTo(0, 0); }, []);
-}
 import type { RiskPulseData, BoardCardData } from "@/components/board";
+
+/** Сброс скролла при переходе на страницу */
+function useScrollReset() {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+}
 
 /**
  * Boards Overview Page — "Стол" (Desk)
  *
- * Figma specs (from /boards page "stol"):
- *   - Main frame: padding=16px, gap=24px, bg=#0A0A0A, width=390px
- *   - Header: row gap=8px, icon 20x20, "Стол" fontSize=20 fontWeight=500, color=#FFFFFF
- *   - Sub-header: row gap=4px, "N доски • активная:" fontSize=12 fontWeight=500, color=#8B8B8B
- *     active slug color=#F59E0B
- *   - center-container: column gap=20px
- *   - Summary section: label "Сводка по всем моим доскам" fontSize=14 fontWeight=500
- *   - RiskPulse cards: grid 3-col gap=8px
- *   - "К спринту" button: button-sec-s, height=40, padding=0 16px
- *   - Board list: column gap=12px
- *   - "Добавить доску" button: button-sec-s, height=40, padding=0 16px
- *   - bottom-filler: height=80px
+ * Active workspace:
+ * - Single source of truth: DataContext.activeWorkspaceId
+ * - Первый клик по карточке → setActiveWorkspace (сделать активной)
+ * - Второй клик по уже выбранной → переход на /board/[slug]
  *
- * Telegram viewport safe areas via --tg-viewport-stable-height,
- * --tg-content-safe-top, --tg-content-safe-bottom (set by TelegramViewportBridge).
- *
- * Active workspace persistence:
- *   - Loaded from profiles.last_active_workspace_id via /api/init → authData
- *   - Stored in DataContext.activeWorkspaceId (single source of truth)
- *   - On board selection: DataContext.setActiveWorkspace() persists to server + reloads flow data
+ * Board cards (stats) обновляются full load'ом:
+ * - при первом заходе / force-refresh после удаления
+ * - если tasks обновились позже boards (работа на FlowBoard)
+ * - если данные старше 30s
  */
-
 export default function BoardsPage() {
   useScrollReset();
   const router = useRouter();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
-  const { state, setActiveWorkspace, loadBoardsData } = useData();
+  const { state, setActiveWorkspace, loadBoardsData, dataError } = useData();
 
-  // Check if we should force-refresh boards list (e.g., after board deletion)
-  const [forceRefresh, setForceRefresh] = useState<boolean>(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
+  // Флаг «нужен refresh» после удаления доски и т.п.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const timestamp = sessionStorage.getItem('boards-needs-refresh');
-      if (timestamp) {
-        setForceRefresh(true);
-        sessionStorage.removeItem('boards-needs-refresh');
-      }
+    if (typeof window === "undefined") return;
+    const timestamp = sessionStorage.getItem("boards-needs-refresh");
+    if (timestamp) {
+      setForceRefresh(true);
+      sessionStorage.removeItem("boards-needs-refresh");
     }
   }, []);
 
-  // Load boards data on mount (in case it wasn't loaded yet)
-  // TTL check: skip if data was loaded less than 30 seconds ago
-  // Pass activeWorkspaceId to ensure correct metrics (fixes tenant isolation #11)
+  const refreshBoards = useCallback(() => {
+    loadBoardsData(state.activeWorkspaceId ?? undefined);
+  }, [loadBoardsData, state.activeWorkspaceId]);
+
+  // Один эффект загрузки: force / stale / tasks новее boards
   useEffect(() => {
     if (authLoading) return;
-    // Skip if force-refresh was triggered (data will be loaded by the next effect)
-    if (forceRefresh) return;
-    const lastUpdated = state.boards.lastUpdated ?? 0;
-    const ageMs = Date.now() - lastUpdated;
-    if (ageMs < 30000) return; // Data is still fresh (reduced from 60s to 30s)
-    loadBoardsData(state.activeWorkspaceId ?? undefined);
-  }, [authLoading, loadBoardsData, state.activeWorkspaceId, state.boards.lastUpdated, forceRefresh]);
 
-  // Force refresh on mount after deletion
-  useEffect(() => {
-    if (!forceRefresh || authLoading) return;
-    loadBoardsData(state.activeWorkspaceId ?? undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forceRefresh, authLoading]);
+    const boardsUpdated = state.boards.lastUpdated;
+    const tasksUpdated = state.tasks.lastUpdated;
+
+    const needsForce = forceRefresh;
+    const neverLoaded = !boardsUpdated;
+    const isStale = boardsUpdated != null && Date.now() - boardsUpdated >= 30_000;
+    // После работы на FlowBoard tasks обновляются (realtime / partial),
+    // cards — только full load. Если tasks свежее boards — перезагружаем.
+    const tasksNewerThanBoards =
+      boardsUpdated != null &&
+      tasksUpdated != null &&
+      tasksUpdated > boardsUpdated;
+
+    if (!needsForce && !neverLoaded && !isStale && !tasksNewerThanBoards) {
+      return;
+    }
+
+    refreshBoards();
+    if (needsForce) setForceRefresh(false);
+  }, [
+    authLoading,
+    forceRefresh,
+    refreshBoards,
+    state.boards.lastUpdated,
+    state.tasks.lastUpdated,
+  ]);
 
   const workspaces = state.workspaces.items;
   const riskData: RiskPulseData = state.boards.riskData ?? {
@@ -85,7 +89,7 @@ export default function BoardsPage() {
   };
   const boardCards = state.boards.cards;
 
-  // Auth loading state
+  // ── Auth loading ────────────────────────────────────────────────────────
   if (authLoading) {
     return (
       <div
@@ -97,7 +101,7 @@ export default function BoardsPage() {
     );
   }
 
-  // Auth error state
+  // ── Auth error ──────────────────────────────────────────────────────────
   if (authError) {
     return (
       <div
@@ -113,7 +117,27 @@ export default function BoardsPage() {
     );
   }
 
-  // Show skeleton while boards data is loading
+  // ── Data error (full load failed) ───────────────────────────────────────
+  if (dataError && !state.boards.lastUpdated) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-4 min-h-[var(--tg-viewport-stable-height,100dvh)] p-4"
+        style={{ backgroundColor: "#0A0A0A" }}
+      >
+        <p style={{ color: "#EF4444", fontFamily: "system-ui", textAlign: "center" }}>
+          Не удалось загрузить доски.
+          {dataError === "timeout_loading_boards_data"
+            ? " Превышено время ожидания."
+            : null}
+        </p>
+        <Button corner="action" variant="outline" className="h-10" onClick={refreshBoards}>
+          Повторить
+        </Button>
+      </div>
+    );
+  }
+
+  // ── Skeleton: boards ещё не загружались ─────────────────────────────────
   if (!state.boards.lastUpdated) {
     return (
       <div
@@ -125,14 +149,22 @@ export default function BoardsPage() {
     );
   }
 
-  // The active workspace from DataContext (single source of truth)
-  // null = first workspace is active by default
   const activeWorkspaceId = state.activeWorkspaceId;
-  const defaultActiveSlug = workspaces[0]?.slug || "";
+
   const selectedBoard = activeWorkspaceId
-    ? boardCards.find(c => c.id === activeWorkspaceId)
+    ? boardCards.find((c) => c.id === activeWorkspaceId)
     : null;
-  const displaySlug = selectedBoard?.slug ?? defaultActiveSlug;
+  const displaySlug =
+    selectedBoard?.slug ?? workspaces[0]?.slug ?? boardCards[0]?.slug ?? "";
+
+  /** Первый клик — активировать; второй (уже selected) — открыть доску */
+  const handleCardClick = (card: { id: string; slug: string }) => {
+    if (activeWorkspaceId === card.id) {
+      router.push(`/board/${card.slug}`);
+    } else {
+      void setActiveWorkspace(card.id);
+    }
+  };
 
   return (
     <main
@@ -143,7 +175,7 @@ export default function BoardsPage() {
       }}
     >
       <div className="w-full px-4 pb-8">
-        {/* Header: "Стол" with desk icon (20x20) */}
+        {/* Header */}
         <div className="flex items-center gap-2">
           <img
             src="/icons/desk.svg"
@@ -167,7 +199,7 @@ export default function BoardsPage() {
           </h1>
         </div>
 
-        {/* Sub-header: board count + active slug (fontSize=12, fontWeight=500) */}
+        {/* Sub-header */}
         <p
           style={{
             marginTop: "4px",
@@ -177,45 +209,64 @@ export default function BoardsPage() {
             color: "#8B8B8B",
           }}
         >
-          {workspaces.length}{" "}
-          {pluralDoski(workspaces.length)}
+          {workspaces.length} {pluralDoski(workspaces.length)}
           {" · активная:"}{" "}
           {displaySlug && (
             <span style={{ color: "#F59E0B" }}>@{displaySlug}</span>
           )}
         </p>
 
-        {/* center-container: column gap=20px */}
         <div className="mt-6 flex flex-col gap-5">
-          {/* Summary section */}
           <RiskPulse data={riskData} />
 
-          {/* Board list section — column gap=12px */}
-          <div className="flex flex-col gap-3">
-            {boardCards.map((card) => (
-              <BoardCard
-                key={card.id}
-                data={card as BoardCardData}
-                isActive={activeWorkspaceId === null && card.slug === defaultActiveSlug}
-                isSelected={activeWorkspaceId === card.id}
-                onSelect={() => setActiveWorkspace(card.id)}
-                onClick={() => router.push(`/board/${card.slug}`)}
-              />
-            ))}
-          </div>
+          {/* Empty state */}
+          {boardCards.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <p
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "#8B8B8B",
+                  textAlign: "center",
+                }}
+              >
+                Нет досок
+              </p>
+              <Button
+                corner="action"
+                variant="outline"
+                className="h-10"
+                onClick={() => router.push("/board/create")}
+              >
+                Добавить доску
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {boardCards.map((card) => (
+                <BoardCard
+                  key={card.id}
+                  data={card as BoardCardData}
+                  isSelected={activeWorkspaceId === card.id}
+                  onSelect={() => void setActiveWorkspace(card.id)}
+                  onClick={() => handleCardClick(card)}
+                />
+              ))}
+            </div>
+          )}
 
-          {/* "Добавить доску" button — button-sec-s, height=40 */}
-          <Button
-            corner="action"
-            variant="outline"
-            className="h-10"
-            onClick={() => router.push("/board/create")}
-          >
-            Добавить доску
-          </Button>
+          {boardCards.length > 0 && (
+            <Button
+              corner="action"
+              variant="outline"
+              className="h-10"
+              onClick={() => router.push("/board/create")}
+            >
+              Добавить доску
+            </Button>
+          )}
         </div>
 
-        {/* bottom-filler: height=80px */}
         <div className="h-20" />
       </div>
     </main>
