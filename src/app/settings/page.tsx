@@ -57,7 +57,7 @@ function TelegramIcon({ className = '' }: { className?: string }) {
   );
 }
 
-// ─── Section Heading (Figma EL-bb582553 pattern) ────────────────────────────
+// ─── Section Heading ────────────────────────────────────────────────────────
 
 function SectionHeading({ title }: { title: string }) {
   return (
@@ -80,7 +80,7 @@ function SectionHeading({ title }: { title: string }) {
   );
 }
 
-// ─── Gray Row Component — срезанные углы и рамка ──────────────────────────
+// ─── Gray Row Component ─────────────────────────────────────────────────────
 
 interface GrayRowProps {
   label: string;
@@ -90,9 +90,8 @@ interface GrayRowProps {
 }
 
 function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowProps) {
-  // Общий клип-пат: срез верхнего левого и нижнего правого углов на 8px
   const clipPath = `polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)`;
-  const borderRadius = '0 4px 0 4px'; // скругление верхнего правого и нижнего левого
+  const borderRadius = '0 4px 0 4px';
 
   return (
     <div
@@ -112,7 +111,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
         style={{
           clipPath,
           borderRadius,
-          background: 'transparent',
+          background: '#101010',         // ← исправлено
           minHeight: 'inherit',
           width: '100%',
           border: 'none',
@@ -147,7 +146,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
   );
 }
 
-// ─── Action Button — такие же углы и рамка ─────────────────────────────────
+// ─── Action Button ──────────────────────────────────────────────────────────
 
 interface ActionButtonProps {
   label: string;
@@ -176,7 +175,7 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
         style={{
           clipPath,
           borderRadius,
-          background: 'transparent',
+          background: '#101010',         // ← исправлено
           minHeight: 'inherit',
           width: '100%',
           border: 'none',
@@ -206,7 +205,7 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
   );
 }
 
-// ─── Avatar Component (Figma instance "user-img" #33:5574) ─────────────────
+// ─── Avatar Component ──────────────────────────────────────────────────────
 
 function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegramPhotoUrl?: string }) {
   const initial = username.replace('@', '').charAt(0).toUpperCase();
@@ -241,7 +240,7 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
   );
 }
 
-// ─── Plan Badge (Figma instance "badge" #17:8819) ──────────────────────────
+// ─── Plan Badge ─────────────────────────────────────────────────────────────
 
 function PlanBadge() {
   return (
@@ -268,7 +267,7 @@ function PlanBadge() {
   );
 }
 
-// ─── Main Settings Content ─────────────────────────────────────────────────
+// ─── Main Settings Content ──────────────────────────────────────────────────
 
 function SettingsContent() {
   const searchParams = useSearchParams();
