@@ -9,7 +9,7 @@
 export function PlanBadge({ planName, price }: { planName: string; price: string }) {
   return (
     <div
-      className="flex items-center justify-center gap-2 rounded-[4px]"
+      className="flex items-center gap-2 rounded-[4px]"
       style={{
         padding: 4,
         backgroundColor: 'rgba(245, 158, 11, 0.2)',

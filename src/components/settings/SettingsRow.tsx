@@ -27,7 +27,7 @@ export function SettingsRow({
 
   return (
     <Interactive
-      className="flex items-center justify-center w-full cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+      className="flex items-center w-full cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
       onClick={onClick}
       tabIndex={onClick ? 0 : undefined}
       role={onClick ? 'button' : undefined}
@@ -49,19 +49,19 @@ export function SettingsRow({
         borderWidth={1.5}
         border="rgba(255, 255, 255, 0.15)"
         fill="var(--color-surface)"
-        contentClassName="flex h-12 w-full items-center justify-between px-3"
+        contentClassName="flex h-12 w-full items-center justify-between px-3 gap-2"
       >
         <span
-          className="text-base font-medium leading-5 text-white truncate"
-          style={{ fontFamily: 'var(--font-family-display)' }}
+          className="text-base font-medium leading-6 text-[#FAFAFA] truncate"
+          style={{ fontFamily: 'var(--font-family-display)', fontSize: 16, fontWeight: 500 }}
         >
           {label}
         </span>
         <div className="flex items-center gap-2 shrink-0">
           {value && (
             <span
-              className="text-base font-medium leading-5 text-white whitespace-nowrap"
-              style={{ fontFamily: 'var(--font-family-display)' }}
+              className="text-base leading-6 text-[#A1A1AA] whitespace-nowrap"
+              style={{ fontFamily: 'var(--font-family-display)', fontSize: 16, fontWeight: 400 }}
             >
               {value}
             </span>

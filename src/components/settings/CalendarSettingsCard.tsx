@@ -6,6 +6,24 @@ import { getClient } from '@/lib/supabase/client';
 import type { CalendarConnection, CalendarProvider } from '@/types/calendar';
 
 // ═══════════════════════════════════════════════════════
+// Section Heading
+// ═══════════════════════════════════════════════════════
+
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 w-full px-3 py-[14px]">
+      <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+      <span
+        className="text-base font-medium leading-5 text-white"
+        style={{ fontFamily: 'var(--font-family-display)' }}
+      >
+        {title}
+      </span>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════
 
@@ -112,28 +130,17 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
   const yandexConn = connections.find((c) => c.provider === 'yandex' && c.is_active);
 
   return (
-    <div
-      className="rounded-card border p-4"
-      style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-bg-surface)' }}
-    >
-      <h3
-        className="text-heading-sm font-semibold mb-3 flex items-center gap-2"
-        style={{ color: 'var(--color-text-primary)' }}
-      >
-        📅 Календари
-      </h3>
+    <div className="flex flex-col gap-3 w-full bg-surface rounded-[8px] p-3">
+      <SectionHeading title="Календари" />
 
       {error && (
-        <p className="text-body-sm mb-3" style={{ color: 'var(--color-error)' }}>
+        <p className="text-body-sm" style={{ color: 'var(--color-error)' }}>
           ⚠ {error}
         </p>
       )}
 
       {/* Yandex */}
-      <div
-        className="flex items-center justify-between rounded-md px-3 py-2"
-        style={{ backgroundColor: 'var(--color-bg-dark)' }}
-      >
+      <div className="flex items-center justify-between rounded-md px-3 py-2 bg-[#161616]">
         <div className="flex items-center gap-2">
           <span>🟡</span>
           <span className="text-body-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
@@ -211,7 +218,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
                 }
               }}
               className="rounded-sm px-2 py-1 text-body-xs font-medium transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
-              style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000' }}
+              style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000000' }}
               aria-label="Подключить Яндекс Календарь"
             >
               Подключить
@@ -221,7 +228,7 @@ export function CalendarSettingsCard({ workspaceId }: CalendarSettingsCardProps)
       </div>
 
       {!isConnected('yandex') && !error && (
-        <p className="text-body-xs mt-3" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-body-xs" style={{ color: 'var(--color-text-muted)' }}>
           Подключите Яндекс Календарь для синхронизации событий.
         </p>
       )}

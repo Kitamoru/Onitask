@@ -19,8 +19,8 @@ export function UserProfileCard({
   price: string;
   statusLabel?: string;
 }) {
-  return (
-    <div className="flex flex-col items-center gap-4 w-full">
+    return (
+    <div className="flex flex-col gap-4 w-full bg-surface rounded-[8px] p-3">
       {/* Avatar circle */}
       <div
         className="flex items-center justify-center bg-surface"
@@ -36,7 +36,7 @@ export function UserProfileCard({
       </div>
 
       {/* Username + plan badge row */}
-      <div className="flex items-center gap-2 w-full justify-center">
+      <div className="flex items-center gap-2 w-full">
         <span
           className="text-[20px] font-medium leading-[24px] text-white tracking-[-0.025em]"
           style={{ fontFamily: 'var(--font-family-display)' }}

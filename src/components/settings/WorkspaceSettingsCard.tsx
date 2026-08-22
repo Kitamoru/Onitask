@@ -34,7 +34,7 @@ export function WorkspaceSettingsCard({
   onColleaguesClick?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <div className="flex flex-col gap-3 w-full bg-surface rounded-[8px] p-3">
       <SectionHeading title="Рабочее пространство" />
       <div className="flex flex-col gap-3 w-full">
         <SettingsRow label="MCP" onClick={onMcpClick} />
