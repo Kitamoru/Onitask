@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 
@@ -7,18 +8,26 @@ interface SettingsRowProps {
   label: string;
   value?: string;
   onClick?: () => void;
+  /** Custom trailing icon — defaults to ChevronRight */
+  trailingIcon?: ReactNode;
 }
 
 /**
- * Shared settings row — uses NotchedPanel for correct chamfered-corner borders.
+ * Shared settings row — matches Figma node 65:14537 "settings".
+ * Template EL-c7474eb0: row, padding 14px 12px, gap 6px, borderRadius 6px.
  * Renders as a button when onClick is provided, otherwise as a div.
  */
-export function SettingsRow({ label, value, onClick }: SettingsRowProps) {
+export function SettingsRow({
+  label,
+  value,
+  onClick,
+  trailingIcon,
+}: SettingsRowProps) {
   const Interactive = onClick ? 'button' : 'div';
 
   return (
     <Interactive
-      className="flex items-center justify-between w-full cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+      className="flex items-center justify-center w-full cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
       onClick={onClick}
       tabIndex={onClick ? 0 : undefined}
       role={onClick ? 'button' : undefined}
@@ -35,12 +44,12 @@ export function SettingsRow({ label, value, onClick }: SettingsRowProps) {
       aria-label={value ? `${label}: ${value}` : label}
     >
       <NotchedPanel
-        corner="action"
+        corner="field"
         notch={8}
         borderWidth={1.5}
         border="rgba(255, 255, 255, 0.15)"
         fill="var(--color-surface)"
-        contentClassName="flex h-10 w-full items-center justify-between px-3"
+        contentClassName="flex h-12 w-full items-center justify-between px-3"
       >
         <span
           className="text-base font-medium leading-5 text-white truncate"
@@ -57,7 +66,9 @@ export function SettingsRow({ label, value, onClick }: SettingsRowProps) {
               {value}
             </span>
           )}
-          <ChevronRight className="h-5 w-5 text-text-secondary shrink-0" />
+          {trailingIcon ?? (
+            <ChevronRight className="w-5 h-5 text-text-secondary shrink-0" />
+          )}
         </div>
       </NotchedPanel>
     </Interactive>

@@ -1,5 +1,6 @@
 'use client';
 
+import { Send } from 'lucide-react';
 import { SettingsRow } from './SettingsRow';
 
 /**
@@ -39,9 +40,14 @@ export function OtherSettingsCard({
       <SectionHeading title="Прочее" />
       <div className="flex flex-col gap-3 w-full">
         {language && (
-          <SettingsRow label="Язык" onClick={onLanguageClick} />
+          <SettingsRow label="Язык" value={language} onClick={onLanguageClick} />
         )}
-        <SettingsRow label="Техподдержка" onClick={onSupportClick} />
+        <SettingsRow
+          label="Техподдержка"
+          value="Написать"
+          onClick={onSupportClick}
+          trailingIcon={<Send className="w-5 h-5 shrink-0" />}
+        />
       </div>
     </div>
   );
