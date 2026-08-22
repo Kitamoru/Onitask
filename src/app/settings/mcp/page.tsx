@@ -105,29 +105,46 @@ function McpKeyItem({ keyInfo }: { keyInfo: McpKeyInfo }) {
   const isExpired = new Date(keyInfo.expires_at) < new Date();
   const expiryColor = isExpired ? '#EF4444' : 'var(--color-text-secondary)';
 
+  // Общий стиль углов: срез 8px (верхний левый / нижний правый), скругление 6px (верхний правый / нижний левый)
+  const clipPath = 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)';
+  const borderRadius = '0 6px 0 6px';
+
   return (
     <div
-      className="relative w-full px-3 py-3 transition-opacity hover:opacity-90 active:opacity-70 cursor-pointer"
+      className="relative w-full"
       style={{
-        backgroundColor: 'var(--color-surface)',
-        borderRadius: 6,
-        border: '1px solid var(--color-line)',
-        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+        clipPath,
+        borderRadius,
+        background: 'var(--color-line)', // рамка
+        padding: '1px',                 // толщина рамки
       }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Ключ ${keyInfo.name || keyInfo.prefix}`}
     >
-      <div className="flex flex-col gap-1">
-        <span
-          className="text-base font-medium leading-5 text-white truncate"
-          style={{ fontFamily: 'var(--font-family-display)' }}
-        >
-          {keyInfo.name || `Ключ ${keyInfo.prefix}`}
-        </span>
-        <span className="text-xs font-medium leading-3" style={{ color: expiryColor }}>
-          {keyInfo.workspace_name} · {formatDate(keyInfo.expires_at)}
-        </span>
+      <div
+        className="w-full px-3 py-3 transition-opacity hover:opacity-90 active:opacity-70 cursor-pointer"
+        style={{
+          clipPath,
+          borderRadius,
+          backgroundColor: 'var(--color-surface)',
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`Ключ ${keyInfo.name || keyInfo.prefix}`}
+        onClick={() => {
+          // здесь можно открыть меню удаления, если нужно
+          // пока ничего не делаем
+        }}
+      >
+        <div className="flex flex-col gap-1">
+          <span
+            className="text-base font-medium leading-5 text-white truncate"
+            style={{ fontFamily: 'var(--font-family-display)' }}
+          >
+            {keyInfo.name || `Ключ ${keyInfo.prefix}`}
+          </span>
+          <span className="text-xs font-medium leading-3" style={{ color: expiryColor }}>
+            {keyInfo.workspace_name} · {formatDate(keyInfo.expires_at)}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -155,30 +172,46 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     }
   };
 
+  const clipPath = 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)';
+  const borderRadius = '0 6px 0 6px';
+
   return (
-    <button
-      onClick={handleClick}
-      className="flex items-center justify-center gap-2 h-10 w-full transition-opacity hover:opacity-80 active:opacity-60"
+    <div
+      className="relative w-full"
       style={{
-        backgroundColor: 'var(--color-surface)',
-        borderRadius: 6,
-        border: '1px solid var(--color-line)',
-        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+        clipPath,
+        borderRadius,
+        background: 'var(--color-line)',
+        padding: '1px',
+        height: '40px', // h-10
       }}
-      aria-label={label}
     >
-      <span
-        className="text-[14px] font-semibold text-white"
-        style={{ fontFamily: 'var(--font-family-display)' }}
+      <button
+        onClick={handleClick}
+        className="flex items-center justify-center gap-2 w-full h-full transition-opacity hover:opacity-80 active:opacity-60"
+        style={{
+          clipPath,
+          borderRadius,
+          backgroundColor: 'var(--color-surface)',
+          border: 'none',
+          outline: 'none',
+          cursor: 'pointer',
+        }}
+        aria-label={label}
       >
-        {label}
-      </span>
-      {copied ? (
-        <span className="text-xs font-medium" style={{ color: '#22C55E' }}>✓</span>
-      ) : (
-        <Copy className="w-5 h-5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
-      )}
-    </button>
+        <span
+          className="text-[14px] font-semibold text-white"
+          style={{ fontFamily: 'var(--font-family-display)' }}
+        >
+          {label}
+        </span>
+        {copied ? (
+          <span className="text-xs font-medium" style={{ color: '#22C55E' }}>✓</span>
+        ) : (
+          <Copy className="w-5 h-5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+        )}
+      </button>
+    </div>
   );
 }
 
