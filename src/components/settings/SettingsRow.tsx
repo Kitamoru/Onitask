@@ -38,7 +38,7 @@ export function SettingsRow({ label, value, onClick }: SettingsRowProps) {
         corner="action"
         notch={8}
         borderWidth={1.5}
-        borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+        border="rgba(255, 255, 255, 0.15)"
         fill="var(--color-surface)"
         contentClassName="flex h-10 w-full items-center justify-between px-3"
       >
