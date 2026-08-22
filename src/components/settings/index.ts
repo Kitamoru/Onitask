@@ -1,6 +1,3 @@
-export { UserProfileCard } from './UserProfileCard';
-export { WorkspaceSettingsCard } from './WorkspaceSettingsCard';
-export { OtherSettingsCard } from './OtherSettingsCard';
-export { CalendarSettingsCard } from './CalendarSettingsCard';
-export { PlanBadge } from './PlanBadge';
-export { SettingsRow } from './SettingsRow';
+// Settings components — settings page is now self-contained in src/app/settings/page.tsx
+// Old card components (UserProfileCard, WorkspaceSettingsCard, etc.) have been removed
+// as the page was rebuilt to match Figma design node 65:14537 directly.
