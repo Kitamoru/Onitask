@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { OnitaskLoader } from './OnitaskLoader';
+import OnitaskLoader from './OnitaskLoader';
+
 /**
  * GlobalLoader — фиксированный overlay, который блокирует весь контент
  * пока приложение не готово к работе.
@@ -40,7 +41,15 @@ export function GlobalLoader({ ready }: GlobalLoaderProps) {
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{
-        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
+        // ✅ Меняем фон на тот же, что был внутри карточки (тёмный с радиальным градиентом)
+        background: `
+          radial-gradient(
+            circle at 50% 42%,
+            rgba(255, 255, 255, 0.025),
+            transparent 58%
+          ),
+          rgba(5, 7, 7, 0.94)
+        `,
         opacity: animatingOut ? 0 : 1,
         transition: 'opacity 0.3s ease-out',
         pointerEvents: animatingOut ? 'none' : 'auto',
