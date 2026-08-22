@@ -69,9 +69,9 @@ function SectionHeading({ title }: { title: string }) {
       <span
         className="font-display font-medium"
         style={{
-          fontSize: '14px',
-          lineHeight: '18px',
-          color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+          fontSize: '16px',
+          lineHeight: '20px',
+          color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
         }}
       >
         {title}
