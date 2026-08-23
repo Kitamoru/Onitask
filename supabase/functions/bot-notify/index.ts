@@ -94,6 +94,11 @@ async function processJob(job: {
       const chats = await getActiveChats(job.workspace_id);
 
       if (!chats.length) {
+        // Fallback: если чаты не привязаны, эскалации уходят личными
+        // сообщениями владельцам/админам workspace (иначе уведомления теряются)
+        if (alertType === 'escalation_alert' || alertType === 'escalation_resolved') {
+          await sendEscalationFallbackDMs(job);
+        }
         await updateJobStatus(job.id, 'done');
         return;
       }
@@ -227,6 +232,63 @@ function buildMemberAddedHTML(payload: Record<string, unknown>): string {
 }
 
 /**
+ * Fallback для эскалаций при отсутствии привязанных чатов:
+ * уведомление получает постановщик задачи (tasks.created_by) —
+ * он больше всех заинтересован в результате. Если у постановщика
+ * нет telegram_id — fallback на owner/admin workspace.
+ */
+async function sendEscalationFallbackDMs(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const recipientIds: string[] = [];
+
+  // 1. Постановщик задачи — главный заинтересованный в результате
+  const taskId = job.payload.task_id as string | undefined;
+  if (taskId) {
+    const { data: task } = await supabase
+      .from('tasks')
+      .select('created_by')
+      .eq('id', taskId)
+      .maybeSingle();
+    if (task?.created_by) recipientIds.push(task.created_by as string);
+  }
+
+  // 2. Fallback: если постановщик неизвестен — owner/admin workspace
+  if (recipientIds.length === 0) {
+    const { data: admins } = await supabase
+      .from('workers')
+      .select('source_id')
+      .eq('workspace_id', job.workspace_id)
+      .eq('type', 'human')
+      .eq('is_active', true)
+      .in('role', ['owner', 'admin']);
+    for (const admin of admins ?? []) {
+      if (admin.source_id) recipientIds.push(admin.source_id as string);
+    }
+  }
+
+  if (recipientIds.length === 0) return;
+
+  const html = buildNotificationHTML(job);
+
+  for (const profileId of [...new Set(recipientIds)]) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('telegram_id')
+      .eq('id', profileId)
+      .maybeSingle();
+
+    if (profile?.telegram_id) {
+      await sendTelegramMessage(profile.telegram_id, html);
+    }
+  }
+}
+
+/**
  * Get active telegram chats for a workspace.
  */
 async function getActiveChats(workspaceId: string): Promise<Array<{ chat_id: number }>> {
@@ -269,13 +331,30 @@ function buildNotificationHTML(job: {
 }): string {
   const alertType = (job.payload.alert_type as string) || 'unknown';
   const fullId = (job.payload.full_id as string) || '';
+  const title = (job.payload.title as string) || '';
+  const escalationReason = (job.payload.escalation_reason as string) || '';
 
   switch (alertType) {
     case 'escalation_alert':
-      return `<b>⚠️ Эскалация задачи</b>\n\n${escapeHtml(fullId)} требует внимания.`;
+      const lines: string[] = [];
+      lines.push('🆘 <b>Эскалация задачи</b>');
+      if (fullId) lines.push(`<b>${escapeHtml(fullId)}</b>`);
+      if (title) lines.push(`«${escapeHtml(title)}»`);
+      if (escalationReason) lines.push(`Причина: ${escapeHtml(escalationReason)}`);
+      lines.push('');
+      lines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
+      return lines.join('\n');
 
     case 'escalation_resolved':
-      return `✅ Эскалация ${escapeHtml(fullId)} снята.\nАгент возобновит работу.`;
+      const resLines: string[] = [];
+      resLines.push('✅ <b>Эскалация снята</b>');
+      if (fullId) resLines.push(`<b>${escapeHtml(fullId)}</b>`);
+      if (title) resLines.push(`«${escapeHtml(title)}»`);
+      resLines.push('');
+      resLines.push('Агент может продолжить работу.');
+      resLines.push('');
+      resLines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
+      return resLines.join('\n')
 
     case 'resolution_notify':
       return `<b>🔓 Задача разблокирована</b>\n\n${escapeHtml(fullId)} готова к продолжению.`;
