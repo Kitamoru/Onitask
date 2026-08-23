@@ -31,6 +31,7 @@ export type McpToolName =
   | 'escalate_task'
   | 'handoff_task'
   | 'send_message_to_chat'
+  | 'wait_for_tasks'
   | 'undo';
 
 // ============================================================================

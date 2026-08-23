@@ -239,6 +239,23 @@ export interface HandoffTaskResult {
 }
 
 // ============================================================================
+// wait_for_tasks (§4.10) — duty loop long-poll
+// ============================================================================
+
+export interface WaitForTasksParams extends DomainContext {
+  /** Task ids the agent already knows about. New = assigned && not in this list. */
+  known_task_ids?: string[];
+  /** How long to hold the request open. Default 25s, max 45s. */
+  timeout_sec?: number;
+}
+
+export interface WaitForTasksResult {
+  status: 'new_tasks' | 'timeout';
+  tasks: TaskPreview[];
+  waited_ms: number;
+}
+
+// ============================================================================
 // undo (§4.9)
 // ============================================================================
 

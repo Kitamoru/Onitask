@@ -1,7 +1,7 @@
 # onitask · MCP Contract (MVP для агентов)
 
-**Версия:** 0.7.1
-**Дата:** июнь 2026
+**Версия:** 0.8.1
+**Дата:** август 2026
 **Статус:** Production-Ready
 
 > **Тип документа:** Операционное приложение к Master Spec. Канонический HTTP-контракт для AI-агентов.
@@ -80,6 +80,7 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 | `escalate_task`           | Эскалировать человеку             | Да             | ✅ да                       |
 | `handoff_task`            | Передать задачу другому агенту    | Да             | ✅ да                       |
 | `send_message_to_chat`    | Отправить сообщение в Telegram    | Да (лёгкая)    | ✅ да                       |
+| `wait_for_tasks`          | Long-poll: ждать новые задачи     | Нет            | ❌ pure read                |
 | `undo`                    | Отменить последнее действие       | Нет            | ✅ да                       |
 
 > `send_message_to_chat` расходует отдельный лёгкий лимит. При `quota_exceeded` на мутациях задач остаётся доступным.
@@ -474,6 +475,60 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 
 ---
 
+### `wait_for_tasks` (v0.8.1 — Duty Mode)
+
+**Endpoint:** `POST /api/mcp/wait_for_tasks`
+**Запрос:**
+
+```typescript
+{
+  workspace_id:   string,
+  agent_name:     string,
+  known_task_ids?: string[],  // UUID задач, которые агент уже знает
+                              // (обработал или они у него в работе)
+  timeout_sec?:   number      // default 25, max 45
+}
+```
+
+**Семантика:** long-poll. Сервер держит запрос открытым и опрашивает БД
+(интервал 3s), пока не появится задача назначенная агенту (`column != 'done'`,
+`id` НЕ входит в `known_task_ids`) — либо истечёт таймаут.
+Worker агента пере-резолвится на каждой итерации (INV-04 может сработать
+посреди ожидания).
+
+**Ответ:**
+
+```typescript
+{
+  success: true,
+  status: "new_tasks" | "timeout",
+  tasks: TaskPreview[],   // только новые (не входящие в known_task_ids)
+  waited_ms: number
+}
+```
+
+**Назначение — Duty Mode:** всегда активная сессия агента превращается в
+event-loop без внешних демонов:
+
+```
+while (true):
+  r = wait_for_tasks(known_task_ids)
+  if r.status == 'new_tasks':
+      для каждой задачи → get_task_context → работа по §7
+      known_task_ids += обработанные id
+  # timeout → просто вызвать снова
+```
+
+**Ограничения:**
+- `maxDuration = 60` на Vercel; long-poll ≤ 45s — безопасно внутри
+  клиентского MCP-таймаута Cline (60s).
+- Read-only: квота не расходуется, `agent_events` не пишутся
+  (иначе спам при частоте опроса).
+- Изменения существующих задач (разблокировка, снятие needs_human)
+  пока НЕ будят вызывающего — Post-MVP (расширение критерия пробуждения).
+
+---
+
 ## 5. Архитектурные гарантии
 
 - **Hot Path** (A‑1) — все операции < 2s.
@@ -672,7 +727,43 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
     }
     ```
 
-14. **Работа в условиях ограниченного allowed_tools scope (v0.7.0):**
+15. **Duty Mode — автономный приём задач без оператора (v0.8.1):**
+
+    Когда агент свободен (нет активной работы), он входит в цикл дежурства
+    через `wait_for_tasks` — новые задачи подхватываются сами, без фразы
+    «проверь задачи» от человека:
+
+    ```typescript
+    let knownTaskIds = new Set<string>();
+
+    while (true) {
+      const r = await mcp.wait_for_tasks({
+        workspace_id: params.workspace_id,
+        agent_name:   params.agent_name,
+        known_task_ids: [...knownTaskIds],
+        timeout_sec:  30
+      });
+
+      if (r.status === 'new_tasks') {
+        for (const t of r.tasks) {
+          await handleTask(t);            // get_task_context → работа по §7
+          knownTaskIds.add(t.id);
+        }
+      }
+      // 'timeout' → цикл продолжается немедленно
+    }
+    ```
+
+    Правила:
+    - Запросы пользователя в чате ВСЕГДА важнее дежурного цикла — текущий
+      вызов вернётся по таймауту ≤45s, после ответа возобновить цикл.
+    - После Auto Compact / `/smol` восстановить `known_task_ids` через
+      `get_workspace_settings.agent_active_tasks` + память обработанных задач.
+    - Ответы `wait_for_tasks` короткие — не пересказывать их в чате.
+
+---
+
+16. **Работа в условиях ограниченного allowed_tools scope (v0.7.0):**
 
     Агент не знает свой `allowed_tools` заранее — конфигурация прозрачна.
     При получении `403 tool_not_permitted`:
@@ -831,6 +922,24 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 
 ## Changelog
 
+**v0.8.1 — август 2026**
+
+*Duty Mode (автономный приём задач):*
+
+- §3: новый инструмент `wait_for_tasks` (read-only, без квоты, без agent_events)
+- §4.10 (новый): сигнатура, семантика long-poll (poll interval 3s, timeout
+  default 25s / max 45s), критерий пробуждения (assigned && column != done &&
+  not in known_task_ids), пере-резолв worker'а на каждой итерации (INV-04),
+  ограничения (Vercel maxDuration=60, client timeout Cline 60s)
+- §7 п.15 (новый): Duty Mode — TypeScript паттерн event-loop, правила
+  приоритета пользовательских запросов и восстановления после компакта;
+  прежний п.14 перенумерован в п.16
+- Реализация: `lib/domain/agent/waitForTasks.ts`, регистрация в `/api/mcp`
+  (tool def + dispatch + `export const maxDuration = 60`)
+- Конфигурация агента: секция `duty_mode` в `.clinerules/.clinerules`
+
+---
+
 **v0.7.1 — июнь 2026**
 
 *Priority sync:*
@@ -890,4 +999,4 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 
 ---
 
-*onitask · MCP Contract · v0.7.1 · июнь 2026*
+*onitask · MCP Contract · v0.8.1 · август 2026*

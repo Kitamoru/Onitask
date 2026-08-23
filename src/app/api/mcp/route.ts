@@ -20,7 +20,11 @@ import { escalateTask } from '../../../../lib/domain/agent/escalateTask';
 import { handoffTask } from '../../../../lib/domain/agent/handoffTask';
 import { sendMessageToChat } from '../../../../lib/domain/agent/sendMessageToChat';
 import { getTaskContext } from '../../../../lib/domain/agent/getTaskContext';
+import { waitForTasks } from '../../../../lib/domain/agent/waitForTasks';
 import { undo } from '../../../../lib/domain/agent/undo';
+
+// wait_for_tasks holds the request open up to 45s (long-poll) — allow it.
+export const maxDuration = 60;
 
 // ============================================================================
 // Tool definitions (contract §4.1–4.9)
@@ -133,6 +137,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'wait_for_tasks',
+    description:
+      'Long-poll: block until a NEW task is assigned to you (not in known_task_ids, column != done). ' +
+      'Call in a loop when idle — duty mode. Returns { status: "new_tasks" | "timeout", tasks }. ' +
+      'On timeout just call again. Max 45s per call.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        known_task_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Task UUIDs you already know about; only unknown ones wake you.',
+        },
+        timeout_sec: { type: 'number', maximum: 45 },
+      },
+    },
+  },
+  {
     name: 'undo',
     description: 'Undo a previous agent event by event_id.',
     inputSchema: {
@@ -224,6 +246,12 @@ async function dispatchTool(
       });
     case 'get_task_context':
       return getTaskContext({ ...base, task_id: args.task_id as string });
+    case 'wait_for_tasks':
+      return waitForTasks({
+        ...base,
+        known_task_ids: args.known_task_ids as string[] | undefined,
+        timeout_sec: args.timeout_sec as number | undefined,
+      });
     case 'undo':
       return undo({ ...base, event_id: args.event_id as string });
     default:
