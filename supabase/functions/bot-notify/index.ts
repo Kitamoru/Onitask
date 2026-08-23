@@ -10,6 +10,23 @@
 // - Добавлена поддержка личных уведомлений (receiver_user_id):
 //   alert_type='task_assignment' — исполнителю задачи
 //   alert_type='member_added'    — новому участнику workspace
+// v0.7.2:
+// - FIX: платформенный SUPABASE_SERVICE_ROLE_KEY не совпадает с копией в vault
+//   (ключ ротировался) → cron получал 401. Auth теперь проверяется против
+//   выделенного секрета vault 'bot_notify_cron_secret' (timing-safe, INV-06).
+// v0.7.3:
+// - FIX: PostgREST не экспонирует схему vault → запрос vault.decrypted_secrets
+//   из Edge Function падал → снова 401. Секрет читается через SECURITY DEFINER
+//   RPC public.get_bot_notify_cron_secret() (миграция 047).
+// v0.7.4:
+// - FIX: Deno Edge Runtime не имеет глобального Buffer → ReferenceError в
+//   timingSafeCompare (500 на каждом вызове). timingSafeCompare переписан на
+//   pure-Deno: TextEncoder + XOR, constant-time сохранён (INV-06).
+// v0.7.5:
+// - NEW: alert_type='task_done' (миграция 048, триггер trg_task_done_notify).
+//   При переходе задачи в 'done' постановщику (tasks.created_by) уходит
+//   личный DM «Задача выполнена» с reason из последнего move_task события
+//   в agent_events. Broadcast в чаты workspace НЕ отправляется.
 
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -20,10 +37,47 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const BOT_USERNAME = Deno.env.get('TELEGRAM_BOT_USERNAME') ?? 'onitaskbot';
 const MINI_APP_SHORT_NAME = 'onitask';
 
-serve(async (req) => {
-  // Verify authorization header
+/**
+ * Timing-safe string comparison (INV-06).
+ * Pure-Deno implementation (TextEncoder + XOR): Deno Edge Runtime has no
+ * global Buffer and node:crypto may be unavailable in this runtime.
+ */
+function timingSafeCompare(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const bufA = enc.encode(a);
+  const bufB = enc.encode(b);
+  if (bufA.length !== bufB.length) {
+    // Compare against itself to keep constant time, then fail
+    let dummy = 0;
+    for (let i = 0; i < bufA.length; i++) dummy |= bufA[i] ^ bufA[i];
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) diff |= bufA[i] ^ bufB[i];
+  return diff === 0;
+}
+
+/**
+ * Verify Authorization header against vault secret 'bot_notify_cron_secret'.
+ * The function itself always has a valid service-role DB client, so it can
+ * resolve the expected secret at request time — no dependency on the
+ * platform-managed service key value.
+ */
+async function isAuthorized(req: Request): Promise<boolean> {
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader || authHeader !== `Bearer ${Deno.env.get('SERVICE_ROLE_KEY')}`) {
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  const provided = authHeader.slice('Bearer '.length);
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data } = await supabase.rpc('get_bot_notify_cron_secret');
+
+  if (!data) return false;
+  return timingSafeCompare(provided, data as string);
+}
+
+serve(async (req) => {
+  // Verify authorization header against vault cron secret
+  if (!(await isAuthorized(req))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
@@ -86,8 +140,10 @@ async function processJob(job: {
   try {
     const alertType = (job.payload.alert_type as string) || 'unknown';
 
-    // Personal notifications (task_assignment, member_added) — send to specific user
-    if (alertType === 'task_assignment' || alertType === 'member_added') {
+    // Task done — личный DM только постановщику задачи
+    if (alertType === 'task_done') {
+      await processTaskDoneNotification(job);
+    } else if (alertType === 'task_assignment' || alertType === 'member_added') {
       await processPersonalNotification(job, alertType);
     } else {
       // Broadcast notifications — send to all active workspace chats
@@ -171,6 +227,83 @@ async function processPersonalNotification(
 
   // Send direct message to user's personal chat with bot
   await sendTelegramMessage(profile.telegram_id, html);
+}
+
+/**
+ * Process task_done notification: DM только постановщику (created_by).
+ * Reason берётся из последнего move_task события в agent_events (если есть).
+ */
+async function processTaskDoneNotification(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const taskId = job.payload.task_id as string | undefined;
+
+  // Резолвим постановщика: из payload, fallback — tasks.created_by
+  let createdBy = job.payload.created_by as string | undefined;
+  if (!createdBy && taskId) {
+    const { data: task } = await supabase
+      .from('tasks')
+      .select('created_by')
+      .eq('id', taskId)
+      .maybeSingle();
+    createdBy = (task?.created_by as string | undefined) ?? undefined;
+  }
+  if (!createdBy) {
+    console.error(`[bot-notify] Job ${job.id}: no created_by for task_done`);
+    return;
+  }
+
+  // Reason из последнего move_task события агента (опционально)
+  let reason = '';
+  if (taskId) {
+    const { data: events } = await supabase
+      .from('agent_events')
+      .select('metadata')
+      .eq('workspace_id', job.workspace_id)
+      .eq('task_id', taskId)
+      .eq('tool', 'move_task')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    reason = ((events?.[0]?.metadata as Record<string, unknown>)?.reason as string) || '';
+  }
+
+  const html = buildTaskDoneHTML(job.payload, reason);
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('telegram_id')
+    .eq('id', createdBy)
+    .maybeSingle();
+
+  if (!profile?.telegram_id) {
+    // У постановщика нет Telegram — уведомление невозможно
+    return;
+  }
+
+  await sendTelegramMessage(profile.telegram_id, html);
+}
+
+/**
+ * Build HTML for task_done notification.
+ */
+function buildTaskDoneHTML(payload: Record<string, unknown>, reason: string): string {
+  const fullId = (payload.full_id as string) || '';
+  const title = (payload.title as string) || '';
+
+  const lines: string[] = [];
+  lines.push('✅ <b>Задача выполнена</b>');
+  if (fullId) lines.push(`<b>${escapeHtml(fullId)}</b>`);
+  if (title) lines.push(`«${escapeHtml(title)}»`);
+  if (reason) lines.push('');
+  if (reason) lines.push(`Что сделано: ${escapeHtml(reason)}`);
+  lines.push('');
+  lines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
+
+  return lines.join('\n');
 }
 
 /**
