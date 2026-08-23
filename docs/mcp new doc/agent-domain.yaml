@@ -1,0 +1,1017 @@
+openapi: 3.1.0
+info:
+  title: Onitask Agent Domain API
+  version: 0.8.0
+  description: |
+    REST surface for AI agents — mcp_contract v0.8.0.
+    Same domain services as native MCP POST /mcp.
+    workspace_id is optional (resolved from API key via mcp_agent_keys).
+    No legacy /api/mcp/* alias.
+  contact:
+    name: Onitask
+servers:
+  - url: https://onitask.app
+    description: Production
+  - url: http://localhost:3000
+    description: Local
+
+tags:
+  - name: Agent
+    description: Agent domain operations
+  - name: MCP Transport
+    description: MCP 2026-07-28 Streamable HTTP (separate surface)
+
+paths:
+  /api/agent/create_task:
+    post:
+      operationId: createTask
+      tags: [Agent]
+      summary: Create a task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '200':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTaskResponse'
+        '400':
+          $ref: '#/components/responses/InvalidParams'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/BlockerNotFound'
+        '409':
+          $ref: '#/components/responses/CircularDependency'
+        '422':
+          $ref: '#/components/responses/QuotaExceeded'
+        '429':
+          $ref: '#/components/responses/TaskCreationRateLimit'
+
+  /api/agent/move_task:
+    post:
+      operationId: moveTask
+      tags: [Agent]
+      summary: Move task between columns
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveTaskRequest'
+      responses:
+        '200':
+          description: Task moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoveTaskResponse'
+        '400':
+          $ref: '#/components/responses/InvalidParams'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
+        '409':
+          description: version_conflict or already_claimed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/agent/handoff_task:
+    post:
+      operationId: handoffTask
+      tags: [Agent]
+      summary: Planned handoff to another agent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandoffTaskRequest'
+      responses:
+        '200':
+          description: Handoff recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTaskResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/escalate_task:
+    post:
+      operationId: escalateTask
+      tags: [Agent]
+      summary: Escalate task to human
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EscalateTaskRequest'
+      responses:
+        '200':
+          description: Escalated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, task_id]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  task_id:
+                    type: string
+                    format: uuid
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/get_tasks_by_column:
+    post:
+      operationId: getTasksByColumn
+      tags: [Agent]
+      summary: List tasks by column
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTasksByColumnRequest'
+      responses:
+        '200':
+          description: Task list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTasksByColumnResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/get_workspace_settings:
+    post:
+      operationId: getWorkspaceSettings
+      tags: [Agent]
+      summary: Workspace settings and agent active tasks
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceScopedRequest'
+      responses:
+        '200':
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWorkspaceSettingsResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/get_task_context:
+    post:
+      operationId: getTaskContext
+      tags: [Agent]
+      summary: Full task context for resume/handoff
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTaskContextRequest'
+      responses:
+        '200':
+          description: Context pack
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskContextResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/send_message_to_chat:
+    post:
+      operationId: sendMessageToChat
+      tags: [Agent]
+      summary: Send message to workspace Telegram chat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageToChatRequest'
+      responses:
+        '200':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message_id]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  message_id:
+                    type: integer
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/agent/undo/{event_id}:
+    post:
+      operationId: undo
+      tags: [Agent]
+      summary: Undo own agent event within 5-minute window
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceScopedRequest'
+      responses:
+        '200':
+          description: Undo result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, restored]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  restored:
+                    type: boolean
+        default:
+          $ref: '#/components/responses/Error'
+
+  # ─── MCP Transport (separate surface) ─────────────────────────────
+  /mcp:
+    post:
+      operationId: mcpStreamableHttp
+      tags: [MCP Transport]
+      summary: MCP 2026-07-28 Streamable HTTP endpoint
+      description: |
+        Stateless MCP transport. Required headers:
+        - MCP-Protocol-Version
+        - Mcp-Method
+        - Mcp-Name (for tools/call)
+        Body is JSON-RPC 2.0.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: MCP-Protocol-Version
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "2026-07-28"
+        - name: Mcp-Method
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [server/discover, tools/list, tools/call]
+        - name: Mcp-Name
+          in: header
+          required: false
+          schema:
+            type: string
+            description: Tool name when Mcp-Method is tools/call
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonRpcRequest'
+      responses:
+        '200':
+          description: JSON-RPC response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+
+  schemas:
+    WorkspaceScopedRequest:
+      type: object
+      required: [agent_name]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+          minLength: 1
+
+    CreateTaskRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [title]
+          properties:
+            title:
+              type: string
+              minLength: 1
+              maxLength: 500
+            description:
+              type: string
+              maxLength: 20000
+            column:
+              type: string
+              enum: [backlog, in_progress, review]
+            assignee:
+              type: string
+            tags:
+              type: array
+              items:
+                type: string
+            deadline:
+              type: string
+              format: date-time
+            priority:
+              type: string
+              enum: [low, medium, high, critical]
+            complexity:
+              type: integer
+              enum: [1, 2, 3]
+            blocked_by:
+              type: string
+              format: uuid
+              description: UUID of blocker task; creates blocks edge
+
+    CreateTaskResponse:
+      type: object
+      required: [success, task]
+      properties:
+        success:
+          type: boolean
+          const: true
+        task:
+          type: object
+          required:
+            - task_id
+            - task_number
+            - full_id
+            - title
+            - column
+            - created_at
+            - version
+            - relation_created
+          properties:
+            task_id:
+              type: string
+              format: uuid
+            task_number:
+              type: integer
+            full_id:
+              type: string
+              example: ALPHA-48
+            title:
+              type: string
+            column:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            version:
+              type: integer
+              minimum: 1
+            relation_created:
+              type: boolean
+
+    MoveTaskRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [task_id, target_column, version]
+          properties:
+            task_id:
+              type: string
+              format: uuid
+            target_column:
+              type: string
+              enum: [backlog, in_progress, review, done]
+            reason:
+              type: string
+              maxLength: 2000
+            claim:
+              type: boolean
+              default: false
+            version:
+              type: integer
+              minimum: 1
+
+    MoveTaskResponse:
+      type: object
+      required: [success, task_id, new_column, claimed, version, moved_at, unblocked_ids]
+      properties:
+        success:
+          type: boolean
+          const: true
+        task_id:
+          type: string
+          format: uuid
+        new_column:
+          type: string
+        claimed:
+          type: boolean
+        version:
+          type: integer
+        moved_at:
+          type: string
+          format: date-time
+        unblocked_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    HandoffTaskRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [task_id, target_agent, handoff_notes]
+          properties:
+            task_id:
+              type: string
+              format: uuid
+            target_agent:
+              type: string
+            handoff_notes:
+              type: string
+              minLength: 1
+              maxLength: 1000
+            move_to_column:
+              type: string
+              enum: [backlog, in_progress, review, done]
+            version:
+              type: integer
+              minimum: 1
+            # v1.0 optional enrichment
+            source_agent:
+              $ref: '#/components/schemas/AgentIdentity'
+            target_agent_ref:
+              $ref: '#/components/schemas/AgentIdentity'
+            reason:
+              type: string
+              enum:
+                - planned_handoff
+                - capability_mismatch
+                - load_balance
+                - specialist_required
+            context:
+              type: object
+              properties:
+                summary:
+                  type: string
+                artifacts:
+                  type: array
+                  items:
+                    type: string
+                constraints:
+                  type: array
+                  items:
+                    type: string
+                relevant_docs:
+                  type: array
+                  items:
+                    type: string
+            expected_output:
+              type: object
+              properties:
+                description:
+                  type: string
+                acceptance_criteria:
+                  type: array
+                  items:
+                    type: string
+            task_state:
+              type: object
+              properties:
+                column:
+                  type: string
+                version:
+                  type: integer
+                dependencies:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+
+    HandoffTaskResponse:
+      type: object
+      required: [success, task_id, handed_off_to, version]
+      properties:
+        success:
+          type: boolean
+          const: true
+        task_id:
+          type: string
+          format: uuid
+        handed_off_to:
+          type: string
+        new_column:
+          type: string
+          nullable: true
+        version:
+          type: integer
+
+    EscalateTaskRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [task_id, reason]
+          properties:
+            task_id:
+              type: string
+              format: uuid
+            reason:
+              type: string
+              enum:
+                - insufficient_context
+                - conflicting_requirements
+                - blocked_by
+                - out_of_scope
+            suggested_action:
+              type: string
+              maxLength: 2000
+
+    GetTasksByColumnRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [column]
+          properties:
+            column:
+              type: string
+              enum: [backlog, in_progress, review, done]
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 50
+              default: 20
+            assigned_to_me:
+              type: boolean
+              default: false
+            sort_by_blocking_value:
+              type: boolean
+              default: false
+
+    TaskPreview:
+      type: object
+      required: [id, title, column, version, is_inbox, is_blocked, full_id, task_number]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        column:
+          type: string
+        assigned_to:
+          type: string
+          nullable: true
+        reviewer_id:
+          type: string
+          nullable: true
+        version:
+          type: integer
+        is_inbox:
+          type: boolean
+        is_blocked:
+          type: boolean
+        full_id:
+          type: string
+        task_number:
+          type: integer
+        blocking_value:
+          type: integer
+          description: Present when sort_by_blocking_value=true
+          minimum: 0
+
+    GetTasksByColumnResponse:
+      type: object
+      required: [success, tasks]
+      properties:
+        success:
+          type: boolean
+          const: true
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskPreview'
+
+    GetWorkspaceSettingsResponse:
+      type: object
+      required: [success, settings]
+      properties:
+        success:
+          type: boolean
+          const: true
+        settings:
+          type: object
+          properties:
+            enable_cognitive_budget:
+              type: boolean
+            story_points_config:
+              type: object
+              additionalProperties: true
+            velocity_window_days:
+              type: integer
+            flow_config:
+              type: object
+              additionalProperties: true
+            realtime_subscription_level:
+              type: string
+              enum: [own_tasks, all]
+            workspace_context:
+              type: string
+              nullable: true
+            workspace_context_cache:
+              type: string
+              nullable: true
+            context_stale:
+              type: boolean
+            doc_kb_config:
+              type: object
+              nullable: true
+              additionalProperties: true
+            agent_active_tasks:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/TaskPreview'
+
+    GetTaskContextRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [task_id]
+          properties:
+            task_id:
+              type: string
+              format: uuid
+
+    GetTaskContextResponse:
+      type: object
+      required: [success, task]
+      properties:
+        success:
+          type: boolean
+          const: true
+        task:
+          $ref: '#/components/schemas/Task'
+        column_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnHistory'
+        agent_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentEvent'
+        memory_summary:
+          type: string
+          nullable: true
+        workspace_context:
+          type: string
+          nullable: true
+        relevant_docs:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/RelevantDocument'
+        subgraph:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/TaskRelation'
+
+    Task:
+      type: object
+      required:
+        - id
+        - full_id
+        - task_number
+        - title
+        - column
+        - is_blocked
+        - is_inbox
+        - needs_human
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_id:
+          type: string
+        task_number:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        column:
+          type: string
+        priority:
+          type: string
+          nullable: true
+        assigned_to:
+          type: string
+          nullable: true
+        reviewer_id:
+          type: string
+          nullable: true
+        is_blocked:
+          type: boolean
+        is_inbox:
+          type: boolean
+        needs_human:
+          type: boolean
+        escalation_reason:
+          type: string
+          nullable: true
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        moved_to_column_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ColumnHistory:
+      type: object
+      properties:
+        from_column:
+          type: string
+          nullable: true
+        to_column:
+          type: string
+        moved_by:
+          type: string
+          nullable: true
+        moved_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    AgentEvent:
+      type: object
+      properties:
+        tool:
+          type: string
+        agent_name:
+          type: string
+        summary:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    RelevantDocument:
+      type: object
+      properties:
+        filename:
+          type: string
+        section:
+          type: string
+        content:
+          type: string
+        similarity:
+          type: number
+
+    TaskRelation:
+      type: object
+      required: [from_task_id, to_task_id, relation_type, weight, depth]
+      properties:
+        from_task_id:
+          type: string
+          format: uuid
+        to_task_id:
+          type: string
+          format: uuid
+        relation_type:
+          type: string
+          enum: [blocks, spawned_from, mentions]
+        weight:
+          type: number
+        depth:
+          type: integer
+          enum: [1, 2]
+
+    SendMessageToChatRequest:
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceScopedRequest'
+        - type: object
+          required: [chat_id, text]
+          properties:
+            chat_id:
+              type: integer
+            text:
+              type: string
+              minLength: 1
+              maxLength: 4096
+            parse_mode:
+              type: string
+              enum: [HTML, MarkdownV2]
+
+    AgentIdentity:
+      type: object
+      required: [agent_id, agent_name]
+      properties:
+        agent_id:
+          type: string
+        agent_name:
+          type: string
+        agent_type:
+          type: string
+        runtime:
+          type: string
+        runtime_version:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, type, message]
+          properties:
+            code:
+              type: integer
+            type:
+              type: string
+            message:
+              type: string
+            retryable:
+              type: boolean
+            retry_after_ms:
+              type: integer
+            details:
+              type: object
+              additionalProperties: true
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, id, method]
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        _meta:
+          type: object
+          additionalProperties: true
+
+    JsonRpcResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: "null"
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
+            data:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Error:
+      description: Domain error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InvalidParams:
+      description: Invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Workspace or tool not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TaskNotFound:
+      description: Task not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    BlockerNotFound:
+      description: blocked_by task not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    CircularDependency:
+      description: Dependency cycle detected
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    QuotaExceeded:
+      description: AI quota exhausted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TaskCreationRateLimit:
+      description: create_task rate limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

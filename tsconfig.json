@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@core/*": [
+        "./lib/*"
       ]
     }
   },
@@ -39,6 +42,7 @@
   "exclude": [
     "node_modules",
     "docs/onitask-boards",
-    "docs/onitask-desk-create"
+    "docs/onitask-desk-create",
+    "docs/mcp new doc"
   ]
 }

@@ -4,20 +4,11 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Copy, KeyRound, LinkIcon } from 'lucide-react';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { AddMcpKeySheet } from '@/components/settings/AddMcpKeySheet';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface McpKeyInfo {
-  keyHash: string;
-  name: string;
-  created_at: string;
-  expires_at: string;
-  prefix: string;
-  workspace_id: string;
-  workspace_name: string;
-}
+import {
+  McpKeyDetailSheet,
+  cachePlaintextKey,
+  type McpKeyInfo,
+} from '@/components/settings/McpKeyDetailSheet';
 
 interface WorkspaceOption {
   id: string;
@@ -89,7 +80,13 @@ async function deleteMcpKey(
 // Components
 // ============================================================================
 
-function McpKeyItem({ keyInfo }: { keyInfo: McpKeyInfo }) {
+function McpKeyItem({
+  keyInfo,
+  onSelect,
+}: {
+  keyInfo: McpKeyInfo;
+  onSelect: (keyInfo: McpKeyInfo) => void;
+}) {
   const formatDate = (dateStr: string) => {
     try {
       return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -129,10 +126,7 @@ function McpKeyItem({ keyInfo }: { keyInfo: McpKeyInfo }) {
         role="button"
         tabIndex={0}
         aria-label={`Ключ ${keyInfo.name || keyInfo.prefix}`}
-        onClick={() => {
-          // здесь можно открыть меню удаления, если нужно
-          // пока ничего не делаем
-        }}
+        onClick={() => onSelect(keyInfo)}
       >
         <div className="flex flex-col gap-1">
           <span
@@ -216,11 +210,10 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 function ConnectionTemplate() {
-  const template = `curl -X POST https://your-workspace.vercel.app/api/mcp/create_task \\
+  const template = `curl -X POST https://your-workspace.vercel.app/api/agent/create_task \\
   -H "Authorization: Bearer sk_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "workspace_id": "YOUR_WORKSPACE_ID",
     "agent_name": "your-agent-name",
     "title": "Task title",
     "description": "Task description"
@@ -270,6 +263,7 @@ export default function McpSettingsPage() {
   const [freshKey, setFreshKey] = useState<{ key: string; prefix: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<McpKeyInfo | null>(null);
 
   // Load keys and workspaces once initData is available
   useEffect(() => {
@@ -300,6 +294,9 @@ export default function McpSettingsPage() {
       const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
+        if (result.keyId) {
+          cachePlaintextKey(result.keyId, result.plaintextKey);
+        }
         const updated = await fetchMcpKeys(tgInitData);
         setKeys(updated);
       } else {
@@ -478,7 +475,11 @@ export default function McpSettingsPage() {
             ) : (
               <div className="flex flex-col gap-2 w-full">
                 {keys.map((keyInfo) => (
-                  <McpKeyItem key={keyInfo.keyHash} keyInfo={keyInfo} />
+                  <McpKeyItem
+                    key={keyInfo.keyHash}
+                    keyInfo={keyInfo}
+                    onSelect={setSelectedKey}
+                  />
                 ))}
               </div>
             )}
@@ -516,6 +517,14 @@ export default function McpSettingsPage() {
         onClose={() => setShowAddSheet(false)}
         onCreateKey={handleCreateKey}
         workspaces={workspaces}
+      />
+
+      {/* Key detail sheet */}
+      <McpKeyDetailSheet
+        open={selectedKey !== null}
+        onClose={() => setSelectedKey(null)}
+        keyInfo={selectedKey}
+        onDelete={handleDeleteKey}
       />
     </main>
   );
