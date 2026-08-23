@@ -57,7 +57,8 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
 }
 
 /**
- * DELETE /api/mcp-keys/[keyHash] — Remove an MCP key by its hash.
+ * DELETE /api/mcp-keys/[keyHash] — Soft revoke an MCP key by its hash.
+ * Row is kept for agent_events history (contract v0.8.0 §2.3).
  */
 export async function DELETE(
   request: NextRequest,
@@ -79,57 +80,39 @@ export async function DELETE(
 
     const { workspaceIds } = authResult;
 
-    const { keyHash } = await params;
-
-    const supabase = createServerClient();
-
-    // Fetch settings from all user's workspaces
-    const { data: settingsList, error: fetchError } = await supabase
-      .from('workspace_settings')
-      .select('workspace_id, mcp_api_keys')
-      .in('workspace_id', workspaceIds);
-
-    if (fetchError) {
-      console.error('DELETE /api/mcp-keys DB fetch error:', fetchError);
-      return NextResponse.json(
-        { error: 'internal_error', message: 'Database error' },
-        { status: 500 },
-      );
-    }
-
-    // Find the key in any of the user's workspaces
-    let foundWorkspaceId: string | null = null;
-    const updatedSettingsList: Array<{ workspace_id: string; mcp_api_keys: Record<string, unknown> }> = [];
-
-    for (const settings of (settingsList ?? [])) {
-      const mcpApiKeys = ((settings as any)?.mcp_api_keys as Record<string, unknown>) ?? {};
-      if (mcpApiKeys[keyHash]) {
-        foundWorkspaceId = settings.workspace_id;
-        // Delete the key
-        const { [keyHash]: _, ...rest } = mcpApiKeys;
-        updatedSettingsList.push({ workspace_id: settings.workspace_id, mcp_api_keys: rest as Record<string, unknown> });
-      } else {
-        updatedSettingsList.push({ workspace_id: settings.workspace_id, mcp_api_keys: mcpApiKeys });
-      }
-    }
-
-    if (!foundWorkspaceId) {
+    if (workspaceIds.length === 0) {
       return NextResponse.json(
         { error: 'not_found', message: 'Key not found' },
         { status: 404 },
       );
     }
 
-    // Update each workspace's settings
-    for (const updated of updatedSettingsList) {
-      const { error: updateError } = await supabase
-        .from('workspace_settings')
-        .update({ mcp_api_keys: updated.mcp_api_keys as any })
-        .eq('workspace_id', updated.workspace_id);
+    const { keyHash } = await params;
 
-      if (updateError) {
-        console.error('DELETE /api/mcp-keys DB update error:', updateError);
-      }
+    const supabase = createServerClient();
+
+    // Soft revoke: only keys belonging to the user's workspaces
+    const { data, error } = await supabase
+      .from('mcp_agent_keys')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('key_hash', keyHash)
+      .in('workspace_id', workspaceIds)
+      .is('revoked_at', null)
+      .select('id');
+
+    if (error) {
+      console.error('DELETE /api/mcp-keys DB revoke error:', error);
+      return NextResponse.json(
+        { error: 'internal_error', message: 'Database error' },
+        { status: 500 },
+      );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json(
+        { error: 'not_found', message: 'Key not found' },
+        { status: 404 },
+      );
     }
 
     return NextResponse.json({ success: true });

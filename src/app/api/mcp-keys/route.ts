@@ -6,15 +6,6 @@ import { validateTelegramInitData } from '../../../../src/lib/telegram/validate'
 // Types
 // ============================================================================
 
-export interface McpKeyConfig {
-  allowed_tools: string[] | 'all';
-  can_send_messages: boolean;
-  max_tasks_per_minute?: number;
-  name?: string;
-  created_at?: string;
-  expires_at?: string;
-}
-
 export interface McpKeyInfo {
   keyHash: string;
   name: string;
@@ -23,6 +14,21 @@ export interface McpKeyInfo {
   prefix: string;
   workspace_id: string;
   workspace_name: string;
+}
+
+interface WorkspaceOption {
+  id: string;
+  name: string;
+}
+
+interface CreateKeyResponse {
+  success: boolean;
+  keyId?: string;
+  plaintextKey?: string;
+  prefix?: string;
+  name?: string;
+  workspace_id?: string;
+  error?: string;
 }
 
 // ============================================================================
@@ -44,16 +50,6 @@ async function hashApiKey(key: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function getKeyPrefix(hex: string): string {
-  return hex.slice(0, 8);
-}
-
-function getDefaultExpiry(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 90);
-  return date.toISOString();
 }
 
 /**
@@ -111,7 +107,7 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
 }
 
 // ============================================================================
-// GET — List MCP keys from ALL user's workspaces
+// GET — List MCP keys from ALL user's workspaces (table: mcp_agent_keys)
 // ============================================================================
 
 export async function GET(request: NextRequest) {
@@ -137,14 +133,17 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Fetch all workspace settings in one query
-    const { data: settingsList, error: settingsError } = await supabase
-      .from('workspace_settings')
-      .select('workspace_id, mcp_api_keys')
-      .in('workspace_id', workspaceIds);
+    // Fetch active keys for user's workspaces
+    const { data: keysData, error: keysError } = await supabase
+      .from('mcp_agent_keys')
+      .select(
+        'key_hash, label, created_at, expires_at, workspace_id'
+      )
+      .in('workspace_id', workspaceIds)
+      .is('revoked_at', null);
 
-    if (settingsError) {
-      console.error('GET /api/mcp-keys DB error:', settingsError);
+    if (keysError) {
+      console.error('GET /api/mcp-keys DB error:', keysError);
       return NextResponse.json(
         { error: 'internal_error', message: 'Database error' },
         { status: 500 },
@@ -166,23 +165,17 @@ export async function GET(request: NextRequest) {
       wsMap[ws.id] = ws.name;
     }
 
-    // Collect keys from all workspaces
-    const keys: McpKeyInfo[] = [];
-    for (const settings of (settingsList ?? [])) {
-      const mcpApiKeys = ((settings as any)?.mcp_api_keys as Record<string, McpKeyConfig>) ?? {};
-      const workspaceName = wsMap[settings.workspace_id] ?? '';
-      for (const [keyHash, config] of Object.entries(mcpApiKeys)) {
-        keys.push({
-          keyHash,
-          name: config.name || '',
-          created_at: config.created_at || new Date().toISOString(),
-          expires_at: config.expires_at || getDefaultExpiry(),
-          prefix: getKeyPrefix(keyHash),
-          workspace_id: settings.workspace_id,
-          workspace_name: workspaceName,
-        });
-      }
-    }
+    const keys: McpKeyInfo[] = (keysData ?? []).map((k) => ({
+      keyHash: k.key_hash,
+      name: k.label,
+      created_at: k.created_at ?? new Date().toISOString(),
+      expires_at:
+        k.expires_at ??
+        new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      prefix: k.key_hash.slice(0, 8),
+      workspace_id: k.workspace_id,
+      workspace_name: wsMap[k.workspace_id] ?? '',
+    }));
 
     return NextResponse.json({ keys });
   } catch (err) {
@@ -195,7 +188,7 @@ export async function GET(request: NextRequest) {
 }
 
 // ============================================================================
-// POST — Create new MCP key
+// POST — Create new MCP key (insert into mcp_agent_keys)
 // ============================================================================
 
 export async function POST(request: NextRequest) {
@@ -220,10 +213,10 @@ export async function POST(request: NextRequest) {
     const workspaceId = (body.workspace_id as string) ?? null;
     const expiresInDays = (body.expires_in_days as number) ?? 90;
 
-    // Validate name length
-    if (name.length > 100) {
+    // Validate name length (matches label CHECK constraint)
+    if (name.length < 1 || name.length > 100) {
       return NextResponse.json(
-        { error: 'invalid_params', message: 'Key name too long (max 100 chars)' },
+        { error: 'invalid_params', message: 'Key name must be 1-100 chars' },
         { status: 400 },
       );
     }
@@ -240,53 +233,39 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Fetch current settings
-    const { data: settingsData, error: fetchError } = await supabase
-      .from('workspace_settings')
-      .select('mcp_api_keys')
+    // Resolve creator worker (created_by references workers.id)
+    const { data: worker } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('source_id', profileId)
       .eq('workspace_id', targetWorkspaceId)
+      .eq('is_active', true)
       .maybeSingle();
-
-    if (fetchError) {
-      console.error('POST /api/mcp-keys DB fetch error:', fetchError);
-      return NextResponse.json(
-        { error: 'internal_error', message: 'Database error' },
-        { status: 500 },
-      );
-    }
-
-    const existingKeys = ((settingsData as any)?.mcp_api_keys as Record<string, McpKeyConfig>) ?? {};
 
     // Generate new key
     const plaintextKey = generateApiKey();
     const keyHash = await hashApiKey(plaintextKey);
-    const prefix = getKeyPrefix(keyHash);
+    const prefix = keyHash.slice(0, 8);
 
     // Calculate expiry date
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + expiresInDays);
 
-    // Store key hash with metadata
-    const newKeys: Record<string, McpKeyConfig> = {
-      ...existingKeys,
-      [keyHash]: {
+    const { error: insertError } = await supabase
+      .from('mcp_agent_keys')
+      .insert({
+        workspace_id: targetWorkspaceId,
+        key_hash: keyHash,
+        label: name,
         allowed_tools: 'all',
         can_send_messages: true,
         max_tasks_per_minute: 50,
-        name,
-        created_at: new Date().toISOString(),
+        created_by: (worker?.id as string) ?? null,
         expires_at: expiryDate.toISOString(),
-      },
-    };
+      });
 
-    // Update workspace_settings
-    const { error: updateError } = await supabase
-      .from('workspace_settings')
-      .update({ mcp_api_keys: newKeys as any })
-      .eq('workspace_id', targetWorkspaceId);
-
-    if (updateError) {
-      console.error('POST /api/mcp-keys DB update error:', updateError);
+    if (insertError) {
+      console.error('POST /api/mcp-keys DB insert error:', insertError);
       return NextResponse.json(
         { error: 'internal_error', message: 'Failed to save key' },
         { status: 500 },

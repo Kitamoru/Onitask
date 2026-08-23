@@ -597,6 +597,69 @@ export type Database = {
           },
         ]
       }
+      mcp_agent_keys: {
+        Row: {
+          agent_type: string | null
+          allowed_tools: Json
+          can_send_messages: boolean
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          key_hash: string
+          label: string
+          last_used_at: string | null
+          max_tasks_per_minute: number
+          revoked_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          agent_type?: string | null
+          allowed_tools?: Json
+          can_send_messages?: boolean
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          label: string
+          last_used_at?: string | null
+          max_tasks_per_minute?: number
+          revoked_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          agent_type?: string | null
+          allowed_tools?: Json
+          can_send_messages?: boolean
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          label?: string
+          last_used_at?: string | null
+          max_tasks_per_minute?: number
+          revoked_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_agent_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mcp_agent_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
