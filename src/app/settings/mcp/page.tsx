@@ -210,28 +210,81 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 function ConnectionTemplate() {
-  const template = `curl -X POST https://your-workspace.vercel.app/api/agent/create_task \\
+  const [tab, setTab] = useState<'rest' | 'mcp'>('rest');
+
+  // workspace_id резолвится из ключа на сервере — в URL он не нужен
+  const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/create_task \\
   -H "Authorization: Bearer sk_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "agent_name": "your-agent-name",
+    "agent_name": "my-agent",
     "title": "Task title",
     "description": "Task description"
-  }'`;
+  }'
+# agent_name задаётся один раз в конфиге агента и шлётся автоматически`;
+
+  const mcpTemplate = JSON.stringify(
+    {
+      mcpServers: {
+        onitask: {
+          url: 'https://onitask.vercel.app/api/mcp',
+          headers: {
+            Authorization: 'Bearer sk_YOUR_API_KEY',
+            'X-Agent-Name': 'my-agent',
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const template = tab === 'rest' ? restTemplate : mcpTemplate;
 
   return (
     <div className="flex flex-col gap-2 w-full">
-      <div className="flex items-center gap-2 w-full px-3 py-2">
-        <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
-        <span
-          className="text-base font-medium leading-5"
-          style={{
-            color: 'var(--color-text-primary)',
-            fontFamily: 'var(--font-family-display)',
-          }}
+      <div className="flex items-center justify-between w-full px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+          <span
+            className="text-base font-medium leading-5"
+            style={{
+              color: 'var(--color-text-primary)',
+              fontFamily: 'var(--font-family-display)',
+            }}
+          >
+            Шаблон подключения
+          </span>
+        </div>
+
+        {/* Переключатель REST / MCP */}
+        <div
+          className="flex items-center rounded-sm p-0.5"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
+          role="tablist"
+          aria-label="Тип шаблона подключения"
         >
-          Шаблон подключения
-        </span>
+          {(['rest', 'mcp'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className="px-3 py-1 text-xs font-semibold transition-colors"
+              style={{
+                borderRadius: 4,
+                backgroundColor: tab === t ? 'var(--color-accent-amber)' : 'transparent',
+                color: tab === t ? 'var(--color-text-white)' : 'var(--color-text-secondary)',
+                fontFamily: 'var(--font-family-display)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {t === 'rest' ? 'REST' : 'MCP'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div
@@ -326,18 +379,26 @@ export default function McpSettingsPage() {
   }, [tgInitData]);
 
   const handleCopyKey = useCallback(async (text: string) => {
+    // navigator.clipboard недоступен в Telegram WebView (небезопасный контекст)
     try {
       await navigator.clipboard.writeText(text);
+      return;
     } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
+      /* fallthrough */
     }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand('copy');
+    } catch {
+      /* ignore */
+    }
+    document.body.removeChild(textarea);
   }, []);
 
   const handleCopyFreshKey = useCallback(async () => {
@@ -402,16 +463,17 @@ export default function McpSettingsPage() {
                 {freshKey.key}
               </span>
               <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                Скопируйте ключ — он покажется только один раз
+                Скопировать ключ повторно можно внутри карточки ключа
               </span>
             </div>
             <button
+              type="button"
               onClick={handleCopyFreshKey}
-              className="flex items-center justify-center w-8 h-8 rounded-sm"
-              style={{ color: '#22C55E' }}
-              aria-label="Копировать"
+              className="flex items-center justify-center w-10 h-10 shrink-0 rounded-sm transition-opacity hover:opacity-80 active:opacity-60"
+              style={{ color: '#22C55E', background: 'transparent', border: 'none' }}
+              aria-label="Копировать ключ"
             >
-              <Copy className="w-4 h-4" />
+              <Copy className="w-5 h-5" />
             </button>
           </div>
         )}
