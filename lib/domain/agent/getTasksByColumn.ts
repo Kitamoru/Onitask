@@ -27,10 +27,12 @@ export async function getTasksByColumn(
   }
   const limit = Math.min(params.limit ?? 20, 50);
 
+  // Note: tasks.full_id is not a physical column — it's derived from
+  // workspaces.task_prefix + task_number (see task_full_id()).
   let query = supabase
     .from('tasks')
     .select(
-      'id, title, column, assigned_to, reviewer_id, version, is_inbox, is_blocked, full_id, task_number'
+      'id, title, column, assigned_to, reviewer_id, version, is_inbox, is_blocked, task_number'
     )
     .eq('workspace_id', workspaceId)
     .eq('column', params.column)
@@ -56,6 +58,14 @@ export async function getTasksByColumn(
     throw internalError('Failed to fetch tasks.');
   }
 
+  // Resolve workspace prefix once to build full_id client-side
+  const { data: ws } = await supabase
+    .from('workspaces')
+    .select('task_prefix')
+    .eq('id', workspaceId)
+    .maybeSingle();
+  const prefix = (ws?.task_prefix as string | null) ?? 'TASK';
+
   const resultTasks: TaskPreview[] = (tasks ?? []).map((t) => ({
     id: t.id as string,
     title: t.title as string,
@@ -65,7 +75,7 @@ export async function getTasksByColumn(
     version: t.version as number,
     is_inbox: t.is_inbox as boolean,
     is_blocked: t.is_blocked as boolean,
-    full_id: (t.full_id as string) ?? '',
+    full_id: `${prefix}-${t.task_number ?? 0}`,
     task_number: (t.task_number as number) ?? 0,
   }));
 

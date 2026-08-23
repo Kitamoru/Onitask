@@ -208,11 +208,12 @@ export function TaskViewEdit({
   const assigneeWorker = findWorker(assignedTo);
   const reviewerWorker = findWorker(reviewerId);
 
+  // Humans and AI agents are both assignable (agents receive tasks via MCP)
   const availableForAssignee = workers.filter(
-    (w) => w.id !== reviewerId && w.type === 'human',
+    (w) => w.id !== reviewerId,
   );
   const availableForReviewer = workers.filter(
-    (w) => w.id !== assignedTo && w.type === 'human',
+    (w) => w.id !== assignedTo,
   );
 
   // Confirm вне BottomSheet: fixed внутри transform-шита цепляется к нему,

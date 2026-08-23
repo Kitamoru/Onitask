@@ -84,6 +84,15 @@ export function WorkerSelectSheet({
                   <span className="truncate text-[15px] font-medium text-text">
                     {w.displayName}
                   </span>
+                  {/* AI badge for agents */}
+                  {w.type === 'agent' && (
+                    <span
+                      className="shrink-0 rounded-full bg-bg-secondary px-2 py-0.5 text-[11px] font-semibold text-text-secondary"
+                      aria-label="AI-агент"
+                    >
+                      AI
+                    </span>
+                  )}
                 </div>
               </Button>
             ))}

@@ -175,6 +175,26 @@ function FlowBoardPageContent() {
       });
   }, [metrics, tasks]);
 
+  // All assignable workers (humans + AI agents) for task assignment sheets
+  const assignableWorkers = useMemo<WorkerCardData[]>(() => {
+    if (!metrics) return [];
+    return metrics.workers.map(w => {
+      const workerTasks = tasks.filter(t => t.assigned_to === w.id);
+      return {
+        id: w.id,
+        displayName: w.display_name,
+        cognitiveWeight: w.cognitive_load,
+        spPerDay: w.type === 'agent' ? 5.0 : 3.5,
+        trendUp: true,
+        activeDays: 5,
+        roleLabel: w.type === 'agent' ? 'AI-агент' : 'Участник команды',
+        overloaded: w.status === 'overloaded',
+        tasks: tasksToWorkerTaskList(workerTasks),
+        type: w.type,
+      } as WorkerCardData;
+    });
+  }, [metrics, tasks]);
+
   const handleColumnClick = useCallback((column: string, label: string, accentColor: string) => {
     setColumnSheet({ open: true, column, label, accentColor });
   }, []);
@@ -422,7 +442,7 @@ function FlowBoardPageContent() {
           open={!!selectedTask}
           onClose={() => setSelectedTask(null)}
           task={selectedTask}
-          workers={workers}
+          workers={assignableWorkers}
           mode="view"
           onSave={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
