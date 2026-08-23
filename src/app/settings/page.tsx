@@ -71,7 +71,7 @@ function SectionHeading({ title }: { title: string }) {
         style={{
           fontSize: '16px',
           lineHeight: '20px',
-          color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+          color: 'var(--tg-theme-section-header-text-color, var(--color-text-primary, #FAFAFA))',
         }}
       >
         {title}
@@ -125,7 +125,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
           style={{
             fontSize: '16px',
             lineHeight: '20px',
-            color: 'var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))',
+            color: 'var(--tg-theme-section-header-text-color, var(--color-text-primary, #FAFAFA))',
           }}
         >
           {label}
