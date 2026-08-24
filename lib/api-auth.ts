@@ -76,3 +76,70 @@ export async function authenticateRequest(initData: string | undefined): Promise
     displayName: profileData.display_name as string,
   };
 }
+
+// ─── Request context helpers ─────────────────────────────────────────────────
+
+/**
+ * Extract Telegram initData from a request.
+ *
+ * Order: `x-init-data` header first, then the `init_data` field of the JSON body.
+ * The request is CLONED before parsing, so the caller can still read the body
+ * afterwards. Reading the original body first would make `.clone()` throw
+ * ("disturbed" request) and silently lose auth — the root cause of the false
+ * 404 "Спринт не найден" on sprint update.
+ *
+ * Call this ONCE at the top of every handler, before any other body access.
+ */
+export async function extractInitData(req: Request): Promise<string | undefined> {
+  const headerData = req.headers.get('x-init-data');
+  if (headerData) return headerData;
+
+  try {
+    const body = (await req.clone().json()) as Record<string, unknown> | null;
+    const initData = body?.init_data;
+    return typeof initData === 'string' ? initData : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Tenant isolation: check that the profile is an active member (worker) of the
+ * given workspace. Always check membership against the RESOURCE's own
+ * workspace_id (e.g. sprint.workspace_id) — never against a "first active
+ * worker": users may belong to several workspaces, and `.limit(1)` without a
+ * workspace filter is nondeterministic.
+ */
+export async function isWorkspaceMember(
+  profileId: string,
+  workspaceId: string,
+): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('source_id', profileId)
+    .eq('workspace_id', workspaceId)
+    .eq('is_active', true)
+    .limit(1);
+
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * All workspace IDs the profile is an active member of, deduplicated.
+ * Used when an endpoint needs a default/filtered workspace set — NEVER pick one
+ * via `.limit(1)` on a non-deterministic order.
+ */
+export async function getUserWorkspaceIds(profileId: string): Promise<string[]> {
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('workers')
+    .select('workspace_id')
+    .eq('source_id', profileId)
+    .eq('is_active', true);
+
+  return [
+    ...new Set((data ?? []).map((w) => w.workspace_id).filter(Boolean)),
+  ] as string[];
+}

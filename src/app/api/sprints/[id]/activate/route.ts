@@ -10,45 +10,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../../lib/supabase';
-import { authenticateRequest } from '../../../../../../lib/api-auth';
+import {
+  authenticateRequest,
+  extractInitData,
+  isWorkspaceMember,
+} from '../../../../../../lib/api-auth';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function getAuthenticatedWorker(req: NextRequest, workspaceId?: string) {
-  let initData: string | undefined;
-
-  if (req.method === 'GET') {
-    initData = req.headers.get('x-init-data') || undefined;
-  } else {
-    try {
-      const body = await req.clone().json();
-      initData = body.init_data as string | undefined;
-    } catch {
-      // Body not parseable
-    }
-  }
-
-  const auth = await authenticateRequest(initData);
-  if (!auth.authenticated) return null;
-
-  const supabase = createServerClient();
-  let query = supabase
-    .from('workers')
-    .select('id, workspace_id, source_id, type, role')
-    .eq('source_id', auth.profileId!)
-    .eq('is_active', true);
-
-  // When the target workspace is known, constrain the lookup to that workspace.
-  // Otherwise `.limit(1)` can return a worker from a DIFFERENT workspace (when a
-  // user belongs to several workspaces), which leads to a false 404 on
-  // sprint update / activate / delete ("Спринт не найден").
-  if (workspaceId) {
-    query = query.eq('workspace_id', workspaceId);
-  }
-
-  const { data: workers } = await query.limit(1);
-
-  return workers?.[0] ?? null;
+/** Единый 404: спринта нет или нет доступа. */
+function sprintNotFound() {
+  return NextResponse.json({ error: 'Спринт не найден' }, { status: 404 });
 }
 
 // ─── PATCH /api/sprints/:id/activate — Transition planning → active ──────────
@@ -59,6 +29,14 @@ export async function PATCH(
 ) {
   try {
     const { id: sprintId } = await params;
+
+    const auth = await authenticateRequest(await extractInitData(request));
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: auth.error || 'Не авторизован' },
+        { status: auth.status || 401 },
+      );
+    }
 
     const supabase = createServerClient();
 
@@ -76,22 +54,13 @@ export async function PATCH(
     }
 
     if (!sprint) {
-      return NextResponse.json(
-        { error: 'Спринт не найден' },
-        { status: 404 },
-      );
+      return sprintNotFound();
     }
 
-    // Tenant isolation: resolve the authenticated worker inside the sprint's own
-    // workspace. Looking the worker up by `source_id` only and taking `.limit(1)`
-    // can return a worker from a DIFFERENT workspace when the user belongs to
-    // multiple workspaces → false 404 "Спринт не найден".
-    const worker = await getAuthenticatedWorker(request, sprint.workspace_id);
-    if (!worker) {
-      return NextResponse.json(
-        { error: 'Спринт не найден' },
-        { status: 404 },
-      );
+    // Tenancy: активное членство профиля в воркспейсе самого спринта
+    // (resource-scoped — не «первый активный воркер», недетерминированный).
+    if (!(await isWorkspaceMember(auth.profileId!, sprint.workspace_id))) {
+      return sprintNotFound();
     }
 
     if (sprint.status !== 'planning') {

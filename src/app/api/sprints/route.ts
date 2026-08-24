@@ -13,37 +13,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
-import { authenticateRequest } from '../../../../lib/api-auth';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function getAuthenticatedWorker(req: NextRequest) {
-  let initData: string | undefined;
-
-  if (req.method === 'GET') {
-    initData = req.headers.get('x-init-data') || undefined;
-  } else {
-    try {
-      const body = await req.clone().json();
-      initData = body.init_data as string | undefined;
-    } catch {
-      // Body not parseable
-    }
-  }
-
-  const auth = await authenticateRequest(initData);
-  if (!auth.authenticated) return null;
-
-  const supabase = createServerClient();
-  const { data: workers } = await supabase
-    .from('workers')
-    .select('id, workspace_id, source_id, type, role')
-    .eq('source_id', auth.profileId!)
-    .eq('is_active', true)
-    .limit(1);
-
-  return workers?.[0] ?? null;
-}
+import {
+  authenticateRequest,
+  extractInitData,
+  getUserWorkspaceIds,
+  isWorkspaceMember,
+} from '../../../../lib/api-auth';
 
 // ─── GET /api/sprints — List sprints ─────────────────────────────────────────
 
@@ -52,26 +27,17 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const requestedWorkspaceId = url.searchParams.get('workspace_id') || undefined;
 
-    const initData = request.headers.get('x-init-data') || undefined;
-    const auth = await authenticateRequest(initData);
+    const auth = await authenticateRequest(await extractInitData(request));
     if (!auth.authenticated) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
 
     const supabase = createServerClient();
 
-    // Collect ALL workspace IDs the user is an active member of. A user may belong
-    // to several workspaces, so taking only `.limit(1)` worker would silently
-    // return sprints from the wrong board.
-    const { data: workers } = await supabase
-      .from('workers')
-      .select('workspace_id')
-      .eq('source_id', auth.profileId!)
-      .eq('is_active', true);
-
-    const workspaceIds = [
-      ...new Set((workers ?? []).map((w) => w.workspace_id).filter(Boolean)),
-    ] as string[];
+    // All workspace IDs the user is an active member of. A user may belong to
+    // several workspaces, so `.limit(1)` on a non-deterministic order would
+    // silently return sprints from the wrong board.
+    const workspaceIds = await getUserWorkspaceIds(auth.profileId!);
 
     if (requestedWorkspaceId && !workspaceIds.includes(requestedWorkspaceId)) {
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
@@ -105,22 +71,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate first to get profileId for workspace validation
-    let initData: string | undefined;
-    try {
-      const bodyClone = await request.clone().json();
-      initData = bodyClone.init_data as string | undefined;
-    } catch {
-      initData = request.headers.get('x-init-data') || undefined;
-    }
-    const authResult = await authenticateRequest(initData);
-    if (!authResult.authenticated) {
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-    }
-
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    // Auth: единая точка извлечения initData из клона ДО чтения тела.
+    const auth = await authenticateRequest(await extractInitData(request));
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: auth.error || 'Не авторизован' },
+        { status: auth.status || 401 },
+      );
     }
 
     const body = await request.json();
@@ -155,19 +112,22 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Use explicitly provided workspace_id (fixes bug where sprint was always created on first workspace)
-    // Fall back to worker.workspace_id for backward compatibility
-    const targetWorkspaceId = (requestedWorkspaceId as string) || worker.workspace_id;
+    // Use explicitly provided workspace_id. Fall back to the user's first
+    // workspace (deterministic member list — not a non-deterministic
+    // `.limit(1)` worker, which can point at the wrong board).
+    const userWorkspaceIds = await getUserWorkspaceIds(auth.profileId!);
+    const targetWorkspaceId = (requestedWorkspaceId as string) || userWorkspaceIds[0];
+
+    if (!targetWorkspaceId) {
+      return NextResponse.json(
+        { error: 'У вас нет активных workspace' },
+        { status: 403 },
+      );
+    }
 
     // Validate that the worker belongs to this workspace
-    const { data: workers } = await supabase
-      .from('workers')
-      .select('id, workspace_id')
-      .eq('source_id', authResult.profileId!)
-      .eq('is_active', true)
-      .eq('workspace_id', targetWorkspaceId);
-
-    if (!workers || workers.length === 0) {
+    // (resource-scoped membership, not "first active worker").
+    if (!(await isWorkspaceMember(auth.profileId!, targetWorkspaceId))) {
       return NextResponse.json(
         { error: 'Доступ запрещён: вы не являетесь участником этого workspace' },
         { status: 403 },
