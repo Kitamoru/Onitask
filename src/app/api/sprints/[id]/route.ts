@@ -22,7 +22,7 @@ type SprintUpdate = Database['public']['Tables']['sprints']['Update'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function getAuthenticatedWorker(req: NextRequest) {
+async function getAuthenticatedWorker(req: NextRequest, workspaceId?: string) {
   let initData: string | undefined;
 
   if (req.method === 'GET') {
@@ -40,12 +40,21 @@ async function getAuthenticatedWorker(req: NextRequest) {
   if (!auth.authenticated) return null;
 
   const supabase = createServerClient();
-  const { data: workers } = await supabase
+  let query = supabase
     .from('workers')
     .select('id, workspace_id, source_id, type, role')
     .eq('source_id', auth.profileId!)
-    .eq('is_active', true)
-    .limit(1);
+    .eq('is_active', true);
+
+  // When the target workspace is known, constrain the lookup to that workspace.
+  // Otherwise `.limit(1)` can return a worker from a DIFFERENT workspace (when a
+  // user belongs to several workspaces), which leads to a false 404 on
+  // sprint update / activate / delete ("Спринт не найден").
+  if (workspaceId) {
+    query = query.eq('workspace_id', workspaceId);
+  }
+
+  const { data: workers } = await query.limit(1);
 
   return workers?.[0] ?? null;
 }
@@ -59,10 +68,6 @@ export async function PATCH(
 ) {
   try {
     const { id: sprintId } = await params;
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-    }
 
     const body = await request.json();
     const { name, start_date, end_date, goal, capacity, task_ids } = body;
@@ -102,8 +107,12 @@ export async function PATCH(
       );
     }
 
-    // Tenant isolation: verify the authenticated worker belongs to the sprint's workspace
-    if (existing.workspace_id !== worker.workspace_id) {
+    // Tenant isolation: resolve the authenticated worker inside the sprint's own
+    // workspace. Looking the worker up by `source_id` only and taking `.limit(1)`
+    // can return a worker from a DIFFERENT workspace when the user belongs to
+    // multiple workspaces → false 404 "Спринт не найден" on any follow-up op.
+    const worker = await getAuthenticatedWorker(request, existing.workspace_id);
+    if (!worker) {
       return NextResponse.json(
         { error: 'Спринт не найден' },
         { status: 404 },
@@ -136,7 +145,7 @@ export async function PATCH(
         .from('tasks')
         .update({ sprint_id: null })
         .eq('sprint_id', sprintId)
-        .eq('workspace_id', worker.workspace_id)
+        .eq('workspace_id', existing.workspace_id)
         .not('id', 'in', `(${task_ids.join(',')})`);
 
       // Then, assign new tasks to the sprint
@@ -145,7 +154,7 @@ export async function PATCH(
           .from('tasks')
           .update({ sprint_id: sprintId })
           .in('id', task_ids)
-          .eq('workspace_id', worker.workspace_id);
+          .eq('workspace_id', existing.workspace_id);
       }
     }
 
@@ -166,10 +175,6 @@ export async function DELETE(
 ) {
   try {
     const { id: sprintId } = await params;
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-    }
 
     const supabase = createServerClient();
 
@@ -192,8 +197,11 @@ export async function DELETE(
       );
     }
 
-    // Tenant isolation: verify the authenticated worker belongs to the sprint's workspace
-    if (existing.workspace_id !== worker.workspace_id) {
+    // Tenant isolation: resolve the authenticated worker inside the sprint's own
+    // workspace (same fix as PATCH — `.limit(1)` can pick a worker from another
+    // workspace when the user belongs to multiple workspaces).
+    const worker = await getAuthenticatedWorker(request, existing.workspace_id);
+    if (!worker) {
       return NextResponse.json(
         { error: 'Спринт не найден' },
         { status: 404 },

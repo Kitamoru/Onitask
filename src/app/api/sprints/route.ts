@@ -49,18 +49,44 @@ async function getAuthenticatedWorker(req: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
+    const url = new URL(request.url);
+    const requestedWorkspaceId = url.searchParams.get('workspace_id') || undefined;
+
+    const initData = request.headers.get('x-init-data') || undefined;
+    const auth = await authenticateRequest(initData);
+    if (!auth.authenticated) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
 
     const supabase = createServerClient();
 
-    const { data, error } = await supabase
-      .from('sprints')
-      .select('*')
-      .eq('workspace_id', worker.workspace_id)
-      .order('created_at', { ascending: false });
+    // Collect ALL workspace IDs the user is an active member of. A user may belong
+    // to several workspaces, so taking only `.limit(1)` worker would silently
+    // return sprints from the wrong board.
+    const { data: workers } = await supabase
+      .from('workers')
+      .select('workspace_id')
+      .eq('source_id', auth.profileId!)
+      .eq('is_active', true);
+
+    const workspaceIds = [
+      ...new Set((workers ?? []).map((w) => w.workspace_id).filter(Boolean)),
+    ] as string[];
+
+    if (requestedWorkspaceId && !workspaceIds.includes(requestedWorkspaceId)) {
+      return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
+    }
+
+    let query = supabase.from('sprints').select('*');
+    if (requestedWorkspaceId) {
+      query = query.eq('workspace_id', requestedWorkspaceId);
+    } else if (workspaceIds.length > 0) {
+      query = query.in('workspace_id', workspaceIds);
+    } else {
+      return NextResponse.json({ sprints: [] });
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
