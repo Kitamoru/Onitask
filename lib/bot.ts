@@ -1,4 +1,4 @@
-// Telegram Bot API helpers
+// Bot.ts // Telegram Bot API helpers
 // Utilities for sending messages, inline keyboards, and webhook handling
 // Supports Bot API 10.2+ (Rich Messages, Draft Streaming, Ephemeral)
 import crypto from 'crypto';
@@ -15,22 +15,18 @@ import type {
   AnswerCallbackQueryParams,
   Message,
 } from '../types/telegram';
-
 // ============================================================================
 // Configuration
 // ============================================================================
 const BOT_API_URL = 'https://api.telegram.org/bot';
 const MAX_MESSAGE_LENGTH = 4096; // Consistent with MCP contract
 const DRAFT_TIMEOUT_MS = 20000; // 20 seconds safety margin
-
 // Mini App config (§6.2d)
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'onitaskbot';
 const MINI_APP_SHORT_NAME = 'onitask';
-
 // ============================================================================
 // HTML Sanitization (security_.md §4.1, bot_.md v0.5.0)
 // ============================================================================
-
 /**
  * Escape HTML special characters for safe insertion into Telegram messages.
  * Prevents interpretation of <, >, & as Telegram markup.
@@ -42,34 +38,26 @@ export function escapeHtml(str: string): string {
     .replace(/</g, '\x26lt\x3B')
     .replace(/>/g, '\x26gt\x3B');
 }
-
 /**
  * Sanitize output for Telegram rich messages.
  * Whitelist: <b>, <i>, <u>, <s>, <code>, <pre>, <tg-thinking>, <details>, <summary>
  */
 export function sanitizeOutput(text: string, target: 'tg'): string {
   if (!text) return '';
-
   let sanitized = escapeHtml(text);
-
   const allowedTags = ['b', 'i', 'u', 's', 'code', 'pre', 'tg-thinking', 'details', 'summary'];
-
   for (const tag of allowedTags) {
     // reserved for future whitelist un-escaping
   }
-
   sanitized = sanitized.replace(/href=/gi, '');
   sanitized = sanitized.replace(/onclick=/gi, '');
   sanitized = sanitized.replace(/onerror=/gi, '');
   sanitized = sanitized.replace(/onload=/gi, '');
-
   return sanitized;
 }
-
 // ============================================================================
 // Core Bot API Client
 // ============================================================================
-
 /**
  * Make a request to the Telegram Bot API.
  */
@@ -79,26 +67,20 @@ async function botApiRequest<T>(
   params: Record<string, unknown> = {}
 ): Promise<T> {
   const url = `${BOT_API_URL}${token}/${method}`;
-
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
-
   const data: BotAPIResponse<T> = await response.json();
-
   if (!data.ok) {
     throw new Error(`Telegram Bot API error: ${data.description} (code: ${data.error_code})`);
   }
-
   return data.result as T;
 }
-
 // ============================================================================
 // HMAC Webhook Verification (SEC-03)
 // ============================================================================
-
 /**
  * Verify Telegram webhook secret token.
  * Telegram sends TELEGRAM_BOT_SECRET directly in X-Telegram-Bot-Api-Secret-Token header.
@@ -109,7 +91,6 @@ export function verifyTelegramWebhookSecret(
   storedSecret: string
 ): boolean {
   if (!providedSecret || !storedSecret) return false;
-
   try {
     return timingSafeEqual(
       Buffer.from(providedSecret, 'utf8'),
@@ -119,7 +100,6 @@ export function verifyTelegramWebhookSecret(
     return false;
   }
 }
-
 /**
  * Timing-safe buffer comparison to prevent timing attacks.
  */
@@ -127,11 +107,9 @@ function timingSafeEqual(a: Buffer, b: Buffer): boolean {
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
 }
-
 // ============================================================================
 // Basic Messaging
 // ============================================================================
-
 /**
  * Send a message via Telegram Bot API.
  */
@@ -149,7 +127,6 @@ export async function sendMessage(
     message_thread_id: params.message_thread_id,
   });
 }
-
 /**
  * Edit a previously sent message text.
  */
@@ -166,7 +143,6 @@ export async function editMessageText(
     reply_markup: params.reply_markup,
   });
 }
-
 /**
  * Delete a message.
  */
@@ -179,7 +155,6 @@ export async function deleteMessage(
     message_id: params.message_id,
   });
 }
-
 /**
  * Send a chat action (typing indicator, etc.).
  */
@@ -193,11 +168,9 @@ export async function sendChatAction(
     message_thread_id: params.message_thread_id,
   });
 }
-
 // ============================================================================
 // Message Reactions (Bot API 8.0+)
 // ============================================================================
-
 /**
  * Set a reaction on a message (emoji).
  * Fire-and-forget — used for 👀 (receiving) and ✅ (success).
@@ -214,11 +187,9 @@ export async function setMessageReaction(
     reaction: emoji,
   });
 }
-
 // ============================================================================
 // Voice File Helpers
 // ============================================================================
-
 /**
  * Get the downloadable URL for a voice file.
  * Uses Telegram getFile(file_id) API instead of constructing URL from file_id.
@@ -238,11 +209,9 @@ export async function getVoiceFileUrl(
     return null;
   }
 }
-
 // ============================================================================
 // Callback Query Handling
 // ============================================================================
-
 /**
  * Answer a callback query (from inline keyboard buttons).
  */
@@ -258,11 +227,9 @@ export async function answerCallbackQuery(
     cache_time: params.cache_time,
   });
 }
-
 // ============================================================================
 // Bot Commands Registration (§6.2d)
 // ============================================================================
-
 /**
  * Register bot commands in Telegram menu (appears when user types /).
  * Call once per process — not on every webhook message.
@@ -277,15 +244,12 @@ export async function setBotCommands(token: string): Promise<void> {
     ],
   });
 }
-
 export async function deleteBotCommands(token: string): Promise<void> {
   await botApiRequest(token, 'deleteMyCommands', {});
 }
-
 // ============================================================================
 // Rich Messages (Bot API 10.1+)
 // ============================================================================
-
 /**
  * Send a rich message with HTML content.
  * Supports up to 32,768 characters (but we cap at 4096 for consistency).
@@ -298,29 +262,24 @@ export async function sendRichMessage(
   const params: Record<string, unknown> = {
     chat_id: options.chat_id,
   };
-
   if (options.rich_message?.html) {
     params.text = options.rich_message.html.slice(0, MAX_MESSAGE_LENGTH);
     params.parse_mode = 'HTML';
   } else if (options.text) {
     params.text = options.text.slice(0, MAX_MESSAGE_LENGTH);
   }
-
   if (options.reply_markup) params.reply_markup = options.reply_markup;
   if (options.disable_notification) params.disable_notification = true;
   if (options.protect_content) params.protect_content = true;
   if (options.allow_sending_without_reply) params.allow_sending_without_reply = true;
-
   if (options.receiver_user_id) {
     params.receiver_user_id = options.receiver_user_id;
   }
   if (options.callback_query_id) {
     params.callback_query_id = options.callback_query_id;
   }
-
   return botApiRequest<Message>(token, 'sendMessage', params);
 }
-
 /**
  * Send a rich message draft for streaming updates.
  * The draft is visible as a preview and must be finalized with sendRichMessage.
@@ -334,7 +293,6 @@ export async function sendRichMessageDraft(
     draft_id: params.draft_id,
     is_final: params.is_final ?? false,
   };
-
   if (params.text) {
     draftParams.text = params.text.slice(0, MAX_MESSAGE_LENGTH);
   }
@@ -345,14 +303,11 @@ export async function sendRichMessageDraft(
   if (params.reply_to_message_id) {
     draftParams.reply_to_message_id = params.reply_to_message_id;
   }
-
   return botApiRequest<void>(token, 'sendMessageDraft', draftParams);
 }
-
 // ============================================================================
 // Ephemeral Messages (Bot API 10.2+)
 // ============================================================================
-
 /**
  * Send an ephemeral message (visible only to receiver_user_id).
  * Uses receiver_user_id parameter on sendMessage.
@@ -371,7 +326,6 @@ export async function sendEphemeralMessage(
     ...extra,
   });
 }
-
 /**
  * Send an ephemeral rich message.
  */
@@ -390,7 +344,6 @@ export async function sendEphemeralRichMessage(
     ...extra,
   });
 }
-
 /**
  * Delete an ephemeral message.
  */
@@ -404,11 +357,9 @@ export async function deleteEphemeralMessage(
     ephemeral_message_id: ephemeralMessageId,
   });
 }
-
 // ============================================================================
 // Mini App Deep Links (§6.2d)
 // ============================================================================
-
 /**
  * Build a Direct Link Mini App deep link.
  * Opens Mini App (not browser) in any chat including groups.
@@ -419,7 +370,6 @@ export function miniAppDeepLink(startParam?: string): string {
   const base = `https://t.me/${BOT_USERNAME}/${MINI_APP_SHORT_NAME}`;
   return startParam ? `${base}?startapp=${startParam}` : base;
 }
-
 /**
  * Build task URL for Mini App.
  * Prefixes full_id with "task_" for start_param routing.
@@ -427,11 +377,9 @@ export function miniAppDeepLink(startParam?: string): string {
 export function taskUrl(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}`);
 }
-
 // ============================================================================
 // Inline Keyboard Builders
 // ============================================================================
-
 /**
  * Build an inline keyboard with a single row of buttons.
  */
@@ -442,7 +390,6 @@ export function buildInlineKeyboard(
     inline_keyboard: [buttons],
   };
 }
-
 /**
  * Build a multi-row inline keyboard.
  */
@@ -460,11 +407,9 @@ export function buildMultiRowInlineKeyboard(
     ),
   };
 }
-
 // ============================================================================
-// Unified Task Card Builder (§6.2d)
+// Unified Task Card Builder (§6.2d) — synced with bot-notify assignment template
 // ============================================================================
-
 /**
  * Task card data from RPC get_task_card_data / webhook construction.
  */
@@ -475,29 +420,28 @@ export type TaskCardData = {
   column: string;
   isInbox: boolean;
   isBlocked: boolean;
-  priority: 'high' | 'medium' | 'low' | null;
+  priority: 'high' | 'medium' | 'low' | 'critical' | null;
   dueDate: string | null;
   assigneeName: string | null;
+  /** Постановщик (display_name / telegram username). Optional — omit to hide line. */
+  assignedByName?: string | null;
   workspaceHandle: string;
   clarityScore: number | null;
 };
-
 /** AI clarity_score is 0..1 */
 const LOW_CLARITY_THRESHOLD = 0.55;
-
 const STATUS_LABELS: Record<string, string> = {
   in_progress: 'В работе',
   review: 'На проверке',
   done: 'Готово',
   backlog: 'Бэклог',
 };
-
 const PRIORITY_LABELS: Record<string, string> = {
   high: '🔴 Высокий приоритет',
   medium: '🟡 Средний приоритет',
   low: '🟢 Низкий приоритет',
+  critical: '🔴 Критический приоритет',
 };
-
 function formatDueDate(dueDate: string | null): string | null {
   if (!dueDate) return null;
   return new Intl.DateTimeFormat('ru-RU', {
@@ -505,52 +449,55 @@ function formatDueDate(dueDate: string | null): string | null {
     month: 'long',
   }).format(new Date(dueDate));
 }
-
 function truncateForTelegram(str: string, limit: number): string {
   return str.length > limit ? str.slice(0, limit) + '…' : str;
 }
-
 function isLowClarity(card: TaskCardData): boolean {
   return card.clarityScore != null && card.clarityScore < LOW_CLARITY_THRESHOLD;
 }
-
 /**
- * Render the body of a task card (shared across all contexts).
+ * display_name = telegram username → @username becomes a link in Telegram clients.
+ */
+function formatPersonMention(name: string | null | undefined): string {
+  if (!name) return '—';
+  const clean = name.replace(/^@/, '').trim();
+  if (!clean) return '—';
+  return `@${escapeHtml(clean)}`;
+}
+/**
+ * Render the body of a task card (shared across creation / lookup / notifications).
  *
  * Format:
  * 📋 <b>Title</b>
  * <blockquote>full description</blockquote>
  *
  * 📍 Status · board
- * 👤 Assignee
+ * 👤 Исполнитель: @name
+ * ✍️ Постановщик: @name   (if assignedByName is defined)
  * 🟡 Priority · deadline
  */
 export function renderTaskCardBody(card: TaskCardData): string {
   const status = card.isInbox ? 'Inbox' : STATUS_LABELS[card.column] ?? card.column;
-  const title = escapeHtml(truncateForTelegram(card.title, 120));
+  const title = escapeHtml(truncateForTelegram(card.title || 'Без названия', 120));
   const description = card.description?.trim()
-    ? escapeHtml(card.description.trim()) // full description, no truncation
+    ? escapeHtml(card.description.trim())
     : null;
-
   const lines: string[] = [];
-
   // 📋 Title
   lines.push(`📋 <b>${title}</b>`);
-
   // Description in blockquote (Telegram frame)
   if (description) {
     lines.push(`<blockquote>${description}</blockquote>`);
   }
-
   lines.push(''); // blank line
-
   // 📍 Status · board
-  lines.push(`📍 ${status} · ${escapeHtml(card.workspaceHandle)}`);
-
+  lines.push(`📍 ${status} · ${escapeHtml(card.workspaceHandle || '—')}`);
   // 👤 Assignee
-  const assignee = card.assigneeName ? escapeHtml(card.assigneeName) : 'Не назначено';
-  lines.push(`👤 ${assignee}`);
-
+  lines.push(`👤 Исполнитель: ${formatPersonMention(card.assigneeName)}`);
+  // ✍️ Creator — only when field is present (undefined = hide, null = show "—")
+  if (card.assignedByName !== undefined) {
+    lines.push(`✍️ Постановщик: ${formatPersonMention(card.assignedByName)}`);
+  }
   // Priority · deadline (one line)
   const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;
   const due = formatDueDate(card.dueDate);
@@ -561,22 +508,19 @@ export function renderTaskCardBody(card: TaskCardData): string {
   } else if (due) {
     lines.push(`📅 ${due}`);
   }
-
   if (card.isBlocked) {
     lines.push('⛔ Заблокировано');
   }
-
   if (isLowClarity(card)) {
     lines.push('⚠️ Формулировка неточная — уточни в приложении');
   }
-
   return lines.join('\n');
 }
-
 /**
  * Build a unified task card message with inline keyboard.
  * Three contexts: 'created', 'duplicate', 'lookup'.
  * Low-clarity tasks show "✏️ Уточнить", others show "Открыть в приложении".
+ * Always uses full_id (never internal UUID) in header and button.
  */
 export function buildTaskCard(
   card: TaskCardData,
@@ -586,7 +530,6 @@ export function buildTaskCard(
   replyMarkup: { inline_keyboard: Array<Array<{ text: string; url: string }>> };
 } {
   const fullId = escapeHtml(card.fullId);
-
   let header: string | null = null;
   if (context === 'created') {
     header = `✅ Задача <b>${fullId}</b> создана`;
@@ -594,20 +537,16 @@ export function buildTaskCard(
     header = `✅ Уже зафиксирована · <b>${fullId}</b>`;
   }
   // lookup — no header
-
   const body = renderTaskCardBody(card);
   const text = header ? `${header}\n\n${body}` : body;
-
   const primaryButton = isLowClarity(card)
     ? { text: `✏️ Уточнить ${card.fullId} →`, url: taskUrl(card.fullId) }
     : { text: 'Открыть в приложении', url: taskUrl(card.fullId) };
-
   return {
     text: text.slice(0, MAX_MESSAGE_LENGTH),
     replyMarkup: { inline_keyboard: [[primaryButton]] },
   };
 }
-
 /**
  * Legacy buildTaskCardHTML — kept for backward compatibility.
  * Prefer buildTaskCard() for new code.
@@ -622,26 +561,19 @@ export function buildTaskCardHTML(task: {
   deadline?: string;
 }): string {
   const { full_id, title, description, column, priority, assignee_name, deadline } = task;
-
   let html = `<b>🔖 ${escapeHtml(full_id)} · «${escapeHtml(title)}»</b>\n\n`;
-
   if (description) {
     html += `<blockquote>${escapeHtml(description)}</blockquote>\n\n`;
   }
-
   html += `<details>`;
   html += `<summary>📋 Атрибуты</summary>\n`;
-
   if (column) html += `📍 Статус: ${escapeHtml(column)}\n`;
   if (priority) html += `🔴 Приоритет: ${escapeHtml(priority)}\n`;
   if (assignee_name) html += `👤 Назначен: ${escapeHtml(assignee_name)}\n`;
   if (deadline) html += `📅 Дедлайн: ${escapeHtml(deadline)}\n`;
-
   html += `</details>`;
-
   return html;
 }
-
 /**
  * Build confirmation inline keyboard for task actions.
  */
@@ -650,7 +582,6 @@ export function buildTaskConfirmationKeyboard(taskFullId: string): InlineKeyboar
     { text: '📋 Открыть в TWA →', url: `/board?task=${taskFullId}` },
   ]);
 }
-
 /**
  * Build flow board HTML summary.
  */
@@ -665,18 +596,14 @@ export function buildFlowBoardHTML(metrics: {
   html += `<pre>To Do: ${metrics.todo}
 In Progress: ${metrics.inProgress}
 Done: ${metrics.done}</pre>\n`;
-
   if (metrics.blocked && metrics.blocked > 0) {
     html += `\n⚠️ Заблокировано: ${metrics.blocked}\n`;
   }
-
   if (metrics.overloaded && metrics.overloaded.length > 0) {
     html += `\n⚠️ Перегружены: ${metrics.overloaded.map(escapeHtml).join(', ')}\n`;
   }
-
   return html;
 }
-
 /**
  * Build inbox tasks HTML list.
  */
@@ -688,22 +615,17 @@ export function buildInboxHTML(
   }>
 ): string {
   if (!tasks.length) return '📥 Inbox пуст.';
-
   let html = `<b>📥 Inbox</b>\n\n`;
-
   for (const task of tasks.slice(0, 10)) {
     const emoji =
       task.priority === 'critical' ? '🔴' : task.priority === 'high' ? '🟡' : '🟢';
     html += `${emoji} <b>${escapeHtml(task.full_id)}</b>: ${escapeHtml(task.title)}\n`;
   }
-
   if (tasks.length > 10) {
     html += `\n...ещё ${tasks.length - 10} задач`;
   }
-
   return html;
 }
-
 /**
  * Build standup digest HTML.
  */
@@ -715,7 +637,6 @@ export function buildStandupHTML(data: {
   inboxTasks?: Array<{ title: string; hoursOld: number; lowClarity: boolean }>;
 }): string {
   let html = `<b>📋 Стендап · ${escapeHtml(data.date)}</b>\n\n`;
-
   if (data.movedTasks?.length) {
     html += `<b>✅ Вчера двигалось:</b>\n`;
     for (const t of data.movedTasks.slice(0, 5)) {
@@ -728,7 +649,6 @@ export function buildStandupHTML(data: {
   } else {
     html += `Вчера активности не было\n\n`;
   }
-
   if (data.stuckTasks?.length) {
     html += `<b>⏳ Зависло (>72ч без движения):</b>\n`;
     for (const t of data.stuckTasks) {
@@ -736,7 +656,6 @@ export function buildStandupHTML(data: {
     }
     html += '\n';
   }
-
   if (data.overloadedWorkers?.length) {
     html += `<b>⚠️ Перегружены:</b>\n`;
     for (const w of data.overloadedWorkers) {
@@ -744,7 +663,6 @@ export function buildStandupHTML(data: {
     }
     html += '\n';
   }
-
   if (data.inboxTasks?.length) {
     html += `<b>📥 В inbox без подтверждения (>24ч):</b>\n`;
     for (const t of data.inboxTasks.slice(0, 3)) {
@@ -753,41 +671,34 @@ export function buildStandupHTML(data: {
     }
     html += '\n';
   }
-
   return html;
 }
-
 /**
  * Build freemium gate message.
  */
 export function buildFreemiumGateHTML(feature: string): string {
   return `<tg-callout>Создание задач через бот доступно с плана Solo (290₽/мес). Перейти: [ссылка на TWA настройки]</tg-callout>`;
 }
-
 export function buildWelcomeHTML(workspaceSlug: string): string {
   return `
 <b>👋 Добро пожаловать в @${escapeHtml(workspaceSlug)}!</b>
 Ты добавлен как участник.
-
 📖 Команды:
-/task — создать задачу 
+/task — создать задачу
 /call TASK-123 — показать задачу
 /backlog — задачи без исполнителя
 /help — справка
 `.trim();
 }
-
 /**
  * Build resolve confirmation message.
  */
 export function buildResolveHTML(fullId: string): string {
   return `✅ Эскалация ${escapeHtml(fullId)} снята.\nАгент возобновит работу в течение минуты.\n[Открыть задачу →]`;
 }
-
 // ============================================================================
 // Workspace Selection Keyboard Builder
 // ============================================================================
-
 /**
  * Build inline keyboard for workspace selection.
  * Supports three modes:
@@ -809,16 +720,13 @@ export function buildWorkspaceSelectionKeyboard(
   } else {
     suffix = '';
   }
-
   const buttons = workspaces.slice(0, 8).map((ws) => ({
     text: ws.title || ws.slug,
     callback_data: suffix ? `select_ws:${ws.id}:${suffix}` : `select_ws:${ws.id}`,
   }));
-
   const rows: Array<Array<{ text: string; callback_data?: string }>> = buttons.map(
     (btn) => [btn]
   );
-
   return {
     inline_keyboard: rows.map((row) =>
       row.map((btn) => {
@@ -829,7 +737,6 @@ export function buildWorkspaceSelectionKeyboard(
     ),
   };
 }
-
 /**
  * Parse callback_data from workspace selection button.
  * Returns { workspaceId, type, extra } where:
@@ -842,27 +749,20 @@ export function parseWorkspaceCallbackData(callbackData: string): {
   extra: string;
 } {
   const parts = callbackData.split(':');
-
   if (parts[0] !== 'select_ws' || parts.length < 2) {
     return { workspaceId: '', type: null, extra: '' };
   }
-
   const workspaceId = parts[1];
-
   if (parts.length === 2) {
     return { workspaceId, type: null, extra: '' };
   }
-
   const secondPart = parts[2];
-
   if (secondPart === 'draft' && parts.length >= 3) {
     const draftId = parts.slice(3).join(':');
     return { workspaceId, type: 'draft', extra: draftId };
   }
-
   return { workspaceId, type: 'command', extra: secondPart };
 }
-
 /**
  * Build welcome HTML after workspace selection.
  */
