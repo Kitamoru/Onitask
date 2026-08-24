@@ -143,3 +143,57 @@ export async function getUserWorkspaceIds(profileId: string): Promise<string[]> 
     ...new Set((data ?? []).map((w) => w.workspace_id).filter(Boolean)),
   ] as string[];
 }
+
+/**
+ * Active worker row of the profile scoped to a specific workspace.
+ * Needed when the endpoint needs `created_by` / the worker inside the workspace
+ * the resource belongs to (e.g. POST /api/tasks). Returns null when the profile
+ * is not an active member of that workspace.
+ */
+export async function getActiveWorkerInWorkspace(
+  profileId: string,
+  workspaceId: string,
+): Promise<{
+  id: string;
+  workspace_id: string;
+  source_id: string | null;
+  type: string | null;
+  role: string | null;
+} | null> {
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('workers')
+    .select('id, workspace_id, source_id, type, role')
+    .eq('source_id', profileId)
+    .eq('workspace_id', workspaceId)
+    .eq('is_active', true)
+    .limit(1);
+
+  return data?.[0] ?? null;
+}
+
+/**
+ * Default (active) workspace for a profile, used when a request does not supply
+ * an explicit workspace_id. Resolution chain:
+ *   1. profiles.last_active_workspace_id (persisted by /api/workspaces/active-workspace)
+ *      — but only if the profile is still an active member of it;
+ *   2. otherwise the first of the profile's active memberships.
+ * Returns null when the profile has no active workspaces.
+ */
+export async function getDefaultWorkspaceId(profileId: string): Promise<string | null> {
+  const supabase = createServerClient();
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('last_active_workspace_id')
+    .eq('id', profileId)
+    .maybeSingle();
+
+  const lastActive = profile?.last_active_workspace_id;
+  if (lastActive && (await isWorkspaceMember(profileId, lastActive))) {
+    return lastActive;
+  }
+
+  const membershipIds = await getUserWorkspaceIds(profileId);
+  return membershipIds[0] ?? null;
+}

@@ -18,38 +18,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
-import { authenticateRequest } from '../../../../../lib/api-auth';
+import {
+  authenticateRequest,
+  extractInitData,
+  isWorkspaceMember,
+} from '../../../../../lib/api-auth';
 import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function getAuthenticatedWorker(request: NextRequest) {
-  let initData: string | undefined;
-
-  try {
-    const body = await request.clone().json();
-    initData = body.init_data as string | undefined;
-  } catch {
-    // Body not parseable
-  }
-
-  const auth = await authenticateRequest(initData);
-  if (!auth.authenticated) return null;
-
-  const supabase = createServerClient();
-  const { data: workers } = await supabase
-    .from('workers')
-    .select('id, workspace_id, source_id, type')
-    .eq('source_id', auth.profileId!)
-    .eq('is_active', true)
-    .limit(1);
-
-  return workers?.[0] ?? null;
-}
-
 
 // ─── PATCH /api/tasks/[id] — Update task ─────────────────────────────────────
 
@@ -58,9 +35,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    // Auth: единая точка извлечения initData из КЛОНА ДО чтения тела.
+    const auth = await authenticateRequest(await extractInitData(request));
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: auth.error || 'Не авторизован' },
+        { status: auth.status || 401 },
+      );
     }
 
     const { id: taskId } = await params;
@@ -88,13 +69,28 @@ export async function PATCH(
       update.moved_to_column_at = new Date().toISOString();
     }
 
-    // Increment version atomically (INV-09).
+    // Fetch task + version, then verify membership in the task's own workspace
+    // (resource-scoped tenancy — PATCH was previously missing any tenancy check).
     const supabase = createServerClient();
-    const { data: currentTask } = await supabase
+    const { data: taskRow, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('version')
+      .select('version, workspace_id')
       .eq('id', taskId)
-      .single();
+      .maybeSingle();
+
+    if (taskFetchError) {
+      return NextResponse.json({ error: taskFetchError.message }, { status: 500 });
+    }
+
+    if (!taskRow) {
+      return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
+    }
+
+    if (!(await isWorkspaceMember(auth.profileId!, taskRow.workspace_id))) {
+      return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
+    }
+
+    const currentTask = taskRow;
 
     // Optimistic concurrency: if the client sent expected_version and it doesn't
     // match the current DB version, another client changed the task concurrently.
@@ -120,6 +116,7 @@ export async function PATCH(
       .from('tasks')
       .update(cleanUpdate)
       .eq('id', taskId)
+      .eq('workspace_id', taskRow.workspace_id)
       .select()
       .single();
 
@@ -134,7 +131,7 @@ export async function PATCH(
         .send({
           type: 'broadcast',
           event: 'task_changed',
-          payload: { workspace_id: worker.workspace_id },
+          payload: { workspace_id: taskRow.workspace_id },
         });
     } catch {
       // Broadcast is best-effort
@@ -159,30 +156,33 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const worker = await getAuthenticatedWorker(request);
-    if (!worker) {
-      console.error('[DELETE /api/tasks/:id] Auth failed — worker not found');
-      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    // Auth: единая точка извлечения initData из КЛОНА ДО чтения тела.
+    const auth = await authenticateRequest(await extractInitData(request));
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: auth.error || 'Не авторизован' },
+        { status: auth.status || 401 },
+      );
     }
-
-    console.log('[DELETE /api/tasks/:id] Authenticated worker:', JSON.stringify({
-      workerId: worker.id,
-      workspaceId: worker.workspace_id,
-      sourceId: worker.source_id,
-      type: worker.type,
-    }));
 
     const { id: taskId } = await params;
     console.log('[DELETE /api/tasks/:id] Task ID:', taskId);
 
     const supabase = createServerClient();
 
-    // Verify the task belongs to the same workspace as the worker
-    const { data: taskData } = await supabase
+    // Verify the task exists and the profile is an active member of the task's
+    // own workspace (resource-scoped tenancy). Replaces the fragile
+    // `last_active_workspace_id === task.workspace_id` check, which returned 403
+    // for valid members once they switched boards (multi-workspace users).
+    const { data: taskData, error: taskFetchError } = await supabase
       .from('tasks')
       .select('workspace_id')
       .eq('id', taskId)
-      .single();
+      .maybeSingle();
+
+    if (taskFetchError) {
+      return NextResponse.json({ error: taskFetchError.message }, { status: 500 });
+    }
 
     if (!taskData) {
       console.warn('[DELETE /api/tasks/:id] Task not found:', taskId);
@@ -192,23 +192,8 @@ export async function DELETE(
     const taskWorkspaceId = (taskData as any).workspace_id;
     console.log('[DELETE /api/tasks/:id] Task workspace_id:', taskWorkspaceId);
 
-    // Get profile's last_active_workspace_id for access check
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('last_active_workspace_id')
-      .eq('id', worker.source_id)
-      .maybeSingle();
-
-    const activeWorkspaceId = (profileData as any)?.last_active_workspace_id;
-    console.log('[DELETE /api/tasks/:id] Profile last_active_workspace_id:', activeWorkspaceId);
-
-    if (activeWorkspaceId !== taskWorkspaceId) {
-      console.error('[DELETE /api/tasks/:id] Access denied — workspace mismatch:', {
-        taskId,
-        workerId: worker.id,
-        profileActiveWorkspaceId: activeWorkspaceId,
-        taskWorkspaceId,
-      });
+    if (!(await isWorkspaceMember(auth.profileId!, taskWorkspaceId))) {
+      console.error('[DELETE /api/tasks/:id] Access denied — not a member of task workspace:', taskWorkspaceId);
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
@@ -232,18 +217,6 @@ export async function DELETE(
     // Clean up assignment_history
     await anySupabase
       .from('assignment_history')
-      .delete()
-      .eq('task_id', taskId);
-
-    // Clean up enrichments
-    await anySupabase
-      .from('enrichments')
-      .delete()
-      .eq('task_id', taskId);
-
-    // Clean up vector_chunks for this task
-    await anySupabase
-      .from('task_vector_chunks')
       .delete()
       .eq('task_id', taskId);
 
@@ -274,7 +247,7 @@ export async function DELETE(
         .send({
           type: 'broadcast',
           event: 'task_changed',
-          payload: { workspace_id: worker.workspace_id },
+          payload: { workspace_id: taskWorkspaceId },
         });
     } catch {
       // Broadcast is best-effort

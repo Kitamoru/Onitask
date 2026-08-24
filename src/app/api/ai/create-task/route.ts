@@ -26,7 +26,11 @@
  * A-1: Vercel Hot Path (< 2s), A-6: single model call
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '../../../../../lib/api-auth';
+import {
+  authenticateRequest,
+  getDefaultWorkspaceId,
+  getUserWorkspaceIds,
+} from '../../../../../lib/api-auth';
 import { createServerClient } from '../../../../../lib/supabase';
 
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -92,26 +96,27 @@ export async function POST(request: NextRequest) {
     // Effective profile: from initData auth OR explicit body (bot path)
     const profileId = auth.profileId || bodyProfileId || null;
 
-    // Resolve workspace_id: explicit from body > user's active worker
-    let workspaceId = explicitWorkspaceId || null;
-    if (!workspaceId && profileId) {
-      const { data: userWorkers, error: userWorkersError } = await supabase
-        .from('workers')
-        .select('id, workspace_id')
-        .eq('source_id', profileId)
-        .eq('is_active', true)
-        .limit(1);
-
-      if (userWorkersError) {
-        return NextResponse.json(
-          { error: 'Не удалось определить рабочее пространство' },
-          { status: 500 }
-        );
-      }
-      workspaceId = userWorkers?.[0]?.workspace_id ?? null;
-    }
+    // Resolve workspace_id: explicit from body > default from profile membership.
+    // Explicit ID is verified against membership to keep tenant isolation (INV-05):
+    // otherwise any authenticated caller who knows a foreign workspace UUID could
+    // insert a task into it (service-role client bypasses RLS).
+    const userWorkspaceIds = profileId ? await getUserWorkspaceIds(profileId) : [];
+    let workspaceId = explicitWorkspaceId
+      ? (userWorkspaceIds.includes(explicitWorkspaceId)
+          ? explicitWorkspaceId
+          : null)
+      : profileId
+        ? ((await getDefaultWorkspaceId(profileId)) ?? null)
+        : null;
 
     if (!workspaceId) {
+      // Explicit workspace requested but profile is not a member → 403.
+      if (explicitWorkspaceId) {
+        return NextResponse.json(
+          { error: 'Доступ запрещён: вы не являетесь участником этого workspace' },
+          { status: 403 }
+        );
+      }
       return NextResponse.json({ error: 'Рабочее пространство не найдено' }, { status: 404 });
     }
 

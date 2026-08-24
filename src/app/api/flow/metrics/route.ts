@@ -11,7 +11,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
-import { authenticateRequest } from '../../../../../lib/api-auth';
+import {
+  authenticateRequest,
+  getDefaultWorkspaceId,
+} from '../../../../../lib/api-auth';
 import type { Database } from '../../../../../types/supabase';
 
 type WorkersRow = Database['public']['Tables']['workers']['Row'];
@@ -56,21 +59,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback: find primary workspace from user's workers
+    // Fallback: default workspace from profile membership (deterministic —
+    // last_active_workspace_id if still a member, else first membership; never
+    // a non-deterministic `.limit(1)` worker).
     if (!workspaceId) {
-      const { data: workers, error: workersErr } = await supabase
-        .from('workers')
-        .select('workspace_id')
-        .eq('source_id', profileId)
-        .eq('is_active', true)
-        .limit(1);
-
-      if (workersErr) {
-        console.error('metrics: workers error', workersErr);
-        return NextResponse.json({ error: 'database_error' }, { status: 500 });
-      }
-
-      workspaceId = workers?.[0]?.workspace_id ?? null;
+      workspaceId = await getDefaultWorkspaceId(profileId);
     }
     if (!workspaceId) {
       // Return empty metrics — user has no workspace yet
