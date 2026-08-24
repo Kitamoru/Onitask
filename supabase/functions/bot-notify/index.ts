@@ -1,33 +1,9 @@
 // @ts-nocheck — Supabase Edge Function uses Deno runtime, not Node.js
-
 // supabase/functions/bot-notify/index.ts — Bot Notify Worker (BOT-10)
-// Обработка enrichment_queue записей и отправка уведомлений в Telegram
-// bot_.md §6.5
+// Unified task-card UI (assignment template) on top of production v0.7.x
 //
-// v0.7.0:
-// - Исправлены баги: убраны несуществующие колонки task_id/updated_at из запросов,
-//   исправлен body Bot API (text вместо html), исправлен escapeHtml (& → &)
-// - Добавлена поддержка личных уведомлений (receiver_user_id):
-//   alert_type='task_assignment' — исполнителю задачи
-//   alert_type='member_added'    — новому участнику workspace
-// v0.7.2:
-// - FIX: платформенный SUPABASE_SERVICE_ROLE_KEY не совпадает с копией в vault
-//   (ключ ротировался) → cron получал 401. Auth теперь проверяется против
-//   выделенного секрета vault 'bot_notify_cron_secret' (timing-safe, INV-06).
-// v0.7.3:
-// - FIX: PostgREST не экспонирует схему vault → запрос vault.decrypted_secrets
-//   из Edge Function падал → снова 401. Секрет читается через SECURITY DEFINER
-//   RPC public.get_bot_notify_cron_secret() (миграция 047).
-// v0.7.4:
-// - FIX: Deno Edge Runtime не имеет глобального Buffer → ReferenceError в
-//   timingSafeCompare (500 на каждом вызове). timingSafeCompare переписан на
-//   pure-Deno: TextEncoder + XOR, constant-time сохранён (INV-06).
-// v0.7.5:
-// - NEW: alert_type='task_done' (миграция 048, триггер trg_task_done_notify).
-//   При переходе задачи в 'done' постановщику (tasks.created_by) уходит
-//   личный DM «Задача выполнена» с reason из последнего move_task события
-//   в agent_events. Broadcast в чаты workspace НЕ отправляется.
-
+// Auth: vault secret via RPC get_bot_notify_cron_secret (timing-safe, INV-06)
+// Cards: full_id in headers, blockquote body, inline open button always
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -39,15 +15,13 @@ const MINI_APP_SHORT_NAME = 'onitask';
 
 /**
  * Timing-safe string comparison (INV-06).
- * Pure-Deno implementation (TextEncoder + XOR): Deno Edge Runtime has no
- * global Buffer and node:crypto may be unavailable in this runtime.
+ * Pure-Deno (TextEncoder + XOR) — no global Buffer.
  */
 function timingSafeCompare(a: string, b: string): boolean {
   const enc = new TextEncoder();
   const bufA = enc.encode(a);
   const bufB = enc.encode(b);
   if (bufA.length !== bufB.length) {
-    // Compare against itself to keep constant time, then fail
     let dummy = 0;
     for (let i = 0; i < bufA.length; i++) dummy |= bufA[i] ^ bufA[i];
     return false;
@@ -58,63 +32,55 @@ function timingSafeCompare(a: string, b: string): boolean {
 }
 
 /**
- * Verify Authorization header against vault secret 'bot_notify_cron_secret'.
- * The function itself always has a valid service-role DB client, so it can
- * resolve the expected secret at request time — no dependency on the
- * platform-managed service key value.
+ * Verify Authorization against vault secret 'bot_notify_cron_secret'
+ * via SECURITY DEFINER RPC public.get_bot_notify_cron_secret().
  */
 async function isAuthorized(req: Request): Promise<boolean> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return false;
   const provided = authHeader.slice('Bearer '.length);
-
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await supabase.rpc('get_bot_notify_cron_secret');
-
   if (!data) return false;
   return timingSafeCompare(provided, data as string);
 }
 
 serve(async (req) => {
-  // Verify authorization header against vault cron secret
   if (!(await isAuthorized(req))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-
   try {
-    // Get pending bot_notify jobs from enrichment_queue
     const jobs = await getPendingJobs();
-
     for (const job of jobs) {
       await processJob(job);
     }
-
     return new Response(JSON.stringify({ processed: jobs.length }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
     console.error('[bot-notify] Error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 });
 
-/**
- * Get pending bot_notify jobs from enrichment_queue.
- * NOTE: enrichment_queue has NO task_id or updated_at columns — only id, workspace_id, type, payload, status, scheduled_at, created_at, processed_at, locked_at.
- */
-async function getPendingJobs(): Promise<Array<{
-  id: string;
-  workspace_id: string;
-  payload: Record<string, unknown>;
-}>> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// ============================================================================
+// Queue
+// ============================================================================
 
+async function getPendingJobs(): Promise<
+  Array<{
+    id: string;
+    workspace_id: string;
+    payload: Record<string, unknown>;
+  }>
+> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await supabase
     .from('enrichment_queue')
     .select('id, workspace_id, payload')
@@ -122,53 +88,50 @@ async function getPendingJobs(): Promise<Array<{
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
     .limit(10);
-
   return (data ?? []) as any;
 }
 
-/**
- * Process a single bot_notify job.
- */
 async function processJob(job: {
   id: string;
   workspace_id: string;
   payload: Record<string, unknown>;
 }): Promise<void> {
-  // Mark as processing
   await updateJobStatus(job.id, 'processing');
-
   try {
     const alertType = (job.payload.alert_type as string) || 'unknown';
 
-    // Task done — личный DM только постановщику задачи
     if (alertType === 'task_done') {
       await processTaskDoneNotification(job);
-    } else if (alertType === 'task_assignment' || alertType === 'member_added') {
+    } else if (alertType === 'task_review') {
+      await processTaskReviewNotification(job);
+    } else if (
+      alertType === 'task_assignment' ||
+      alertType === 'member_added'
+    ) {
       await processPersonalNotification(job, alertType);
     } else {
-      // Broadcast notifications — send to all active workspace chats
+      // Broadcast to workspace chats
       const chats = await getActiveChats(job.workspace_id);
-
       if (!chats.length) {
-        // Fallback: если чаты не привязаны, эскалации уходят личными
-        // сообщениями владельцам/админам workspace (иначе уведомления теряются)
-        if (alertType === 'escalation_alert' || alertType === 'escalation_resolved') {
+        if (
+          alertType === 'escalation_alert' ||
+          alertType === 'escalation_resolved'
+        ) {
           await sendEscalationFallbackDMs(job);
         }
         await updateJobStatus(job.id, 'done');
         return;
       }
-
-      // Build notification message
-      const html = buildNotificationHTML(job);
-
-      // Send to all active chats (broadcast)
+      const cardMsg = await buildBroadcastCard(job);
       for (const chat of chats) {
-        await sendTelegramMessage(chat.chat_id, html);
+        await sendTelegramMessage(
+          chat.chat_id,
+          cardMsg.text,
+          cardMsg.replyMarkup
+        );
       }
     }
 
-    // Mark as completed
     await updateJobStatus(job.id, 'done');
   } catch (err) {
     console.error(`[bot-notify] Job ${job.id} error:`, err);
@@ -176,24 +139,25 @@ async function processJob(job: {
   }
 }
 
-/**
- * Process personal notification (task_assignment, member_added).
- * Resolves the recipient's telegram_id and sends a direct message.
- */
+// ============================================================================
+// Personal: assignment / member_added
+// ============================================================================
+
 async function processPersonalNotification(
   job: { id: string; workspace_id: string; payload: Record<string, unknown> },
   alertType: string
 ): Promise<void> {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Resolve worker_id from payload
-  const workerId = (job.payload.worker_id as string) || (job.payload.assignee_id as string);
+  const workerId =
+    (job.payload.worker_id as string) || (job.payload.assignee_id as string);
   if (!workerId) {
-    console.error(`[bot-notify] Job ${job.id}: no worker_id/assignee_id in payload`);
+    console.error(
+      `[bot-notify] Job ${job.id}: no worker_id/assignee_id in payload`
+    );
     return;
   }
 
-  // Get worker's source_id (profiles.id for humans)
   const { data: worker } = await supabase
     .from('workers')
     .select('source_id, display_name, type')
@@ -201,11 +165,9 @@ async function processPersonalNotification(
     .maybeSingle();
 
   if (!worker || worker.type !== 'human') {
-    // Agent workers don't have Telegram — skip
     return;
   }
 
-  // Resolve telegram_id from profiles
   const { data: profile } = await supabase
     .from('profiles')
     .select('telegram_id')
@@ -213,379 +175,665 @@ async function processPersonalNotification(
     .maybeSingle();
 
   if (!profile?.telegram_id) {
-    // User has no Telegram profile — cannot notify
     return;
   }
 
-  // Build message
-  let html: string;
   if (alertType === 'task_assignment') {
-    html = buildTaskAssignmentHTML(job.payload);
+    const card = await buildTaskCardData(job, {
+      assigneeNameFallback: worker.display_name || null,
+    });
+    const taskCard = buildTaskNotifyCard(card, 'assigned');
+    await sendTelegramMessage(
+      profile.telegram_id,
+      taskCard.text,
+      taskCard.replyMarkup
+    );
   } else {
-    html = buildMemberAddedHTML(job.payload);
+    const html = buildMemberAddedHTML(job.payload);
+    await sendTelegramMessage(profile.telegram_id, html, {
+      inline_keyboard: [
+        [{ text: 'Открыть доску', url: miniAppDeepLink() }],
+      ],
+    });
   }
-
-  // Send direct message to user's personal chat with bot
-  await sendTelegramMessage(profile.telegram_id, html);
 }
 
-/**
- * Process task_done notification: DM только постановщику (created_by).
- * Reason берётся из последнего move_task события в agent_events (если есть).
- *
- * Резолв получателя:
- *   1. created_by (workers.id по схеме 023, либо сразу profiles.id) →
- *      workers.source_id → profiles.telegram_id.
- *   2. Если постановщик недоступен/агентская задача (создана агентом через MCP,
- *      у агента source_id='agent::...') → fallback на admin/owner workspace.
- */
+// ============================================================================
+// task_done — DM creator, fallback owners/admins
+// ============================================================================
+
 async function processTaskDoneNotification(job: {
   id: string;
   workspace_id: string;
   payload: Record<string, unknown>;
 }): Promise<void> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  const taskId = job.payload.task_id as string | undefined;
-
-  // Резолвим постановщика: из payload, fallback — tasks.created_by (workers.id)
-  let createdBy = job.payload.created_by as string | undefined;
-  if (!createdBy && taskId) {
-    const { data: task } = await supabase
-      .from('tasks')
-      .select('created_by')
-      .eq('id', taskId)
-      .maybeSingle();
-    createdBy = (task?.created_by as string | undefined) ?? undefined;
+  const recipients = await resolveTaskRecipients(job, {
+    preferReviewer: false,
+    preferCreator: true,
+  });
+  if (!recipients.length) {
+    console.error(
+      `[bot-notify] Job ${job.id}: no recipient telegram_id for task_done (created_by=${job.payload.created_by ?? 'none'})`
+    );
+    return;
   }
 
-  // Резолв telegram_id постановщика (workers.id → source_id → profiles)
-  let profileIds: string[] = [];
-  if (createdBy) {
+  const reason = await fetchLastMoveReason(
+    job.workspace_id,
+    job.payload.task_id as string | undefined
+  );
+  const card = await buildTaskCardData(job, {});
+  const taskCard = buildTaskNotifyCard(card, 'done', { reason });
+
+  for (const telegramId of recipients) {
+    await sendTelegramMessage(telegramId, taskCard.text, taskCard.replyMarkup);
+  }
+}
+
+// ============================================================================
+// task_review — reviewer → creator → owner/admin + approve/fix buttons
+// ============================================================================
+
+async function processTaskReviewNotification(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const recipients = await resolveTaskRecipients(job, {
+    preferReviewer: true,
+    preferCreator: true,
+  });
+  if (!recipients.length) {
+    console.error(
+      `[bot-notify] Job ${job.id}: no recipient for task_review`
+    );
+    return;
+  }
+
+  const reason = await fetchLastMoveReason(
+    job.workspace_id,
+    job.payload.task_id as string | undefined
+  );
+  const card = await buildTaskCardData(job, {});
+  const taskId = job.payload.task_id as string | undefined;
+  const taskCard = buildTaskNotifyCard(card, 'review', { reason, taskId });
+
+  for (const telegramId of recipients) {
+    await sendTelegramMessage(telegramId, taskCard.text, taskCard.replyMarkup);
+  }
+}
+
+// ============================================================================
+// Broadcast cards (workspace chats)
+// ============================================================================
+
+async function buildBroadcastCard(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<{
+  text: string;
+  replyMarkup?: {
+    inline_keyboard: Array<
+      Array<{ text: string; url?: string; callback_data?: string }>
+    >;
+  };
+}> {
+  const alertType = (job.payload.alert_type as string) || 'unknown';
+  const reason =
+    (job.payload.escalation_reason as string) ||
+    (job.payload.reason as string) ||
+    '';
+  const card = await buildTaskCardData(job, {});
+
+  switch (alertType) {
+    case 'escalation_alert':
+      return buildTaskNotifyCard(card, 'escalation', { reason });
+    case 'escalation_resolved':
+      return buildTaskNotifyCard(card, 'escalation_resolved');
+    case 'deadline_approaching':
+      return buildTaskNotifyCard(card, 'deadline', {
+        hoursLeft: job.payload.hours_left as number | undefined,
+      });
+    case 'resolution_notify':
+      return buildTaskNotifyCard(card, 'unblocked');
+    case 'cascade_unblock':
+          return buildTaskNotifyCard(card, 'cascade');
+    case 'handoff_chain_alert':
+      return buildTaskNotifyCard(card, 'handoff');
+    default:
+      return {
+        text: `<b>📢 Уведомление</b>\n\nНеизвестный тип: ${escapeHtml(alertType)}`,
+      };
+  }
+}
+
+async function sendEscalationFallbackDMs(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const recipients = await resolveTaskRecipients(job, {
+    preferReviewer: false,
+    preferCreator: true,
+  });
+  if (!recipients.length) return;
+
+  const cardMsg = await buildBroadcastCard(job);
+  for (const telegramId of recipients) {
+    await sendTelegramMessage(
+      telegramId,
+      cardMsg.text,
+      cardMsg.replyMarkup
+    );
+  }
+}
+
+// ============================================================================
+// Unified task card (assignment template as base)
+// ============================================================================
+
+type TaskCardData = {
+  fullId: string;
+  title: string;
+  description?: string | null;
+  column: string;
+  isInbox: boolean;
+  isBlocked: boolean;
+  priority: 'high' | 'medium' | 'low' | 'critical' | null;
+  dueDate: string | null;
+  assigneeName: string | null;
+  assignedByName: string | null;
+  workspaceHandle: string;
+  clarityScore: number | null;
+};
+
+type NotifyContext =
+  | 'assigned'
+  | 'done'
+  | 'review'
+  | 'escalation'
+  | 'escalation_resolved'
+  | 'deadline'
+  | 'unblocked'
+  | 'cascade'
+  | 'handoff';
+
+const STATUS_LABELS: Record<string, string> = {
+  in_progress: 'В работе',
+  review: 'На проверке',
+  done: 'Готово',
+  backlog: 'Бэклог',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  high: '🔴 Высокий приоритет',
+  medium: '🟡 Средний приоритет',
+  low: '🟢 Низкий приоритет',
+  critical: '🔴 Критический приоритет',
+};
+
+const LOW_CLARITY_THRESHOLD = 0.55;
+
+function formatDueDate(dueDate: string | null): string | null {
+  if (!dueDate) return null;
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(dueDate));
+  } catch {
+    return dueDate;
+  }
+}
+
+function truncateForTelegram(str: string, limit: number): string {
+  return str.length > limit ? str.slice(0, limit) + '…' : str;
+}
+
+function isLowClarity(card: TaskCardData): boolean {
+  return card.clarityScore != null && card.clarityScore < LOW_CLARITY_THRESHOLD;
+}
+
+/** display_name → @username (Telegram auto-links) */
+function formatPersonMention(name: string | null): string {
+  if (!name) return '—';
+  const clean = name.replace(/^@/, '').trim();
+  if (!clean) return '—';
+  return `@${escapeHtml(clean)}`;
+}
+
+function renderTaskCardBody(
+  card: TaskCardData,
+  options?: { extraLines?: string[] }
+): string {
+  const extraLines = options?.extraLines ?? [];
+  const status = card.isInbox
+    ? 'Inbox'
+    : STATUS_LABELS[card.column] ?? card.column;
+  const title = escapeHtml(
+    truncateForTelegram(card.title || 'Без названия', 120)
+  );
+  const description = card.description?.trim()
+    ? escapeHtml(card.description.trim())
+    : null;
+
+  const lines: string[] = [];
+  lines.push(`📋 <b>${title}</b>`);
+  if (description) {
+    lines.push(`<blockquote>${description}</blockquote>`);
+  }
+  lines.push('');
+  lines.push(`📍 ${status} · ${escapeHtml(card.workspaceHandle || '—')}`);
+  lines.push(`👤 Исполнитель: ${formatPersonMention(card.assigneeName)}`);
+  lines.push(`✍️ Постановщик: ${formatPersonMention(card.assignedByName)}`);
+
+  const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;
+  const due = formatDueDate(card.dueDate);
+  if (priority && due) {
+    lines.push(`${priority} · ${due}`);
+  } else if (priority) {
+    lines.push(priority);
+  } else if (due) {
+    lines.push(`📅 ${due}`);
+  }
+
+  if (card.isBlocked) {
+    lines.push('⛔ Заблокировано');
+  }
+  if (isLowClarity(card)) {
+    lines.push('⚠️ Формулировка неточная — уточни в приложении');
+  }
+
+  for (const extra of extraLines) {
+    if (extra) lines.push(extra);
+  }
+
+  return lines.join('\n');
+}
+
+function buildHeader(context: NotifyContext, fullId: string): string {
+  const id = escapeHtml(fullId);
+  switch (context) {
+    case 'assigned':
+      return `📝 Задача <b>${id}</b> назначена на тебя`;
+    case 'done':
+      return `✅ Задача <b>${id}</b> выполнена`;
+    case 'review':
+      return `🔎 Задача <b>${id}</b> ждет вашей проверки`;
+    case 'escalation':
+      return `🆘 Эскалация · <b>${id}</b>`;
+    case 'escalation_resolved':
+      return `✅ Эскалация <b>${id}</b> снята`;
+    case 'deadline':
+      return `📅 Дедлайн скоро · <b>${id}</b>`;
+    case 'unblocked':
+      return `🔓 Задача <b>${id}</b> разблокирована`;
+    case 'cascade':
+      return `🔗 Цепочка разблокирована · <b>${id}</b>`;
+    case 'handoff':
+      return `🤝 Задача <b>${id}</b> передана`;
+    default:
+      return `📋 Задача <b>${id}</b>`;
+  }
+}
+
+function buildOpenButton(card: TaskCardData): { text: string; url: string } {
+  if (isLowClarity(card)) {
+    return {
+      text: `✏️ Уточнить ${card.fullId} →`,
+      url: taskDeepLink(card.fullId),
+    };
+  }
+  return {
+    text: 'Открыть в приложении',
+    url: taskDeepLink(card.fullId),
+  };
+}
+
+/**
+ * Unified card. Always full_id in header; always open button.
+ * Review adds approve/fix callback rows (task UUID only in callback_data).
+ */
+function buildTaskNotifyCard(
+  card: TaskCardData,
+  context: NotifyContext,
+  extras?: {
+    reason?: string;
+    hoursLeft?: number;
+    taskId?: string;
+  }
+): {
+  text: string;
+  replyMarkup: {
+    inline_keyboard: Array<
+      Array<{ text: string; url?: string; callback_data?: string }>
+    >;
+  };
+} {
+  const extraLines: string[] = [];
+
+  if (context === 'escalation' && extras?.reason) {
+    extraLines.push('');
+    extraLines.push(`Причина: ${escapeHtml(extras.reason)}`);
+  } else if (extras?.reason) {
+    extraLines.push('');
+    extraLines.push(`Что сделано: ${escapeHtml(extras.reason)}`);
+  }
+
+  if (context === 'deadline' && extras?.hoursLeft != null) {
+    extraLines.push('');
+    extraLines.push(`Осталось ~${extras.hoursLeft}ч`);
+  }
+  if (context === 'escalation_resolved') {
+    extraLines.push('');
+    extraLines.push('Агент может продолжить работу.');
+  }
+  if (context === 'review') {
+    extraLines.push('');
+    extraLines.push('Подтвердите результат или верните на доработку.');
+  }
+
+  const header = buildHeader(context, card.fullId);
+  const body = renderTaskCardBody(card, { extraLines });
+  const text = `${header}\n\n${body}`.slice(0, 4096);
+
+  const openBtn = buildOpenButton(card);
+  let rows: Array<
+    Array<{ text: string; url?: string; callback_data?: string }>
+  >;
+
+  if (context === 'review' && extras?.taskId) {
+    rows = [
+      [
+        {
+          text: '✅ Одобрить и задеплоить',
+          callback_data: `ra:approve:${extras.taskId}`,
+        },
+      ],
+      [
+        {
+          text: '🔧 Вернуть на доработку',
+          callback_data: `ra:fix:${extras.taskId}`,
+        },
+      ],
+      [openBtn],
+    ];
+  } else {
+    rows = [[openBtn]];
+  }
+
+  return {
+    text,
+    replyMarkup: { inline_keyboard: rows },
+  };
+}
+
+// ============================================================================
+// Data loaders
+// ============================================================================
+
+async function resolveWorkerDisplayName(
+  workerId: string | null | undefined
+): Promise<string | null> {
+  if (!workerId) return null;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data } = await supabase
+    .from('workers')
+    .select('display_name')
+    .eq('id', workerId)
+    .maybeSingle();
+  return data?.display_name ?? null;
+}
+
+async function buildTaskCardData(
+  job: { id: string; workspace_id: string; payload: Record<string, unknown> },
+  opts: { assigneeNameFallback?: string | null }
+): Promise<TaskCardData> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const taskId = job.payload.task_id as string | undefined;
+
+  const { data: ws } = await supabase
+    .from('workspaces')
+    .select('name, slug, task_prefix')
+    .eq('id', job.workspace_id)
+    .maybeSingle();
+
+  if (taskId) {
+    const { data: task } = await supabase
+      .from('tasks')
+      .select(
+        'id, title, description, column, priority, deadline, metadata, task_number, created_by, assigned_to, is_blocked, is_inbox'
+      )
+      .eq('id', taskId)
+      .maybeSingle();
+
+    const meta = (task?.metadata as Record<string, unknown>) || {};
+    const fullId =
+      (job.payload.full_id as string) ||
+      (task?.task_number != null
+        ? `${ws?.task_prefix || '?'}-${task.task_number}`
+        : '?');
+
+    const title =
+      (meta.rewritten_title as string) ||
+      task?.title ||
+      (job.payload.title as string) ||
+      '';
+    const description =
+      (meta.rewritten_description as string) || task?.description || null;
+    const clarityScore =
+      typeof meta.clarity_score === 'number' ? meta.clarity_score : null;
+
+    const assignedByName = await resolveWorkerDisplayName(
+      task?.created_by as string | null
+    );
+    const assigneeName =
+      opts.assigneeNameFallback ??
+      (await resolveWorkerDisplayName(task?.assigned_to as string | null));
+
+    return {
+      fullId,
+      title,
+      description,
+      column: task?.column || (job.payload.column as string) || 'backlog',
+      isInbox: Boolean(task?.is_inbox),
+      isBlocked: Boolean(task?.is_blocked),
+      priority:
+        (task?.priority as TaskCardData['priority']) ||
+        ((job.payload.priority as TaskCardData['priority']) ?? 'medium'),
+      dueDate:
+        (task?.deadline as string) ||
+        (job.payload.deadline as string) ||
+        null,
+      assigneeName,
+      assignedByName,
+      workspaceHandle: ws?.name || ws?.slug || '',
+      clarityScore,
+    };
+  }
+
+  return {
+    fullId: (job.payload.full_id as string) || '?',
+    title: (job.payload.title as string) || '',
+    description: (job.payload.description as string) || null,
+    column: (job.payload.column as string) || 'backlog',
+    isInbox: false,
+    isBlocked: false,
+    priority: (job.payload.priority as TaskCardData['priority']) || 'medium',
+    dueDate: (job.payload.deadline as string) || null,
+    assigneeName: opts.assigneeNameFallback ?? null,
+    assignedByName: null,
+    workspaceHandle: ws?.name || ws?.slug || '',
+    clarityScore: null,
+  };
+}
+async function fetchLastMoveReason(
+  workspaceId: string,
+  taskId: string | undefined
+): Promise<string> {
+  if (!taskId) return '';
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data: events } = await supabase
+    .from('agent_events')
+    .select('metadata')
+    .eq('workspace_id', workspaceId)
+    .eq('task_id', taskId)
+    .eq('tool', 'move_task')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  return (
+    ((events?.[0]?.metadata as Record<string, unknown>)?.reason as string) ||
+    ''
+  );
+}
+
+/**
+ * Recipient chain: reviewer (opt) → creator → owners/admins.
+ */
+async function resolveTaskRecipients(
+  job: { workspace_id: string; payload: Record<string, unknown> },
+  opts: { preferReviewer: boolean; preferCreator: boolean }
+): Promise<number[]> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const profileIds: string[] = [];
+
+  const pushWorkerProfile = async (workerId: string | undefined) => {
+    if (!workerId) return;
     const { data: worker } = await supabase
       .from('workers')
       .select('source_id, type')
-      .eq('id', createdBy)
+      .eq('id', workerId)
       .maybeSingle();
-    if (worker && worker.type === 'human' && worker.source_id) {
+    if (worker?.type === 'human' && worker.source_id) {
       profileIds.push(worker.source_id as string);
-    } else {
-      // created_by может быть сразу profiles.id — пробуем напрямую
-      profileIds.push(createdBy);
+    } else if (workerId) {
+      profileIds.push(workerId);
+    }
+  };
+
+  if (opts.preferReviewer) {
+    await pushWorkerProfile(job.payload.reviewer_id as string | undefined);
+  }
+
+  if (profileIds.length === 0 && opts.preferCreator) {
+    let createdBy = job.payload.created_by as string | undefined;
+    if (!createdBy && job.payload.task_id) {
+      const { data: task } = await supabase
+        .from('tasks')
+        .select('created_by')
+        .eq('id', job.payload.task_id as string)
+        .maybeSingle();
+      createdBy = task?.created_by as string | undefined;
+    }
+    await pushWorkerProfile(createdBy);
+  }
+
+  if (profileIds.length === 0) {
+    const { data: admins } = await supabase
+      .from('workers')
+      .select('source_id')
+      .eq('workspace_id', job.workspace_id)
+      .eq('type', 'human')
+      .eq('is_active', true)
+      .in('role', ['owner', 'admin']);
+    for (const admin of admins ?? []) {
+      if (admin.source_id) profileIds.push(admin.source_id as string);
     }
   }
 
-  let recipientTelegramIds: number[] = [];
+  const telegramIds: number[] = [];
   for (const profileId of [...new Set(profileIds)]) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('telegram_id')
       .eq('id', profileId)
       .maybeSingle();
-    if (profile?.telegram_id) recipientTelegramIds.push(profile.telegram_id as number);
-  }
-
-  // Агентская задача без постановщика → уведомляем admin/owner workspace
-  if (recipientTelegramIds.length === 0) {
-    const { data: admins } = await supabase
-      .from('workers')
-      .select('source_id')
-      .eq('workspace_id', job.workspace_id)
-      .eq('type', 'human')
-      .eq('is_active', true)
-      .in('role', ['owner', 'admin']);
-    for (const admin of admins ?? []) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('telegram_id')
-        .eq('id', admin.source_id)
-        .maybeSingle();
-      if (profile?.telegram_id) recipientTelegramIds.push(profile.telegram_id as number);
+    if (profile?.telegram_id) {
+      telegramIds.push(profile.telegram_id as number);
     }
   }
-
-  if (recipientTelegramIds.length === 0) {
-    console.error(
-      `[bot-notify] Job ${job.id}: no recipient telegram_id for task_done (created_by=${createdBy ?? 'none'})`
-    );
-    return;
-  }
-
-  // Reason из последнего move_task события агента (опционально)
-  let reason = '';
-  if (taskId) {
-    const { data: events } = await supabase
-      .from('agent_events')
-      .select('metadata')
-      .eq('workspace_id', job.workspace_id)
-      .eq('task_id', taskId)
-      .eq('tool', 'move_task')
-      .order('created_at', { ascending: false })
-      .limit(1);
-    reason = ((events?.[0]?.metadata as Record<string, unknown>)?.reason as string) || '';
-  }
-
-  const html = buildTaskDoneHTML(job.payload, reason);
-
-  for (const telegramId of [...new Set(recipientTelegramIds)]) {
-    await sendTelegramMessage(telegramId, html);
-  }
+  return [...new Set(telegramIds)];
 }
 
-/**
- * Build HTML for task_done notification.
- */
-function buildTaskDoneHTML(payload: Record<string, unknown>, reason: string): string {
-  const fullId = (payload.full_id as string) || '';
-  const title = (payload.title as string) || '';
+// ============================================================================
+// Member added
+// ============================================================================
 
-  const lines: string[] = [];
-  lines.push('✅ <b>Задача выполнена</b>');
-  if (fullId) lines.push(`<b>${escapeHtml(fullId)}</b>`);
-  if (title) lines.push(`«${escapeHtml(title)}»`);
-  if (reason) lines.push('');
-  if (reason) lines.push(`Что сделано: ${escapeHtml(reason)}`);
-  lines.push('');
-  lines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
-
-  return lines.join('\n');
-}
-
-/**
- * Build HTML for task_assignment notification.
- */
-function buildTaskAssignmentHTML(payload: Record<string, unknown>): string {
-  const fullId = (payload.full_id as string) || '';
-  const title = (payload.title as string) || '';
-  const column = (payload.column as string) || 'backlog';
-  const priority = (payload.priority as string) || 'medium';
-
-  const columnLabels: Record<string, string> = {
-    backlog: 'Бэклог',
-    in_progress: 'В работе',
-    review: 'На проверке',
-    done: 'Готово',
-  };
-  const priorityLabels: Record<string, string> = {
-    low: '🟢 Низкий',
-    medium: '🟡 Средний',
-    high: '🔴 Высокий',
-    critical: '🔴 Критический',
-  };
-
-  const lines: string[] = [];
-  lines.push(`📋 <b>${escapeHtml(fullId)}</b> — задача назначена на тебя`);
-  if (title) lines.push(`«${escapeHtml(title)}»`);
-  lines.push('');
-  lines.push(`📍 ${columnLabels[column] ?? column}`);
-  lines.push(`${priorityLabels[priority] ?? priority} приоритет`);
-  lines.push('');
-  lines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
-
-  return lines.join('\n');
-}
-
-/**
- * Build HTML for member_added notification.
- */
 function buildMemberAddedHTML(payload: Record<string, unknown>): string {
   const displayName = (payload.display_name as string) || '';
   const role = (payload.role as string) || 'member';
-
   const roleLabels: Record<string, string> = {
     owner: 'владелец',
     admin: 'администратор',
     member: 'участник',
     viewer: 'наблюдатель',
   };
-
   const lines: string[] = [];
-  lines.push(`👋 <b>${escapeHtml(displayName)}</b>, тебя добавили в рабочее пространство onitask!`);
+  lines.push(
+    `👋 <b>${escapeHtml(displayName)}</b>, тебя добавили в рабочее пространство onitask!`
+  );
   lines.push('');
   lines.push(`Роль: ${roleLabels[role] ?? role}`);
-  lines.push('');
-  lines.push(`<a href="${miniAppDeepLink()}">Открыть доску →</a>`);
-
   return lines.join('\n');
 }
 
-/**
- * Fallback для эскалаций при отсутствии привязанных чатов:
- * уведомление получает постановщик задачи (tasks.created_by) —
- * он больше всех заинтересован в результате. Если у постановщика
- * нет telegram_id — fallback на owner/admin workspace.
- */
-async function sendEscalationFallbackDMs(job: {
-  id: string;
-  workspace_id: string;
-  payload: Record<string, unknown>;
-}): Promise<void> {
+// ============================================================================
+// Chats / status
+// ============================================================================
+
+async function getActiveChats(
+  workspaceId: string
+): Promise<Array<{ chat_id: number }>> {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  const recipientIds: string[] = [];
-
-  // 1. Постановщик задачи — главный заинтересованный в результате
-  const taskId = job.payload.task_id as string | undefined;
-  if (taskId) {
-    const { data: task } = await supabase
-      .from('tasks')
-      .select('created_by')
-      .eq('id', taskId)
-      .maybeSingle();
-    if (task?.created_by) recipientIds.push(task.created_by as string);
-  }
-
-  // 2. Fallback: если постановщик неизвестен — owner/admin workspace
-  if (recipientIds.length === 0) {
-    const { data: admins } = await supabase
-      .from('workers')
-      .select('source_id')
-      .eq('workspace_id', job.workspace_id)
-      .eq('type', 'human')
-      .eq('is_active', true)
-      .in('role', ['owner', 'admin']);
-    for (const admin of admins ?? []) {
-      if (admin.source_id) recipientIds.push(admin.source_id as string);
-    }
-  }
-
-  if (recipientIds.length === 0) return;
-
-  const html = buildNotificationHTML(job);
-
-  for (const profileId of [...new Set(recipientIds)]) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('telegram_id')
-      .eq('id', profileId)
-      .maybeSingle();
-
-    if (profile?.telegram_id) {
-      await sendTelegramMessage(profile.telegram_id, html);
-    }
-  }
-}
-
-/**
- * Get active telegram chats for a workspace.
- */
-async function getActiveChats(workspaceId: string): Promise<Array<{ chat_id: number }>> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
   const { data } = await supabase
     .from('workspace_telegram_chats')
     .select('chat_id')
     .eq('workspace_id', workspaceId)
     .eq('is_active', true);
-
   return (data ?? []) as any;
 }
 
-/**
- * Update job status in enrichment_queue.
- * NOTE: enrichment_queue has NO updated_at column — only status, processed_at, locked_at.
- */
 async function updateJobStatus(jobId: string, status: string): Promise<void> {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
   const updateData: Record<string, unknown> = { status };
   if (status === 'done' || status === 'failed') {
     updateData.processed_at = new Date().toISOString();
   }
-
-  await supabase
-    .from('enrichment_queue')
-    .update(updateData)
-    .eq('id', jobId);
+  await supabase.from('enrichment_queue').update(updateData).eq('id', jobId);
 }
 
-/**
- * Build HTML notification message from job payload.
- */
-function buildNotificationHTML(job: {
-  id: string;
-  workspace_id: string;
-  payload: Record<string, unknown>;
-}): string {
-  const alertType = (job.payload.alert_type as string) || 'unknown';
-  const fullId = (job.payload.full_id as string) || '';
-  const title = (job.payload.title as string) || '';
-  const escalationReason = (job.payload.escalation_reason as string) || '';
+// ============================================================================
+// Helpers
+// ============================================================================
 
-  switch (alertType) {
-    case 'escalation_alert':
-      const lines: string[] = [];
-      lines.push('🆘 <b>Эскалация задачи</b>');
-      if (fullId) lines.push(`<b>${escapeHtml(fullId)}</b>`);
-      if (title) lines.push(`«${escapeHtml(title)}»`);
-      if (escalationReason) lines.push(`Причина: ${escapeHtml(escalationReason)}`);
-      lines.push('');
-      lines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
-      return lines.join('\n');
-
-    case 'escalation_resolved':
-      const resLines: string[] = [];
-      resLines.push('✅ <b>Эскалация снята</b>');
-      if (fullId) resLines.push(`<b>${escapeHtml(fullId)}</b>`);
-      if (title) resLines.push(`«${escapeHtml(title)}»`);
-      resLines.push('');
-      resLines.push('Агент может продолжить работу.');
-      resLines.push('');
-      resLines.push(`<a href="${taskDeepLink(fullId)}">Открыть задачу →</a>`);
-      return resLines.join('\n')
-
-    case 'resolution_notify':
-      return `<b>🔓 Задача разблокирована</b>\n\n${escapeHtml(fullId)} готова к продолжению.`;
-
-    case 'cascade_unblock':
-      return `<b>🔗 Цепочка разблокирована</b>\n\nЗадачи в зависимости от ${escapeHtml(fullId)} готовы.`;
-
-    case 'handoff_chain_alert':
-      return `<b>🤝 Handoff передан</b>\n\n${escapeHtml(fullId)} назначен новому исполнителю.`;
-
-    case 'deadline_approaching':
-      return `<b>📅 Дедлайн скоро</b>\n\n${escapeHtml(fullId)} — дедлайн через ${(job.payload.hours_left as number) || '?'}ч`;
-
-    default:
-      return `<b>📢 Уведомление</b>\n\n${escapeHtml(JSON.stringify(job.payload))}`;
-  }
-}
-
-/**
- * Escape HTML special characters.
- */
 function escapeHtml(str: string): string {
   if (!str) return '';
   return str
-    .replace(/&/g, '\x26amp\x3B')
-    .replace(/</g, '\x26lt\x3B')
-    .replace(/>/g, '\x26gt\x3B');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-/**
- * Build Mini App deep link.
- * Format: https://t.me/<bot>/<app>?startapp=<param>
- */
 function miniAppDeepLink(startParam?: string): string {
   const base = `https://t.me/${BOT_USERNAME}/${MINI_APP_SHORT_NAME}`;
   return startParam ? `${base}?startapp=${startParam}` : base;
 }
 
-/**
- * Build task deep link for Mini App.
- * Prefixes full_id with "task_" for start_param routing.
- */
 function taskDeepLink(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}`);
 }
 
-/**
- * Send message to Telegram via Bot API.
- * chatId can be a group chat_id or a personal user telegram_id.
- */
-async function sendTelegramMessage(chatId: number, html: string): Promise<void> {
+async function sendTelegramMessage(
+  chatId: number,
+  html: string,
+  replyMarkup?: {
+    inline_keyboard: Array<
+      Array<{ text: string; url?: string; callback_data?: string }>
+    >;
+  }
+): Promise<void> {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -593,11 +841,13 @@ async function sendTelegramMessage(chatId: number, html: string): Promise<void> 
       chat_id: chatId,
       text: html.slice(0, 4096),
       parse_mode: 'HTML',
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     }),
   });
-
   if (!resp.ok) {
     const body = await resp.text();
-    console.error(`[bot-notify] Telegram sendMessage failed (chat_id=${chatId}): ${resp.status} ${body}`);
+    console.error(
+      `[bot-notify] Telegram sendMessage failed (chat_id=${chatId}): ${resp.status} ${body}`
+    );
   }
 }
