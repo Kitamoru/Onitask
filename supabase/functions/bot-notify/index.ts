@@ -547,7 +547,7 @@ function buildTaskNotifyCard(
     rows = [
       [
         {
-          text: '✅ Одобрить и задеплоить',
+          text: 'Согласовать',
           callback_data: `ra:approve:${extras.taskId}`,
         },
       ],

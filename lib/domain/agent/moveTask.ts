@@ -17,6 +17,7 @@ import {
   alreadyClaimed,
   versionConflict,
   internalError,
+  DomainError,
 } from '../../shared/errors';
 import type {
   MoveTaskParams,
@@ -65,6 +66,24 @@ export async function moveTask(
     .maybeSingle();
 
   if (fetchError || !currentTask) throw taskNotFound();
+
+  // --- Review approval guard (миграция 049) ---------------------------------
+  // Задача без назначенного reviewer в 'review' требует человеческого
+  // согласования перед 'done' (кнопка «Согласовать» в Telegram-уведомлении).
+  if (
+    currentTask.column === 'review' &&
+    params.target_column === 'done' &&
+    !currentTask.reviewer_id &&
+    ((currentTask.metadata ?? {}) as Record<string, unknown>).review_pending ===
+      true
+  ) {
+    throw new DomainError(
+      409,
+      'review_approval_required',
+      'Task is in review and requires human approval before moving to done. Use the Approve button in the Telegram notification.'
+    );
+  }
+
 
   // --- Claim -----------------------------------------------------------------------
   let claimed = false;

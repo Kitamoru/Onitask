@@ -751,6 +751,27 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     return;
   }
 
+  // Review approval buttons (миграция 049): ra:approve:<task_uuid> / ra:fix:<task_uuid>
+  // workspace_id НЕ встроен в callback_data (лимит 64 байта) — резолвим из задачи.
+  if (data.startsWith('ra:')) {
+    const parts = data.split(':');
+    const action = parts[1];
+    const taskId = parts[2];
+    if ((action !== 'approve' && action !== 'fix') || !taskId) {
+      await answer({ text: 'Неверный формат кнопки', show_alert: true });
+      return;
+    }
+    await answer();
+    await handleReviewAction(
+      action as 'approve' | 'fix',
+      taskId,
+      userId,
+      chatId,
+      messageId
+    );
+    return;
+  }
+
   const parsed = parseWorkspaceCallbackData(data);
   if (!parsed.workspaceId) {
     await answer({ text: 'Неверный формат кнопки', show_alert: true });
@@ -796,6 +817,123 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   } else if (type === 'draft') {
     await executeDraftInWorkspaceByChat(token, chatId, userId, workspaceId);
   }
+}
+
+// ============================================================================
+// Review approval (миграция 049): кнопки ra:approve / ra:fix из DM бот-нотифая
+// ============================================================================
+
+async function handleReviewAction(
+  action: 'approve' | 'fix',
+  taskId: string,
+  telegramUserId: number | undefined,
+  chatId: number,
+  messageId: number | undefined
+): Promise<void> {
+  const token = BOT_TOKEN;
+  if (!token) return;
+
+  const reply = async (text: string) => {
+    try {
+      await editMessageText(token, {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [] }, // снять кнопки
+      });
+    } catch (err) {
+      console.warn('[Bot Webhook] review editMessageText failed:', err);
+    }
+  };
+
+  if (!telegramUserId) {
+    await reply('⛔ Не удалось определить пользователя.');
+    return;
+  }
+
+  // Задача → workspace (источник истины; в callback_data только task id)
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('id, workspace_id, version, column, reviewer_id')
+    .eq('id', taskId)
+    .maybeSingle();
+
+  if (!task) {
+    await reply('⚠️ Задача не найдена.');
+    return;
+  }
+
+  // Авторизация: активный human-worker workspace задачи (A-08)
+  const profileId = await resolveProfileId(telegramUserId);
+  if (!profileId) {
+    await reply('⛔ Профиль не найден.');
+    return;
+  }
+  const { data: worker } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('source_id', profileId)
+    .eq('workspace_id', task.workspace_id)
+    .eq('type', 'human')
+    .eq('is_active', true)
+    .maybeSingle();
+  if (!worker) {
+    await reply('⛔ Нет доступа к этой задаче.');
+    return;
+  }
+
+  const { data: fullId } = await supabase.rpc('task_full_id', {
+    p_task_id: taskId,
+  });
+
+  // Атомарный approve/fix с оптимистичной блокировкой по version (INV-09)
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    'review_action',
+    {
+      p_task_id: taskId,
+      p_action: action,
+      p_version: task.version,
+      p_actor_worker_id: worker.id,
+    }
+  );
+
+  const res = (rpcResult ?? {}) as {
+    success?: boolean;
+    error?: string;
+    new_column?: string;
+  };
+
+  if (rpcError || !res.success) {
+    const errType = res.error || 'error';
+    const msg =
+      errType === 'already_processed'
+        ? '⚠️ Задача уже обработана.'
+        : errType === 'version_conflict'
+          ? '⚠️ Задача изменилась — откройте доску и проверьте статус.'
+          : errType === 'forbidden'
+            ? '⛔ Нет доступа.'
+            : '⚠️ Не удалось выполнить действие.';
+    console.warn(`[Bot Webhook] review_action ${errType} for ${taskId}`);
+    await reply(msg);
+    return;
+  }
+
+  // Аудит ('bot_command' есть в CHECK constraint agent_events.tool)
+  await supabase.from('agent_events').insert({
+    workspace_id: task.workspace_id,
+    tool: 'bot_command',
+    agent_name: `telegram_user_${telegramUserId}`,
+    task_id: taskId,
+    summary: action === 'approve' ? 'review_approved' : 'review_requested_fix',
+    metadata: { action, full_id: fullId, actor_worker_id: worker.id },
+  });
+
+  const confirmation =
+    action === 'approve'
+      ? `✅ <b>${escapeHtml(String(fullId ?? ''))}</b> согласована → done (деплой)`
+      : `🔧 <b>${escapeHtml(String(fullId ?? ''))}</b> возвращена на доработку → in_progress`;
+  await reply(confirmation);
 }
 
 async function executeCommandInWorkspace(

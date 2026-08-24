@@ -74,7 +74,7 @@ export async function PATCH(
     const supabase = createServerClient();
     const { data: taskRow, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('version, workspace_id')
+      .select('version, workspace_id, column, reviewer_id, metadata, created_by')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -111,6 +111,50 @@ export async function PATCH(
     const cleanUpdate = Object.fromEntries(
       Object.entries(update).filter(([, v]) => v !== undefined),
     ) as Partial<TasksRow>;
+
+    // Review approval workflow (миграция 049): human free-move bypass.
+    // owner/admin workspace ИЛИ создатель задачи может перевести review→done
+    // без Telegram-апрува — снимаем review_pending тем же UPDATE
+    // (guard-триггер пропускает UPDATE без флага). Остальным — 403.
+    if (
+      cleanUpdate.column === 'done' &&
+      taskRow.column === 'review' &&
+      !taskRow.reviewer_id &&
+      ((taskRow.metadata as Record<string, unknown> | null) ?? {})
+        .review_pending === true
+    ) {
+      const { data: actorWorker } = await supabase
+        .from('workers')
+        .select('id, role')
+        .eq('source_id', auth.profileId!)
+        .eq('workspace_id', taskRow.workspace_id)
+        .eq('type', 'human')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const role = actorWorker?.role as string | null | undefined;
+      const isOwnerAdmin = !!actorWorker && (role === 'owner' || role === 'admin');
+      const isCreator =
+        !!actorWorker &&
+        !!taskRow.created_by &&
+        taskRow.created_by === actorWorker.id;
+
+      if (!isOwnerAdmin && !isCreator) {
+        return NextResponse.json(
+          {
+            error:
+              'Требуется согласование задачи (кнопка «Согласовать» в Telegram-уведомлении).',
+          },
+          { status: 403 },
+        );
+      }
+
+      const meta = {
+        ...((taskRow.metadata as Record<string, unknown>) || {}),
+      };
+      delete meta.review_pending;
+      cleanUpdate.metadata = meta as TasksRow['metadata'];
+    }
 
     const { data, error } = await supabase
       .from('tasks')
