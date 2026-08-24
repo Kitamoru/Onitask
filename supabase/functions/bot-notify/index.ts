@@ -232,6 +232,12 @@ async function processPersonalNotification(
 /**
  * Process task_done notification: DM только постановщику (created_by).
  * Reason берётся из последнего move_task события в agent_events (если есть).
+ *
+ * Резолв получателя:
+ *   1. created_by (workers.id по схеме 023, либо сразу profiles.id) →
+ *      workers.source_id → profiles.telegram_id.
+ *   2. Если постановщик недоступен/агентская задача (создана агентом через MCP,
+ *      у агента source_id='agent::...') → fallback на admin/owner workspace.
  */
 async function processTaskDoneNotification(job: {
   id: string;
@@ -242,7 +248,7 @@ async function processTaskDoneNotification(job: {
 
   const taskId = job.payload.task_id as string | undefined;
 
-  // Резолвим постановщика: из payload, fallback — tasks.created_by
+  // Резолвим постановщика: из payload, fallback — tasks.created_by (workers.id)
   let createdBy = job.payload.created_by as string | undefined;
   if (!createdBy && taskId) {
     const { data: task } = await supabase
@@ -252,8 +258,56 @@ async function processTaskDoneNotification(job: {
       .maybeSingle();
     createdBy = (task?.created_by as string | undefined) ?? undefined;
   }
-  if (!createdBy) {
-    console.error(`[bot-notify] Job ${job.id}: no created_by for task_done`);
+
+  // Резолв telegram_id постановщика (workers.id → source_id → profiles)
+  let profileIds: string[] = [];
+  if (createdBy) {
+    const { data: worker } = await supabase
+      .from('workers')
+      .select('source_id, type')
+      .eq('id', createdBy)
+      .maybeSingle();
+    if (worker && worker.type === 'human' && worker.source_id) {
+      profileIds.push(worker.source_id as string);
+    } else {
+      // created_by может быть сразу profiles.id — пробуем напрямую
+      profileIds.push(createdBy);
+    }
+  }
+
+  let recipientTelegramIds: number[] = [];
+  for (const profileId of [...new Set(profileIds)]) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('telegram_id')
+      .eq('id', profileId)
+      .maybeSingle();
+    if (profile?.telegram_id) recipientTelegramIds.push(profile.telegram_id as number);
+  }
+
+  // Агентская задача без постановщика → уведомляем admin/owner workspace
+  if (recipientTelegramIds.length === 0) {
+    const { data: admins } = await supabase
+      .from('workers')
+      .select('source_id')
+      .eq('workspace_id', job.workspace_id)
+      .eq('type', 'human')
+      .eq('is_active', true)
+      .in('role', ['owner', 'admin']);
+    for (const admin of admins ?? []) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('telegram_id')
+        .eq('id', admin.source_id)
+        .maybeSingle();
+      if (profile?.telegram_id) recipientTelegramIds.push(profile.telegram_id as number);
+    }
+  }
+
+  if (recipientTelegramIds.length === 0) {
+    console.error(
+      `[bot-notify] Job ${job.id}: no recipient telegram_id for task_done (created_by=${createdBy ?? 'none'})`
+    );
     return;
   }
 
@@ -273,18 +327,9 @@ async function processTaskDoneNotification(job: {
 
   const html = buildTaskDoneHTML(job.payload, reason);
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('telegram_id')
-    .eq('id', createdBy)
-    .maybeSingle();
-
-  if (!profile?.telegram_id) {
-    // У постановщика нет Telegram — уведомление невозможно
-    return;
+  for (const telegramId of [...new Set(recipientTelegramIds)]) {
+    await sendTelegramMessage(telegramId, html);
   }
-
-  await sendTelegramMessage(profile.telegram_id, html);
 }
 
 /**
