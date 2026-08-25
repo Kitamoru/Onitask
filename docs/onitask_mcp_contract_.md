@@ -155,6 +155,14 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
     // Задачи агента в in_progress/review с needs_human=false.
     // При старте: если не пуст → get_task_context для каждой задачи (§7 п.1, обязательно)
     // При polling после escalation: needs_human=false → оператор разблокировал
+
+    // ── Duty Mode (v0.8.2, миграция 049) ──
+    autonomy_level:              'observer' | 'tasks' | 'full',
+    // Уровень автономии API-ключа, которым сделан запрос (mcp_agent_keys.autonomy_level).
+    duty_playbook:               string
+    // Готовый протокол дежурства для ЭТОГО уровня (детерминированный ресолв на сервере:
+    // Admin-override из workspace_settings.agent_duty_playbook[level] или встроенный дефолт).
+    // Использование: старт дежурства — «правила возьми из duty_playbook».
   }
 }
 ```
@@ -921,6 +929,22 @@ while (true):
 ---
 
 ## Changelog
+
+**v0.8.2 — август 2026**
+
+*Duty Mode Playbook + Autonomy Levels (миграция 049):*
+
+- §4 `get_workspace_settings`: новые поля ответа `autonomy_level`
+  ('observer' | 'tasks' | 'full' — уровень автономии API-ключа, которым сделан
+  запрос) и `duty_playbook` (готовый протокол дежурства для этого уровня;
+  детерминированный ресолв на сервере: Admin-override
+  `workspace_settings.agent_duty_playbook[level]` или встроенный дефолт).
+  Схема ключей: `mcp_agent_keys.autonomy_level` (Master §6.19);
+  схема настроек: `workspace_settings.agent_duty_playbook` (Master §6.4)
+- Конфигурация агента: UI «Шаблон подключения» → блок «Старт сессии» —
+  короткий промпт входа в дежурство; правила агент получает сам из
+  `duty_playbook`, уровень — из `autonomy_level`. Ключи уровня 'observer'
+  создаются с read-only allowed_tools
 
 **v0.8.1 — август 2026**
 

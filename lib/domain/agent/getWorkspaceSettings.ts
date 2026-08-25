@@ -4,6 +4,7 @@
 
 import { getSupabaseClient } from '../../shared/mcpAuth';
 import { internalError } from '../../shared/errors';
+import { resolveDutyPlaybook } from '../../shared/dutyPlaybook';
 import type {
   GetWorkspaceSettingsParams,
   GetWorkspaceSettingsResult,
@@ -22,7 +23,7 @@ export async function getWorkspaceSettings(
   const { data: settings, error } = await supabase
     .from('workspace_settings')
     .select(
-      'enable_cognitive_budget, story_points_config, velocity_window_days, flow_config, realtime_subscription_level, workspace_context, workspace_context_cache, context_stale, doc_kb_config'
+      'enable_cognitive_budget, story_points_config, velocity_window_days, flow_config, realtime_subscription_level, workspace_context, workspace_context_cache, context_stale, doc_kb_config, agent_duty_playbook'
     )
     .eq('workspace_id', workspaceId)
     .maybeSingle();
@@ -87,6 +88,13 @@ export async function getWorkspaceSettings(
       doc_kb_config:
         (settings.doc_kb_config as Record<string, unknown> | null) ?? null,
       agent_active_tasks: agentActiveTasks,
+      // Duty Mode (migration 049): the calling key's tier + playbook resolved
+      // server-side for that tier (Admin override or built-in default).
+      autonomy_level: key.autonomyLevel,
+      duty_playbook: resolveDutyPlaybook(
+        key.autonomyLevel,
+        settings.agent_duty_playbook
+      ),
     },
   };
 }

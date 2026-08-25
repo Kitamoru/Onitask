@@ -58,6 +58,9 @@ export interface GetTasksByColumnResult {
 
 export interface GetWorkspaceSettingsParams extends DomainContext {}
 
+/** Duty-mode autonomy tier (migration 049). */
+export type AutonomyLevel = 'observer' | 'tasks' | 'full';
+
 export interface WorkspaceSettingsPayload {
   enable_cognitive_budget: boolean;
   story_points_config: Record<string, unknown>;
@@ -69,6 +72,10 @@ export interface WorkspaceSettingsPayload {
   context_stale: boolean;
   doc_kb_config: Record<string, unknown> | null;
   agent_active_tasks: TaskPreview[] | null;
+  /** Calling key's duty-mode tier (migration 049). */
+  autonomy_level: AutonomyLevel;
+  /** Duty protocol resolved for that level (override or built-in default). */
+  duty_playbook: string;
 }
 
 export interface GetWorkspaceSettingsResult {

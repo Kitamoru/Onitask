@@ -53,13 +53,19 @@ async function createMcpKey(
   name: string,
   workspaceId: string,
   expiresInDays: number,
+  autonomyLevel: string,
 ): Promise<CreateKeyResponse> {
   const res = await fetch(
     `/api/mcp-keys?init_data=${encodeURIComponent(initData)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, workspace_id: workspaceId, expires_in_days: expiresInDays }),
+      body: JSON.stringify({
+        name,
+        workspace_id: workspaceId,
+        expires_in_days: expiresInDays,
+        autonomy_level: autonomyLevel,
+      }),
     },
   );
   return res.json();
@@ -304,6 +310,57 @@ function ConnectionTemplate() {
 }
 
 // ============================================================================
+// Session Start Template — duty-mode bootstrap prompt for agents
+// ============================================================================
+
+function SessionStartTemplate() {
+  const sessionStartPrompt = `Войди в режим дежурства onitask.
+Правила возьми из настроек доски (get_workspace_settings → duty_playbook).
+Уровень автономии возьми из настроек ключа (get_workspace_settings → autonomy_level).
+Не останавливай цикл и не жди моих указаний.`;
+
+  return (
+    <div className="flex flex-col gap-2 w-full">
+      <div className="flex items-center justify-between w-full px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
+          <span
+            className="text-base font-medium leading-5"
+            style={{
+              color: 'var(--color-text-primary)',
+              fontFamily: 'var(--font-family-display)',
+            }}
+          >
+            Старт сессии
+          </span>
+        </div>
+      </div>
+
+      <p
+        className="px-3 text-xs leading-relaxed"
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
+        Вставьте этот текст агенту после подключения — он сам войдёт в режим
+        дежурства и получит правила и уровень доступа по своему ключу.
+      </p>
+
+      <div
+        className="relative p-3 rounded-md font-mono text-xs leading-relaxed overflow-auto"
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--color-line)',
+          color: 'var(--color-text-secondary)',
+        }}
+      >
+        <pre className="whitespace-pre-wrap break-all">{sessionStartPrompt}</pre>
+      </div>
+
+      <CopyButton text={sessionStartPrompt} label="Копировать промпт старта" />
+    </div>
+  );
+}
+
+// ============================================================================
 // Main Page Component
 // ============================================================================
 
@@ -339,12 +396,12 @@ export default function McpSettingsPage() {
     return () => { cancelled = true; };
   }, [tgInitData, authLoading]);
 
-  const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number) => {
+  const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number, autonomyLevel: string) => {
     if (!tgInitData) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays);
+      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays, autonomyLevel);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
         if (result.keyId) {
@@ -568,6 +625,9 @@ export default function McpSettingsPage() {
 
         {/* Connection template */}
         <ConnectionTemplate />
+
+        {/* Session start template (duty mode bootstrap prompt) */}
+        <SessionStartTemplate />
 
         {/* Bottom filler for safe area */}
         <div className="h-16" aria-hidden="true" />

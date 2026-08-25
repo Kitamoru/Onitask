@@ -601,6 +601,7 @@ export type Database = {
         Row: {
           agent_type: string | null
           allowed_tools: Json
+          autonomy_level: string
           can_send_messages: boolean
           created_at: string
           created_by: string | null
@@ -616,6 +617,7 @@ export type Database = {
         Insert: {
           agent_type?: string | null
           allowed_tools?: Json
+          autonomy_level?: string
           can_send_messages?: boolean
           created_at?: string
           created_by?: string | null
@@ -631,6 +633,7 @@ export type Database = {
         Update: {
           agent_type?: string | null
           allowed_tools?: Json
+          autonomy_level?: string
           can_send_messages?: boolean
           created_at?: string
           created_by?: string | null
@@ -1614,6 +1617,7 @@ export type Database = {
       }
       workspace_settings: {
         Row: {
+          agent_duty_playbook: Json | null
           context_stale: boolean
           data_sharing_level: string
           deadline_signals: Json | null
@@ -1633,6 +1637,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          agent_duty_playbook?: Json | null
           context_stale?: boolean
           data_sharing_level?: string
           deadline_signals?: Json | null
@@ -1652,6 +1657,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          agent_duty_playbook?: Json | null
           context_stale?: boolean
           data_sharing_level?: string
           deadline_signals?: Json | null

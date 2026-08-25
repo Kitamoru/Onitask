@@ -14,7 +14,20 @@ export interface McpKeyInfo {
   prefix: string;
   workspace_id: string;
   workspace_name: string;
+  autonomy_level: string;
 }
+
+// Duty-mode tiers (migration 049). 'observer' maps to a read-only toolset at
+// creation so the tier is enforced server-side via allowed_tools (LLM-6).
+const AUTONOMY_LEVELS = ['observer', 'tasks', 'full'] as const;
+type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
+
+const READ_ONLY_ALLOWED_TOOLS = [
+  'get_tasks_by_column',
+  'get_workspace_settings',
+  'get_task_context',
+  'wait_for_tasks',
+];
 
 interface WorkspaceOption {
   id: string;
@@ -137,7 +150,7 @@ export async function GET(request: NextRequest) {
     const { data: keysData, error: keysError } = await supabase
       .from('mcp_agent_keys')
       .select(
-        'key_hash, label, created_at, expires_at, workspace_id'
+        'key_hash, label, created_at, expires_at, workspace_id, autonomy_level'
       )
       .in('workspace_id', workspaceIds)
       .is('revoked_at', null);
@@ -175,6 +188,7 @@ export async function GET(request: NextRequest) {
       prefix: k.key_hash.slice(0, 8),
       workspace_id: k.workspace_id,
       workspace_name: wsMap[k.workspace_id] ?? '',
+      autonomy_level: k.autonomy_level ?? 'tasks',
     }));
 
     return NextResponse.json({ keys });
@@ -212,6 +226,18 @@ export async function POST(request: NextRequest) {
     const name = (body.name as string) ?? `Ключ ${new Date().toLocaleTimeString('ru-RU')}`;
     const workspaceId = (body.workspace_id as string) ?? null;
     const expiresInDays = (body.expires_in_days as number) ?? 90;
+
+    // Autonomy level (migration 049): validate + enforce observer as read-only
+    const rawLevel = (body.autonomy_level as string) ?? 'tasks';
+    if (!AUTONOMY_LEVELS.includes(rawLevel as AutonomyLevel)) {
+      return NextResponse.json(
+        { error: 'invalid_params', message: 'autonomy_level must be observer, tasks or full' },
+        { status: 400 },
+      );
+    }
+    const autonomyLevel = rawLevel as AutonomyLevel;
+    const allowedTools =
+      autonomyLevel === 'observer' ? READ_ONLY_ALLOWED_TOOLS : 'all';
 
     // Validate name length (matches label CHECK constraint)
     if (name.length < 1 || name.length > 100) {
@@ -257,9 +283,10 @@ export async function POST(request: NextRequest) {
         workspace_id: targetWorkspaceId,
         key_hash: keyHash,
         label: name,
-        allowed_tools: 'all',
+        allowed_tools: allowedTools,
         can_send_messages: true,
         max_tasks_per_minute: 50,
+        autonomy_level: autonomyLevel,
         created_by: (worker?.id as string) ?? null,
         expires_at: expiryDate.toISOString(),
       });

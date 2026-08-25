@@ -547,6 +547,12 @@ CREATE TABLE workspace_settings (
     "agent_reserved_pct": 60,
     "human_min_pct":      40
   }',
+  agent_duty_playbook           jsonb,
+  -- v0.14.x / миграция 049: Admin-overrides протокола Duty Mode per уровень
+  -- автономии ключей: {"observer": text|null, "tasks": text|null, "full": text|null}.
+  -- NULL/отсутствующий уровень = встроенный дефолт (lib/shared/dutyPlaybook.ts).
+  -- Агенту отдаётся через get_workspace_settings.duty_playbook, ресолв по
+  -- уровню КЛЮЧА звонящего (детерминированный server-side выбор).
   data_sharing_level            text    DEFAULT 'standard'
                                 CHECK (data_sharing_level IN ('minimal', 'standard', 'full')),
   -- Уровень изоляции данных при передаче внешним LLM-провайдерам (INV-15).

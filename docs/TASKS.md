@@ -487,6 +487,13 @@ format is deliberately compact so that agents can load the file quickly.
       calendar_.md §6. Исправлены stub'ы в `page.tsx`, `CalendarView.tsx`. Создан `CalendarSettingsCard.tsx`, интегрирован в settings page.
 - [ ] CAL-06 INV-17: шифрование OAuth-токенов через pgcrypto AES-256-GCM (ENCRYPTION_KEY) #db !high @blocked_by:CAL-01
       Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
+- [x] DUTY-01 Autonomy levels + duty playbook (миграция 049) #mcp #ui !high ✅
+      Master §6.4 (`agent_duty_playbook`), §6.19 (`autonomy_level`), mcp_contract v0.8.2.
+      Реализовано: миграция `049_duty_mode_autonomy.sql`; `lib/shared/dutyPlaybook.ts`
+      (дефолты observer/tasks/full + resolveDutyPlaybook); `resolveAgentKey` прокидывает
+      autonomyLevel; `get_workspace_settings` → `autonomy_level` + `duty_playbook`;
+      POST /api/mcp-keys принимает autonomy_level (observer → read-only allowed_tools);
+      UI: селектор уровня в AddMcpKeySheet + блок «Старт сессии» на settings/mcp.
 
 ---
 
