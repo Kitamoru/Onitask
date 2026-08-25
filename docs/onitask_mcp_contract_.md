@@ -342,7 +342,12 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 {
   workspace_id: string,
   agent_name:   string,
-  task_id:      string
+  task_id:      string,
+  // CTX-02 флаги экономии payload (дефолты = legacy-поведение):
+  include_workspace_context?: boolean, // default true — статично по воркспейсу:
+                                       // получать разово за сессию
+  include_memory_summary?:    boolean, // default true — редко меняется за сессию
+  events_limit?:              number   // default 20, max 20 — cap agent_events
 }
 ```
 
@@ -489,7 +494,7 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 
 ---
 
-### `wait_for_tasks` (v0.8.1 — Duty Mode)
+### `wait_for_tasks` (v0.9.0 — Duty Mode)
 
 **Endpoint:** `POST /api/mcp/wait_for_tasks`
 **Запрос:**
@@ -498,22 +503,39 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
 {
   workspace_id:   string,
   agent_name:     string,
-  known_task_ids?: string[],  // UUID задач, которые агент уже знает
-                              // (обработал или они у него в работе)
+  known_task_ids?: string[],  // LEGACY/опционально. Сервер сам помнит
+                              // доставленные задачи (agent_duty_state,
+                              // миграция 056) — передавать не нужно;
+                              // если передан — объединяется с серверным стейтом
   timeout_sec?:   number,     // default 25, max 45
   poll_seq?:      number      // счётчик вызовов цикла (prev+1). Сервером
                               // игнорируется; нужен клиенту, чтобы отличать
-                              // легитимный duty-loop от случайного повтора
+                              // легитимный duty-loop от случайного повтора.
+                              // Увеличивать на КАЖДОМ вызове, включая ретраи
+                              // после ошибок
 }
 ```
+
+**Server-side duty state (CTX-01, миграция 056):** таблица
+`agent_duty_state(workspace_id, agent_name PK, seen jsonb)`. Ключом служит
+аутентифицированная идентичность агента — клиент не передаёт никакого
+идентификатора сессии. Задача помечается «доставленной» в момент возврата из
+`wait_for_tasks` (persist ДО ответа ⇒ при сбое at-least-once повторная
+доставка). Записи истекают через **visibility timeout 4ч** (защита от потери
+при падении сессии после persist), cap 500 id, брошенные стейты (>7 дней)
+подчищаются при загрузке. Клиентский payload константен
+(`{timeout_sec, poll_seq}`), состояние переживает Auto Compact без реконструкции.
 
 **Семантика:** long-poll. Сервер держит запрос открытым и опрашивает БД
 (интервал 3s), пока не появится что-то из критериев пробуждения — либо
 истечёт таймаут. Worker агента пере-резолвится на каждой итерации (INV-04
-может сработать посреди ожидания).
+может сработать посреди ожидания). Wall-clock guard: итерация опроса НЕ
+стартует, если до дедлайна осталось < 3с — ответ гарантированно возвращается
+внутрь клиентского MCP-таймаута даже при деградации БД.
 
 **Критерии пробуждения (v0.8.3, миграция 050):**
-1. **Новая задача:** назначена агенту, `column != 'done'`, `id` не в `known_task_ids`.
+1. **Новая задача:** назначена агенту, `column != 'done'`, `id` не в
+   объединении {server-side seen} ∪ {known_task_ids, если передан}.
 2. **`deploy_requests`** (только ключи `autonomy_level='full'`): задача агента
    перешла review → done (человеческое одобрение). Детект по `task_column_history`
    (окно 24ч) — покрывает и Telegram-апрув (`review_action` RPC), и free-move
@@ -547,10 +569,10 @@ event-loop без внешних демонов:
 
 ```
 while (true):
-  r = wait_for_tasks(known_task_ids)
+  r = wait_for_tasks({ timeout_sec: 30, poll_seq: prev + 1 })
   if r.status == 'new_tasks':
       для каждой задачи → get_task_context → работа по §7
-      known_task_ids += обработанные id
+      # known_task_ids вести НЕ нужно — сервер помнит доставленное сам
   # timeout → просто вызвать снова
 ```
 
@@ -793,8 +815,9 @@ while (true):
     Правила:
     - Запросы пользователя в чате ВСЕГДА важнее дежурного цикла — текущий
       вызов вернётся по таймауту ≤45s, после ответа возобновить цикл.
-    - После Auto Compact / `/smol` восстановить `known_task_ids` через
-      `get_workspace_settings.agent_active_tasks` + память обработанных задач.
+    - После Auto Compact / `/smol` просто продолжить цикл — доставленные
+      задачи помнит сервер (`agent_duty_state`, миграция 056), состояние
+      переживает компакт; `known_task_ids` восстанавливать не нужно.
     - Ответы `wait_for_tasks` короткие — не пересказывать их в чате.
 
 ---

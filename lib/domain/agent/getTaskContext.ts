@@ -23,6 +23,16 @@ export async function getTaskContext(
   const workspaceId = key.workspaceId;
   const supabase = getSupabaseClient();
 
+  // CTX-02 payload-hygiene flags: defaults preserve legacy behavior; callers
+  // opt out of static/heavy sections to keep duty-session context small.
+  const includeWorkspaceContext =
+    params.include_workspace_context !== false;
+  const includeMemorySummary = params.include_memory_summary !== false;
+  const eventsLimit = Math.min(
+    Math.max(params.events_limit ?? 20, 0),
+    20
+  );
+
   if (!params.task_id) throw internalError('task_id is required.');
 
   // --- Task -------------------------------------------------------------------
@@ -38,44 +48,50 @@ export async function getTaskContext(
   // --- Column history ------------------------------------------------------------
   const columnHistory = await getTaskColumnHistory(workspaceId, params.task_id);
 
-  // --- Agent events (last 20, DESC) -------------------------------------------------
-  const agentEvents = await getAgentEventsForTask(workspaceId, params.task_id);
+  // --- Agent events (last N=events_limit, DESC) ---------------------------------
+  const agentEvents = (
+    await getAgentEventsForTask(workspaceId, params.task_id)
+  ).slice(0, eventsLimit);
 
   // --- Memory summary (latest consolidated memory for this agent) ---------------------
   let memorySummary: string | null = null;
-  try {
-    const { data: worker } = await supabase
-      .from('workers')
-      .select('id')
-      // Agent workers use prefixed source_id per Master Spec §6.2 ('agent::<name>')
-      .eq('source_id', `agent::${params.agentName}`)
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
-    if (worker) {
-      const { data: mem } = await supabase
-        .from('agent_memory')
-        .select('summary')
-        .eq('worker_id', worker.id as string)
-        .order('created_at', { ascending: false })
-        .limit(1)
+  if (includeMemorySummary) {
+    try {
+      const { data: worker } = await supabase
+        .from('workers')
+        .select('id')
+        // Agent workers use prefixed source_id per Master Spec §6.2 ('agent::<name>')
+        .eq('source_id', `agent::${params.agentName}`)
+        .eq('workspace_id', workspaceId)
         .maybeSingle();
-      memorySummary = (mem?.summary as string | null) ?? null;
+      if (worker) {
+        const { data: mem } = await supabase
+          .from('agent_memory')
+          .select('summary')
+          .eq('worker_id', worker.id as string)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        memorySummary = (mem?.summary as string | null) ?? null;
+      }
+    } catch {
+      memorySummary = null; // graceful degradation
     }
-  } catch {
-    memorySummary = null; // graceful degradation
   }
 
   // --- Workspace context (A-12 / INV-14: read-only access to context fields) ------------
   let workspaceContext: string | null = null;
-  try {
-    const { data: settings } = await supabase
-      .from('workspace_settings')
-      .select('workspace_context')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
-    workspaceContext = (settings?.workspace_context as string | null) ?? null;
-  } catch {
-    workspaceContext = null;
+  if (includeWorkspaceContext) {
+    try {
+      const { data: settings } = await supabase
+        .from('workspace_settings')
+        .select('workspace_context')
+        .eq('workspace_id', workspaceId)
+        .maybeSingle();
+      workspaceContext = (settings?.workspace_context as string | null) ?? null;
+    } catch {
+      workspaceContext = null;
+    }
   }
 
   // --- Relevant docs (semantic search pending match_doc_chunks wiring → graceful null) ---

@@ -129,28 +129,36 @@ const TOOLS = [
   },
   {
     name: 'get_task_context',
-    description: 'Full task context: history, agent events, memory, docs, subgraph.',
+    description:
+      'Full task context: history, agent events, memory, docs, subgraph. ' +
+      'Optional flags to trim payload: include_workspace_context / include_memory_summary (default true — pass false for per-task calls, fetch those once at session start), events_limit (default 20).',
     inputSchema: {
       type: 'object',
-      properties: { task_id: { type: 'string' } },
+      properties: {
+        task_id: { type: 'string' },
+        include_workspace_context: { type: 'boolean' },
+        include_memory_summary: { type: 'boolean' },
+        events_limit: { type: 'number', maximum: 20 },
+      },
       required: ['task_id'],
     },
   },
   {
     name: 'wait_for_tasks',
     description:
-      'Long-poll: block until matching work appears — a NEW task assigned to you (not in known_task_ids, column != done), ' +
+      'Long-poll: block until matching work appears — a NEW task assigned to you (column != done; the server remembers which tasks it already delivered to you, so you do NOT need to track ids), ' +
       'an APPROVED task of yours (deploy_requests: review→done; autonomy_level=full only), or a task RETURNED from review to you (fix_requests). ' +
       'Call in a loop when idle — duty mode. Returns { status, tasks, deploy_requests?, fix_requests?, waited_ms }. ' +
       'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call. ' +
-      'IMPORTANT: pass poll_seq = previous value + 1 on EVERY call — identical consecutive payloads trip client-side loop guards and abort the duty loop.',
+      'IMPORTANT: pass poll_seq = previous value + 1 on EVERY call — even when RETRYING after an error — identical consecutive payloads trip client-side loop guards and abort the duty loop. On repeated errors, halve timeout_sec.',
     inputSchema: {
       type: 'object',
       properties: {
         known_task_ids: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Task UUIDs you already know about; only unknown ones wake you.',
+          description:
+            'Legacy/optional. The server already remembers tasks delivered to you across calls and Auto Compacts; omit this to keep your context small.',
         },
         timeout_sec: { type: 'number', maximum: 45 },
         poll_seq: {
@@ -252,7 +260,17 @@ async function dispatchTool(
         parse_mode: args.parse_mode as 'HTML' | 'MarkdownV2' | undefined,
       });
     case 'get_task_context':
-      return getTaskContext({ ...base, task_id: args.task_id as string });
+      return getTaskContext({
+        ...base,
+        task_id: args.task_id as string,
+        include_workspace_context: args.include_workspace_context as
+          | boolean
+          | undefined,
+        include_memory_summary: args.include_memory_summary as
+          | boolean
+          | undefined,
+        events_limit: args.events_limit as number | undefined,
+      });
     case 'wait_for_tasks':
       return waitForTasks({
         ...base,

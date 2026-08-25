@@ -178,6 +178,18 @@ export interface SendMessageToChatResult {
 
 export interface GetTaskContextParams extends DomainContext {
   task_id: string;
+  /**
+   * CTX-02: default true. workspace_context is static per workspace — omit on
+   * per-task calls and fetch it once at session start to keep payloads small.
+   */
+  include_workspace_context?: boolean;
+  /**
+   * CTX-02: default true. memory_summary rarely changes mid-session — omit on
+   * per-task calls and fetch it once at session start.
+   */
+  include_memory_summary?: boolean;
+  /** CTX-02: cap on returned agent_events. Default 20, max 20. */
+  events_limit?: number;
 }
 
 export interface SubgraphEdge {

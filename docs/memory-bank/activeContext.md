@@ -1,6 +1,44 @@
 # Active Context
 
-## Current Task: DUTY-04 — loop-guard fix + INV-04 app-level onboarding (2026-08-25)
+## Current Task: CTX-01/CTX-02 — server-side duty state + гигиена payload (2026-08-25)
+
+**Status**: ✅ Completed (миграция 056 применена, type-check ✅, БД-валидация ✅)
+
+**Валидация (БД, через Supabase MCP):**
+- upsert insert-путь ✅; конфликтный update-путь ✅ (seen_count растёт,
+  updated_at свежий); CHECK `jsonb_typeof(seen)='array'` отклоняет мусор ✅;
+  advisors: только ожидаемый INFO rls_enabled_no_policy (service-only,
+  прецедент bot_review_fix_pending). Тестовые задача/стейт удалены.
+- Runtime-путь (wait_for_tasks с новым кодом) заработает после следующего
+  деплоя на Vercel; до деплоя прод работает по-старому (known_task_ids
+  совместим — обратная совместимость сохранена).
+- Этап 0: cline_mcp_settings.json onitask timeout 60→120 (+ supabase 60→120
+  после кейса таймаута MCP при мультистейтменте).
+
+**Проблема:** дежурный цикл раздувал контекст LLM-сессии — растущий
+`known_task_ids` повторялся в каждом poll-вызове wait_for_tasks; Auto Compact
+разрушал состояние (реконструкция через agent_active_tasks).
+
+**Решение (CTX-01, миграция 056 `agent_duty_state`):**
+- Таблица `agent_duty_state(workspace_id, agent_name PK, seen jsonb)`, RLS без
+  политик = service-only. Ключ = аутентифицированная идентичность агента —
+  id сессии НЕ передаётся клиентом; после компакта «голый» вызов находит тот же
+  стейт. Клиентский payload константен `{timeout_sec, poll_seq}`.
+- `waitForTasks.ts`: загрузка стейта разово на вызов; фильтр wake №1 =
+  not in (seen ∪ known_task_ids); persist ДО возврата (at-least-once);
+  visibility TTL 4ч; cap 500; GC >7д; wall-clock guard (не стартовать итерацию
+  при остатке <3с — фикс кейса MCP timeout 60s).
+- Плейбуки observer/tasks/full: без known_task_ids; правило ретрая после
+  ошибок (poll_seq+1, timeout_sec вдвое); после компакта просто продолжать цикл.
+- Этап 0: cline_mcp_settings.json onitask timeout 60→120.
+- **CTX-02:** get_task_context opt-out флаги include_workspace_context /
+  include_memory_summary / events_limit (дефолты legacy); плейбуки: первый
+  вызов за сессию без флагов, далее с флагами.
+- Доки: mcp_contract §4.10 v0.9.0, §4.7, TASKS.md CTX-01/02.
+
+**Валидация:** type-check ✅; live-тесты миграции 055 — pending (см. Act).
+
+## Previous Task: DUTY-04 — loop-guard fix + INV-04 app-level onboarding (2026-08-25)
 
 **Status**: ✅ Completed (миграция 052 применена, type-check ✅, live-валидация ✅)
 

@@ -521,6 +521,25 @@ format is deliberately compact so that agents can load the file quickly.
       (telegram_user_<id>) → люди становились агентами-воркерами на доске.
       Создание воркера перенесено в resolveAgentWorkerId (find-or-create,
       authenticated path only). Фантóмы невозможны архитектурно.
+- [x] CTX-01 Server-side duty state — wait_for_tasks без known_task_ids
+      (миграция 056 `agent_duty_state`) #mcp #db !high ✅
+      Кейс: дежурный цикл раздувал контекст LLM-сессии — растущий список
+      known_task_ids повторялся в каждом poll-вызове, каждый Auto Compact
+      разрушал состояние (дорогая реконструкция через agent_active_tasks).
+      Решение: сервер сам помнит доставленные задачи — таблица
+      agent_duty_state(workspace_id, agent_name PK, seen jsonb), ключ =
+      аутентифицированная идентичность (id сессии не передаётся вовсе).
+      Persist ДО возврата ответа (at-least-once при сбое), visibility TTL 4ч,
+      cap 500 id, GC стейтов >7д. Wall-clock guard в long-poll (итерация не
+      стартует при остатке <3с — гарантия ответа до клиентского таймаута,
+      кейс MCP timeout 60s). Плейбуки observer/tasks/full: payload константен,
+      правило ретрая после ошибок (poll_seq+1, timeout_sec/2). mcp_contract
+      §4.10 → v0.9.0.
+- [x] CTX-02 Гигиена payload get_task_context #mcp !med ✅
+      Opt-out флаги (дефолты = legacy): include_workspace_context /
+      include_memory_summary (статичные секции — разово за сессию),
+      events_limit (default/max 20). route.ts schema+dispatch, плейбуки:
+      первый вызов без флагов, далее с флагами экономии. mcp_contract §4.7.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

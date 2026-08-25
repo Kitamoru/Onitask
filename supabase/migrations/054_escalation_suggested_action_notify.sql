@@ -1,5 +1,5 @@
 -- ============================================================================
--- 053_escalation_suggested_action_notify.sql
+-- 054_escalation_suggested_action_notify.sql
 -- Проброс suggested_action в Telegram-карточку эскалации ("Предлагаю: ...").
 --
 -- Проблема: пользователь в боте видит "Причина: Out_of_scope", но не видит

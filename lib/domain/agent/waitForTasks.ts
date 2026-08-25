@@ -37,9 +37,21 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const POLL_INTERVAL_MS = 3000;
 const DEFAULT_TIMEOUT_SEC = 25;
-const MAX_TIMEOUT_SEC = 45; // stays safely under Cline's 60s MCP client timeout
+const MAX_TIMEOUT_SEC = 45; // stays safely under Cline's 120s MCP client timeout
 const MAX_KNOWN_IDS = 200;
 const WAKE_WINDOW_MS = 24 * 60 * 60 * 1000; // approval/fix detection window
+
+// --- CTX-01: wall-clock safety + server-side duty state ----------------------
+// Never START another DB-polling iteration with less than this left before the
+// deadline: guarantees the response always makes it back under the MCP client
+// request timeout even if the last round-trips degrade.
+const MIN_ITERATION_BUDGET_MS = 3000;
+/** Visibility timeout for delivered-task memories (crash protection). */
+const SEEN_TTL_MS = 4 * 60 * 60 * 1000;
+/** Hard cap of remembered ids per agent+workspace. */
+const SEEN_MAX = 500;
+/** Abandoned duty states older than this are garbage-collected on load. */
+const DUTY_STATE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface WaitForTasksParams extends DomainContext {
   /** Task ids the agent already knows about. New = assigned && not in this list. */
@@ -65,6 +77,79 @@ export interface WaitForTasksResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * CTX-01 (migration 056): server-side duty-loop memory.
+ *
+ * Keyed by the authenticated agent identity (workspace_id + agent_name from
+ * the Bearer key), so no session identifier ever travels through the LLM
+ * context: after an Auto Compact the next bare wait_for_tasks call finds the
+ * same state. Entries expire after SEEN_TTL_MS (visibility timeout) so a task
+ * persisted-but-lost to a crash is re-delivered.
+ */
+interface DutySeenEntry {
+  id: string;
+  ts: number;
+}
+
+async function loadDutyState(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  agentName: string
+): Promise<Map<string, number>> {
+  const seen = new Map<string, number>();
+  const now = Date.now();
+
+  const { data } = await supabase
+    .from('agent_duty_state')
+    .select('seen')
+    .eq('workspace_id', workspaceId)
+    .eq('agent_name', agentName)
+    .maybeSingle();
+
+  for (const e of (data?.seen as DutySeenEntry[] | null) ?? []) {
+    if (
+      e &&
+      typeof e.id === 'string' &&
+      typeof e.ts === 'number' &&
+      now - e.ts < SEEN_TTL_MS
+    ) {
+      seen.set(e.id, e.ts);
+    }
+  }
+
+  // Opportunistic GC: drop states abandoned more than DUTY_STATE_STALE_MS ago.
+  await supabase
+    .from('agent_duty_state')
+    .delete()
+    .lt('updated_at', new Date(now - DUTY_STATE_STALE_MS).toISOString());
+
+  return seen;
+}
+
+/** Persist-before-return: failure ⇒ at-least-once redelivery (marker semantics). */
+async function persistDutyState(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  agentName: string,
+  seen: Map<string, number>
+): Promise<void> {
+  const now = Date.now();
+  const entries: DutySeenEntry[] = [...seen.entries()]
+    .filter(([, ts]) => now - ts < SEEN_TTL_MS)
+    .slice(-SEEN_MAX)
+    .map(([id, ts]) => ({ id, ts }));
+
+  await supabase.from('agent_duty_state').upsert(
+    {
+      workspace_id: workspaceId,
+      agent_name: agentName,
+      seen: entries,
+      updated_at: new Date(now).toISOString(),
+    },
+    { onConflict: 'workspace_id,agent_name' }
+  );
 }
 
 /** Shape of task columns joined from task_column_history via tasks!inner(...). */
@@ -272,6 +357,13 @@ export async function waitForTasks(
     knownIds = params.known_task_ids.slice(0, MAX_KNOWN_IDS);
   }
 
+  // CTX-01: load the agent's server-side duty state ONCE per call (not per
+  // poll iteration). Delivered task ids are remembered server-side with a
+  // visibility TTL, so the client no longer needs to carry a growing
+  // known_task_ids list through every poll (context-bloat fix). Explicit
+  // known_task_ids are still honored (union of both sets).
+  const seenIds = await loadDutyState(supabase, workspaceId, agentName);
+
   // Migration 050: deploy wakes are meaningful only for keys allowed to deploy;
   // observer keys get neither list (read-only watchdog).
   const includeDeployWakes = key.autonomyLevel === 'full';
@@ -301,7 +393,11 @@ export async function waitForTasks(
 
       let freshPreviews: TaskPreview[] = [];
       if (!error && rows && rows.length > 0) {
-        const fresh = rows.filter((t) => !knownIds.includes(t.id as string));
+        const fresh = rows.filter(
+          (t) =>
+            !knownIds.includes(t.id as string) &&
+            !seenIds.has(t.id as string)
+        );
         if (fresh.length > 0) {
           // Resolve prefix once for full_id
           const { data: ws } = await supabase
@@ -336,6 +432,14 @@ export async function waitForTasks(
         deployRequests.length > 0 ||
         fixRequests.length > 0
       ) {
+        // CTX-01: remember freshly delivered tasks BEFORE returning —
+        // persist-first ⇒ at-least-once redelivery on persist failure,
+        // matching the deploy/fix marker semantics (migration 050).
+        if (freshPreviews.length > 0) {
+          const now = Date.now();
+          for (const t of freshPreviews) seenIds.set(t.id, now);
+          await persistDutyState(supabase, workspaceId, agentName, seenIds);
+        }
         return {
           success: true,
           status: 'new_tasks',
@@ -347,9 +451,14 @@ export async function waitForTasks(
       }
     }
 
-    if (Date.now() >= deadline) {
+    // Wall-clock guard: stop polling while there is still enough budget to
+    // return before the MCP client's request timeout even if the final DB
+    // round-trips degrade.
+    if (deadline - Date.now() <= MIN_ITERATION_BUDGET_MS) {
       return { success: true, status: 'timeout', tasks: [], waited_ms: timeoutSec * 1000 };
     }
-    await sleep(Math.min(POLL_INTERVAL_MS, deadline - Date.now()));
+    await sleep(
+      Math.min(POLL_INTERVAL_MS, deadline - MIN_ITERATION_BUDGET_MS - Date.now())
+    );
   }
 }
