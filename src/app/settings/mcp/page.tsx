@@ -7,6 +7,7 @@ import { AddMcpKeySheet } from '@/components/settings/AddMcpKeySheet';
 import {
   McpKeyDetailSheet,
   cachePlaintextKey,
+  getCachedPlaintextKey,
   type McpKeyInfo,
 } from '@/components/settings/McpKeyDetailSheet';
 
@@ -110,9 +111,11 @@ async function updateMcpKeyLevel(
 
 function McpKeyItem({
   keyInfo,
+  selected,
   onSelect,
 }: {
   keyInfo: McpKeyInfo;
+  selected: boolean;
   onSelect: (keyInfo: McpKeyInfo) => void;
 }) {
   const formatDate = (dateStr: string) => {
@@ -140,8 +143,13 @@ function McpKeyItem({
       style={{
         clipPath,
         borderRadius,
-        background: 'var(--color-line)', // рамка
-        padding: '1px',                 // толщина рамки
+        // Первый клик выделяет карточку, второй открывает панель.
+        // Градиентная рамка — та же, что у выделенной доски на /board
+        // (NotchedPanel borderGradient: grad-add-from → grad-add-to, 135deg).
+        background: selected
+          ? 'linear-gradient(135deg, var(--color-grad-add-from), var(--color-grad-add-to))'
+          : 'var(--color-line)',
+        padding: selected ? '1.5px' : '1px', // толщина рамки
       }}
     >
       <div
@@ -237,15 +245,21 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function ConnectionTemplate() {
+function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }) {
   const [tab, setTab] = useState<'mcp' | 'rest'>('mcp');
+
+  // ONIT-9: автоподстановка agent_name и Bearer token выбранного ключа.
+  // Plaintext доступен только для ключей, созданных в этой сессии (localStorage);
+  // иначе остаются плейсхолдеры.
+  const agentName = selectedKey?.name || 'my-agent';
+  const token = (selectedKey && getCachedPlaintextKey(selectedKey.keyHash)) || 'sk_YOUR_API_KEY';
 
   // workspace_id резолвится из ключа на сервере — в URL он не нужен
   const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/create_task \\
-  -H "Authorization: Bearer sk_YOUR_API_KEY" \\
+  -H "Authorization: Bearer ${token}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "agent_name": "my-agent",
+    "agent_name": "${agentName}",
     "title": "Task title",
     "description": "Task description"
   }'
@@ -257,8 +271,8 @@ function ConnectionTemplate() {
         onitask: {
           url: 'https://onitask.vercel.app/api/mcp',
           headers: {
-            Authorization: 'Bearer sk_YOUR_API_KEY',
-            'X-Agent-Name': 'my-agent',
+            Authorization: `Bearer ${token}`,
+            'X-Agent-Name': agentName,
           },
         },
       },
@@ -396,6 +410,19 @@ export default function McpSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [selectedKey, setSelectedKey] = useState<McpKeyInfo | null>(null);
+  // ONIT-9: выделение карточки ключа. Первый клик — выделить (amber-рамка),
+  // второй клик по уже выделенной карточке — открыть панель управления ключом.
+  const [highlightedKeyHash, setHighlightedKeyHash] = useState<string | null>(null);
+
+  const handleKeySelect = useCallback((keyInfo: McpKeyInfo) => {
+    if (highlightedKeyHash === keyInfo.keyHash) {
+      setSelectedKey(keyInfo); // второй клик — bottom sheet
+    } else {
+      setHighlightedKeyHash(keyInfo.keyHash); // первый клик — выделение
+    }
+  }, [highlightedKeyHash]);
+
+  const highlightedKey = keys.find((k) => k.keyHash === highlightedKeyHash) ?? null;
 
   // Load keys and workspaces once initData is available
   useEffect(() => {
@@ -641,7 +668,8 @@ export default function McpSettingsPage() {
                   <McpKeyItem
                     key={keyInfo.keyHash}
                     keyInfo={keyInfo}
-                    onSelect={setSelectedKey}
+                    selected={highlightedKeyHash === keyInfo.keyHash}
+                    onSelect={handleKeySelect}
                   />
                 ))}
               </div>
@@ -668,7 +696,7 @@ export default function McpSettingsPage() {
         </div>
 
         {/* Connection template */}
-        <ConnectionTemplate />
+        <ConnectionTemplate selectedKey={highlightedKey} />
 
         {/* Session start template (duty mode bootstrap prompt) */}
         <SessionStartTemplate />
