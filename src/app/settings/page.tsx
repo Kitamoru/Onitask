@@ -378,7 +378,7 @@ function SettingsContent() {
         <div className="flex flex-col gap-3 w-full">
           <SectionHeading title="Рабочее пространство" />
           <div className="flex flex-col gap-2">
-            <ActionButton label="Интеграции MCP" onClick={handleMcpClick} />
+            <ActionButton label="Подключение MCP" onClick={handleMcpClick} />
             <ActionButton label="Тарифы" onClick={handlePlansClick} />
             <ActionButton label="Мои коллеги" onClick={handleColleaguesClick} />
           </div>

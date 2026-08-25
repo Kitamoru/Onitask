@@ -515,6 +515,11 @@ format is deliberately compact so that agents can load the file quickly.
       (MCP vs CLI) #mcp !med @blocked_by:MCP-01
 - [ ] RUNNER-08 REST `/api/agent/*` freeze + счётчик внешних вызовов;
       sunset через 30 дней наблюдения (см. vision §7) #mcp !low
+- [ ] RUNNER-09 Провал исполнителя: retry ≤ N → escalate_task с контекстом;
+      least-privilege профиль запуска исполнителя (AC-8/9) #cli !high @blocked_by:RUNNER-03
+- [ ] RUNNER-10 Бюджетные стоп-краны: лимиты задач за смену / времени
+      исполнения → корректное завершение смены + отчёт в чат (UC-10,
+      развитие F-01 на агентную экономику) #cli #ai !med @blocked_by:RUNNER-02
 
 ---
 
