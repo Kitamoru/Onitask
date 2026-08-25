@@ -82,6 +82,28 @@ async function deleteMcpKey(
   return res.json();
 }
 
+interface UpdateLevelResponse {
+  success: boolean;
+  autonomy_level?: string;
+  error?: string;
+}
+
+async function updateMcpKeyLevel(
+  initData: string,
+  keyHash: string,
+  autonomyLevel: string,
+): Promise<UpdateLevelResponse> {
+  const res = await fetch(
+    `/api/mcp-keys/${encodeURIComponent(keyHash)}?init_data=${encodeURIComponent(initData)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autonomy_level: autonomyLevel }),
+    },
+  );
+  return res.json();
+}
+
 // ============================================================================
 // Components
 // ============================================================================
@@ -435,6 +457,28 @@ export default function McpSettingsPage() {
     }
   }, [tgInitData]);
 
+  const handleUpdateLevel = useCallback(async (keyHash: string, level: string) => {
+    if (!tgInitData) return;
+    setError(null);
+    try {
+      const result = await updateMcpKeyLevel(tgInitData, keyHash, level);
+      if (result.success) {
+        // Optimistic local update — refetch not needed for a single field.
+        // selectedKey is a snapshot — keep the open sheet's label in sync too.
+        setKeys((prev) =>
+          prev.map((k) => (k.keyHash === keyHash ? { ...k, autonomy_level: level } : k)),
+        );
+        setSelectedKey((prev) =>
+          prev && prev.keyHash === keyHash ? { ...prev, autonomy_level: level } : prev,
+        );
+      } else {
+        setError(result.error ?? 'Не удалось изменить уровень автономии');
+      }
+    } catch {
+      setError('Не удалось изменить уровень автономии');
+    }
+  }, [tgInitData]);
+
   const handleCopyKey = useCallback(async (text: string) => {
     // navigator.clipboard недоступен в Telegram WebView (небезопасный контекст)
     try {
@@ -647,6 +691,7 @@ export default function McpSettingsPage() {
         onClose={() => setSelectedKey(null)}
         keyInfo={selectedKey}
         onDelete={handleDeleteKey}
+        onChangeLevel={handleUpdateLevel}
       />
     </main>
   );

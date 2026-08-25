@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
+import {
+  isAutonomyLevel,
+  allowedToolsForLevel,
+} from '../../../../lib/shared/dutyPlaybook';
 import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 
 // ============================================================================
@@ -16,18 +20,6 @@ export interface McpKeyInfo {
   workspace_name: string;
   autonomy_level: string;
 }
-
-// Duty-mode tiers (migration 049). 'observer' maps to a read-only toolset at
-// creation so the tier is enforced server-side via allowed_tools (LLM-6).
-const AUTONOMY_LEVELS = ['observer', 'tasks', 'full'] as const;
-type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
-
-const READ_ONLY_ALLOWED_TOOLS = [
-  'get_tasks_by_column',
-  'get_workspace_settings',
-  'get_task_context',
-  'wait_for_tasks',
-];
 
 interface WorkspaceOption {
   id: string;
@@ -229,15 +221,14 @@ export async function POST(request: NextRequest) {
 
     // Autonomy level (migration 049): validate + enforce observer as read-only
     const rawLevel = (body.autonomy_level as string) ?? 'tasks';
-    if (!AUTONOMY_LEVELS.includes(rawLevel as AutonomyLevel)) {
+    if (!isAutonomyLevel(rawLevel)) {
       return NextResponse.json(
         { error: 'invalid_params', message: 'autonomy_level must be observer, tasks or full' },
         { status: 400 },
       );
     }
-    const autonomyLevel = rawLevel as AutonomyLevel;
-    const allowedTools =
-      autonomyLevel === 'observer' ? READ_ONLY_ALLOWED_TOOLS : 'all';
+    const autonomyLevel = rawLevel;
+    const allowedTools = allowedToolsForLevel(autonomyLevel);
 
     // Validate name length (matches label CHECK constraint)
     if (name.length < 1 || name.length > 100) {
