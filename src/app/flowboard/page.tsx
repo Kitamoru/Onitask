@@ -21,7 +21,11 @@ function useScrollReset() {
 }
 
 function tasksToWorkerTaskList(tasks: TaskEntity[]): string[] {
-  return tasks.slice(0, 3).map((t) => {
+  // Скрываем завершённые задачи из активного списка в карточках участников (ONIT-12)
+  return tasks
+    .filter((t) => t.column !== 'done')
+    .slice(0, 3)
+    .map((t) => {
     // Use task.full_id if available (already computed), otherwise fallback
     const fullId = t.full_id ?? (t.task_number ? `${t.workspace_prefix ?? 'TASK'}-${t.task_number}` : t.id.slice(0, 8));
     const title = t.title ?? 'Без названия';
