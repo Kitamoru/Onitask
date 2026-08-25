@@ -23,7 +23,9 @@ export function SprintEditSheet({
   onSubmit: (value: SprintFormValue) => void;
 }) {
   const { state } = useData();
-  const taskEntities = state.tasks.items;
+  const taskEntities = state.tasks.items.filter(
+    (t) => t.column !== 'done',
+  );
 
   const taskList = taskEntities.map((t) => ({
     id: t.id,
