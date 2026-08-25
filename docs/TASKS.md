@@ -548,6 +548,16 @@ format is deliberately compact so that agents can load the file quickly.
       исполнения → корректное завершение смены + отчёт в чат (UC-10,
       развитие F-01 на агентную экономику) #cli #ai !med @blocked_by:RUNNER-02
 
+### Hotfix
+
+- [x] FIX-01 review_action 42725 «function is not unique» (миграция 053) #db !critical ✅
+      Причина: миграция 051 добавила 5-арг перегрузку (p_reason DEFAULT) поверх
+      4-арг сигнатуры → PostgREST не мог выбрать кандидата на любом вызове →
+      кнопки «Согласовать/Вернуть» в боте всегда падали с generic-ошибкой.
+      Фикс: DROP 4-арг перегрузки, каноническая 5-арг сигнатура (DEFAULT NULL).
+      Верифицировано: named-call тест возвращает типизированный version_conflict.
+      Правило против рецидива — `.clinerules` validation_commands.rpc_overloads.
+
 ---
 
 ## Сводка по стадиям

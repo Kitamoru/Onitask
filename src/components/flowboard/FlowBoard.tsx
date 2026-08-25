@@ -981,7 +981,7 @@ export function FlowBoard({
             <PersonCard key={agent.id} person={agent} type="agent" />
           ))}
         </div>
-        <Button variant="outline" disabled aria-label="Добавить агента" type="button">
+        <Button variant="outline" onClick={onAddAgent} aria-label="Добавить агента" type="button">
           Добавить агента
         </Button>
       </div>

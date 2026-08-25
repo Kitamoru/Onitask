@@ -167,6 +167,12 @@ validation_commands:
   edge_function: "supabase functions serve <function-name>"
   mcp_contract: "curl -X POST /api/mcp/<tool>"
   sql_view: "SELECT * FROM view_name LIMIT 1;"
+  rpc_overloads: >
+    Запрет перегрузок PostgREST-RPC: эволюция функции — только CREATE OR REPLACE
+    единственной сигнатуры + явный DROP предыдущих версий в той же миграции.
+    Проверка перед деплоем: в public-схеме не должно быть функций, где одна
+    сигнатура является префиксом другой с DEFAULT-аргументами (иначе 42725
+    "function is not unique" на всех вызовах через PostgREST).
 
 # ============================================================================
 # MEMORY BANK CONFIGURATION

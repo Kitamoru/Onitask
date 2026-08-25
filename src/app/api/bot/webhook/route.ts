@@ -1030,7 +1030,7 @@ async function handleReviewAction(
 
   const confirmation =
     action === 'approve'
-      ? `✅ <b>${escapeHtml(String(fullId ?? ''))}</b> согласована → done (деплой)`
+      ? `✅ ${escapeHtml(fullIdStr)} · Согласовано перемещаю в Сделано`
       : `🔧 <b>${escapeHtml(String(fullId ?? ''))}</b> возвращена на доработку → in_progress`;
   await reply(confirmation);
 }

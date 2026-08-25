@@ -397,7 +397,7 @@ function FlowBoardPageContent() {
           loading={isSwitchingWorkspace}
           error={dataError}
           onAddWorker={() => setShowInviteModal(true)}
-          onAddAgent={() => console.log('Add agent clicked')}
+          onAddAgent={() => router.push('/settings/mcp')}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
           isNewUser={isNewUser}
           onBoardCreate={handleBoardCreate}
