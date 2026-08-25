@@ -503,6 +503,14 @@ format is deliberately compact so that agents can load the file quickly.
       (24ч), дедуп маркерами agent_events tool='deploy_notify'/'fix_notify'
       (metadata.history_id). Плейбук full: секция 6 переписана на реактивную —
       периодические сканы done/in_progress убраны. mcp_contract §4.10 обновлён.
+- [x] DUTY-03 Причина возврата на доработку (миграция 051) #bot #db #mcp !high ✅
+      Двухшаговый UX: «🔧 Вернуть на доработку» больше не двигает задачу сразу —
+      бот запрашивает текст причины (pending в `bot_review_fix_pending`, TTL 1ч,
+      кнопка «⬆️ Назад» восстанавливает карточку ревью), следующее сообщение =
+      причина → `review_action(p_reason)` атомарно пишет `metadata.last_fix_reason`.
+      Каналы доставки агенту: `fix_requests[].fix_reason` (пинок, мгновенно) +
+      `metadata.last_fix_reason` (персистентно через get_task_context).
+      Hotfix `review_fix_reason_fn_fix`: unqualified `metadata` в PL/pgSQL.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

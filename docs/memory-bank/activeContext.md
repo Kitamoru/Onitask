@@ -1,6 +1,27 @@
 # Active Context
 
-## Current Task: DUTY-02 — реактивные пинки деплоя/доработки через wait_for_tasks (2026-08-25)
+## Current Task: DUTY-03 — причина возврата на доработку (2026-08-25)
+
+**Status**: ✅ Completed (миграции 051 + hotfix применены, type-check ✅, БД-валидация ✅)
+
+**Решение (двухшаговый UX + два канала доставки причины):**
+- Миграция `051_review_fix_reason.sql`: `review_action(p_reason)` пишет
+  `metadata.last_fix_reason` при fix; таблица `bot_review_fix_pending`
+  (pending «ждём текст», TTL 1ч, UNIQUE(task_id), RLS без политик = service-only).
+- Webhook: `ra:fix` → pending + карточка «напишите причину» с кнопкой
+  **«⬆️ Назад»** (`ra:back` восстанавливает карточку ревью с кнопками выбора);
+  текст в DM при активном pending потребляется как причина
+  (`tryConsumeReviewFixReason`: auth A-08 дважды, свежий version, аудит с reason).
+- `waitForTasks`: `fix_requests[].fix_reason` — мгновенный канал;
+  `metadata.last_fix_reason` — персистентный (get_task_context после компакта).
+- Плейбук full 6b: источник причины зафиксирован.
+
+**Валидация:** type-check ✅; live-test в БД: test-task review→fix с причиной →
+`last_fix_reason` записан, history-детект находит; pending insert/TTL/cleanup ✅;
+тестовая задача удалена. Hotfix миграция `review_fix_reason_fn_fix`
+(unqualified `metadata` вне контекста запроса PL/pgSQL).
+
+## Previous Task: DUTY-02 — реактивные пинки деплоя/доработки через wait_for_tasks (2026-08-25)
 
 **Status**: ✅ Completed (миграция применена, type-check ✅, БД-валидация ✅)
 

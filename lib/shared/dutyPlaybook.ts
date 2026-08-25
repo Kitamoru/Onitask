@@ -102,6 +102,8 @@ export const DUTY_PLAYBOOK_FULL = `${DUTY_PLAYBOOK_TASKS}
 
    b) fix_requests — твои задачи, возвращённые с ревью на доработку
       (ЛЮБОЙ домен: пользователю мог не понравиться любой результат).
+      Причина возврата — в поле fix_reason элемента fix_requests
+      (продублирована в metadata.last_fix_reason задачи).
       Для каждой: get_task_context, затем move_task(in_progress, claim:true,
       reason) и переделай с учётом причины возврата.
 

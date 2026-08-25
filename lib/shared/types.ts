@@ -22,6 +22,12 @@ export interface TaskPreview {
   full_id: string;
   task_number: number;
   blocking_value?: number;
+  /**
+   * Migration 051: reason of the last review→in_progress return.
+   * Populated only in wait_for_tasks.fix_requests entries (same value as
+   * tasks.metadata.last_fix_reason).
+   */
+  fix_reason?: string;
 }
 
 /**

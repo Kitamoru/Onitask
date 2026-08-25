@@ -73,6 +73,7 @@ interface JoinedTaskColumns {
   is_inbox: boolean;
   is_blocked: boolean;
   task_number: number | null;
+  metadata: Record<string, unknown> | null;
 }
 
 function toPreview(t: JoinedTaskColumns, prefix: string): TaskPreview {
@@ -88,6 +89,12 @@ function toPreview(t: JoinedTaskColumns, prefix: string): TaskPreview {
     full_id: `${prefix}-${t.task_number ?? 0}`,
     task_number: t.task_number ?? 0,
   };
+}
+
+/** Migration 051: reason of the last review→in_progress return, if any. */
+function fixReasonOf(t: JoinedTaskColumns): string | undefined {
+  const r = (t.metadata ?? {} as Record<string, unknown>).last_fix_reason;
+  return typeof r === 'string' && r.length > 0 ? r : undefined;
 }
 
 /**
@@ -109,7 +116,7 @@ async function detectApprovalWakes(
     .from('task_column_history')
     .select(
       `id, moved_at, to_column,
-       tasks!inner(id, title, column, assigned_to, reviewer_id, version, is_inbox, is_blocked, task_number)`
+       tasks!inner(id, title, column, assigned_to, reviewer_id, version, is_inbox, is_blocked, task_number, metadata)`
     )
     .eq('tasks.workspace_id', workspaceId)
     .eq('tasks.assigned_to', workerId)
@@ -214,7 +221,12 @@ async function detectApprovalWakes(
         ? pendingDeploy.map((e) => toPreview(e.task, prefix))
         : [],
     fixRequests:
-      pendingFix.length > 0 ? pendingFix.map((e) => toPreview(e.task, prefix)) : [],
+      pendingFix.length > 0
+        ? pendingFix.map((e) => ({
+            ...toPreview(e.task, prefix),
+            ...(fixReasonOf(e.task) ? { fix_reason: fixReasonOf(e.task) } : {}),
+          }))
+        : [],
   };
 }
 

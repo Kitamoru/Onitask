@@ -20,6 +20,7 @@ import {
   buildTaskCard,
   setMessageReaction,
   setBotCommands,
+  miniAppDeepLink,
   TaskCardData,
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
@@ -272,6 +273,12 @@ async function dispatchUpdate(update: any): Promise<void> {
     const [rawCmd, args] = parsedCommand;
     parsedCommand = [normalizeCommand(rawCmd), args];
     console.log('[Bot Webhook] parsedCommand=', parsedCommand[0], 'args=', args);
+  }
+
+  // ── Миграция 051: текст в DM при незавершённом запросе причины = причина ──
+  if (!parsedCommand && chatType === 'private' && text) {
+    const consumed = await tryConsumeReviewFixReason(chatId, userId, text);
+    if (consumed) return;
   }
 
   // ── /start ──
@@ -751,19 +758,25 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
     return;
   }
 
-  // Review approval buttons (миграция 049): ra:approve:<task_uuid> / ra:fix:<task_uuid>
+  // Review approval buttons (миграция 049/051):
+  //   ra:approve:<task_uuid> — согласовать → done
+  //   ra:fix:<task_uuid>     — запросить текст причины возврата (051)
+  //   ra:back:<task_uuid>    — отмена запроса причины → вернуть карточку ревью
   // workspace_id НЕ встроен в callback_data (лимит 64 байта) — резолвим из задачи.
   if (data.startsWith('ra:')) {
     const parts = data.split(':');
     const action = parts[1];
     const taskId = parts[2];
-    if ((action !== 'approve' && action !== 'fix') || !taskId) {
+    if (
+      (action !== 'approve' && action !== 'fix' && action !== 'back') ||
+      !taskId
+    ) {
       await answer({ text: 'Неверный формат кнопки', show_alert: true });
       return;
     }
     await answer();
     await handleReviewAction(
-      action as 'approve' | 'fix',
+      action as 'approve' | 'fix' | 'back',
       taskId,
       userId,
       chatId,
@@ -824,7 +837,7 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
 // ============================================================================
 
 async function handleReviewAction(
-  action: 'approve' | 'fix',
+  action: 'approve' | 'fix' | 'back',
   taskId: string,
   telegramUserId: number | undefined,
   chatId: number,
@@ -833,14 +846,21 @@ async function handleReviewAction(
   const token = BOT_TOKEN;
   if (!token) return;
 
-  const reply = async (text: string) => {
+  const reply = async (
+    text: string,
+    keyboard?: {
+      inline_keyboard: Array<
+        Array<{ text: string; callback_data?: string; url?: string }>
+      >;
+    }
+  ) => {
     try {
       await editMessageText(token, {
         chat_id: chatId,
         message_id: messageId,
         text,
         parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: [] }, // снять кнопки
+        reply_markup: keyboard ?? { inline_keyboard: [] }, // снять кнопки
       });
     } catch (err) {
       console.warn('[Bot Webhook] review editMessageText failed:', err);
@@ -886,6 +906,85 @@ async function handleReviewAction(
   const { data: fullId } = await supabase.rpc('task_full_id', {
     p_task_id: taskId,
   });
+  const fullIdStr = String(fullId ?? '');
+
+  // ── Миграция 051: двухшаговый возврат на доработку ──────────────────────
+  if (action === 'fix') {
+    // Задача НЕ двигается: ждём текст причины следующим сообщением.
+    const { data: existing } = await supabase
+      .from('bot_review_fix_pending')
+      .select('id')
+      .eq('task_id', taskId)
+      .maybeSingle();
+    if (existing) {
+      await supabase
+        .from('bot_review_fix_pending')
+        .delete()
+        .eq('id', (existing as { id: string }).id);
+    }
+    await supabase.from('bot_review_fix_pending').insert({
+      workspace_id: task.workspace_id,
+      task_id: taskId,
+      chat_id: chatId,
+      card_message_id: messageId ?? 0,
+      telegram_user_id: telegramUserId,
+    });
+    await reply(
+      `🔧 <b>${escapeHtml(fullIdStr)}</b>: напишите причиной возврата следующим сообщением.\n\nЗадача будет возвращена агенту вместе с вашим текстом.`,
+      {
+        inline_keyboard: [
+          [{ text: '⬆️ Назад', callback_data: `ra:back:${taskId}` }],
+        ],
+      }
+    );
+    return;
+  }
+
+  if (action === 'back') {
+    // Отмена запроса причины → вернуть карточку ревью с кнопками выбора.
+    await supabase
+      .from('bot_review_fix_pending')
+      .delete()
+      .eq('task_id', taskId);
+    try {
+      await editMessageText(token, {
+        chat_id: chatId,
+        message_id: messageId,
+        text:
+          `🔎 Задача <b>${escapeHtml(fullIdStr)}</b> ждет вашей проверки\n\n` +
+          'Подтвердите результат или верните на доработку.',
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Согласовать', callback_data: `ra:approve:${taskId}` }],
+            [
+              {
+                text: '🔧 Вернуть на доработку',
+                callback_data: `ra:fix:${taskId}`,
+              },
+            ],
+            [
+              {
+                text: 'Открыть в приложении',
+                url: miniAppDeepLink(`task_${fullIdStr}`),
+              },
+            ],
+          ],
+        },
+      });
+    } catch (err) {
+      console.warn('[Bot Webhook] review back editMessageText failed:', err);
+    }
+    return;
+  }
+
+  if (action === 'approve') {
+    // Очистить возможный незавершённый запрос причины по этой задаче
+    await supabase
+      .from('bot_review_fix_pending')
+      .delete()
+      .eq('task_id', taskId);
+  }
 
   // Атомарный approve/fix с оптимистичной блокировкой по version (INV-09)
   const { data: rpcResult, error: rpcError } = await supabase.rpc(
@@ -934,6 +1033,155 @@ async function handleReviewAction(
       ? `✅ <b>${escapeHtml(String(fullId ?? ''))}</b> согласована → done (деплой)`
       : `🔧 <b>${escapeHtml(String(fullId ?? ''))}</b> возвращена на доработку → in_progress`;
   await reply(confirmation);
+}
+
+// ============================================================================
+// Миграция 051: consume pending fix-reason — следующее текстовое сообщение
+// пользователя в DM = причина возврата задачи на доработку.
+// ============================================================================
+
+async function tryConsumeReviewFixReason(
+  chatId: number,
+  userId: number,
+  rawText: string
+): Promise<boolean> {
+  const token = BOT_TOKEN;
+  const text = rawText.trim();
+  if (!token || !text) return false;
+
+  // Ленивая очистка истёкших pending этого чата + старейший валидный
+  await supabase
+    .from('bot_review_fix_pending')
+    .delete()
+    .eq('chat_id', chatId)
+    .lt('expires_at', new Date().toISOString());
+  const { data: pendings } = await supabase
+    .from('bot_review_fix_pending')
+    .select('id, workspace_id, task_id, card_message_id')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const row = (pendings ?? [])[0] as
+    | { id: string; workspace_id: string; task_id: string; card_message_id: number }
+    | undefined;
+  if (!row) return false;
+
+  const finishWithCard = async (
+    cardText: string,
+    keyboard?: {
+      inline_keyboard: Array<
+        Array<{ text: string; callback_data?: string; url?: string }>
+      >;
+    }
+  ) => {
+    await supabase.from('bot_review_fix_pending').delete().eq('id', row.id);
+    if (row.card_message_id) {
+      try {
+        await editMessageText(token, {
+          chat_id: chatId,
+          message_id: row.card_message_id,
+          text: cardText,
+          parse_mode: 'HTML',
+          reply_markup: keyboard ?? { inline_keyboard: [] },
+        });
+      } catch (err) {
+        console.warn(
+          '[Bot Webhook] fix-reason editMessageText failed:',
+          err
+        );
+      }
+    }
+  };
+
+  // Авторизация: тот же профиль + активный human-worker workspace задачи (A-08)
+  const profileId = await resolveProfileId(userId);
+  if (!profileId) {
+    await finishWithCard('⛔ Профиль не найден. Начните с /start.');
+    return true;
+  }
+  const { data: worker } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('source_id', profileId)
+    .eq('workspace_id', row.workspace_id)
+    .eq('type', 'human')
+    .eq('is_active', true)
+    .maybeSingle();
+  if (!worker) {
+    await finishWithCard('⛔ Нет доступа к этой задаче.');
+    return true;
+  }
+
+  const { data: fullId } = await supabase.rpc('task_full_id', {
+    p_task_id: row.task_id,
+  });
+  const fullIdStr = String(fullId ?? '');
+  const reason = text.slice(0, 2000);
+
+  // Свежее состояние задачи: могла измениться, пока пользователь печатал
+  const { data: taskRow } = await supabase
+    .from('tasks')
+    .select('version, column')
+    .eq('id', row.task_id)
+    .maybeSingle();
+
+  if (!taskRow || taskRow.column !== 'review') {
+    await finishWithCard(
+      `⚠️ <b>${escapeHtml(fullIdStr)}</b>: задача уже обработана — причина не сохранена.`
+    );
+    return true;
+  }
+
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    'review_action',
+    {
+      p_task_id: row.task_id,
+      p_action: 'fix',
+      p_version: taskRow.version,
+      p_actor_worker_id: worker.id,
+      p_reason: reason,
+    }
+  );
+  const res = (rpcResult ?? {}) as {
+    success?: boolean;
+    error?: string;
+  };
+  if (rpcError || !res.success) {
+    const errType = res.error || 'error';
+    const msg =
+      errType === 'already_processed'
+        ? '⚠️ Задача уже обработана.'
+        : errType === 'version_conflict'
+          ? '⚠️ Задача изменилась — откройте доску и проверьте статус.'
+          : errType === 'forbidden'
+            ? '⛔ Нет доступа.'
+            : '⚠️ Не удалось выполнить действие.';
+    console.warn(
+      `[Bot Webhook] review_action(fix+reason) ${errType} for ${row.task_id}`
+    );
+    await finishWithCard(msg);
+    return true;
+  }
+
+  // Аудит с причиной (видна в get_task_context агента через agent_events)
+  await supabase.from('agent_events').insert({
+    workspace_id: row.workspace_id,
+    tool: 'bot_command',
+    agent_name: `telegram_user_${userId}`,
+    task_id: row.task_id,
+    summary: 'review_requested_fix',
+    metadata: {
+      action: 'fix',
+      full_id: fullIdStr,
+      actor_worker_id: worker.id,
+      reason,
+    },
+  });
+
+  await finishWithCard(
+    `🔧 <b>${escapeHtml(fullIdStr)}</b> возвращена на доработку\nПричина: ${escapeHtml(reason)}`
+  );
+  return true;
 }
 
 async function executeCommandInWorkspace(
