@@ -46,6 +46,11 @@ export interface WaitForTasksParams extends DomainContext {
   known_task_ids?: string[];
   /** How long to hold the request open. Default 25s, max 45s. */
   timeout_sec?: number;
+  /**
+   * Client loop-guard breaker: agents pass previous value + 1 on every call.
+   * Ignored by the server (validated only as a number when present).
+   */
+  poll_seq?: number;
 }
 
 export interface WaitForTasksResult {
@@ -242,6 +247,15 @@ export async function waitForTasks(
     MAX_TIMEOUT_SEC
   );
   const deadline = Date.now() + timeoutSec * 1000;
+
+  // Loop-guard breaker (client-side duty loop): validated, then ignored —
+  // the server never uses the value.
+  if (
+    params.poll_seq !== undefined &&
+    (typeof params.poll_seq !== 'number' || Number.isNaN(params.poll_seq))
+  ) {
+    throw invalidParams('poll_seq must be a number.');
+  }
 
   let knownIds: string[];
   if (params.known_task_ids === undefined || params.known_task_ids === null) {

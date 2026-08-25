@@ -511,6 +511,16 @@ format is deliberately compact so that agents can load the file quickly.
       Каналы доставки агенту: `fix_requests[].fix_reason` (пинок, мгновенно) +
       `metadata.last_fix_reason` (персистентно через get_task_context).
       Hotfix `review_fix_reason_fn_fix`: unqualified `metadata` в PL/pgSQL.
+- [x] DUTY-04 Loop-guard fix + INV-04 app-level onboarding (миграция 052) #mcp #db !high ✅
+      Кейс: дежурный цикл Cline убит клиентским loop-guard'ом («5 consecutive
+      identical calls») — duty-loop шлёт идентичные payload'и. Fix:
+      wait_for_tasks += poll_seq (счётчик prev+1, сервер игнорирует),
+      плейбуки observer/tasks/full обновлены.
+      INV-04: триггер auto_create_agent_worker удалён — он материализовал
+      ЛЮБОЕ имя из agent_events, включая псевдо-агентов webhook
+      (telegram_user_<id>) → люди становились агентами-воркерами на доске.
+      Создание воркера перенесено в resolveAgentWorkerId (find-or-create,
+      authenticated path only). Фантóмы невозможны архитектурно.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

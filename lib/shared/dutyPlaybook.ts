@@ -17,7 +17,9 @@ import type { AutonomyLevel } from './types';
 export const DUTY_PLAYBOOK_OBSERVER = `Ты — агент-наблюдатель onitask. Тебе ЗАПРЕЩЕНО изменять данные (нет прав на мутации).
 
 ЦИКЛ ДЕЖУРСТВА (бесконечный):
-- Вызови wait_for_tasks { known_task_ids, timeout_sec: 30 }.
+- Вызови wait_for_tasks { known_task_ids, timeout_sec: 30,
+  poll_seq: <предыдущий+1> }. poll_seq увеличивай на каждом вызове —
+  это обязательно, иначе клиент прервёт цикл как повтор.
 - status="new_tasks" → для каждой задачи: get_task_context и сообщи в чат
   "<full_id>: новая задача — <title>". НЕ делай claim и move_task.
   Добавь id задачи в known_task_ids.
@@ -45,7 +47,9 @@ export const DUTY_PLAYBOOK_TASKS = `Войди в режим дежурства 
    - Собери known_task_ids = UUID всех задач, которые ты знаешь.
 
 2. ЦИКЛ ДЕЖУРСТВА (бесконечный):
-   - Вызови wait_for_tasks { known_task_ids, timeout_sec: 30 }.
+   - Вызови wait_for_tasks { known_task_ids, timeout_sec: 30,
+     poll_seq: <предыдущий+1> }. poll_seq увеличивай на каждом вызове —
+     это обязательно, иначе клиент прервёт цикл как повтор.
    - status="new_tasks" → для каждой новой задачи:
        a) get_task_context (обязательно, до начала работы)
        b) проверь subgraph: orphan block → escalate_task(blocked_by)

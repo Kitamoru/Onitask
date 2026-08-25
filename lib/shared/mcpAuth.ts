@@ -263,22 +263,61 @@ export async function checkAndDecrementQuota(
 // Shared DB helpers (moved from legacy lib/mcpAuth.ts)
 // ============================================================================
 
+/**
+ * Find-or-create the agent worker for this identity (INV-04, app-level).
+ *
+ * Since migration 052 the DB trigger auto_create_agent_worker is gone:
+ * creation happens ONLY here — on an authenticated MCP-key call path — so
+ * pseudo-agent audit names (e.g. 'telegram_user_<tg_id>' written by the bot
+ * webhook) can never materialize as assignable board workers.
+ */
 export async function resolveAgentWorkerId(
   agentName: string,
   workspaceId: string
 ): Promise<string | null> {
   try {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
+    // Agent workers use prefixed source_id per Master Spec §6.2 ('agent::<name>')
+    const sourceId = `agent::${agentName}`;
+
+    const { data: existing, error: selErr } = await supabase
       .from('workers')
       .select('id')
-      // Agent workers use prefixed source_id per Master Spec §6.2 ('agent::<name>')
-      .eq('source_id', `agent::${agentName}`)
+      .eq('source_id', sourceId)
       .eq('workspace_id', workspaceId)
       .maybeSingle();
-    if (error || !data) return null;
-    return data.id as string;
-  } catch {
+    if (selErr) {
+      console.error('resolveAgentWorkerId select error:', selErr);
+      return null;
+    }
+    if (existing) return existing.id as string;
+
+    // Zero-config onboarding (INV-04): the first authenticated action of a new
+    // agent materializes its worker. ignoreDuplicates keeps this concurrent-
+    // safe; the re-select below covers the race where a parallel request won.
+    const { error: insErr } = await supabase.from('workers').upsert(
+      {
+        workspace_id: workspaceId,
+        type: 'agent',
+        display_name: agentName,
+        source_id: sourceId,
+      },
+      { onConflict: 'workspace_id,source_id', ignoreDuplicates: true }
+    );
+    if (insErr) {
+      console.error('resolveAgentWorkerId upsert error:', insErr);
+      return null;
+    }
+
+    const { data: created } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('source_id', sourceId)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    return (created?.id as string) ?? null;
+  } catch (err) {
+    console.error('resolveAgentWorkerId failed:', err);
     return null;
   }
 }

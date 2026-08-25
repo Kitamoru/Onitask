@@ -1,6 +1,25 @@
 # Active Context
 
-## Current Task: DUTY-03 — причина возврата на доработку (2026-08-25)
+## Current Task: DUTY-04 — loop-guard fix + INV-04 app-level onboarding (2026-08-25)
+
+**Status**: ✅ Completed (миграция 052 применена, type-check ✅, live-валидация ✅)
+
+**Проблема 1:** дежурный цикл Cline убит клиентским loop-guard'ом — duty-loop
+шлёт идентичные payload'и wait_for_tasks подряд.
+**Fix:** параметр poll_seq (prev+1, сервер игнорирует); schema/description +
+плейбуки observer/tasks/full.
+
+**Проблема 2:** фантомный воркер telegram_user_425693173 на доске «onit» —
+INV-04 триггер материализовал псевдо-агента из webhook-аудита апрува
+(первое выполнение кода c735e6c от 24.08).
+**Fix (архитектурный):** триггер auto_create_agent_worker удалён; создание
+воркера перенесено в resolveAgentWorkerId (find-or-create по
+аутентифицированному ключу). Фантóмы невозможны архитектурно. Фантом удалён из БД вручную.
+
+**Валидация:** type-check ✅; live: insert telegram_user_x event → воркер не
+создаётся; upsert-резолв идемпотентен.
+
+## Previous Task: DUTY-03 — причина возврата на доработку (2026-08-25)
 
 **Status**: ✅ Completed (миграции 051 + hotfix применены, type-check ✅, БД-валидация ✅)
 

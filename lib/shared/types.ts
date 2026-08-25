@@ -260,6 +260,11 @@ export interface WaitForTasksParams extends DomainContext {
   known_task_ids?: string[];
   /** How long to hold the request open. Default 25s, max 45s. */
   timeout_sec?: number;
+  /**
+   * Client loop-guard breaker: agents pass previous value + 1 on every call.
+   * Ignored by the server (validated only as a number when present).
+   */
+  poll_seq?: number;
 }
 
 export interface WaitForTasksResult {

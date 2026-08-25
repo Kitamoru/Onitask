@@ -19,7 +19,7 @@ Master 0.13.4 · ai 0.10.1 · flow 3.6.0 · mcp_contract 0.7.1 · security 0.1.1
 | INV-01 | `tasks.assigned_to → workers(id)` | §6.1 | `#db` |
 | INV-02 | `tasks.reviewer_id → workers(id)` | §6.1 | `#db` |
 | INV-03 | `task_column_history.moved_by → workers(id)`, NULL допустим (известный race condition) | §6.3 | `#db` |
-| INV-04 | `agent_events` → триггер `auto_create_agent_worker()` | §4 | `#db` |
+| INV-04 | Онбординг агента — app-level: `resolveAgentWorkerId` find-or-create по аутентифицированному ключу (триггер удалён в 052 — псевдо-агенты webhook больше не материализуются) | §4, mcpAuth.ts | `#db #mcp` |
 | INV-05 | Все AI-outputs содержат `workspace_id` (tenant isolation, A-7) | code convention; все RAG RPC требуют `p_workspace_id` | `#ai` `#mcp` |
 | INV-06 | Секреты сравниваются `timingSafeEqual` (A-2) | `lib/telegramAuth.ts`, `lib/mcpAuth.ts` | `#auth` `#mcp` |
 | INV-07 | AI-квота — atomic RPC (`INSERT...ON CONFLICT DO UPDATE`), не SELECT+UPDATE (A-3) | `check_and_decrement_quota` | `#mcp` |
@@ -37,7 +37,7 @@ Master 0.13.4 · ai 0.10.1 · flow 3.6.0 · mcp_contract 0.7.1 · security 0.1.1
 
 | INV | Karpathy (Шаг 5) | Антагонист (Шаг 6) | Реально проверяемо с этапа |
 |---|---|---|---|
-| INV-04 | ✅ обязателен | — | Stage 1 (`agent_events` уже существует) |
+| INV-04 | ✅ обязателен | ✅ upsert в resolveAgentWorkerId | Stage 1 (`agent_events` уже существует) |
 | INV-07 | ✅ обязателен | ✅ + вторая модель | Stage 7 (MCP quota RPC реально вызывается) |
 | INV-09 | ✅ обязателен | ✅ + вторая модель | Stage 7 (`move_task` с `version`) |
 | INV-11 | ✅ (параллельные UPDATE) | ✅ | Stage 1 |

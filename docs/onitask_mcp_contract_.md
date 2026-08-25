@@ -500,7 +500,10 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
   agent_name:     string,
   known_task_ids?: string[],  // UUID задач, которые агент уже знает
                               // (обработал или они у него в работе)
-  timeout_sec?:   number      // default 25, max 45
+  timeout_sec?:   number,     // default 25, max 45
+  poll_seq?:      number      // счётчик вызовов цикла (prev+1). Сервером
+                              // игнорируется; нужен клиенту, чтобы отличать
+                              // легитимный duty-loop от случайного повтора
 }
 ```
 

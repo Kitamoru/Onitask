@@ -142,7 +142,8 @@ const TOOLS = [
       'Long-poll: block until matching work appears — a NEW task assigned to you (not in known_task_ids, column != done), ' +
       'an APPROVED task of yours (deploy_requests: review→done; autonomy_level=full only), or a task RETURNED from review to you (fix_requests). ' +
       'Call in a loop when idle — duty mode. Returns { status, tasks, deploy_requests?, fix_requests?, waited_ms }. ' +
-      'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call.',
+      'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call. ' +
+      'IMPORTANT: pass poll_seq = previous value + 1 on EVERY call — identical consecutive payloads trip client-side loop guards and abort the duty loop.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -152,6 +153,11 @@ const TOOLS = [
           description: 'Task UUIDs you already know about; only unknown ones wake you.',
         },
         timeout_sec: { type: 'number', maximum: 45 },
+        poll_seq: {
+          type: 'number',
+          description:
+            'Monotonic counter (previous call value + 1). Ignored by the server; keeps each call payload unique so MCP clients do not mistake the duty loop for an accidental repetition.',
+        },
       },
     },
   },
@@ -252,6 +258,7 @@ async function dispatchTool(
         ...base,
         known_task_ids: args.known_task_ids as string[] | undefined,
         timeout_sec: args.timeout_sec as number | undefined,
+        poll_seq: args.poll_seq as number | undefined,
       });
     case 'undo':
       return undo({ ...base, event_id: args.event_id as string });
