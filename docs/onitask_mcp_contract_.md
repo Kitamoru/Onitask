@@ -19,6 +19,12 @@
 
 ## 2. Транспорт
 
+> **⚠️ Freeze (v0.8.2, vision §7):** REST-транспорт `/api/agent/*` заморожен —
+> новые поля и инструменты добавляются только в MCP. План sunset (30 дней
+> наблюдения → `Sunset` header → удаление обёртки) — см.
+> [Agent Runtime Vision](onitask_agent_runtime_vision_.md) §7.
+> MCP ниже — канонический транспорт.
+
 Per‑tool REST маршруты:
 
 ```

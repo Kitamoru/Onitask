@@ -495,6 +495,27 @@ format is deliberately compact so that agents can load the file quickly.
       POST /api/mcp-keys принимает autonomy_level (observer → read-only allowed_tools);
       UI: селектор уровня в AddMcpKeySheet + блок «Старт сессии» на settings/mcp.
 
+### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
+
+- [x] RUNNER-01 Vision & Decision Doc (Supervisor-архитектура) #cli !high ✅
+      Решение: Runner = супервизор над headless-исполнителями; MCP — единственный
+      транспорт; npm-only v0; AC-1…7 чеклисты приёмки; REST freeze + sunset план.
+- [ ] RUNNER-02 Runtime skeleton: `@onitask/agent` — ENV-конфиг (ONITASK_KEY),
+      duty-loop (wait_for_tasks long-poll), playbook-fetch по уровню ключа,
+      retry/backoff §7 #cli !high
+- [ ] RUNNER-03 Executor plugin interface + адаптер claude-code headless
+      (`claude -p` в repo_path) #cli !high @blocked_by:RUNNER-02
+- [ ] RUNNER-04 Flow integration: claim → delegate → review;
+      для full-уровня — деплой после апрува (git add/commit/push, guard на
+      чужие изменения в рабочем дереве) #cli !med @blocked_by:RUNNER-03
+- [ ] RUNNER-05 Fail-loud + санитизация логов: крах → send_message_to_chat;
+      sk_* маскируется в логах; ключ не в argv #cli !high @blocked_by:RUNNER-02
+- [ ] RUNNER-06 Heartbeat + статус «на смене / офлайн» в Flow Board #cli !med @blocked_by:RUNNER-02
+- [ ] RUNNER-07 Onboarding telemetry: вариант первого успешного подключения
+      (MCP vs CLI) #mcp !med @blocked_by:MCP-01
+- [ ] RUNNER-08 REST `/api/agent/*` freeze + счётчик внешних вызовов;
+      sunset через 30 дней наблюдения (см. vision §7) #mcp !low
+
 ---
 
 ## Сводка по стадиям
