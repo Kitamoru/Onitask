@@ -238,7 +238,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 function ConnectionTemplate() {
-  const [tab, setTab] = useState<'rest' | 'mcp'>('rest');
+  const [tab, setTab] = useState<'mcp' | 'rest'>('mcp');
 
   // workspace_id резолвится из ключа на сервере — в URL он не нужен
   const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/create_task \\
@@ -285,14 +285,14 @@ function ConnectionTemplate() {
           </span>
         </div>
 
-        {/* Переключатель REST / MCP */}
+        {/* Переключатель MCP / REST */}
         <div
           className="flex items-center rounded-sm p-0.5"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
           role="tablist"
           aria-label="Тип шаблона подключения"
         >
-          {(['rest', 'mcp'] as const).map((t) => (
+          {(['mcp', 'rest'] as const).map((t) => (
             <button
               key={t}
               type="button"
