@@ -494,6 +494,15 @@ format is deliberately compact so that agents can load the file quickly.
       autonomyLevel; `get_workspace_settings` → `autonomy_level` + `duty_playbook`;
       POST /api/mcp-keys принимает autonomy_level (observer → read-only allowed_tools);
       UI: селектор уровня в AddMcpKeySheet + блок «Старт сессии» на settings/mcp.
+- [x] DUTY-02 Реактивные пинки: деплой после апрува + возвраты на доработку
+      (миграция 050) #mcp #db !high ✅
+      Кейс ONIT-7: агент завершил сессию после review → апрув никто не заметил,
+      деплой не случился. wait_for_tasks получил критерии пробуждения:
+      deploy_requests (review→done, full-ключи; не-разработка → пропуск) и
+      fix_requests (review→in_progress, любой домен). Детект по task_column_history
+      (24ч), дедуп маркерами agent_events tool='deploy_notify'/'fix_notify'
+      (metadata.history_id). Плейбук full: секция 6 переписана на реактивную —
+      периодические сканы done/in_progress убраны. mcp_contract §4.10 обновлён.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

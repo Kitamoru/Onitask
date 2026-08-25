@@ -78,12 +78,15 @@ export const DUTY_PLAYBOOK_TASKS = `Войди в режим дежурства 
 
 export const DUTY_PLAYBOOK_FULL = `${DUTY_PLAYBOOK_TASKS}
 
-6. ПРОВЕРКА АПРУВОВ И ДЕПЛОЙ (после каждого timeout):
-   a) Сканируй апрувы: get_tasks_by_column { column:"done",
-      assigned_to_me:true }. Для каждой задачи, которой НЕТ в
-      deployed_task_ids (пустой на старте сессии):
+6. АПРУВЫ И ВОЗВРАТЫ (сервер сам присылает их в wait_for_tasks —
+   периодический скан колонок НЕ нужен):
+   В ответе wait_for_tasks могут быть два дополнительных списка:
+
+   a) deploy_requests — твои задачи, одобренные человеком (review → done).
+      Для каждой задачи определи домен:
       - Не задача разработки (нет кодовых тегов #db/#mcp/#ui/#edge… и
-        title/description не про код) → добавь в deployed_task_ids, пропусти.
+        title/description не про код) → ничего не делай: результат уже
+        записан в задаче, перенос в done легитимен.
       - Задача разработки → деплой строго последовательно:
           1) git status --porcelain — если есть изменения не из этой задачи,
              НЕ деплой: escalate_task(out_of_scope, "рабочее дерево содержит
@@ -93,17 +96,19 @@ export const DUTY_PLAYBOOK_FULL = `${DUTY_PLAYBOOK_TASKS}
              // type: feat|fix|chore|docs
           4) git push
         Любая команда упала → останови цепочку, escalate_task(blocked_by,
-        текст ошибки), добавь задачу в deployed_task_ids (не ретраить).
-        Успех → добавь в deployed_task_ids и сообщи:
+        текст ошибки). Успех → сообщи:
         "<full_id>: апрув → задеплоено (<branch>, <short_hash>)".
-   b) Сканируй возвраты с ревью: get_tasks_by_column
-      { column:"in_progress", assigned_to_me:true }. Задача, вернувшаяся
-      review → in_progress (review_requested_fix) — возьми в работу снова.
+      Одна задача деплоится максимум один раз за сессию.
+
+   b) fix_requests — твои задачи, возвращённые с ревью на доработку
+      (ЛЮБОЙ домен: пользователю мог не понравиться любой результат).
+      Для каждой: get_task_context, затем move_task(in_progress, claim:true,
+      reason) и переделай с учётом причины возврата.
 
 7. ОТЧЁТ О ДЕПЛОЕ: "<full_id>: апрув → деплой ок (<hash>)" или
-   "<full_id>: деплой упал — <причина>". Одна задача деплоится максимум
-   один раз за сессию; после компакта разверни НОВЫЙ пустой
-   deployed_task_ids (повторный push безопасен: "nothing to commit").`;
+   "<full_id>: деплой упал — <причина>". Повторный пинок по той же задаче
+   не придёт (дедуп на сервере); после компакта повторный push безопасен
+   ("nothing to commit").`;
 
 const DEFAULTS: Record<AutonomyLevel, string> = {
   observer: DUTY_PLAYBOOK_OBSERVER,

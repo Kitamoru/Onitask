@@ -1,6 +1,29 @@
 # Active Context
 
-## Current Task: Database Cleanup — Delete all workspaces + clean related tables (2026-08-02)
+## Current Task: DUTY-02 — реактивные пинки деплоя/доработки через wait_for_tasks (2026-08-25)
+
+**Status**: ✅ Completed (миграция применена, type-check ✅, БД-валидация ✅)
+
+**Контекст:** кейс ONIT-7 — агент ушёл в review и завершил сессию; Telegram-апрув
+перевёл задачу в done, но деплой не выполнился (деплой = агентская git-цепочка по
+плейбуку full, секция 6а — периодический скан, который никто не выполнил).
+
+**Решение (вариант B):**
+- Миграция `050_deploy_wake.sql`: CHECK `agent_events.tool` += 'deploy_notify', 'fix_notify'.
+- `waitForTasks.ts`: критерии пробуждения №2 (deploy_requests, review→done за 24ч,
+  только autonomy_level='full') и №3 (fix_requests, review→in_progress, любой домен);
+  детект по `task_column_history` (покрывает Telegram-апрув и TWA free-move);
+  дедуп маркерами в agent_events (`metadata.history_id`), доставка ровно один раз.
+- `dutyPlaybook.ts` (full): секция 6 реактивная — periodic-сканы убраны;
+  deploy_requests → доменная фильтрация (не-разработка → ничего) / git-цепочка;
+  fix_requests → безусловно взять в работу снова.
+- Документация: mcp_contract §4.10, TASKS.md DUTY-02.
+
+**Валидация:** type-check ✅; live-детект ONIT-7 в БД ✅; констрейнт отклоняет
+мусорный tool ✅; маркер для ONIT-7 вставлен вручную (задача закрыта юзером до
+роллаута фичи — повторный пинок не придёт).
+
+## Previous Task: Database Cleanup — Delete all workspaces + clean related tables (2026-08-02)
 
 **Status**: ✅ Completed
 

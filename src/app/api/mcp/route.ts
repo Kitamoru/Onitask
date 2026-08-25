@@ -139,9 +139,10 @@ const TOOLS = [
   {
     name: 'wait_for_tasks',
     description:
-      'Long-poll: block until a NEW task is assigned to you (not in known_task_ids, column != done). ' +
-      'Call in a loop when idle — duty mode. Returns { status: "new_tasks" | "timeout", tasks }. ' +
-      'On timeout just call again. Max 45s per call.',
+      'Long-poll: block until matching work appears — a NEW task assigned to you (not in known_task_ids, column != done), ' +
+      'an APPROVED task of yours (deploy_requests: review→done; autonomy_level=full only), or a task RETURNED from review to you (fix_requests). ' +
+      'Call in a loop when idle — duty mode. Returns { status, tasks, deploy_requests?, fix_requests?, waited_ms }. ' +
+      'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call.',
     inputSchema: {
       type: 'object',
       properties: {

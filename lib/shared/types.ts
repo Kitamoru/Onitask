@@ -259,6 +259,17 @@ export interface WaitForTasksParams extends DomainContext {
 export interface WaitForTasksResult {
   status: 'new_tasks' | 'timeout';
   tasks: TaskPreview[];
+  /**
+   * Approved tasks (review → done by human) awaiting the agent's decision.
+   * Populated only for autonomy_level='full' keys (migration 050). Each task is
+   * delivered exactly once per transition (dedup via deploy_notify markers).
+   */
+  deploy_requests?: TaskPreview[];
+  /**
+   * Tasks returned from review to work (review → in_progress) — any domain.
+   * Delivered exactly once per transition (dedup via fix_notify markers).
+   */
+  fix_requests?: TaskPreview[];
   waited_ms: number;
 }
 
