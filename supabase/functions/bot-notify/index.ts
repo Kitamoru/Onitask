@@ -284,11 +284,12 @@ async function buildBroadcastCard(job: {
     (job.payload.escalation_reason as string) ||
     (job.payload.reason as string) ||
     '';
+  const suggestedAction = job.payload.suggested_action as string | undefined;
   const card = await buildTaskCardData(job, {});
 
   switch (alertType) {
     case 'escalation_alert':
-      return buildTaskNotifyCard(card, 'escalation', { reason });
+      return buildTaskNotifyCard(card, 'escalation', { reason, suggestedAction });
     case 'escalation_resolved':
       return buildTaskNotifyCard(card, 'escalation_resolved');
     case 'deadline_approaching':
@@ -502,6 +503,7 @@ function buildTaskNotifyCard(
     reason?: string;
     hoursLeft?: number;
     taskId?: string;
+    suggestedAction?: string;
   }
 ): {
   text: string;
@@ -516,6 +518,9 @@ function buildTaskNotifyCard(
   if (context === 'escalation' && extras?.reason) {
     extraLines.push('');
     extraLines.push(`Причина: ${escapeHtml(extras.reason)}`);
+    if (extras.suggestedAction) {
+      extraLines.push(`Предлагаю: ${escapeHtml(extras.suggestedAction)}`);
+    }
   } else if (extras?.reason) {
     extraLines.push('');
     extraLines.push(`Что сделано: ${escapeHtml(extras.reason)}`);

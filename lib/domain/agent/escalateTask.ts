@@ -46,7 +46,7 @@ export async function escalateTask(
   // --- Current state (for Memento) ------------------------------------------------
   const { data: currentTask } = await supabase
     .from('tasks')
-    .select('needs_human, escalation_reason')
+    .select('needs_human, escalation_reason, metadata')
     .eq('workspace_id', workspaceId)
     .eq('id', params.task_id)
     .maybeSingle();
@@ -54,11 +54,17 @@ export async function escalateTask(
   if (!currentTask) throw taskNotFound();
 
   // --- Update ------------------------------------------------------------------------
+  // suggested_action persists on tasks.metadata so that trg_escalation_alert can
+  // include it in the bot_notify payload (bot shows "Предлагаю: ..." line).
   const { error: updateError } = await supabase
     .from('tasks')
     .update({
       needs_human: true,
       escalation_reason: params.reason,
+      metadata: {
+        ...(currentTask.metadata ?? {}),
+        suggested_action: params.suggested_action ?? null,
+      },
       updated_at: new Date().toISOString(),
     })
     .eq('workspace_id', workspaceId)
