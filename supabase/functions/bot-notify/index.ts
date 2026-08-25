@@ -102,6 +102,8 @@ async function processJob(job: {
 
     if (alertType === 'task_done') {
       await processTaskDoneNotification(job);
+    } else if (alertType === 'task_started') {
+      await processTaskStartedNotification(job);
     } else if (alertType === 'task_review') {
       await processTaskReviewNotification(job);
     } else if (
@@ -228,6 +230,51 @@ async function processTaskDoneNotification(job: {
   for (const telegramId of recipients) {
     await sendTelegramMessage(telegramId, taskCard.text, taskCard.replyMarkup);
   }
+}
+
+// ============================================================================
+// task_started — DM creator («⚙️ ONI-42 взята агентом "X" в работу»),
+// fallback owners/admins (если задачу создал агент или у постановщика нет TG)
+// ============================================================================
+
+async function processTaskStartedNotification(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const recipients = await resolveTaskRecipients(job, {
+    preferReviewer: false,
+    preferCreator: true,
+  });
+  if (!recipients.length) {
+    console.error(
+      `[bot-notify] Job ${job.id}: no recipient telegram_id for task_started (created_by=${job.payload.created_by ?? 'none'})`
+    );
+    return;
+  }
+
+  const agentName = await fetchAgentDisplayName(
+    job.payload.claimed_by as string | undefined
+  );
+  const fullId = escapeHtml((job.payload.full_id as string) || '?');
+  const html = `⚙️ Задача <b>${fullId}</b> взята агентом «${escapeHtml(agentName)}» в работу`;
+
+  for (const telegramId of recipients) {
+    await sendTelegramMessage(telegramId, html);
+  }
+}
+
+async function fetchAgentDisplayName(
+  workerId: string | undefined
+): Promise<string> {
+  if (!workerId) return 'агент';
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data: worker } = await supabase
+    .from('workers')
+    .select('display_name')
+    .eq('id', workerId)
+    .maybeSingle();
+  return ((worker?.display_name as string) || '').trim() || 'агент';
 }
 
 // ============================================================================
