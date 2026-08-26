@@ -1,6 +1,23 @@
 # Active Context
 
-## Current Task: ONIT-25 — /call карточка по единому шаблону (2026-08-26)
+## Current Task: CTX-03 — playbook variants high/lite на ключе (2026-08-26)
+
+**Status**: ✅ Completed (миграция 059 применена, type-check ✅, БД-валидация ✅)
+
+**Гипотеза (подтверждена):** full-плейбук слишком сложен для малых моделей
+(Qwen3-A3B класс): прод-аномалии — пропуск claim (ONIT-18: backlog→review
+напрямую, из-за чего пропало уведомление task_started), speedrun claim→review
+за 5 сек — типичные отказы малых моделей на длинных процедурах.
+
+**Решение:** `mcp_agent_keys.playbook_variant` ('high' | 'lite', default high,
+CHECK; права не меняются). `DUTY_PLAYBOOK_FULL_LITE` — плоский чек-лист ~16
+правил: цикл + ack + деплой с guard'ом dirty-tree; редкие ветки → escalate.
+`resolveDutyPlaybook(level, stored, variant)`, override "<level>_lite".
+POST/PATCH API + UI (4-я опция «Лёгкий полный» с пояснениями, combined value
+'full_lite' сплитится в page.tsx). Валидация: type-check ✅, дефолт 'high' на
+существующих ключах ✅, CHECK ✅.
+
+## Previous Task: ONIT-25 — /call карточка по единому шаблону (2026-08-26)
 
 **Status**: ✅ Completed (миграция 058 применена к прод, БД-валидация ✅)
 

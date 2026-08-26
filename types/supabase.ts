@@ -611,6 +611,7 @@ export type Database = {
           label: string
           last_used_at: string | null
           max_tasks_per_minute: number
+          playbook_variant: string
           revoked_at: string | null
           workspace_id: string
         }
@@ -627,6 +628,7 @@ export type Database = {
           label: string
           last_used_at?: string | null
           max_tasks_per_minute?: number
+          playbook_variant?: string
           revoked_at?: string | null
           workspace_id: string
         }
@@ -643,6 +645,7 @@ export type Database = {
           label?: string
           last_used_at?: string | null
           max_tasks_per_minute?: number
+          playbook_variant?: string
           revoked_at?: string | null
           workspace_id?: string
         }

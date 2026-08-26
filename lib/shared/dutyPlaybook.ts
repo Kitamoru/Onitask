@@ -131,6 +131,42 @@ export const DUTY_PLAYBOOK_FULL = `${DUTY_PLAYBOOK_TASKS}
    не придёт (дедуп на сервере); после компакта повторный push безопасен
    ("nothing to commit").`;
 
+// ----------------------------------------------------------------------------
+// full LITE — плоский чек-лист для малых моделей (класс Qwen3-A3B и ниже).
+// ~16 правил, вложенность 1, одно действие на строку. Редкие ветки
+// (409/quota/subgraph-pre-check/домен деплоя) заменены на escalate_task —
+// fail-loud вместо тихого неверного шага.
+// ----------------------------------------------------------------------------
+
+export const DUTY_PLAYBOOK_FULL_LITE = `Ты — дежурный агент onitask. Упрощённый протокол: делай шаги по порядку, ничего не пропускай.
+
+ЦИКЛ (повторяй бесконечно):
+1. wait_for_tasks { timeout_sec: 30, poll_seq: <прошлый + 1> }.
+2. Есть tasks=[задачи] → для КАЖДОЙ задачи строго по порядку:
+   а) get_task_context { task_id }
+   б) move_task → in_progress (claim:true)
+   в) выполни задачу
+   г) move_task → review
+   д) напиши в чат: "<full_id>: готово"
+   Не можешь выполнить → escalate_task с причиной.
+   В review без выполнения НЕ переводи.
+3. Подтверди обработанное: в следующем вызове передай их id в
+   known_task_ids. Не подтвердил — задача придёт снова (~10 мин).
+4. Сообщение пользователя в чате важнее цикла. Ответь и продолжи цикл.
+
+ЕСЛИ пришёл deploy_requests (задачу одобрили):
+- git status --porcelain: есть чужие изменения → НЕ деплой,
+  escalate_task(out_of_scope).
+- git add . ; git commit -m "feat: <full_id>" ; git push.
+- Ошибка команды → escalate_task(blocked_by, текст ошибки).
+
+ЕСЛИ пришёл fix_requests (задача на доработку):
+- Прочитай fix_reason, move_task → in_progress (claim:true),
+  переделай с учётом причины.
+
+Не пересказывай ответы инструментов. После компакта просто продолжай
+цикл — состояние хранится на сервере.`;
+
 const DEFAULTS: Record<AutonomyLevel, string> = {
   observer: DUTY_PLAYBOOK_OBSERVER,
   tasks: DUTY_PLAYBOOK_TASKS,
@@ -138,17 +174,46 @@ const DEFAULTS: Record<AutonomyLevel, string> = {
 };
 
 /**
- * Resolve the playbook for a key's autonomy level.
+ * Playbook depth variant (migration 057): 'high' = полный протокол для
+ * сильных моделей, 'lite' = плоский чек-лист для малых. Ортогонален уровню
+ * автономии — права (allowed_tools) не зависят от варианта.
+ */
+export type PlaybookVariant = 'high' | 'lite';
+
+export function isPlaybookVariant(value: unknown): value is PlaybookVariant {
+  return value === 'high' || value === 'lite';
+}
+
+/** Built-in lite texts; levels without one fall back to the standard default. */
+const LITE_DEFAULTS: Partial<Record<AutonomyLevel, string>> = {
+  full: DUTY_PLAYBOOK_FULL_LITE,
+};
+
+/**
+ * Resolve the playbook for a key's autonomy level + variant.
  * stored = workspace_settings.agent_duty_playbook (Admin override, nullable).
+ * Override keys: "<level>" for high, "<level>_lite" for lite
+ * (e.g. "full_lite"). Lite levels without a built-in text fall back to the
+ * standard default.
  */
 export function resolveDutyPlaybook(
   level: AutonomyLevel,
-  stored: unknown
+  stored: unknown,
+  variant: PlaybookVariant = 'high'
 ): string {
   const overrides =
     stored && typeof stored === 'object'
-      ? (stored as Partial<Record<AutonomyLevel, unknown>>)
+      ? (stored as Partial<Record<AutonomyLevel, unknown> & Record<string, unknown>>)
       : {};
+
+  if (variant === 'lite') {
+    const liteOverride = overrides[`${level}_lite`];
+    if (typeof liteOverride === 'string' && liteOverride.trim().length > 0) {
+      return liteOverride.trim();
+    }
+    return LITE_DEFAULTS[level] ?? DEFAULTS[level];
+  }
+
   const override = overrides[level];
   if (typeof override === 'string' && override.trim().length > 0) {
     return override.trim();

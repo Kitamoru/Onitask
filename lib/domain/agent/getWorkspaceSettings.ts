@@ -93,7 +93,8 @@ export async function getWorkspaceSettings(
       autonomy_level: key.autonomyLevel,
       duty_playbook: resolveDutyPlaybook(
         key.autonomyLevel,
-        settings.agent_duty_playbook
+        settings.agent_duty_playbook,
+        key.playbookVariant
       ),
     },
   };

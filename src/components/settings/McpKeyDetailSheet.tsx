@@ -20,6 +20,7 @@ export interface McpKeyInfo {
   workspace_id: string;
   workspace_name: string;
   autonomy_level?: string;
+  playbook_variant?: string;
 }
 
 interface McpKeyDetailSheetProps {
@@ -54,9 +55,23 @@ const LEVEL_OPTIONS: LevelOption[] = [
   {
     level: 'full',
     label: 'Полный',
-    hint: 'Задачи + деплой кода после апрува на ревью (git push)',
+    hint: 'Для сильных моделей: больше автономии и самостоятельности, реже эскалации',
+  },
+  {
+    level: 'full_lite',
+    label: 'Облегчённый',
+    hint: 'Для слабых моделей: короткий протокол, чаще эскалация человеку',
   },
 ];
+
+/** Combined picker value for a key ('full' + variant lite → 'full_lite'). */
+function combinedLevel(keyInfo?: McpKeyInfo | null): string {
+  if (!keyInfo) return 'tasks';
+  const level = keyInfo.autonomy_level ?? 'tasks';
+  return level === 'full' && keyInfo.playbook_variant === 'lite'
+    ? 'full_lite'
+    : level;
+}
 
 function levelLabel(level?: string): string {
   return LEVEL_OPTIONS.find((o) => o.level === level)?.label ?? 'Исполнитель';
@@ -216,7 +231,7 @@ export function McpKeyDetailSheet({
                 }}
               >
                 {opt.label}
-                {keyInfo?.autonomy_level === opt.level ? ' ✓' : ''}
+                {combinedLevel(keyInfo) === opt.level ? ' ✓' : ''}
               </span>
               <span
                 className="text-xs text-center"
@@ -363,7 +378,7 @@ export function McpKeyDetailSheet({
                     fontFamily: 'var(--font-family-display)',
                   }}
                 >
-                  {levelLabel(keyInfo?.autonomy_level)}
+                  {levelLabel(combinedLevel(keyInfo))}
                 </span>
                 <ChevronDown
                   className="w-5 h-5 shrink-0 ml-2"

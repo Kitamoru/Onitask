@@ -548,6 +548,23 @@ format is deliberately compact so that agents can load the file quickly.
       known_task_ids — параметр теперь ack-дельта, не вся история).
       Payload остаётся малым/константным. Без миграции (jsonb допускает
       флаг k в элементах массива). Плейбуки + contract §4.10 синхронизированы.
+- [x] CTX-03 Playbook variants high/lite на ключе (миграция 059
+      `mcp_agent_keys.playbook_variant`) #mcp #db #ui !high ✅
+      Гипотеза подтверждена: full-плейбук (~45 правил / ~1.9k токенов)
+      слишком сложен для моделей класса Qwen3-A3B — прод-аномалии
+      (пропуск claim, speedrun → review) соответствуют типичным отказам
+      малых моделей на длинных процедурах.
+      Решение: ортогональный уровню вариант playbook_variant ('high'|'lite',
+      default high; права не меняются). DUTY_PLAYBOOK_FULL_LITE: плоский
+      чек-лист ~16 правил (~600 токенов) — ядро цикла + ack + деплой с
+      guard'ом dirty-tree; редкие ветки → escalate_task (fail-loud).
+      resolveDutyPlaybook(level, stored, variant), override ключ
+      "<level>_lite". POST/PATCH /api/mcp-keys принимают playbook_variant;
+      UI: опции «Полный (сильные модели)» / «Лёгкий полный (слабые модели)»
+      в AddMcpKeySheet + McpKeyDetailSheet (combined value 'full_lite',
+      split в page.tsx). types/supabase.ts дополнен вручную.
+      Валидация: type-check ✅; миграция применена (2 ключа → 'high');
+      CHECK отклоняет невалидный домен ✅.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

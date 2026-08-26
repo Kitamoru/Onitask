@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
 import {
   isAutonomyLevel,
+  isPlaybookVariant,
   allowedToolsForLevel,
 } from '../../../../../lib/shared/dutyPlaybook';
 import { validateTelegramInitData } from '../../../../../src/lib/telegram/validate';
@@ -102,6 +103,16 @@ export async function PATCH(
       );
     }
 
+    // Playbook variant (migration 057) — optional on PATCH; only sent when
+    // the user explicitly picked a different depth.
+    const rawVariant = (body.playbook_variant as string | undefined) ?? undefined;
+    if (rawVariant !== undefined && !isPlaybookVariant(rawVariant)) {
+      return NextResponse.json(
+        { error: 'invalid_params', message: 'playbook_variant must be high or lite' },
+        { status: 400 },
+      );
+    }
+
     const { keyHash } = await params;
 
     const supabase = createServerClient();
@@ -112,6 +123,7 @@ export async function PATCH(
       .update({
         autonomy_level: rawLevel,
         allowed_tools: allowedToolsForLevel(rawLevel),
+        ...(rawVariant !== undefined ? { playbook_variant: rawVariant } : {}),
       })
       .eq('key_hash', keyHash)
       .in('workspace_id', workspaceIds)

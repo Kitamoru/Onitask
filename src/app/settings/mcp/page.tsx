@@ -49,6 +49,18 @@ async function fetchWorkspaces(initData: string): Promise<WorkspaceOption[]> {
   return data.data?.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
 }
 
+/**
+ * Combined picker values ('full_lite') are split here into the two API fields:
+ * autonomy_level ('full') + playbook_variant ('lite' | 'high').
+ */
+function splitCombinedLevel(
+  combined: string,
+): { autonomy_level: string; playbook_variant: string } {
+  return combined === 'full_lite'
+    ? { autonomy_level: 'full', playbook_variant: 'lite' }
+    : { autonomy_level: combined, playbook_variant: 'high' };
+}
+
 async function createMcpKey(
   initData: string,
   name: string,
@@ -65,7 +77,7 @@ async function createMcpKey(
         name,
         workspace_id: workspaceId,
         expires_in_days: expiresInDays,
-        autonomy_level: autonomyLevel,
+        ...splitCombinedLevel(autonomyLevel),
       }),
     },
   );
@@ -99,7 +111,10 @@ async function updateMcpKeyLevel(
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ autonomy_level: autonomyLevel }),
+      body: JSON.stringify({
+        autonomy_level: splitCombinedLevel(autonomyLevel).autonomy_level,
+        playbook_variant: splitCombinedLevel(autonomyLevel).playbook_variant,
+      }),
     },
   );
   return res.json();
@@ -492,11 +507,26 @@ export default function McpSettingsPage() {
       if (result.success) {
         // Optimistic local update — refetch not needed for a single field.
         // selectedKey is a snapshot — keep the open sheet's label in sync too.
+        const parsed = splitCombinedLevel(level);
         setKeys((prev) =>
-          prev.map((k) => (k.keyHash === keyHash ? { ...k, autonomy_level: level } : k)),
+          prev.map((k) =>
+            k.keyHash === keyHash
+              ? {
+                  ...k,
+                  autonomy_level: parsed.autonomy_level,
+                  playbook_variant: parsed.playbook_variant,
+                }
+              : k,
+          ),
         );
         setSelectedKey((prev) =>
-          prev && prev.keyHash === keyHash ? { ...prev, autonomy_level: level } : prev,
+          prev && prev.keyHash === keyHash
+            ? {
+                ...prev,
+                autonomy_level: parsed.autonomy_level,
+                playbook_variant: parsed.playbook_variant,
+              }
+            : prev,
         );
       } else {
         setError(result.error ?? 'Не удалось изменить уровень автономии');
