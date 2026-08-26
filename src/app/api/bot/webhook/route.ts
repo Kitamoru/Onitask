@@ -114,7 +114,7 @@ const COMMANDS_REQUIRING_WORKSPACE = ['task', 'backlog'];
 const WORKSPACE_FREE_COMMANDS = ['start', 'help'];
 
 function looksLikeTaskFullId(text: string): boolean {
-  return /^[A-Z]{2,6}-\d{1,6}$/.test(text.trim());
+  return /^[A-Z]{2,6}-\d{1,6}$/i.test(text.trim());
 }
 
 function stripBotMentionFromArgs(args: string, botUsername: string): string {
