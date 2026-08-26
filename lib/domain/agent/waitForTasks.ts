@@ -46,15 +46,27 @@ const WAKE_WINDOW_MS = 24 * 60 * 60 * 1000; // approval/fix detection window
 // deadline: guarantees the response always makes it back under the MCP client
 // request timeout even if the last round-trips degrade.
 const MIN_ITERATION_BUDGET_MS = 3000;
-/** Visibility timeout for delivered-task memories (crash protection). */
-const SEEN_TTL_MS = 4 * 60 * 60 * 1000;
+/**
+ * CTX-01a two-phase delivery. DELIVERED = soft suppression only: if the agent
+ * never ACKs a delivered task (crash, busy elsewhere, lost batch), it is
+ * re-delivered after this TTL — restoring the pre-CTX-01 semantics where an
+ * unprocessed task woke the agent again on its very next poll.
+ */
+const DELIVERED_TTL_MS = 10 * 60 * 1000;
+/** ACKed (processed) tasks are suppressed long-term. */
+const ACKED_TTL_MS = 24 * 60 * 60 * 1000;
 /** Hard cap of remembered ids per agent+workspace. */
 const SEEN_MAX = 500;
 /** Abandoned duty states older than this are garbage-collected on load. */
 const DUTY_STATE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface WaitForTasksParams extends DomainContext {
-  /** Task ids the agent already knows about. New = assigned && not in this list. */
+  /**
+   * CTX-01a: ACK delta — ids of tasks PROCESSED since the previous call
+   * (just the delta, not the full history). Anything delivered but never
+   * acked is re-delivered automatically after DELIVERED_TTL_MS. Legacy
+   * clients passing the whole history degrade gracefully (all become acks).
+   */
   known_task_ids?: string[];
   /** How long to hold the request open. Default 25s, max 45s. */
   timeout_sec?: number;
@@ -80,25 +92,38 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * CTX-01 (migration 056): server-side duty-loop memory.
+ * CTX-01/01a (migration 056): server-side duty-loop memory.
  *
  * Keyed by the authenticated agent identity (workspace_id + agent_name from
  * the Bearer key), so no session identifier ever travels through the LLM
  * context: after an Auto Compact the next bare wait_for_tasks call finds the
- * same state. Entries expire after SEEN_TTL_MS (visibility timeout) so a task
- * persisted-but-lost to a crash is re-delivered.
+ * same state.
+ *
+ * Two entry kinds (two-phase delivery):
+ *   - delivered ({id, ts})       — soft suppression, expires in
+ *                                  DELIVERED_TTL_MS; an un-acked task wakes
+ *                                  the agent again.
+ *   - acked     ({id, ts, k:1})  — hard suppression for ACKED_TTL_MS; set
+ *                                  when the client echoes processed ids back.
  */
 interface DutySeenEntry {
   id: string;
   ts: number;
+  /** Present ⇒ acked (processed by the client); absent ⇒ merely delivered. */
+  k?: number;
+}
+
+interface DutyState {
+  acked: Map<string, number>;
+  delivered: Map<string, number>;
 }
 
 async function loadDutyState(
   supabase: SupabaseClient,
   workspaceId: string,
   agentName: string
-): Promise<Map<string, number>> {
-  const seen = new Map<string, number>();
+): Promise<DutyState> {
+  const state: DutyState = { acked: new Map(), delivered: new Map() };
   const now = Date.now();
 
   const { data } = await supabase
@@ -109,13 +134,11 @@ async function loadDutyState(
     .maybeSingle();
 
   for (const e of (data?.seen as DutySeenEntry[] | null) ?? []) {
-    if (
-      e &&
-      typeof e.id === 'string' &&
-      typeof e.ts === 'number' &&
-      now - e.ts < SEEN_TTL_MS
-    ) {
-      seen.set(e.id, e.ts);
+    if (!e || typeof e.id !== 'string' || typeof e.ts !== 'number') continue;
+    if (e.k === 1) {
+      if (now - e.ts < ACKED_TTL_MS) state.acked.set(e.id, e.ts);
+    } else if (now - e.ts < DELIVERED_TTL_MS) {
+      state.delivered.set(e.id, e.ts);
     }
   }
 
@@ -125,7 +148,7 @@ async function loadDutyState(
     .delete()
     .lt('updated_at', new Date(now - DUTY_STATE_STALE_MS).toISOString());
 
-  return seen;
+  return state;
 }
 
 /** Persist-before-return: failure ⇒ at-least-once redelivery (marker semantics). */
@@ -133,13 +156,17 @@ async function persistDutyState(
   supabase: SupabaseClient,
   workspaceId: string,
   agentName: string,
-  seen: Map<string, number>
+  state: DutyState
 ): Promise<void> {
   const now = Date.now();
-  const entries: DutySeenEntry[] = [...seen.entries()]
-    .filter(([, ts]) => now - ts < SEEN_TTL_MS)
-    .slice(-SEEN_MAX)
-    .map(([id, ts]) => ({ id, ts }));
+  const entries: DutySeenEntry[] = [
+    ...[...state.acked.entries()]
+      .filter(([, ts]) => now - ts < ACKED_TTL_MS)
+      .map(([id, ts]) => ({ id, ts, k: 1 })),
+    ...[...state.delivered.entries()]
+      .filter(([, ts]) => now - ts < DELIVERED_TTL_MS)
+      .map(([id, ts]) => ({ id, ts })),
+  ].slice(-SEEN_MAX);
 
   await supabase.from('agent_duty_state').upsert(
     {
@@ -357,12 +384,27 @@ export async function waitForTasks(
     knownIds = params.known_task_ids.slice(0, MAX_KNOWN_IDS);
   }
 
-  // CTX-01: load the agent's server-side duty state ONCE per call (not per
-  // poll iteration). Delivered task ids are remembered server-side with a
-  // visibility TTL, so the client no longer needs to carry a growing
-  // known_task_ids list through every poll (context-bloat fix). Explicit
-  // known_task_ids are still honored (union of both sets).
-  const seenIds = await loadDutyState(supabase, workspaceId, agentName);
+  // CTX-01a: load the agent's server-side duty state ONCE per call (not per
+  // poll iteration). Two phases: DELIVERED (soft suppression — an un-acked
+  // task re-wakes the agent after DELIVERED_TTL_MS) and ACKED (the client
+  // echoed processed ids back — hard suppression). The payload stays
+  // constant-sized: the client echoes only what it processed since last call.
+  const duty = await loadDutyState(supabase, workspaceId, agentName);
+
+  // Explicit known_task_ids = ACK delta. Legacy clients passing their entire
+  // history degrade gracefully: every id simply becomes an ack.
+  if (knownIds.length > 0) {
+    const now = Date.now();
+    let changed = false;
+    for (const id of knownIds) {
+      if (!duty.acked.has(id)) changed = true;
+      duty.acked.set(id, now);
+      duty.delivered.delete(id);
+    }
+    if (changed) {
+      await persistDutyState(supabase, workspaceId, agentName, duty);
+    }
+  }
 
   // Migration 050: deploy wakes are meaningful only for keys allowed to deploy;
   // observer keys get neither list (read-only watchdog).
@@ -395,8 +437,8 @@ export async function waitForTasks(
       if (!error && rows && rows.length > 0) {
         const fresh = rows.filter(
           (t) =>
-            !knownIds.includes(t.id as string) &&
-            !seenIds.has(t.id as string)
+            !duty.acked.has(t.id as string) &&
+            !duty.delivered.has(t.id as string)
         );
         if (fresh.length > 0) {
           // Resolve prefix once for full_id
@@ -432,13 +474,14 @@ export async function waitForTasks(
         deployRequests.length > 0 ||
         fixRequests.length > 0
       ) {
-        // CTX-01: remember freshly delivered tasks BEFORE returning —
-        // persist-first ⇒ at-least-once redelivery on persist failure,
-        // matching the deploy/fix marker semantics (migration 050).
+        // CTX-01a: mark freshly delivered tasks as DELIVERED (SOFT
+        // suppression) BEFORE returning — persist-first ⇒ at-least-once on
+        // failure. If the client never acks them, they re-wake after
+        // DELIVERED_TTL_MS instead of being lost until a long timeout.
         if (freshPreviews.length > 0) {
           const now = Date.now();
-          for (const t of freshPreviews) seenIds.set(t.id, now);
-          await persistDutyState(supabase, workspaceId, agentName, seenIds);
+          for (const t of freshPreviews) duty.delivered.set(t.id, now);
+          await persistDutyState(supabase, workspaceId, agentName, duty);
         }
         return {
           success: true,

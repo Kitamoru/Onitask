@@ -540,6 +540,14 @@ format is deliberately compact so that agents can load the file quickly.
       include_memory_summary (статичные секции — разово за сессию),
       events_limit (default/max 20). route.ts schema+dispatch, плейбуки:
       первый вызов без флагов, далее с флагами экономии. mcp_contract §4.7.
+- [x] CTX-01a Hotfix: двухфазная доставка deliver→ack #mcp !high ✅
+      Регрессия CTX-01: пометка «увидено» в момент доставки глушила
+      недобработанные задачи до 4ч (кейс «назначил задачу — агент не берёт»).
+      Теперь: delivered = мягкая пометка 10 мин (нет ack → повторная доставка),
+      acked = жёсткая 24ч (клиент эхом вернул обработанные id через
+      known_task_ids — параметр теперь ack-дельта, не вся история).
+      Payload остаётся малым/константным. Без миграции (jsonb допускает
+      флаг k в элементах массива). Плейбуки + contract §4.10 синхронизированы.
 
 ### Agent Runtime (CLI Runner) — см. docs/onitask_agent_runtime_vision_.md
 

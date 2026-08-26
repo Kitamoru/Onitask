@@ -146,7 +146,7 @@ const TOOLS = [
   {
     name: 'wait_for_tasks',
     description:
-      'Long-poll: block until matching work appears — a NEW task assigned to you (column != done; the server remembers which tasks it already delivered to you, so you do NOT need to track ids), ' +
+      'Long-poll: block until matching work appears — a NEW or UNACKED task assigned to you (column != done). Delivery is two-phase: process a task, then echo its id back via known_task_ids in your next call to ack it; un-acked tasks are re-delivered after ~10 min, so nothing is ever lost. ' +
       'an APPROVED task of yours (deploy_requests: review→done; autonomy_level=full only), or a task RETURNED from review to you (fix_requests). ' +
       'Call in a loop when idle — duty mode. Returns { status, tasks, deploy_requests?, fix_requests?, waited_ms }. ' +
       'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call. ' +
@@ -158,7 +158,7 @@ const TOOLS = [
           type: 'array',
           items: { type: 'string' },
           description:
-            'Legacy/optional. The server already remembers tasks delivered to you across calls and Auto Compacts; omit this to keep your context small.',
+            'ACK: ids of tasks you have PROCESSED since the previous call (delta only, not full history). Acks survive compacts/restarts server-side.',
         },
         timeout_sec: { type: 'number', maximum: 45 },
         poll_seq: {

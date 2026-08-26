@@ -24,10 +24,12 @@
   политик = service-only. Ключ = аутентифицированная идентичность агента —
   id сессии НЕ передаётся клиентом; после компакта «голый» вызов находит тот же
   стейт. Клиентский payload константен `{timeout_sec, poll_seq}`.
-- `waitForTasks.ts`: загрузка стейта разово на вызов; фильтр wake №1 =
-  not in (seen ∪ known_task_ids); persist ДО возврата (at-least-once);
-  visibility TTL 4ч; cap 500; GC >7д; wall-clock guard (не стартовать итерацию
-  при остатке <3с — фикс кейса MCP timeout 60s).
+- `waitForTasks.ts`: загрузка стейта разово на вызов; **двухфазная доставка
+  (CTX-01a)**: `delivered` = мягкая пометка 10 мин (не-ack → повторная
+  доставка — регрессия «назначил — не берёт» устранена), `acked` = жёсткая
+  24ч (known_task_ids теперь ack-дельта обработанных); persist ДО возврата;
+  cap 500; GC >7д; wall-clock guard (не стартовать итерацию при остатке <3с
+  — фикс кейса MCP timeout 60s).
 - Плейбуки observer/tasks/full: без known_task_ids; правило ретрая после
   ошибок (poll_seq+1, timeout_sec вдвое); после компакта просто продолжать цикл.
 - Этап 0: cline_mcp_settings.json onitask timeout 60→120.
