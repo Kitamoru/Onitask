@@ -50,6 +50,21 @@ export interface BoardCardProps {
   onSelect?: (id: string) => void;
 }
 
+// Склонение существительных по числу для русского языка
+// forms: [единственное_мн_ч, родитель_падеж_мн_ч, родитель_падеж_ед_ч]
+// Пример: ['участник', 'участника', 'участников']
+function getDeclinedCount(
+  n: number,
+  forms: [string, string, string],
+): string {
+  const abs = Math.abs(n) % 100;
+  const lastDigit = abs % 10;
+  if (abs > 10 && abs < 20) return `${n} ${forms[2]}`;
+  if (lastDigit > 1 && lastDigit < 5) return `${n} ${forms[1]}`;
+  if (lastDigit === 1) return `${n} ${forms[0]}`;
+  return `${n} ${forms[2]}`;
+}
+
 // Stat labels per Figma: "В работе", "Эскалации", "Перегружен", "Готово"
 const statLabels: (keyof BoardStats)[] = ["inQueue", "inWork", "onReview", "done"];
 const statLabelsRu = ["В очереди", "В работе", "На проверке", "Сделано"];
@@ -141,7 +156,7 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
             >
               <span>@{data.slug}</span>
               <span>•</span>
-              <span>{data.memberCount} участника + {data.agentCount} агента</span>
+              <span>{getDeclinedCount(data.memberCount, ['участник', 'участника', 'участников'])} + {getDeclinedCount(data.agentCount, ['агент', 'агента', 'агентов'])}</span>
             </div>
           </div>
         </div>
