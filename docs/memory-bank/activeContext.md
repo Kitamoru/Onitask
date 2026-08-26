@@ -1,6 +1,25 @@
 # Active Context
 
-## Current Task: CTX-01/CTX-02 — server-side duty state + гигиена payload (2026-08-25)
+## Current Task: ONIT-25 — /call карточка по единому шаблону (2026-08-26)
+
+**Status**: ✅ Completed (миграция 058 применена к прод, БД-валидация ✅)
+
+**Проблема:** /call возвращал карточку без описания и без строки
+«✍️ Постановщик» — RPC `get_task_card_data` не отдавал `description` и
+`assignedByName`, поэтому lookup-карточка отличалась от единого шаблона
+(bot-notify assignment template, §6.2d).
+
+**Решение (миграция 058):** `get_task_card_data` дополнен ключами
+`description` (tasks.description) и `assignedByName`
+(workers.display_name по tasks.created_by). Рендер в lib/bot.ts
+(renderTaskCardBody) уже поддерживает оба поля — изменений TS не требуется.
+Локальный файл: supabase/migrations/058_get_task_card_data_full_template.sql.
+Валидация: get_task_card_data_by_full_id('ONIT-24') → description +
+assignedByName='kitamoru' ✅. Заработает на проде после деплоя вебхука
+(RPC-часть активна сразу).
+
+## Previous Task: CTX-01/CTX-02 — server-side duty state + гигиена payload (2026-08-25)
+
 
 **Status**: ✅ Completed (миграция 056 применена, type-check ✅, БД-валидация ✅)
 
