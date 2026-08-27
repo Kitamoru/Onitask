@@ -406,7 +406,7 @@ function SessionStartTemplate() {
         <pre className="whitespace-pre-wrap break-all">{sessionStartPrompt}</pre>
       </div>
 
-      <CopyButton text={sessionStartPrompt} label="Копировать промпт старта" />
+      <CopyButton text={sessionStartPrompt} label="Копировать промт" />
     </div>
   );
 }

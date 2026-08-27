@@ -1,11 +1,12 @@
 // lib/shared/transport.ts
 // Shared plumbing for REST /api/agent/* routes (contract v0.8.0 §2.2).
-// Pattern: bearer → assertAgentRequest → domain service → envelope.
+// Pattern: bearer → assertAgentRequest → ensure worker (INV-04) → domain service → envelope.
 // DomainError → { error: { code, type, message } } with HTTP status = code.
 
 import {
   assertAgentRequest,
   bearerFromHeaders,
+  resolveAgentWorkerId,
 } from './mcpAuth';
 import { toDomainError } from './errors';
 import type { AgentRequestContext } from './mcpAuth';
@@ -41,6 +42,15 @@ export async function handleAgentRequest<T>(
       body,
       toolName,
     });
+
+    // INV-04 zero-config onboarding (mirrors POST /api/mcp): the worker of an
+    // authenticated agent must exist from its very first call. Fail-open —
+    // onboarding failure is logged but never fails the request itself.
+    try {
+      await resolveAgentWorkerId(ctx.agentName, ctx.workspaceId);
+    } catch (onboardingErr) {
+      console.error('agent worker onboarding failed:', onboardingErr);
+    }
 
     const result = await service(ctx, body);
     return Response.json(result, { status: 200 });

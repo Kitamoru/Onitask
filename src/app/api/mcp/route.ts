@@ -1,14 +1,16 @@
 // /api/mcp — Streamable HTTP MCP endpoint (MCP Contract v0.8.0 §2.4.2).
 // Stateless JSON-RPC 2.0: initialize / tools/list / tools/call / ping.
 // Auth: Authorization Bearer <mcp_agent_keys.key> + X-Agent-Name header.
-// workspace_id always resolves from the key (A-7); agent worker auto-created
-// by DB trigger on first mutation (INV-04).
+// workspace_id always resolves from the key (A-7); the agent worker is ensured
+// app-level on EVERY authenticated tool call (INV-04; migration 052 removed
+// the DB trigger — resolveAgentWorkerId is the single onboarding point).
 
 import {
   bearerFromHeaders,
   assertAgentRequest,
   invalidParams,
   DomainError,
+  resolveAgentWorkerId,
 } from '../../../../lib/shared/mcpAuth';
 import { toDomainError } from '../../../../lib/shared/errors';
 import type { AgentRequestContext } from '../../../../lib/shared/mcpAuth';
@@ -350,6 +352,16 @@ export async function POST(req: Request) {
           body,
           toolName,
         });
+
+        // INV-04 zero-config onboarding: the authenticated agent's worker
+        // materializes on EVERY tool call — a brand-new key is visible on the
+        // board from its very first call (incl. wait_for_tasks and reads).
+        // Fail-open: onboarding failure is logged but never fails the request.
+        try {
+          await resolveAgentWorkerId(ctx.agentName, ctx.workspaceId);
+        } catch (onboardingErr) {
+          console.error('agent worker onboarding failed:', onboardingErr);
+        }
 
         const result = await dispatchTool(ctx, toolName, args);
 

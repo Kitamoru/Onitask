@@ -10,6 +10,7 @@ import {
   detectCircularDependency,
   inferComplexity,
   logAgentEvent,
+  resolveAgentWorkerId,
 } from '../../shared/mcpAuth';
 import {
   invalidParams,
@@ -105,6 +106,12 @@ export async function createTask(
     assignedTo = worker.id as string;
   }
 
+  // --- Author attribution (tasks.created_by → workers.id) --------------------
+  // Own worker (INV-04). Fixes bot_notify recipient resolution (assignment /
+  // done / started notifications target tasks.created_by) and the
+  // '✍️ Постановщик' line of the unified task card for agent-created tasks.
+  const authorWorkerId = await resolveAgentWorkerId(agentName, workspaceId);
+
   // --- Workspace task_prefix (INV-11) ----------------------------------------
   const { data: ws } = await supabase
     .from('workspaces')
@@ -139,6 +146,7 @@ ${params.description ?? ''}`,
       column: resolvedColumn,
       priority: resolvedPriority,
       assigned_to: assignedTo,
+      created_by: authorWorkerId ?? null,
       tags: params.tags ?? [],
       deadline: params.deadline
         ? new Date(params.deadline).toISOString()

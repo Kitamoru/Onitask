@@ -1,4 +1,31 @@
 # Active Context
+# Active Context
+
+## Hotfix: INV-04 worker onboarding не срабатывал для новых ключей (2026-08-27)
+
+**Status:** ✅ Completed (код ✅, type-check ✅, прод-бэкфилл Drift ✅)
+
+**Симптом:** ключ `Drift` прошёл auth/quota (`create_task` №26 в agent_events
+08:42 26.08), но воркер на доске не материализовался. Причина: миграция 052
+удалила триггер, но `resolveAgentWorkerId` остался подключён только к claim-ветке
+`moveTask` — единый пайплайн `/api/mcp` его не вызывал вовсе.
+
+**Fix (app-level, fail-open):**
+- `src/app/api/mcp/route.ts` + `lib/shared/transport.ts`: ensure-worker после
+  assertAgentRequest на КАЖДЫЙ tool call (по решению владельца: любой вызов,
+  включая wait_for_tasks/get — агент виден на доске с начала дежурства).
+- `lib/domain/agent/createTask.ts`: `tasks.created_by = авторский worker`
+  (FK подтверждён: created_by → workers.id). Чинит bot_notify-получателей и
+  строку «✍️ Постановщик» для агентских задач.
+- Прод-бэкфилл: INSERT workers `agent::Drift`
+  (id 8a104418-6d0c-4392-9d1a-615b5e7fa17b, ws ed93e8c5…). Аудит сирот:
+  единственный легитимный кейс — Drift; telegram_user_* псевдо-агенты корректно
+  вне воркеров (INV-04 работает как задумано).
+- Исторический `created_by=NULL` задачи №26 НЕ бэкфиллился (вне scope фикса).
+
+**Runtime-эффект заработает после деплоя на Vercel; БД-часть активна сразу.**
+
+## Previous Task: CTX-03 — playbook variants high/lite на ключе (2026-08-26)
 
 ## Current Task: CTX-03 — playbook variants high/lite на ключе (2026-08-26)
 
