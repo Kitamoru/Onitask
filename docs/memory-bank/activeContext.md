@@ -450,3 +450,29 @@ workspace_settings.agent_duty_playbook) остаются inert — не дроп
 **Next:** Stage 7 — E2E на Vercel (матрица doc 08: lease→terminal→ack,
 R7 requeue, R8 human_override, G6 reason в уведомлении).
 Операционка: перевыпуск ключей (061 ревокнула все), проверить cron-джобу рипера.
+
+## Stage 7 — E2E verification (2026-08-31)
+
+**Status**: ✅ Completed
+**Commits pushed**: origin/main = 2a1b518 (stages 1–2, 4–6), GitHub синхронизирован с local.
+
+**What was validated:**
+- **DB-level RPC matrix** (service role, project `atarmvtzvlwhkheeabeb`, WS "Онитаск"):
+  - Happy path: `ops_lease` → `ops_heartbeat` → `ops_terminal(review)` → `ops_ack` = ✅ (task→review, execution closed, task_version 1→3).
+  - Strict ack: `ops_ack` без `terminal` → `{"error":{"code":"terminal_required",...}}` (→ HTTP 409 в API). ✅
+  - R7: `ops_nack`×3 → requeue attempt+1; attempt>max → `needs_human=true`, `escalation_reason='max_attempts'`, outbox `published` (dead). ✅
+  - R8: при открытом execution human `UPDATE tasks SET column='backlog'` → execution `closed` (trigger 065 force-close). ✅
+  - G6: `tasks.metadata->>'ops_terminal_summary'` = terminal reason, read `fetchLastMoveReason` путь работает. ✅
+  - Audit: `agent_events` пишет ops_terminal×1/ops_nack×3 (mutations); delivery-методы (lease/heartbeat/ack) не пишут — по контракту. ✅
+- **HTTP-level on Vercel** (`https://onitask.vercel.app`):
+  - New code deployed after `git push` (route was 404 pre-push). ✅
+  - `POST /api/agent/ops/lease` w/ smoke key → `HTTP 200 {"job":null}` (auth + envelope verified; null=нет leasable work — outbox consumed by DB-level test). ✅
+  - `/mcp` endpoint live (POST tools/list accepted). ✅
+- **Operational tails:** `ops-reaper-tick` cron `* * * * *` активен ✅; `task_executions`+`dispatch_outbox` на месте ✅; migration 061 ревокнула все ключи, smoke-ключ `ops-smoke-agent` восстановлен вручную для тестов.
+
+**Cleanup:** тестовая задача `STAGE2-SMOKE` + все производные строки (task_executions, dispatch_outbox, agent_events, task_events, ...) удалены каскадно. `test_tasks=0`, `test_events=0`, `dispatch_outbox` пуст.
+
+**Pending owner actions:**
+- Перевыпуск продакшн-ключей агентов (Drift/Cline ревокнуты миграцией 061).
+- Lint окружение сломано (rushstack eslint-patch vs ESLint, pre-existing, не блокирует type-check).
+
