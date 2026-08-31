@@ -265,16 +265,15 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
   const agentName = selectedKey?.name || 'my-agent';
   const token = (selectedKey && getCachedPlaintextKey(selectedKey.keyHash)) || 'sk_YOUR_API_KEY';
 
-  // workspace_id резолвится из ключа на сервере — в URL он не нужен
-  const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/create_task \\
+  // Arch 0.9: REST — ops surface (/api/agent/ops/*); domain tools (create_task/move_task/…) — MCP-only.
+  const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/ops/lease \\
   -H "Authorization: Bearer ${token}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "agent_name": "${agentName}",
-    "title": "Task title",
-    "description": "Task description"
+    "runtime_id": "<uuid вашего runtime>",
+    "agent_name": "${agentName}"
   }'
-# agent_name задаётся один раз в конфиге агента и шлётся автоматически`;
+# agent_name задаётся один раз и шлётся автоматически; identity (workspace) резолвится из ключа. workspace_id в URL не нужен.`;
 
   const mcpTemplate = JSON.stringify(
     {
