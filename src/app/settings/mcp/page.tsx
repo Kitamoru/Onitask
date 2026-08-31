@@ -11,6 +11,10 @@ import {
   type McpKeyInfo,
 } from '@/components/settings/McpKeyDetailSheet';
 
+// ============================================================================
+// Types & Helpers (повторяем из других файлов, чтобы не было конфликтов)
+// ============================================================================
+
 interface WorkspaceOption {
   id: string;
   name: string;
@@ -32,7 +36,7 @@ interface DeleteKeyResponse {
 }
 
 // ============================================================================
-// API Helpers (all use Telegram initData auth)
+// API Helpers
 // ============================================================================
 
 async function fetchMcpKeys(initData: string): Promise<McpKeyInfo[]> {
@@ -48,7 +52,6 @@ async function fetchWorkspaces(initData: string): Promise<WorkspaceOption[]> {
   const data = await res.json();
   return data.data?.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
 }
-
 
 async function createMcpKey(
   initData: string,
@@ -68,6 +71,9 @@ async function createMcpKey(
       }),
     },
   );
+  const data = await res.json();
+  return data;
+}
 
 async function deleteMcpKey(
   initData: string,
@@ -81,7 +87,7 @@ async function deleteMcpKey(
 }
 
 // ============================================================================
-// Components
+// Sub-components (McpKeyItem, CopyButton, ConnectionTemplate, SessionStartTemplate)
 // ============================================================================
 
 function McpKeyItem({
@@ -108,7 +114,6 @@ function McpKeyItem({
   const isExpired = new Date(keyInfo.expires_at) < new Date();
   const expiryColor = isExpired ? '#EF4444' : 'var(--color-text-secondary)';
 
-  // Общий стиль углов: срез 8px (верхний левый / нижний правый), скругление 6px (верхний правый / нижний левый)
   const clipPath = 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)';
   const borderRadius = '0 6px 0 6px';
 
@@ -118,13 +123,10 @@ function McpKeyItem({
       style={{
         clipPath,
         borderRadius,
-        // Первый клик выделяет карточку, второй открывает панель.
-        // Градиентная рамка — та же, что у выделенной доски на /board
-        // (NotchedPanel borderGradient: grad-add-from → grad-add-to, 135deg).
         background: selected
           ? 'linear-gradient(135deg, var(--color-grad-add-from), var(--color-grad-add-to))'
           : 'var(--color-line)',
-        padding: selected ? '1.5px' : '1px', // толщина рамки
+        padding: selected ? '1.5px' : '1px',
       }}
     >
       <div
@@ -188,7 +190,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
         borderRadius,
         background: 'var(--color-line)',
         padding: '1px',
-        height: '40px', // h-10
+        height: '40px',
       }}
     >
       <button
@@ -223,13 +225,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }) {
   const [tab, setTab] = useState<'mcp' | 'rest'>('mcp');
 
-  // ONIT-9: автоподстановка agent_name и Bearer token выбранного ключа.
-  // Plaintext доступен только для ключей, созданных в этой сессии (localStorage);
-  // иначе остаются плейсхолдеры.
   const agentName = selectedKey?.name || 'my-agent';
   const token = (selectedKey && getCachedPlaintextKey(selectedKey.keyHash)) || 'sk_YOUR_API_KEY';
 
-  // Arch 0.9: REST — ops surface (/api/agent/ops/*); domain tools (create_task/move_task/…) — MCP-only.
   const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/ops/lease \\
   -H "Authorization: Bearer ${token}" \\
   -H "Content-Type: application/json" \\
@@ -273,7 +271,6 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
           </span>
         </div>
 
-        {/* Переключатель MCP / REST */}
         <div
           className="flex items-center rounded-sm p-0.5"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
@@ -318,10 +315,6 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
     </div>
   );
 }
-
-// ============================================================================
-// Session Start Template — duty-mode bootstrap prompt for agents
-// ============================================================================
 
 function SessionStartTemplate() {
   const sessionStartPrompt = `Войди в режим дежурства onitask.
@@ -383,21 +376,19 @@ export default function McpSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [selectedKey, setSelectedKey] = useState<McpKeyInfo | null>(null);
-  // ONIT-9: выделение карточки ключа. Первый клик — выделить (amber-рамка),
-  // второй клик по уже выделенной карточке — открыть панель управления ключом.
   const [highlightedKeyHash, setHighlightedKeyHash] = useState<string | null>(null);
 
   const handleKeySelect = useCallback((keyInfo: McpKeyInfo) => {
     if (highlightedKeyHash === keyInfo.keyHash) {
-      setSelectedKey(keyInfo); // второй клик — bottom sheet
+      setSelectedKey(keyInfo);
     } else {
-      setHighlightedKeyHash(keyInfo.keyHash); // первый клик — выделение
+      setHighlightedKeyHash(keyInfo.keyHash);
     }
   }, [highlightedKeyHash]);
 
   const highlightedKey = keys.find((k) => k.keyHash === highlightedKeyHash) ?? null;
 
-  // Load keys and workspaces once initData is available
+  // Загрузка ключей и досок
   useEffect(() => {
     if (authLoading) return;
     if (!tgInitData) {
@@ -406,15 +397,126 @@ export default function McpSettingsPage() {
     }
     setInitialLoading(true);
     let cancelled = false;
-    Promise.all([fetchMcpKeys(tgInitData), fetchWorkspaces(tgInitData)]).then(([data, ws]) => {
-      if (!cancelled) {
-        setKeys(data);
-        setWorkspaces(ws);
-        setInitialLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) setInitialLoading(false);
-    });
+    Promise.all([fetchMcpKeys(tgInitData), fetchWorkspaces(tgInitData)])
+      .then(([data, ws]) => {
+        if (!cancelled) {
+          setKeys(data);
+          setWorkspaces(ws);
+          setInitialLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setInitialLoading(false);
+      });
     return () => { cancelled = true; };
   }, [tgInitData, authLoading]);
-
+
+  const handleCreateKey = useCallback(async (
+    name: string,
+    workspaceId: string,
+    expiresInDays: number,
+  ) => {
+    if (!tgInitData) return;
+    setLoading(true);
+    try {
+      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays);
+      if (result.success && result.plaintextKey) {
+        // Кешируем открытый ключ
+        cachePlaintextKey(result.keyId!, result.plaintextKey);
+        setFreshKey({ key: result.plaintextKey, prefix: result.prefix || '' });
+        // Обновляем список ключей
+        const updated = await fetchMcpKeys(tgInitData);
+        setKeys(updated);
+        // Открываем детали для нового ключа
+        const newKey = updated.find(k => k.keyHash === result.keyId);
+        if (newKey) setSelectedKey(newKey);
+      } else {
+        setError(result.error || 'Ошибка создания ключа');
+      }
+    } catch (err) {
+      setError('Не удалось создать ключ');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [tgInitData]);
+
+  const handleDeleteKey = useCallback(async (keyHash: string) => {
+    if (!tgInitData) return;
+    await deleteMcpKey(tgInitData, keyHash);
+    // Обновляем список
+    const updated = await fetchMcpKeys(tgInitData);
+    setKeys(updated);
+    setSelectedKey(null);
+    setHighlightedKeyHash(null);
+  }, [tgInitData]);
+
+  if (initialLoading || authLoading) {
+    return <div className="flex items-center justify-center h-screen">Загрузка...</div>;
+  }
+
+  if (!tgInitData) {
+    return <div className="flex items-center justify-center h-screen">Ошибка авторизации</div>;
+  }
+
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="text-2xl font-bold mb-4">MCP Ключи</h1>
+
+      {/* Кнопка создания */}
+      <button
+        onClick={() => setShowAddSheet(true)}
+        className="w-full mb-4 py-2 px-4 rounded bg-amber-500 text-white font-semibold hover:bg-amber-600 transition"
+      >
+        + Создать ключ
+      </button>
+
+      {/* Список ключей */}
+      <div className="space-y-2">
+        {keys.length === 0 ? (
+          <p className="text-gray-400">Нет активных ключей</p>
+        ) : (
+          keys.map((key) => (
+            <McpKeyItem
+              key={key.keyHash}
+              keyInfo={key}
+              selected={highlightedKeyHash === key.keyHash}
+              onSelect={handleKeySelect}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Шаблоны подключения */}
+      <div className="mt-6">
+        <ConnectionTemplate selectedKey={selectedKey || highlightedKey} />
+      </div>
+      <div className="mt-4">
+        <SessionStartTemplate />
+      </div>
+
+      {/* Bottom sheet для создания ключа */}
+      <AddMcpKeySheet
+        open={showAddSheet}
+        onClose={() => setShowAddSheet(false)}
+        onCreateKey={handleCreateKey}
+        workspaces={workspaces}
+      />
+
+      {/* Bottom sheet для деталей ключа */}
+      <McpKeyDetailSheet
+        open={!!selectedKey}
+        onClose={() => setSelectedKey(null)}
+        keyInfo={selectedKey}
+        onDelete={handleDeleteKey}
+      />
+
+      {error && (
+        <div className="fixed bottom-4 left-4 right-4 bg-red-500 text-white p-3 rounded-lg text-center">
+          {error}
+          <button className="ml-4 underline" onClick={() => setError(null)}>Закрыть</button>
+        </div>
+      )}
+    </div>
+  );
+}
