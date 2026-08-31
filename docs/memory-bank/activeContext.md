@@ -430,3 +430,23 @@ workspace_settings.agent_duty_playbook) остаются inert — не дроп
 
 **Next:** Stage 6 (bot-notify reason patch) → Stage 7 (E2E на Vercel).
 перационка: перевыпуск ключей (061 ревокнула все), проверить cron-джобу рипера.
+
+## Current Task: Stage 6 — bot-notify reason (G6) (2026-08-31)
+
+**Status**: ✅ Completed (Edge Function — runtime-валидация на Stage 7 E2E)
+
+**Scope:** `supabase/functions/bot-notify/index.ts` (единственный файл).
+Эмиттеры не трогали: миграция 064 уже пишет reason в task_review payload
+(← tasks.metadata.ops_terminal_summary) в той же TX.
+
+**Changes:**
+1. `fetchLastMoveReason` — read path по doc 07 §agent_events: prefer latest
+   `tool IN ('ops_terminal','terminal_execution')` → metadata.summary ||
+   metadata.reason (RPC 062 пишет {outcome, summary, execution_id, reason});
+   fallback → legacy `move_task` → metadata.reason. Касается и task_done-карточки.
+2. `processTaskReviewNotification` — reason сначала из `payload.reason`
+   (пришёл из триггера 064, без доп. запроса), fallback fetchLastMoveReason.
+
+**Next:** Stage 7 — E2E на Vercel (матрица doc 08: lease→terminal→ack,
+R7 requeue, R8 human_override, G6 reason в уведомлении).
+Операционка: перевыпуск ключей (061 ревокнула все), проверить cron-джобу рипера.

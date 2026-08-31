@@ -297,10 +297,12 @@ async function processTaskReviewNotification(job: {
     return;
   }
 
-  const reason = await fetchLastMoveReason(
-    job.workspace_id,
-    job.payload.task_id as string | undefined
-  );
+  const reason =
+    (job.payload.reason as string | undefined) ||
+    (await fetchLastMoveReason(
+      job.workspace_id,
+      job.payload.task_id as string | undefined
+    ));
   const card = await buildTaskCardData(job, {});
   const taskId = job.payload.task_id as string | undefined;
   const taskCard = buildTaskNotifyCard(card, 'review', { reason, taskId });
@@ -726,6 +728,25 @@ async function fetchLastMoveReason(
 ): Promise<string> {
   if (!taskId) return '';
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  // Doc 07 read path (0.9): prefer latest ops_terminal / terminal_execution
+  // event (metadata.summary / reason written by ops_terminal RPC 062),
+  // fall back to legacy move_task → metadata.reason.
+  const { data: terminalEvents } = await supabase
+    .from('agent_events')
+    .select('metadata')
+    .eq('workspace_id', workspaceId)
+    .eq('task_id', taskId)
+    .in('tool', ['ops_terminal', 'terminal_execution'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const terminalMeta = terminalEvents?.[0]?.metadata as
+    | Record<string, unknown>
+    | undefined;
+  const terminalReason = String(
+    terminalMeta?.summary || terminalMeta?.reason || ''
+  ).trim();
+  if (terminalReason) return terminalReason;
+
   const { data: events } = await supabase
     .from('agent_events')
     .select('metadata')
