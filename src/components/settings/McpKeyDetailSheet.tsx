@@ -32,15 +32,16 @@ interface McpKeyDetailSheetProps {
 // Constants
 // ============================================================================
 
+const AUTONOMY_OPTIONS = [
+  { level: 'full', label: 'Полная автономия', hint: 'Агент сам принимает все решения' },
+  { level: 'supervised', label: 'С контролем', hint: 'Агент запрашивает одобрение на опасные действия' },
+  { level: 'readonly', label: 'Только чтение', hint: 'Агент может только просматривать данные' },
+];
+
 // ============================================================================
 // Helpers
 // ============================================================================
 
-/**
- * Plaintext keys are never stored server-side (contract v0.8.0 §2.3).
- * At creation time the page caches them in localStorage so the user can
- * copy the key later from this sheet. If absent — copy is unavailable.
- */
 export function getCachedPlaintextKey(keyHash: string): string | null {
   try {
     const raw = window.localStorage.getItem('mcp_key_plaintexts');
@@ -100,7 +101,6 @@ async function copyText(text: string): Promise<boolean> {
 // Sub-components
 // ============================================================================
 
-/** Read-only field styled like the create-sheet inputs. */
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1 w-full">
@@ -140,6 +140,7 @@ export function McpKeyDetailSheet({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [savingLevel, setSavingLevel] = useState(false);
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
 
   const plaintext = keyInfo ? getCachedPlaintextKey(keyInfo.keyHash) : null;
 
@@ -147,53 +148,13 @@ export function McpKeyDetailSheet({
     if (!keyInfo || savingLevel) return;
     setSavingLevel(true);
     try {
+      // TODO: сохранить выбранный уровень в БД (например, через API)
+      console.log('Выбран уровень:', level, 'для ключа', keyInfo.keyHash);
       setShowLevelPicker(false);
     } finally {
       setSavingLevel(false);
     }
-
-  const levelPickerSheet = showLevelPicker && (
-    <BottomSheet open={showLevelPicker} onClose={() => { if (!savingLevel) setShowLevelPicker(false); }}>
-      <div className="flex flex-col gap-2 pb-6 max-w-md mx-auto">
-        <h3
-          className="text-xl font-semibold px-4 pt-2 pb-4"
-          style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-display)' }}
-        >
-          Уровень автономии
-        </h3>
-          <div
-            key={opt.level}
-            className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
-            onClick={() => { void handleSelectLevel(opt.level); }}
-            role="button"
-            tabIndex={0}
-          >
-            <NotchedPanel
-              corner="field"
-              notch={8}
-              contentClassName="flex flex-col items-center gap-0.5 py-3 px-4 w-full"
-            >
-              <span
-                className="text-base tracking-tighter text-center"
-                style={{
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-display)',
-                }}
-              >
-                {opt.label}
-              </span>
-              <span
-                className="text-xs text-center"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                {opt.hint}
-              </span>
-            </NotchedPanel>
-          </div>
-        )}
-      </div>
-    </BottomSheet>
-  );
+  }, [keyInfo, savingLevel]);
 
   const handleCopy = useCallback(async () => {
     if (!keyInfo) return;
@@ -209,7 +170,7 @@ export function McpKeyDetailSheet({
     setDeleting(true);
     try {
       await onDelete(keyInfo.keyHash);
-      // Remove cached plaintext — key no longer exists
+      // Remove cached plaintext
       try {
         const raw = window.localStorage.getItem('mcp_key_plaintexts');
         if (raw) {
@@ -280,6 +241,50 @@ export function McpKeyDetailSheet({
       document.body,
     );
 
+  const levelPickerSheet = showLevelPicker && (
+    <BottomSheet open={showLevelPicker} onClose={() => { if (!savingLevel) setShowLevelPicker(false); }}>
+      <div className="flex flex-col gap-2 pb-6 max-w-md mx-auto">
+        <h3
+          className="text-xl font-semibold px-4 pt-2 pb-4"
+          style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-display)' }}
+        >
+          Уровень автономии
+        </h3>
+        {AUTONOMY_OPTIONS.map((opt) => (
+          <div
+            key={opt.level}
+            className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
+            onClick={() => { void handleSelectLevel(opt.level); }}
+            role="button"
+            tabIndex={0}
+          >
+            <NotchedPanel
+              corner="field"
+              notch={8}
+              contentClassName="flex flex-col items-center gap-0.5 py-3 px-4 w-full"
+            >
+              <span
+                className="text-base tracking-tighter text-center"
+                style={{
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'var(--font-family-display)',
+                }}
+              >
+                {opt.label}
+              </span>
+              <span
+                className="text-xs text-center"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {opt.hint}
+              </span>
+            </NotchedPanel>
+          </div>
+        ))}
+      </div>
+    </BottomSheet>
+  );
+
   return (
     <>
       <BottomSheet open={open && !!keyInfo} onClose={onClose}>
@@ -297,7 +302,7 @@ export function McpKeyDetailSheet({
             </h3>
           </div>
 
-          {/* Fields — filled and read-only */}
+          {/* Fields */}
           <ReadOnlyField label="Доска" value={keyInfo?.workspace_name ?? ''} />
           <ReadOnlyField label="Отображаемое название" value={keyInfo?.name ?? ''} />
           <ReadOnlyField label="Действует до" value={keyInfo ? formatDate(keyInfo.expires_at) : ''} />
@@ -322,6 +327,14 @@ export function McpKeyDetailSheet({
             <Button
               variant="outline"
               corner="action"
+              onClick={() => setShowLevelPicker(true)}
+              className="w-full"
+            >
+              Изменить уровень автономии
+            </Button>
+            <Button
+              variant="outline"
+              corner="action"
               onClick={() => setShowDeleteConfirm(true)}
               className="w-full"
               fill="transparent"
@@ -335,8 +348,9 @@ export function McpKeyDetailSheet({
       </BottomSheet>
 
       {/* Level picker */}
+      {levelPickerSheet}
 
-      {/* Delete confirmation — portal above BottomSheet transform context */}
+      {/* Delete confirmation */}
       {deleteConfirmModal}
     </>
   );
