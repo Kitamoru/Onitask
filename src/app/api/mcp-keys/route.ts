@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
 import {
   isAutonomyLevel,
-  isPlaybookVariant,
   allowedToolsForLevel,
-} from '../../../../lib/shared/dutyPlaybook';
+} from '../../../../lib/shared/autonomyLevels';
 import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 
 // ============================================================================
@@ -20,7 +19,6 @@ export interface McpKeyInfo {
   workspace_id: string;
   workspace_name: string;
   autonomy_level: string;
-  playbook_variant: string;
 }
 
 interface WorkspaceOption {
@@ -144,7 +142,7 @@ export async function GET(request: NextRequest) {
     const { data: keysData, error: keysError } = await supabase
       .from('mcp_agent_keys')
       .select(
-        'key_hash, label, created_at, expires_at, workspace_id, autonomy_level, playbook_variant'
+        'key_hash, label, created_at, expires_at, workspace_id, autonomy_level'
       )
       .in('workspace_id', workspaceIds)
       .is('revoked_at', null);
@@ -183,7 +181,6 @@ export async function GET(request: NextRequest) {
       workspace_id: k.workspace_id,
       workspace_name: wsMap[k.workspace_id] ?? '',
       autonomy_level: k.autonomy_level ?? 'tasks',
-      playbook_variant: k.playbook_variant ?? 'high',
     }));
 
     return NextResponse.json({ keys });
@@ -233,16 +230,6 @@ export async function POST(request: NextRequest) {
     const autonomyLevel = rawLevel;
     const allowedTools = allowedToolsForLevel(autonomyLevel);
 
-    // Playbook variant (migration 057): 'high' | 'lite' — orthogonal to the
-    // tier; only changes the depth of the duty protocol, never permissions.
-    const rawVariant = (body.playbook_variant as string) ?? 'high';
-    if (!isPlaybookVariant(rawVariant)) {
-      return NextResponse.json(
-        { error: 'invalid_params', message: 'playbook_variant must be high or lite' },
-        { status: 400 },
-      );
-    }
-
     // Validate name length (matches label CHECK constraint)
     if (name.length < 1 || name.length > 100) {
       return NextResponse.json(
@@ -291,7 +278,6 @@ export async function POST(request: NextRequest) {
         can_send_messages: true,
         max_tasks_per_minute: 50,
         autonomy_level: autonomyLevel,
-        playbook_variant: rawVariant,
         created_by: (worker?.id as string) ?? null,
         expires_at: expiryDate.toISOString(),
       });

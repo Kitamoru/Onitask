@@ -403,3 +403,30 @@ All workspace-related tables: **0 rows** ✅
 **Next Steps:**
 - Database is now in a clean state for fresh workspace creation
 - No schema changes were made — only data cleanup
+
+## Stage 5 — Playbook removal (ADR R1) — 2026-08-31
+
+**Status**: ✅ Completed (type-check ✅)
+
+**ешение:** ADR R1 (Accepted) выводит плейбуки из скоупа 0.9 полностью:
+не резолвить playbook_variant/agent_duty_playbook в ops/MCP/runtime,
+UI — feature off. DB-колонки (mcp_agent_keys.playbook_variant,
+workspace_settings.agent_duty_playbook) остаются inert — не дропались.
+
+**Changes:**
+- `lib/shared/dutyPlaybook.ts` —  (255 строк: плейбуки observer/tasks/full,
+  resolveDutyPlaybook, TOOLS_FOR_LEVEL).
+- `lib/shared/autonomyLevels.ts` (новый) — оставшийся пермишен-маппинг:
+  isAutonomyLevel, allowedToolsForLevel (observer → read-only toolset,
+  tasks/full → 'all'). Observer-tiers теперь enforce'ятся серверно через
+  allowed_tools (LLM-6 Excessive Agency).
+- `mcpAuth.ts` — убраны PlaybookVariant import + keyContext.playbookVariant.
+- `mcp-keys` POST/GET/PATCH — playbook_variant не читается/не пишется.
+- UI (`settings/mcp`): убран вариант 'full_lite'/'блегчённый' из пикеров,
+  combinedLevel = autonomy_level, Session Start Template больше не ссылается
+  на duty_playbook (правила дежурства — в системе 03, агент гоняет ops-цикл).
+- `getWorkspaceSettings` — agent_duty_playbook убран из SELECT и из
+  WorkspaceSettingsPayload (types.ts).
+
+**Next:** Stage 6 (bot-notify reason patch) → Stage 7 (E2E на Vercel).
+перационка: перевыпуск ключей (061 ревокнула все), проверить cron-джобу рипера.

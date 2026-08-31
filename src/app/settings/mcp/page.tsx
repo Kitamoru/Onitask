@@ -50,15 +50,12 @@ async function fetchWorkspaces(initData: string): Promise<WorkspaceOption[]> {
 }
 
 /**
- * Combined picker values ('full_lite') are split here into the two API fields:
- * autonomy_level ('full') + playbook_variant ('lite' | 'high').
+ * Combined picker value ('full_lite', legacy) maps to the 'full' autonomy
+ * level. Arch 0.9 ADR R1: playbook variants are out of scope — only the
+ * autonomy level survives.
  */
-function splitCombinedLevel(
-  combined: string,
-): { autonomy_level: string; playbook_variant: string } {
-  return combined === 'full_lite'
-    ? { autonomy_level: 'full', playbook_variant: 'lite' }
-    : { autonomy_level: combined, playbook_variant: 'high' };
+function splitCombinedLevel(combined: string): { autonomy_level: string } {
+  return { autonomy_level: combined === 'full_lite' ? 'full' : combined };
 }
 
 async function createMcpKey(
@@ -77,7 +74,7 @@ async function createMcpKey(
         name,
         workspace_id: workspaceId,
         expires_in_days: expiresInDays,
-        ...splitCombinedLevel(autonomyLevel),
+        autonomy_level: splitCombinedLevel(autonomyLevel).autonomy_level,
       }),
     },
   );
@@ -113,7 +110,6 @@ async function updateMcpKeyLevel(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         autonomy_level: splitCombinedLevel(autonomyLevel).autonomy_level,
-        playbook_variant: splitCombinedLevel(autonomyLevel).playbook_variant,
       }),
     },
   );
@@ -366,7 +362,6 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
 
 function SessionStartTemplate() {
   const sessionStartPrompt = `Войди в режим дежурства onitask.
-Правила возьми из настроек доски (get_workspace_settings → duty_playbook).
 Уровень автономии возьми из настроек ключа (get_workspace_settings → autonomy_level).
 Не останавливай цикл и не жди моих указаний.`;
 
@@ -514,7 +509,6 @@ export default function McpSettingsPage() {
               ? {
                   ...k,
                   autonomy_level: parsed.autonomy_level,
-                  playbook_variant: parsed.playbook_variant,
                 }
               : k,
           ),
@@ -524,7 +518,6 @@ export default function McpSettingsPage() {
             ? {
                 ...prev,
                 autonomy_level: parsed.autonomy_level,
-                playbook_variant: parsed.playbook_variant,
               }
             : prev,
         );

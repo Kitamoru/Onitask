@@ -79,8 +79,6 @@ export interface WorkspaceSettingsPayload {
   agent_active_tasks: TaskPreview[] | null;
   /** Calling key's duty-mode tier (migration 049). */
   autonomy_level: AutonomyLevel;
-  /** Duty protocol resolved for that level (override or built-in default). */
-  duty_playbook: string;
 }
 
 export interface GetWorkspaceSettingsResult {

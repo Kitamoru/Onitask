@@ -6,7 +6,6 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AutonomyLevel } from './types';
-import type { PlaybookVariant } from './dutyPlaybook';
 import {
   DomainError,
   unauthorized,
@@ -105,8 +104,6 @@ export interface AgentKeyContext {
   keyHash: string;
   /** Duty-mode tier (migration 049); informational for agents via get_workspace_settings. */
   autonomyLevel: AutonomyLevel;
-  /** Playbook depth (migration 057): 'high' | 'lite' — orthogonal to the tier. */
-  playbookVariant: PlaybookVariant;
   /**
    * Arch 0.9 ADR R2 (migration 061): canonical agent identity bound to the
    * key (1 key = 1 agent). Ops surface resolves identity from this field;
@@ -122,7 +119,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
   const { data: key, error } = await supabase
     .from('mcp_agent_keys')
     .select(
-      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute, autonomy_level, playbook_variant'
+      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute, autonomy_level'
     )
     .eq('key_hash', keyHash)
     .is('revoked_at', null)
@@ -146,7 +143,6 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
       (key.max_tasks_per_minute as number) ?? DEFAULT_MAX_TASKS_PER_MINUTE,
     keyHash,
     autonomyLevel: ((key.autonomy_level as AutonomyLevel) ?? 'tasks'),
-    playbookVariant: ((key.playbook_variant as PlaybookVariant) ?? 'high'),
     keyAgentName: key.agent_name as string,
   };
 }

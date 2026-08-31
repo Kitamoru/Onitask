@@ -20,7 +20,6 @@ export interface McpKeyInfo {
   workspace_id: string;
   workspace_name: string;
   autonomy_level?: string;
-  playbook_variant?: string;
 }
 
 interface McpKeyDetailSheetProps {
@@ -57,20 +56,11 @@ const LEVEL_OPTIONS: LevelOption[] = [
     label: 'Полный',
     hint: 'Для сильных моделей: больше автономии и самостоятельности, реже эскалации',
   },
-  {
-    level: 'full_lite',
-    label: 'Облегчённый',
-    hint: 'Для слабых моделей: короткий протокол, чаще эскалация человеку',
-  },
 ];
 
-/** Combined picker value for a key ('full' + variant lite → 'full_lite'). */
 function combinedLevel(keyInfo?: McpKeyInfo | null): string {
   if (!keyInfo) return 'tasks';
-  const level = keyInfo.autonomy_level ?? 'tasks';
-  return level === 'full' && keyInfo.playbook_variant === 'lite'
-    ? 'full_lite'
-    : level;
+  return keyInfo.autonomy_level ?? 'tasks';
 }
 
 function levelLabel(level?: string): string {
