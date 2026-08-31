@@ -19,7 +19,6 @@ export interface McpKeyInfo {
   prefix: string;
   workspace_id: string;
   workspace_name: string;
-  autonomy_level?: string;
 }
 
 interface McpKeyDetailSheetProps {
@@ -27,45 +26,11 @@ interface McpKeyDetailSheetProps {
   onClose: () => void;
   keyInfo: McpKeyInfo | null;
   onDelete: (keyHash: string) => Promise<void>;
-  onChangeLevel: (keyHash: string, level: string) => Promise<void>;
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-interface LevelOption {
-  level: string;
-  label: string;
-  hint: string;
-}
-
-const LEVEL_OPTIONS: LevelOption[] = [
-  {
-    level: 'observer',
-    label: 'Наблюдатель',
-    hint: 'Только чтение: следит за задачами и сообщает о новых',
-  },
-  {
-    level: 'tasks',
-    label: 'Исполнитель',
-    hint: 'Сам берёт задачи в работу и доводит до ревью',
-  },
-  {
-    level: 'full',
-    label: 'Полный',
-    hint: 'Для сильных моделей: больше автономии и самостоятельности, реже эскалации',
-  },
-];
-
-function combinedLevel(keyInfo?: McpKeyInfo | null): string {
-  if (!keyInfo) return 'tasks';
-  return keyInfo.autonomy_level ?? 'tasks';
-}
-
-function levelLabel(level?: string): string {
-  return LEVEL_OPTIONS.find((o) => o.level === level)?.label ?? 'Исполнитель';
-}
 
 // ============================================================================
 // Helpers
@@ -170,12 +135,10 @@ export function McpKeyDetailSheet({
   onClose,
   keyInfo,
   onDelete,
-  onChangeLevel,
 }: McpKeyDetailSheetProps) {
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showLevelPicker, setShowLevelPicker] = useState(false);
   const [savingLevel, setSavingLevel] = useState(false);
 
   const plaintext = keyInfo ? getCachedPlaintextKey(keyInfo.keyHash) : null;
@@ -184,12 +147,10 @@ export function McpKeyDetailSheet({
     if (!keyInfo || savingLevel) return;
     setSavingLevel(true);
     try {
-      await onChangeLevel(keyInfo.keyHash, level);
       setShowLevelPicker(false);
     } finally {
       setSavingLevel(false);
     }
-  }, [keyInfo, savingLevel, onChangeLevel]);
 
   const levelPickerSheet = showLevelPicker && (
     <BottomSheet open={showLevelPicker} onClose={() => { if (!savingLevel) setShowLevelPicker(false); }}>
@@ -200,7 +161,6 @@ export function McpKeyDetailSheet({
         >
           Уровень автономии
         </h3>
-        {LEVEL_OPTIONS.map((opt) => (
           <div
             key={opt.level}
             className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
@@ -221,7 +181,6 @@ export function McpKeyDetailSheet({
                 }}
               >
                 {opt.label}
-                {combinedLevel(keyInfo) === opt.level ? ' ✓' : ''}
               </span>
               <span
                 className="text-xs text-center"
@@ -231,7 +190,7 @@ export function McpKeyDetailSheet({
               </span>
             </NotchedPanel>
           </div>
-        ))}
+        )}
       </div>
     </BottomSheet>
   );
@@ -343,44 +302,6 @@ export function McpKeyDetailSheet({
           <ReadOnlyField label="Отображаемое название" value={keyInfo?.name ?? ''} />
           <ReadOnlyField label="Действует до" value={keyInfo ? formatDate(keyInfo.expires_at) : ''} />
 
-          {/* Autonomy level — editable */}
-          <div className="flex flex-col gap-1 w-full">
-            <span className="text-[15px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
-              Уровень автономии
-            </span>
-            <div
-              className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
-              onClick={() => setShowLevelPicker(true)}
-              role="button"
-              tabIndex={0}
-              aria-label="Уровень автономии"
-              onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') setShowLevelPicker(true); }}
-            >
-              <NotchedPanel
-                corner="field"
-                notch={8}
-                contentClassName="flex items-center justify-between h-10 w-full px-3"
-              >
-                <span
-                  className="text-base tracking-tighter truncate"
-                  style={{
-                    color: 'var(--color-text-secondary)',
-                    fontFamily: 'var(--font-family-display)',
-                  }}
-                >
-                  {levelLabel(combinedLevel(keyInfo))}
-                </span>
-                <ChevronDown
-                  className="w-5 h-5 shrink-0 ml-2"
-                  style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
-                />
-              </NotchedPanel>
-            </div>
-            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              Определяет правила дежурства агента; смена применяется сразу
-            </span>
-          </div>
-
           {!plaintext && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               Полный ключ показывается только один раз — при создании.
@@ -414,7 +335,6 @@ export function McpKeyDetailSheet({
       </BottomSheet>
 
       {/* Level picker */}
-      {levelPickerSheet}
 
       {/* Delete confirmation — portal above BottomSheet transform context */}
       {deleteConfirmModal}

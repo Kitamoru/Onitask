@@ -28,7 +28,6 @@ interface AddMcpKeySheetProps {
     name: string,
     workspaceId: string,
     expiresInDays: number,
-    autonomyLevel: string,
   ) => Promise<void>;
   workspaces: WorkspaceOption[];
 }
@@ -42,30 +41,6 @@ const EXPIRY_OPTIONS: ExpiryOption[] = [
   { label: '3 месяца', days: 90 },
   { label: '6 месяцев', days: 180 },
   { label: '1 год', days: 365 },
-];
-
-interface AutonomyOption {
-  level: string;
-  label: string;
-  hint: string;
-}
-
-const AUTONOMY_OPTIONS: AutonomyOption[] = [
-  {
-    level: 'observer',
-    label: 'Наблюдатель',
-    hint: 'Только чтение: следит за задачами и сообщает о новых',
-  },
-  {
-    level: 'tasks',
-    label: 'Исполнитель',
-    hint: 'Сам берёт задачи в работу и доводит до ревью',
-  },
-  {
-    level: 'full',
-    label: 'Полный',
-    hint: 'Для сильных моделей: больше автономии и самостоятельности, реже эскалации',
-  },
 ];
 
 // ============================================================================
@@ -320,10 +295,8 @@ export function AddMcpKeySheet({
   const [name, setName] = useState('');
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceOption | null>(null);
   const [selectedExpiryDays, setSelectedExpiryDays] = useState<number>(90);
-  const [selectedLevel, setSelectedLevel] = useState<string>('tasks');
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
-  const [showAutonomyPicker, setShowAutonomyPicker] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const canSubmit = selectedWorkspace !== null && name.trim().length > 0;
@@ -332,17 +305,16 @@ export function AddMcpKeySheet({
     if (!canSubmit || loading) return;
     setLoading(true);
     try {
-      await onCreateKey(name.trim(), selectedWorkspace!.id, selectedExpiryDays, selectedLevel);
+      await onCreateKey(name, workspaceId, 90);
       // Reset form
       setName('');
       setSelectedWorkspace(null);
       setSelectedExpiryDays(90);
-      setSelectedLevel('tasks');
       onClose();
     } finally {
       setLoading(false);
     }
-  }, [canSubmit, loading, name, selectedWorkspace, selectedExpiryDays, selectedLevel, onCreateKey, onClose]);
+  }, [canSubmit, loading, name, selectedWorkspace, selectedExpiryDays, onCreateKey, onClose]);
 
   return (
     <>
@@ -412,23 +384,6 @@ export function AddMcpKeySheet({
             />
           </div>
 
-          {/* Autonomy level selector */}
-          <div className="flex flex-col gap-1">
-            <span
-              className="text-[15px] font-medium"
-              style={{ color: 'var(--color-text-primary)' }}
-            >
-              Уровень автономии
-            </span>
-            <SelectField
-              label="Уровень автономии"
-              value={AUTONOMY_OPTIONS.find((o) => o.level === selectedLevel)?.label ?? ''}
-              placeholder="Исполнитель"
-              hint="Определяет, что агенту разрешено делать в режиме дежурства"
-              onClick={() => setShowAutonomyPicker(true)}
-            />
-          </div>
-
           {/* Create button */}
           <Button
             variant="solid"
@@ -453,11 +408,6 @@ export function AddMcpKeySheet({
         open={showExpiryPicker}
         onClose={() => setShowExpiryPicker(false)}
         onSelect={setSelectedExpiryDays}
-      />
-      <AutonomyPickerSheet
-        open={showAutonomyPicker}
-        onClose={() => setShowAutonomyPicker(false)}
-        onSelect={setSelectedLevel}
       />
     </>
   );

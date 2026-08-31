@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
-import {
-  isAutonomyLevel,
-  allowedToolsForLevel,
-} from '../../../../../lib/shared/autonomyLevels';
 import { validateTelegramInitData } from '../../../../../src/lib/telegram/validate';
 
 /**
@@ -60,88 +56,6 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
   return { profileId, workspaceIds };
 }
 
-// ============================================================================
-// PATCH /api/mcp-keys/[keyHash] — Change autonomy level of an active key.
-// Mirrors creation-time enforcement: observer → read-only allowed_tools,
-// tasks/full → all. Both fields are updated atomically in one UPDATE.
-// ============================================================================
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ keyHash: string }> },
-) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const init_data = searchParams.get('init_data') as string | null;
-
-    if (!init_data) {
-      return NextResponse.json(
-        { error: 'missing_init_data' },
-        { status: 400 },
-      );
-    }
-
-    const authResult = await authenticateAndGetWorkspaces(init_data);
-    if (authResult.error) return authResult.error;
-
-    const { workspaceIds } = authResult;
-
-    if (workspaceIds.length === 0) {
-      return NextResponse.json(
-        { error: 'not_found', message: 'Key not found' },
-        { status: 404 },
-      );
-    }
-
-    const body = await request.json();
-    const rawLevel = (body.autonomy_level as string) ?? '';
-    if (!isAutonomyLevel(rawLevel)) {
-      return NextResponse.json(
-        { error: 'invalid_params', message: 'autonomy_level must be observer, tasks or full' },
-        { status: 400 },
-      );
-    }
-
-    const { keyHash } = await params;
-
-    const supabase = createServerClient();
-
-    // Update only keys belonging to the user's workspaces (same scope as DELETE)
-    const { data, error } = await supabase
-      .from('mcp_agent_keys')
-      .update({
-        autonomy_level: rawLevel,
-        allowed_tools: allowedToolsForLevel(rawLevel),
-      })
-      .eq('key_hash', keyHash)
-      .in('workspace_id', workspaceIds)
-      .is('revoked_at', null)
-      .select('id');
-
-    if (error) {
-      console.error('PATCH /api/mcp-keys DB update error:', error);
-      return NextResponse.json(
-        { error: 'internal_error', message: 'Database error' },
-        { status: 500 },
-      );
-    }
-
-    if (!data || data.length === 0) {
-      return NextResponse.json(
-        { error: 'not_found', message: 'Key not found' },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.json({ success: true, autonomy_level: rawLevel });
-  } catch (err) {
-    console.error('PATCH /api/mcp-keys error:', err);
-    return NextResponse.json(
-      { error: 'internal_error', message: 'Internal server error' },
-      { status: 500 },
-    );
-  }
-}
 
 /**
  * DELETE /api/mcp-keys/[keyHash] — Soft revoke an MCP key by its hash.
