@@ -1,4 +1,56 @@
 # Active Context
+
+## Architecture 0.9 — Stage 1 (migrations) + Stage 3 (Reaper) ЗАВЕРШЕНЫ (2026-08-31)
+
+**Status:** ✅ Миграции 060–068 применены, smoke-тесты рипера пройдены. Next: Stage 2 (Ops REST API).
+
+### Примененные миграции (в этой сессии)
+- **064 `dispatch_producer_and_review_reason`** — G1: триггер `trg_dispatch_outbox_on_assign`
+  (AFTER INSERT OR UPDATE OF assigned_to на tasks) кладёт pending в dispatch_outbox
+  при назначении активному агенту (не при column='done'); R7: `review_action` rewrite —
+  в ветке `fix` INSERT dispatch_outbox (assigned_to не меняется → триггер молчит),
+  плюс `last_fix_reason` в metadata; G6: `notify_task_review` payload обогащён
+  `reason ← tasks.metadata.ops_terminal_summary`.
+- **065 `human_override_trigger`** — R8: BEFORE UPDATE OF "column" на tasks;
+  если active_claim_id ≠ NULL и НЕ установлена маска `onitask.ops_mutation=1`
+  (human-путь) → force-close execution (close_reason='human_override'),
+  active_claim_id=NULL, moved_to_column_at=now(); version инкрементит триггер 046 (G5).
+- **066 `drop_legacy_duty_state`** — R3 hard cut: DROP TABLE agent_duty_state,
+  DROP FUNCTION resolve_agent_worker_id(text,uuid) (мёртвый, 0 вызовов).
+  Безопасно: все ключи ревокнуты (061), waitForTasks.ts удаляется на Stage 5.
+- **067 `ops_reaper`** — `ops_reaper_tick(p_batch)`: SKIP LOCKED выборка открытых
+  execution с expires_at < now()-30s; close (vt_expired) → clear claim →
+  attempt<3: requeue attempt+1 в outbox (ON CONFLICT pending DO NOTHING);
+  attempt>=3: needs_human=true + escalation_reason='max_attempts'.
+- **068 `tasks_escalation_reason_max_attempts`** — CHECK расширен значением
+  'max_attempts' (базовый CHECK допускал только 4 escalate-причины — найдено smoke-тестом).
+
+### Reaper cron (as-built, важно!)
+- pg_cron в этом проекте **не поддерживает поле секунд**: '*/30 * * * * *' молча
+  трактуется как «раз в 30 минут». Зарегистрировано `'* * * * *'` (ежеминутно).
+- Роль миграций не имеет прав на cron.job (DELETE) — job регистрируется вручную:
+  `SELECT cron.unschedule('ops-reaper-tick'); SELECT cron.schedule('ops-reaper-tick','* * * * *',$cron$SELECT public.ops_reaper_tick(100)$cron$);`
+  Применено 2026-08-31 (jobid 19, запуск 06:03 UTC — succeeded).
+
+### Smoke-тесты (пройдены)
+- G1 продьюсер: INSERT задачи с assigned_to агенту → pending outbox (source='INSERT').
+- Reaper A1 (attempt=1): execution closed vt_expired, claim очищен, дубликат outbox
+  не создан (producer pending уже был → dedup работает).
+- Reaper B3 (attempt=3): needs_human=true, escalation_reason='max_attempts'.
+- Тестовые данные удалены (tasks LIKE 'REAPER-TEST-%' → 0).
+
+### Next (порядок)
+1. **Stage 2: Ops REST API** `/api/agent/ops/*` — 5 thin handlers (lease/heartbeat/terminal/ack/nack),
+   auth через mcp_agent_keys (ключ → workspace_id + agent_name, INV 1key=1agent), quota через
+   `check_and_decrement_quota`, audit через agent_events (063 tools).
+2. Stage 4: MCP 0.9 tools (ops_lease/... вместо wait_for_tasks; удаление waitForTasks.ts).
+3. Stage 5: playbook removal (R1) + удаление легаси lib/domain/agent/waitForTasks.ts читателей agent_duty_state.
+4. Stage 6: bot-notify patch (reason из task_review payload).
+5. Stage 7: E2E matrix (включая R7 requeue, human_override, max_attempts escalation).
+
+---
+
+# Active Context
 # Active Context
 
 ## Hotfix: INV-04 worker onboarding не срабатывал для новых ключей (2026-08-27)
@@ -24,6 +76,56 @@
 - Исторический `created_by=NULL` задачи №26 НЕ бэкфиллился (вне scope фикса).
 
 **Runtime-эффект заработает после деплоя на Vercel; БД-часть активна сразу.**
+
+## Appendix (WF-A v2): as-built структура создания и контроля воркеров агентов
+
+### Поток
+Ключ sk_… → resolveAgentKey → assertAgentRequest (tenant+agent_name+allowed_tools)
+→ ensure-worker fail-open [route.ts:361 | transport.ts:50] → dispatch tool →
+quota RPC + rate-limit → logAgentEvent → agent_events (аудит).
+
+### Создание (S)
+- **S1** `resolveAgentWorkerId` (lib/shared/mcpAuth.ts:278) — ЕДИНСТВЕННАЯ точка
+  создания type='agent': find-or-create upsert {workspace_id, type:'agent',
+  display_name=agentName, source_id='agent::'+name}; concurrency-safe через
+  UNIQUE (workspace_id, source_id) + re-select.
+- **S1a вызовы S1** (после hotfix 27.08): /api/mcp tools/call · REST
+  handleAgentRequest · moveTask(claim) · createTask(created_by).
+- **S2 DB-триггер auto_create_agent_worker** — УДАЛЁН миграцией 052
+  (фантомы telegram_user_* невозможны архитектурно).
+- **S3 SQL RPC public.resolve_agent_worker_id (миграция 024)** — мёртвый объект:
+  0 вызовов rpc() в живом коде (верифицировано поиском). Кандидат на DROP.
+- Бот создаёт только human workers (source_id=profile.id) — вне агентского контура.
+
+### Контроль (K) — все вызовы обоих транспортов
+| Шаг | Механизм |
+|---|---|
+| K1 Аутентификация ключа | sha256 → mcp_agent_keys WHERE key_hash AND revoked_at IS NULL; workspace ИЗ ключа (A-7); last_used_at fire-and-forget |
+| K2 Изоляция тенанта | явный workspace_id тела ≠ ключа → 403 |
+| K3 Идентичность | agent_name обязателен БЕЗ дефолта; MCP: X-Agent-Name header приоритетнее body (route.ts:343) |
+| K4 Авторизация тула | tool ∈ allowed_tools ('all'|список); observer → физически read-only |
+| K5 Онбординг воркера | ensure-worker fail-open на КАЖДЫЙ вызов (решение владельца: агент виден на доске с первого любого вызова) |
+| K6 Квота/лимит | check_and_decrement_quota (atomic RPC, A-3); rate 50/min = COUNT agent_events WHERE tool='create_task' |
+| K7 Аудит | logAgentEvent → agent_events(tool, agent_name, summary, metadata); спец-маркеры deploy_notify/fix_notify |
+
+### Читатели (R) — почему псевдо-имена безвредны
+| Потребитель | Фильтр |
+|---|---|
+| UI карточки участников | строится из workers по FK задач, не из имён событий |
+| wait_for_tasks dedup | .in('tool',['deploy_notify','fix_notify']) + своё имя |
+| bot-notify причина движения | .eq('tool','move_task') |
+| rate-limit | .eq('tool','create_task') |
+| undo | по id + своему agent_name + workspace |
+| get_task_context память | workers.source_id='agent::'+name → worker.id → agent_memory.worker_id |
+
+Псевдо-имена telegram_user_<id> (tool='bot_command') — легитимный аудит
+человеческих действий в Telegram-карточках; воркеров не создают (нет пути).
+
+### Хвосты для плана консолидации
+1. DROP мёртвого SQL RPC resolve_agent_worker_id (+ триггерные остатки 024 если есть).
+2. Легаси-копия src/lib/mcpAuth.ts всё ещё документирует удалённый триггер — дезориентирует.
+3. Семантика поля agent_events.agent_name (agentic name vs human-pseudoidentity
+   для bot_command) нигде не зафиксирована формально — описать в mcp_contract.
 
 ## Previous Task: CTX-03 — playbook variants high/lite на ключе (2026-08-26)
 

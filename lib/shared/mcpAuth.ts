@@ -108,6 +108,12 @@ export interface AgentKeyContext {
   autonomyLevel: AutonomyLevel;
   /** Playbook depth (migration 057): 'high' | 'lite' — orthogonal to the tier. */
   playbookVariant: PlaybookVariant;
+  /**
+   * Arch 0.9 ADR R2 (migration 061): canonical agent identity bound to the
+   * key (1 key = 1 agent). Ops surface resolves identity from this field;
+   * client-provided agent_name may only assert-match it (mismatch → 403).
+   */
+  keyAgentName: string;
 }
 
 export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> {
@@ -117,7 +123,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
   const { data: key, error } = await supabase
     .from('mcp_agent_keys')
     .select(
-      'workspace_id, allowed_tools, can_send_messages, max_tasks_per_minute, autonomy_level, playbook_variant'
+      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute, autonomy_level, playbook_variant'
     )
     .eq('key_hash', keyHash)
     .is('revoked_at', null)
@@ -142,6 +148,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
     keyHash,
     autonomyLevel: ((key.autonomy_level as AutonomyLevel) ?? 'tasks'),
     playbookVariant: ((key.playbook_variant as PlaybookVariant) ?? 'high'),
+    keyAgentName: key.agent_name as string,
   };
 }
 
