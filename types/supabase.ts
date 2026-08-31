@@ -597,8 +597,12 @@ export type Database = {
           },
         ]
       }
+      // ============================================================
+      // ИСПРАВЛЕННАЯ СЕКЦИЯ: mcp_agent_keys с добавленным agent_name
+      // ============================================================
       mcp_agent_keys: {
         Row: {
+          agent_name: string // ✅ добавлено
           agent_type: string | null
           allowed_tools: Json
           can_send_messages: boolean
@@ -613,6 +617,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          agent_name?: string | null // ✅ добавлено
           agent_type?: string | null
           allowed_tools?: Json
           can_send_messages?: boolean
@@ -627,6 +632,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          agent_name?: string | null // ✅ добавлено
           agent_type?: string | null
           allowed_tools?: Json
           can_send_messages?: boolean
