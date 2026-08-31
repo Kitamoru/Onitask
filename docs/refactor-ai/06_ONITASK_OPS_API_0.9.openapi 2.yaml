@@ -1,0 +1,345 @@
+openapi: 3.0.3
+info:
+  title: onitask Agent Operational API
+  version: 0.9.0
+  description: |
+    Canonical operational HTTP API for external agent runtimes.
+    Base path: /api/agent/ops
+    Auth: Bearer mcp_agent_key
+servers:
+  - url: /api/agent/ops
+security:
+  - bearerAuth: []
+paths:
+  /lease:
+    post:
+      operationId: opsLease
+      summary: Claim one job; create execution; task → in_progress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaseRequest'
+      responses:
+        '200':
+          description: Job or empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaseResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+
+  /executions/{execution_id}/heartbeat:
+    post:
+      operationId: opsHeartbeat
+      summary: Extend lease VT
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeOnlyRequest'
+      responses:
+        '200':
+          description: Extended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatResponse'
+        '409':
+          $ref: '#/components/responses/Error'
+
+  /executions/{execution_id}/terminal:
+    post:
+      operationId: opsTerminal
+      summary: Fenced agent completion
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminalRequest'
+      responses:
+        '200':
+          description: Applied or idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerminalResponse'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+
+  /executions/{execution_id}/ack:
+    post:
+      operationId: opsAck
+      summary: Ack delivery receipt after terminal
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckRequest'
+      responses:
+        '200':
+          description: Acked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '409':
+          $ref: '#/components/responses/Error'
+
+  /executions/{execution_id}/nack:
+    post:
+      operationId: opsNack
+      summary: Reject delivery / cannot continue
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NackRequest'
+      responses:
+        '200':
+          description: Nacked
+        '409':
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    executionId:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    LeaseRequest:
+      type: object
+      required: [runtime_id, agent_name]
+      properties:
+        runtime_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1
+          default: 1
+
+    JobEnvelope:
+      type: object
+      required:
+        - execution_id
+        - task_id
+        - workspace_id
+        - agent_name
+        - runtime_id
+        - attempt
+        - task_version
+        - lease_expires_at
+        - receipt
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        runtime_id:
+          type: string
+          format: uuid
+        attempt:
+          type: integer
+        task_version:
+          type: integer
+        lease_expires_at:
+          type: string
+          format: date-time
+        heartbeat_interval_seconds:
+          type: integer
+          default: 60
+        receipt:
+          type: string
+
+    LeaseResponse:
+      type: object
+      required: [job]
+      properties:
+        job:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/JobEnvelope'
+
+    RuntimeOnlyRequest:
+      type: object
+      required: [runtime_id]
+      properties:
+        runtime_id:
+          type: string
+          format: uuid
+
+    HeartbeatResponse:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        status:
+          type: string
+        lease_expires_at:
+          type: string
+          format: date-time
+        heartbeat_at:
+          type: string
+          format: date-time
+
+    TerminalRequest:
+      type: object
+      required: [runtime_id, task_id, task_version, outcome]
+      properties:
+        runtime_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        task_version:
+          type: integer
+        outcome:
+          type: string
+          enum: [review, escalate, handoff]
+        summary:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        next_owner:
+          type: string
+          nullable: true
+
+    TerminalResponse:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        task_id:
+          type: string
+        task_version:
+          type: integer
+        outcome:
+          type: string
+        task_status:
+          type: string
+        execution_status:
+          type: string
+
+    AckRequest:
+      type: object
+      required: [runtime_id, receipt]
+      properties:
+        runtime_id:
+          type: string
+          format: uuid
+        receipt:
+          type: string
+
+    AckResponse:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        receipt:
+          type: string
+        acked:
+          type: boolean
+
+    NackRequest:
+      type: object
+      required: [runtime_id, receipt, reason]
+      properties:
+        runtime_id:
+          type: string
+          format: uuid
+        receipt:
+          type: string
+        reason:
+          type: string
+          enum:
+            - unsupported_task
+            - runtime_busy
+            - dependency_unavailable
+            - transient_error
+            - other
+        detail:
+          type: string
+
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_request
+                - invalid_credentials
+                - forbidden_workspace
+                - agent_not_allowed
+                - task_not_found
+                - execution_not_found
+                - version_conflict
+                - stale_claim
+                - claim_closed
+                - lease_expired
+                - terminal_required
+                - task_already_claimed
+                - invalid_terminal_transition
+                - rate_limited
+                - internal_error
+                - dispatch_unavailable
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
