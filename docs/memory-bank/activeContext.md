@@ -1,5 +1,41 @@
 # Active Context
 
+## Architecture 0.9 — Stage 4 (MCP 0.9 tools) ЗАВЕРШЕН (2026-08-31)
+
+**Status:** ✅ Код написан, type-check ✅. Lint сломан на уровне окружения
+(rushstack eslint-patch vs новая ESLint — pre-existing, НЕ связано с изменениями).
+Runtime-тестирование отложено (облако: Supabase + Vercel + Telegram WebApp —
+локальный smoke невозможен; проверка после деплоя на Vercel, Stage 7 E2E).
+
+### Сделано в Stage 4 (commit: stage 4)
+- **`lib/shared/opsTools.ts` (новый)** — ядра 5 ops-инструментов
+  (opsLeaseCore/opsHeartbeatCore/opsTerminalCore/opsAckCore/opsNackCore):
+  валидация → quota (только lease, fail-closed) → ops_* RPC (062).
+  Единая точка контракта для REST и MCP (parity B, contract 02).
+- **`src/app/api/agent/ops/*`** — 5 REST-роутов переписаны на thin-обёртки
+  над ядрами (handleOpsRequest + core, ~20 строк каждый).
+- **`src/app/api/mcp/route.ts`**:
+  - TOOLS: −`wait_for_tasks`, +`ops_lease/ops_heartbeat/ops_terminal/ops_ack/ops_nack`;
+  - dispatch: ops-кейсы через `opsCtx()` — identity из ключа (`keyAgentName`),
+    INV 9: mismatch header/ключ → 403 agent_not_allowed;
+  - catch: `OpsApiError` → `{type: code, http_status: status}` (та же матрица
+    ошибок, что у Ops REST);
+  - убран `export const maxDuration = 60` (нужен был только 45s long-poll);
+  - serverInfo 0.8.0 → 0.9.0.
+- **Удалено**: `lib/domain/agent/waitForTasks.ts`, `WaitForTasksParams/Result`
+  из `lib/shared/types.ts`, `'wait_for_tasks'` из `McpToolName`.
+- **Коммиты**: `01fe201` (stage 1+3: docs/refactor-ai + миграции 060–068),
+  `ced6e99` (stage 2: opsTransport + REST-роуты), stage 4 — следующим.
+
+### Next (порядок)
+1. **Stage 5**: playbook removal (R1) — `lib/shared/dutyPlaybook.ts` всё ещё
+   описывает wait_for_tasks-цикл (строки/список tools) → переписать под
+   ops_lease/terminal/ack/nack (doc 03 duty runtime 0.9).
+2. Stage 6: bot-notify patch (reason из task_review payload).
+3. Stage 7: E2E matrix (R7 requeue, human_override, max_attempts) — на Vercel.
+
+---
+
 ## Architecture 0.9 — Stage 1 (migrations) + Stage 3 (Reaper) ЗАВЕРШЕНЫ (2026-08-31)
 
 **Status:** ✅ Миграции 060–068 применены, smoke-тесты рипера пройдены. Next: Stage 2 (Ops REST API).

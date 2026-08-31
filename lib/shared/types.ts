@@ -24,8 +24,7 @@ export interface TaskPreview {
   blocking_value?: number;
   /**
    * Migration 051: reason of the last review→in_progress return.
-   * Populated only in wait_for_tasks.fix_requests entries (same value as
-   * tasks.metadata.last_fix_reason).
+   * Same value as tasks.metadata.last_fix_reason (read path only).
    */
   fix_reason?: string;
 }
@@ -261,39 +260,6 @@ export interface HandoffTaskResult {
   handed_off_to: string;
   new_column: string | null;
   version: number;
-}
-
-// ============================================================================
-// wait_for_tasks (§4.10) — duty loop long-poll
-// ============================================================================
-
-export interface WaitForTasksParams extends DomainContext {
-  /** Task ids the agent already knows about. New = assigned && not in this list. */
-  known_task_ids?: string[];
-  /** How long to hold the request open. Default 25s, max 45s. */
-  timeout_sec?: number;
-  /**
-   * Client loop-guard breaker: agents pass previous value + 1 on every call.
-   * Ignored by the server (validated only as a number when present).
-   */
-  poll_seq?: number;
-}
-
-export interface WaitForTasksResult {
-  status: 'new_tasks' | 'timeout';
-  tasks: TaskPreview[];
-  /**
-   * Approved tasks (review → done by human) awaiting the agent's decision.
-   * Populated only for autonomy_level='full' keys (migration 050). Each task is
-   * delivered exactly once per transition (dedup via deploy_notify markers).
-   */
-  deploy_requests?: TaskPreview[];
-  /**
-   * Tasks returned from review to work (review → in_progress) — any domain.
-   * Delivered exactly once per transition (dedup via fix_notify markers).
-   */
-  fix_requests?: TaskPreview[];
-  waited_ms: number;
 }
 
 // ============================================================================

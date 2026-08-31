@@ -22,11 +22,18 @@ import { escalateTask } from '../../../../lib/domain/agent/escalateTask';
 import { handoffTask } from '../../../../lib/domain/agent/handoffTask';
 import { sendMessageToChat } from '../../../../lib/domain/agent/sendMessageToChat';
 import { getTaskContext } from '../../../../lib/domain/agent/getTaskContext';
-import { waitForTasks } from '../../../../lib/domain/agent/waitForTasks';
 import { undo } from '../../../../lib/domain/agent/undo';
-
-// wait_for_tasks holds the request open up to 45s (long-poll) — allow it.
-export const maxDuration = 60;
+import {
+  opsLeaseCore,
+  opsHeartbeatCore,
+  opsTerminalCore,
+  opsAckCore,
+  opsNackCore,
+} from '../../../../lib/shared/opsTools';
+import {
+  OpsApiError,
+  type OpsRequestContext,
+} from '../../../../lib/shared/opsTransport';
 
 // ============================================================================
 // Tool definitions (contract §4.1–4.9)
@@ -146,29 +153,90 @@ const TOOLS = [
     },
   },
   {
-    name: 'wait_for_tasks',
+    name: 'ops_lease',
     description:
-      'Long-poll: block until matching work appears — a NEW or UNACKED task assigned to you (column != done). Delivery is two-phase: process a task, then echo its id back via known_task_ids in your next call to ack it; un-acked tasks are re-delivered after ~10 min, so nothing is ever lost. ' +
-      'an APPROVED task of yours (deploy_requests: review→done; autonomy_level=full only), or a task RETURNED from review to you (fix_requests). ' +
-      'Call in a loop when idle — duty mode. Returns { status, tasks, deploy_requests?, fix_requests?, waited_ms }. ' +
-      'Each approval/rework transition is delivered exactly once. On timeout just call again. Max 45s per call. ' +
-      'IMPORTANT: pass poll_seq = previous value + 1 on EVERY call — even when RETRYING after an error — identical consecutive payloads trip client-side loop guards and abort the duty loop. On repeated errors, halve timeout_sec.',
+      'Lease at most one ready task execution for this agent (Arch 0.9 work unit). ' +
+      'Returns the execution (execution_id, runtime_id echo, receipt, lease_expires_at, task payload) or { execution: null } when the queue is empty. ' +
+      'Billed against the mutation quota (fail-closed). Fencing: keep execution_id + runtime_id and pass them to heartbeat/terminal/ack/nack.',
     inputSchema: {
       type: 'object',
       properties: {
-        known_task_ids: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'ACK: ids of tasks you have PROCESSED since the previous call (delta only, not full history). Acks survive compacts/restarts server-side.',
-        },
-        timeout_sec: { type: 'number', maximum: 45 },
-        poll_seq: {
-          type: 'number',
-          description:
-            'Monotonic counter (previous call value + 1). Ignored by the server; keeps each call payload unique so MCP clients do not mistake the duty loop for an accidental repetition.',
+        runtime_id: {
+          type: 'string',
+          description: 'UUID of this runtime session; regenerated on restart (fencing).',
         },
       },
+      required: ['runtime_id'],
+    },
+  },
+  {
+    name: 'ops_heartbeat',
+    description:
+      'Renew the lease on a running execution (extends lease_expires_at). ' +
+      'Call periodically during long work; expired leases are reaped and retried.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'UUID of the leased execution.' },
+        runtime_id: { type: 'string', description: 'UUID of this runtime session (fencing).' },
+      },
+      required: ['execution_id', 'runtime_id'],
+    },
+  },
+  {
+    name: 'ops_terminal',
+    description:
+      'Fenced completion of an execution: outcome = review | escalate | handoff. ' +
+      'This is the ONLY way an agent finishes work in 0.9 — never use move_task for your own task (INV 4). ' +
+      'Returns a receipt required by ops_ack.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'UUID of the leased execution.' },
+        runtime_id: { type: 'string', description: 'UUID of this runtime session (fencing).' },
+        task_id: { type: 'string', description: 'UUID of the leased task.' },
+        task_version: { type: 'integer', description: 'CAS version of the task (from the lease).' },
+        outcome: { type: 'string', enum: ['review', 'escalate', 'handoff'] },
+        summary: { type: 'string' },
+        metadata: { type: 'object' },
+        next_owner: { type: 'string', description: 'Agent name for handoff outcome.' },
+      },
+      required: ['execution_id', 'runtime_id', 'task_id', 'task_version', 'outcome'],
+    },
+  },
+  {
+    name: 'ops_ack',
+    description:
+      'Confirm delivery/accept of the terminal result (two-phase delivery). ' +
+      'Requires the receipt from ops_terminal; 409 terminal_required if no terminal happened yet.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'UUID of the leased execution.' },
+        runtime_id: { type: 'string', description: 'UUID of this runtime session (fencing).' },
+        receipt: { type: 'string', description: 'Receipt returned by ops_terminal.' },
+      },
+      required: ['execution_id', 'runtime_id', 'receipt'],
+    },
+  },
+  {
+    name: 'ops_nack',
+    description:
+      'Report a delivery/accept failure (not a business terminal). ' +
+      'unsupported_task escalates; other reasons requeue the task under max_attempts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'UUID of the leased execution.' },
+        runtime_id: { type: 'string', description: 'UUID of this runtime session (fencing).' },
+        receipt: { type: 'string', description: 'Receipt from the lease.' },
+        reason: {
+          type: 'string',
+          enum: ['unsupported_task', 'runtime_busy', 'dependency_unavailable', 'transient_error', 'other'],
+        },
+        detail: { type: 'string' },
+      },
+      required: ['execution_id', 'runtime_id', 'receipt', 'reason'],
     },
   },
   {
@@ -200,12 +268,29 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: unknown) 
   });
 }
 
+/**
+ * Ops tools (Arch 0.9): identity is the KEY identity (INV 9 / ADR R2).
+ * The X-Agent-Name header is already required by assertAgentRequest; here we
+ * additionally assert it matches the key — mismatch would be 403 in REST too.
+ */
+function opsCtx(ctx: AgentRequestContext): OpsRequestContext {
+  if (ctx.agentName !== ctx.keyAgentName) {
+    throw new DomainError(
+      403,
+      'agent_not_allowed',
+      'agent_name does not match the key identity.'
+    );
+  }
+  return { workspaceId: ctx.workspaceId, agentName: ctx.keyAgentName };
+}
+
 async function dispatchTool(
   ctx: AgentRequestContext,
   toolName: string,
   args: Record<string, unknown>
 ): Promise<unknown> {
   const base = { key: ctx, agentName: ctx.agentName };
+
   switch (toolName) {
     case 'get_tasks_by_column':
       return getTasksByColumn({
@@ -273,13 +358,16 @@ async function dispatchTool(
           | undefined,
         events_limit: args.events_limit as number | undefined,
       });
-    case 'wait_for_tasks':
-      return waitForTasks({
-        ...base,
-        known_task_ids: args.known_task_ids as string[] | undefined,
-        timeout_sec: args.timeout_sec as number | undefined,
-        poll_seq: args.poll_seq as number | undefined,
-      });
+    case 'ops_lease':
+      return opsLeaseCore(opsCtx(ctx), args);
+    case 'ops_heartbeat':
+      return opsHeartbeatCore(opsCtx(ctx), args.execution_id as string, args);
+    case 'ops_terminal':
+      return opsTerminalCore(opsCtx(ctx), args.execution_id as string, args);
+    case 'ops_ack':
+      return opsAckCore(opsCtx(ctx), args.execution_id as string, args);
+    case 'ops_nack':
+      return opsNackCore(opsCtx(ctx), args.execution_id as string, args);
     case 'undo':
       return undo({ ...base, event_id: args.event_id as string });
     default:
@@ -320,7 +408,7 @@ export async function POST(req: Request) {
       return rpcResult(id, {
         protocolVersion: '2025-03-26',
         capabilities: { tools: {} },
-        serverInfo: { name: 'onitask', version: '0.8.0' },
+        serverInfo: { name: 'onitask', version: '0.9.0' },
       });
 
     case 'ping':
@@ -355,7 +443,7 @@ export async function POST(req: Request) {
 
         // INV-04 zero-config onboarding: the authenticated agent's worker
         // materializes on EVERY tool call — a brand-new key is visible on the
-        // board from its very first call (incl. wait_for_tasks and reads).
+        // board from its very first call (incl. ops_lease and reads).
         // Fail-open: onboarding failure is logged but never fails the request.
         try {
           await resolveAgentWorkerId(ctx.agentName, ctx.workspaceId);
@@ -382,6 +470,14 @@ export async function POST(req: Request) {
           structuredContent: result,
         });
       } catch (err) {
+        // Arch 0.9 ops errors: same envelope as the Ops REST API (contract 02)
+        // — type = machine code, http_status = REST status.
+        if (err instanceof OpsApiError) {
+          return rpcError(id, -32000, err.message, {
+            type: err.code,
+            http_status: err.status,
+          });
+        }
         const domainErr = toDomainError(err);
         return rpcError(id, -32000, domainErr.message, {
           type: domainErr.type,
