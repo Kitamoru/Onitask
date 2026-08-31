@@ -54,9 +54,6 @@ async function hashApiKey(key: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Authenticate via Telegram initData and return profileId + workspace IDs.
- */
 async function authenticateAndGetWorkspaces(initData: string): Promise<{
   profileId: string;
   workspaceIds: string[];
@@ -80,7 +77,6 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
 
   const supabase = createServerClient();
 
-  // Find profile by telegram_id
   const { data: profileData } = await supabase
     .from('profiles')
     .select('id')
@@ -96,12 +92,19 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
 
   const profileId = profileData.id as string;
 
-  // Get all workspaces the user has access to via workers table
-  const { data: workers } = await supabase
+  const { data: workers, error: workersError } = await supabase
     .from('workers')
     .select('workspace_id')
     .eq('source_id', profileId)
     .eq('is_active', true);
+
+  if (workersError) {
+    console.error('authenticateAndGetWorkspaces workers error:', workersError);
+    return { profileId: '', workspaceIds: [], error: NextResponse.json(
+      { success: false, error: 'internal_error' },
+      { status: 500 },
+    )};
+  }
 
   const workspaceIds = workers?.map((w: { workspace_id: string }) => w.workspace_id).filter(Boolean) ?? [];
 
@@ -109,7 +112,7 @@ async function authenticateAndGetWorkspaces(initData: string): Promise<{
 }
 
 // ============================================================================
-// GET — List MCP keys from ALL user's workspaces (table: mcp_agent_keys)
+// GET — List MCP keys
 // ============================================================================
 
 export async function GET(request: NextRequest) {
@@ -135,12 +138,9 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Fetch active keys for user's workspaces
     const { data: keysData, error: keysError } = await supabase
       .from('mcp_agent_keys')
-      .select(
-        'key_hash, agent_name, created_at, expires_at, workspace_id'
-      )
+      .select('key_hash, agent_name, created_at, expires_at, workspace_id')
       .in('workspace_id', workspaceIds)
       .is('revoked_at', null);
 
@@ -152,7 +152,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all workspace names
     const { data: workspaces, error: wsError } = await supabase
       .from('workspaces')
       .select('id, name')
@@ -191,7 +190,7 @@ export async function GET(request: NextRequest) {
 }
 
 // ============================================================================
-// POST — Create new MCP key (insert into mcp_agent_keys)
+// POST — Create new MCP key
 // ============================================================================
 
 export async function POST(request: NextRequest) {
@@ -211,13 +210,12 @@ export async function POST(request: NextRequest) {
 
     const { profileId, workspaceIds } = authResult;
 
-    const body = await request.json();
+    // ✅ Только одно объявление body
     const body = await request.json();
     const agentName = (body.agent_name as string) ?? null;
     const workspaceId = (body.workspace_id as string) ?? null;
     const expiresInDays = (body.expires_in_days as number) ?? 90;
 
-    // agent_name is required (Arch 0.9 identity binding)
     if (!agentName || agentName.trim().length < 1) {
       return NextResponse.json(
         { error: 'invalid_params', message: 'agent_name is required' },
@@ -230,7 +228,13 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    // If no workspace_id provided, use first available workspace
+    if (expiresInDays < 1) {
+      return NextResponse.json(
+        { error: 'invalid_params', message: 'expires_in_days must be positive' },
+        { status: 400 },
+      );
+    }
+
     const targetWorkspaceId = workspaceId || workspaceIds[0];
 
     if (!targetWorkspaceId || !workspaceIds.includes(targetWorkspaceId)) {
@@ -242,7 +246,6 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Resolve creator worker (created_by references workers.id)
     const { data: worker } = await supabase
       .from('workers')
       .select('id')
@@ -251,12 +254,10 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true)
       .maybeSingle();
 
-    // Generate new key
     const plaintextKey = generateApiKey();
     const keyHash = await hashApiKey(plaintextKey);
     const prefix = keyHash.slice(0, 8);
 
-    // Calculate expiry date
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + expiresInDays);
 
@@ -269,7 +270,7 @@ export async function POST(request: NextRequest) {
         allowed_tools: DEFAULT_ALLOWED_TOOLS,
         can_send_messages: true,
         max_tasks_per_minute: 50,
-        created_by: (worker?.id as string) ?? null,
+        created_by: worker?.id ?? null,
         expires_at: expiryDate.toISOString(),
       });
 
@@ -287,7 +288,6 @@ export async function POST(request: NextRequest) {
       plaintextKey,
       prefix,
       agent_name: agentName,
-      workspace_id: targetWorkspaceId,
       workspace_id: targetWorkspaceId,
     });
   } catch (err) {
