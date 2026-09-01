@@ -317,8 +317,7 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
 }
 
 function SessionStartTemplate() {
-  const sessionStartPrompt = `Войди в режим дежурства onitask.
-Уровень автономии возьми из настроек ключа (get_workspace_settings → autonomy_level).
+  const sessionStartPrompt = `Войди в режим дежурства onitask: вызывай ops_lease. Если вернулся job — работай по циклу (ops_heartbeat → работа → ops_terminal → ops_ack). Если job=null — подожди и вызови ops_lease снова.
 Не останавливай цикл и не жди моих указаний.`;
 
   return (

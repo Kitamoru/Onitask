@@ -225,63 +225,6 @@ function ExpiryPickerSheet({
   );
 }
 
-/**
- * Autonomy picker sheet — nested bottom sheet for selecting duty-mode tier.
- */
-function AutonomyPickerSheet({
-  open,
-  onClose,
-  onSelect,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSelect: (level: string) => void;
-}) {
-  return (
-    <BottomSheet open={open} onClose={onClose}>
-      <div className="flex flex-col gap-2 pb-6 max-w-md mx-auto">
-        <h3
-          className="text-xl font-semibold px-4 pt-2 pb-4"
-          style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-family-display)' }}
-        >
-          Уровень автономии
-        </h3>
-        {AUTONOMY_OPTIONS.map((opt) => (
-          <div
-            key={opt.level}
-            className="cursor-pointer transition-opacity hover:opacity-80 active:opacity-60 w-full"
-            onClick={() => { onSelect(opt.level); onClose(); }}
-            role="button"
-            tabIndex={0}
-          >
-            <NotchedPanel
-              corner="field"
-              notch={8}
-              contentClassName="flex flex-col items-center gap-0.5 py-3 px-4 w-full"
-            >
-              <span
-                className="text-base tracking-tighter text-center"
-                style={{
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-family-display)',
-                }}
-              >
-                {opt.label}
-              </span>
-              <span
-                className="text-xs text-center"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                {opt.hint}
-              </span>
-            </NotchedPanel>
-          </div>
-        ))}
-      </div>
-    </BottomSheet>
-  );
-}
-
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -305,7 +248,7 @@ export function AddMcpKeySheet({
     if (!canSubmit || loading) return;
     setLoading(true);
     try {
-      await onCreateKey(name, workspaceId, 90);
+      await onCreateKey(name, selectedWorkspace.id, selectedExpiryDays);
       // Reset form
       setName('');
       setSelectedWorkspace(null);

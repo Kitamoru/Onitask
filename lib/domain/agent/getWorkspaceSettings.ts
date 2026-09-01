@@ -87,9 +87,7 @@ export async function getWorkspaceSettings(
       doc_kb_config:
         (settings.doc_kb_config as Record<string, unknown> | null) ?? null,
       agent_active_tasks: agentActiveTasks,
-      // Duty Mode (migration 049): the calling key's tier. Arch 0.9 ADR R1:
-      // playbook resolution removed — agents drive the ops loop directly.
-      autonomy_level: key.autonomyLevel,
+
     },
   };
 }
