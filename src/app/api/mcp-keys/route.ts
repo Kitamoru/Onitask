@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
-import {
-  isAutonomyLevel,
-  allowedToolsForLevel,
-} from '../../../../lib/shared/autonomyLevels';
+import { DEFAULT_ALLOWED_TOOLS } from '../../../../lib/shared/autonomyLevels';
 import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 
 // ============================================================================
@@ -18,7 +15,7 @@ export interface McpKeyInfo {
   prefix: string;
   workspace_id: string;
   workspace_name: string;
-  autonomy_level: string;
+  agent_name: string;
 }
 
 interface WorkspaceOption {
@@ -141,9 +138,7 @@ export async function GET(request: NextRequest) {
     // Fetch active keys for user's workspaces
     const { data: keysData, error: keysError } = await supabase
       .from('mcp_agent_keys')
-      .select(
-        'key_hash, label, created_at, expires_at, workspace_id, autonomy_level'
-      )
+      .select('key_hash, agent_name, created_at, expires_at, workspace_id')
       .in('workspace_id', workspaceIds)
       .is('revoked_at', null);
 
@@ -172,7 +167,8 @@ export async function GET(request: NextRequest) {
 
     const keys: McpKeyInfo[] = (keysData ?? []).map((k) => ({
       keyHash: k.key_hash,
-      name: k.label,
+      name: k.agent_name ?? '',
+      agent_name: k.agent_name ?? '',
       created_at: k.created_at ?? new Date().toISOString(),
       expires_at:
         k.expires_at ??
@@ -180,7 +176,6 @@ export async function GET(request: NextRequest) {
       prefix: k.key_hash.slice(0, 8),
       workspace_id: k.workspace_id,
       workspace_name: wsMap[k.workspace_id] ?? '',
-      autonomy_level: k.autonomy_level ?? 'tasks',
     }));
 
     return NextResponse.json({ keys });
@@ -215,23 +210,20 @@ export async function POST(request: NextRequest) {
     const { profileId, workspaceIds } = authResult;
 
     const body = await request.json();
-    const name = (body.name as string) ?? `Ключ ${new Date().toLocaleTimeString('ru-RU')}`;
+    const agentName = ((body.agent_name as string) ?? '').trim();
     const workspaceId = (body.workspace_id as string) ?? null;
     const expiresInDays = (body.expires_in_days as number) ?? 90;
 
-    // Autonomy level (migration 049): validate + enforce observer as read-only
-    const rawLevel = (body.autonomy_level as string) ?? 'tasks';
-    if (!isAutonomyLevel(rawLevel)) {
+    // agent_name is required — canonical agent identity (migration 061, NOT NULL)
+    if (!agentName) {
       return NextResponse.json(
-        { error: 'invalid_params', message: 'autonomy_level must be observer, tasks or full' },
+        { error: 'invalid_params', message: 'agent_name is required' },
         { status: 400 },
       );
     }
-    const autonomyLevel = rawLevel;
-    const allowedTools = allowedToolsForLevel(autonomyLevel);
 
-    // Validate name length (matches label CHECK constraint)
-    if (name.length < 1 || name.length > 100) {
+    // Validate name length
+    if (agentName.length > 100) {
       return NextResponse.json(
         { error: 'invalid_params', message: 'Key name must be 1-100 chars' },
         { status: 400 },
@@ -273,11 +265,10 @@ export async function POST(request: NextRequest) {
       .insert({
         workspace_id: targetWorkspaceId,
         key_hash: keyHash,
-        label: name,
-        allowed_tools: allowedTools,
+        agent_name: agentName,
+        allowed_tools: DEFAULT_ALLOWED_TOOLS,
         can_send_messages: true,
         max_tasks_per_minute: 50,
-        autonomy_level: autonomyLevel,
         created_by: (worker?.id as string) ?? null,
         expires_at: expiryDate.toISOString(),
       });
@@ -295,7 +286,7 @@ export async function POST(request: NextRequest) {
       keyId: keyHash,
       plaintextKey,
       prefix,
-      name,
+      name: agentName,
       workspace_id: targetWorkspaceId,
     });
   } catch (err) {

@@ -49,21 +49,11 @@ async function fetchWorkspaces(initData: string): Promise<WorkspaceOption[]> {
   return data.data?.workspaces?.map((ws: any) => ({ id: ws.id, name: ws.name })) ?? [];
 }
 
-/**
- * Combined picker value ('full_lite', legacy) maps to the 'full' autonomy
- * level. Arch 0.9 ADR R1: playbook variants are out of scope — only the
- * autonomy level survives.
- */
-function splitCombinedLevel(combined: string): { autonomy_level: string } {
-  return { autonomy_level: combined === 'full_lite' ? 'full' : combined };
-}
-
 async function createMcpKey(
   initData: string,
   name: string,
   workspaceId: string,
   expiresInDays: number,
-  autonomyLevel: string,
 ): Promise<CreateKeyResponse> {
   const res = await fetch(
     `/api/mcp-keys?init_data=${encodeURIComponent(initData)}`,
@@ -71,10 +61,9 @@ async function createMcpKey(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name,
+        agent_name: name,
         workspace_id: workspaceId,
         expires_in_days: expiresInDays,
-        autonomy_level: splitCombinedLevel(autonomyLevel).autonomy_level,
       }),
     },
   );
@@ -88,30 +77,6 @@ async function deleteMcpKey(
   const res = await fetch(
     `/api/mcp-keys/${encodeURIComponent(keyHash)}?init_data=${encodeURIComponent(initData)}`,
     { method: 'DELETE' },
-  );
-  return res.json();
-}
-
-interface UpdateLevelResponse {
-  success: boolean;
-  autonomy_level?: string;
-  error?: string;
-}
-
-async function updateMcpKeyLevel(
-  initData: string,
-  keyHash: string,
-  autonomyLevel: string,
-): Promise<UpdateLevelResponse> {
-  const res = await fetch(
-    `/api/mcp-keys/${encodeURIComponent(keyHash)}?init_data=${encodeURIComponent(initData)}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        autonomy_level: splitCombinedLevel(autonomyLevel).autonomy_level,
-      }),
-    },
   );
   return res.json();
 }
@@ -361,7 +326,7 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
 
 function SessionStartTemplate() {
   const sessionStartPrompt = `Войди в режим дежурства onitask.
-Уровень автономии возьми из настроек ключа (get_workspace_settings → autonomy_level).
+Права и правила работы возьми из настроек ключа (get_workspace_settings).
 Не останавливай цикл и не жди моих указаний.`;
 
   return (
@@ -454,12 +419,12 @@ export default function McpSettingsPage() {
     return () => { cancelled = true; };
   }, [tgInitData, authLoading]);
 
-  const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number, autonomyLevel: string) => {
+  const handleCreateKey = useCallback(async (name: string, workspaceId: string, expiresInDays: number) => {
     if (!tgInitData) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays, autonomyLevel);
+      const result = await createMcpKey(tgInitData, name, workspaceId, expiresInDays);
       if (result.success && result.plaintextKey && result.prefix) {
         setFreshKey({ key: result.plaintextKey, prefix: result.prefix });
         if (result.keyId) {
@@ -490,41 +455,6 @@ export default function McpSettingsPage() {
       }
     } catch {
       setError('Не удалось удалить ключ');
-    }
-  }, [tgInitData]);
-
-  const handleUpdateLevel = useCallback(async (keyHash: string, level: string) => {
-    if (!tgInitData) return;
-    setError(null);
-    try {
-      const result = await updateMcpKeyLevel(tgInitData, keyHash, level);
-      if (result.success) {
-        // Optimistic local update — refetch not needed for a single field.
-        // selectedKey is a snapshot — keep the open sheet's label in sync too.
-        const parsed = splitCombinedLevel(level);
-        setKeys((prev) =>
-          prev.map((k) =>
-            k.keyHash === keyHash
-              ? {
-                  ...k,
-                  autonomy_level: parsed.autonomy_level,
-                }
-              : k,
-          ),
-        );
-        setSelectedKey((prev) =>
-          prev && prev.keyHash === keyHash
-            ? {
-                ...prev,
-                autonomy_level: parsed.autonomy_level,
-              }
-            : prev,
-        );
-      } else {
-        setError(result.error ?? 'Не удалось изменить уровень автономии');
-      }
-    } catch {
-      setError('Не удалось изменить уровень автономии');
     }
   }, [tgInitData]);
 
@@ -741,7 +671,6 @@ export default function McpSettingsPage() {
         onClose={() => setSelectedKey(null)}
         keyInfo={selectedKey}
         onDelete={handleDeleteKey}
-        onChangeLevel={handleUpdateLevel}
       />
     </main>
   );

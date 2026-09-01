@@ -5,7 +5,6 @@
 // INV-04 (agent worker auto-create via DB trigger), A-3 (atomic quota via RPC).
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { AutonomyLevel } from './types';
 import {
   DomainError,
   unauthorized,
@@ -102,8 +101,6 @@ export interface AgentKeyContext {
   canSendMessages: boolean;
   maxTasksPerMinute: number;
   keyHash: string;
-  /** Duty-mode tier (migration 049); informational for agents via get_workspace_settings. */
-  autonomyLevel: AutonomyLevel;
   /**
    * Arch 0.9 ADR R2 (migration 061): canonical agent identity bound to the
    * key (1 key = 1 agent). Ops surface resolves identity from this field;
@@ -119,7 +116,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
   const { data: key, error } = await supabase
     .from('mcp_agent_keys')
     .select(
-      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute, autonomy_level'
+      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute'
     )
     .eq('key_hash', keyHash)
     .is('revoked_at', null)
@@ -142,7 +139,6 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
     maxTasksPerMinute:
       (key.max_tasks_per_minute as number) ?? DEFAULT_MAX_TASKS_PER_MINUTE,
     keyHash,
-    autonomyLevel: ((key.autonomy_level as AutonomyLevel) ?? 'tasks'),
     keyAgentName: key.agent_name as string,
   };
 }
