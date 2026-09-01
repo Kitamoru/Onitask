@@ -230,12 +230,18 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
   const agentName = selectedKey?.name || 'my-agent';
   const token = (selectedKey && getCachedPlaintextKey(selectedKey.keyHash)) || 'sk_YOUR_API_KEY';
 
+  // runtime_id — привязан к процессу агента (fencing, ops RPC 062): только этот
+  // runtime владеет lease'ом. Генерируем один раз на страницу (стабилен в течение
+  // сессии), чтобы шаблон можно было сразу копировать. При перезапуске процесса
+  // агента замените на новый UUID раннера (bash: uuidgen; node: crypto.randomUUID()).
+  const [runtimeId] = useState<string>(() => crypto.randomUUID());
+
   // Arch 0.9: REST — ops surface (/api/agent/ops/*); domain tools (create_task/move_task/…) — MCP-only.
   const restTemplate = `curl -X POST https://onitask.vercel.app/api/agent/ops/lease \\
   -H "Authorization: Bearer ${token}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "runtime_id": "<uuid вашего runtime>",
+    "runtime_id": "${runtimeId}",
     "agent_name": "${agentName}"
   }'
 # agent_name задаётся один раз и шлётся автоматически; identity (workspace) резолвится из ключа. workspace_id в URL не нужен.`;
@@ -316,56 +322,6 @@ function ConnectionTemplate({ selectedKey }: { selectedKey?: McpKeyInfo | null }
       </div>
 
       <CopyButton text={template} label="Копировать шаблон" />
-    </div>
-  );
-}
-
-// ============================================================================
-// Session Start Template — duty-mode bootstrap prompt for agents
-// ============================================================================
-
-function SessionStartTemplate() {
-  const sessionStartPrompt = `Войди в режим дежурства onitask.
-Права и правила работы возьми из настроек ключа (get_workspace_settings).
-Не останавливай цикл и не жди моих указаний.`;
-
-  return (
-    <div className="flex flex-col gap-2 w-full">
-      <div className="flex items-center justify-between w-full px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="h-[18px] w-[2px]" style={{ backgroundColor: '#F59E0B' }} aria-hidden="true" />
-          <span
-            className="text-base font-medium leading-5"
-            style={{
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-family-display)',
-            }}
-          >
-            Старт сессии
-          </span>
-        </div>
-      </div>
-
-      <p
-        className="px-3 text-xs leading-relaxed"
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        Вставьте этот текст агенту после подключения — он сам войдёт в режим
-        дежурства и получит правила и уровень доступа по своему ключу.
-      </p>
-
-      <div
-        className="relative p-3 rounded-md font-mono text-xs leading-relaxed overflow-auto"
-        style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid var(--color-line)',
-          color: 'var(--color-text-secondary)',
-        }}
-      >
-        <pre className="whitespace-pre-wrap break-all">{sessionStartPrompt}</pre>
-      </div>
-
-      <CopyButton text={sessionStartPrompt} label="Копировать промт" />
     </div>
   );
 }
@@ -649,9 +605,6 @@ export default function McpSettingsPage() {
 
         {/* Connection template */}
         <ConnectionTemplate selectedKey={highlightedKey} />
-
-        {/* Session start template (duty mode bootstrap prompt) */}
-        <SessionStartTemplate />
 
         {/* Bottom filler for safe area */}
         <div className="h-16" aria-hidden="true" />
