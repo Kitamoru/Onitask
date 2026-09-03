@@ -571,11 +571,15 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] RUNNER-01 Vision & Decision Doc (Supervisor-архитектура) #cli !high ✅
       Решение: Runner = супервизор над headless-исполнителями; MCP — единственный
       транспорт; npm-only v0; AC-1…7 чеклисты приёмки; REST freeze + sunset план.
-- [ ] RUNNER-02 Runtime skeleton: `@onitask/agent` — ENV-конфиг (ONITASK_KEY),
-      duty-loop (wait_for_tasks long-poll), playbook-fetch по уровню ключа,
-      retry/backoff §7 #cli !high
+- [ ] RUNNER-02 Runtime skeleton: `@onitask/agent` — ENV-конфиг (ONITASK_BASE_URL,
+      ONITASK_API_KEY, RUNTIME_ID auto), CLI `onitask agent start/once/whoami`,
+      ops-цикл (lease → ctx → runner → heartbeat* → terminal → ack) по doc 03 /
+      REST /api/agent/ops/*, reconcile-таймер (30–60с active / 2–5мин idle),
+      exit-коды 0–6 #cli !high
 - [ ] RUNNER-03 Executor plugin interface + адаптер claude-code headless
-      (`claude -p` в repo_path) #cli !high @blocked_by:RUNNER-02
+      (`claude -p` в repo_path); также wake-listener на публичном канале
+      `agent:<key_id>` (broadcast 'work.available' → lease) — best-effort,
+      гарантия через reconcile/lease #cli !high @blocked_by:RUNNER-02
 - [ ] RUNNER-04 Flow integration: claim → delegate → review;
       для full-уровня — деплой после апрува (git add/commit/push, guard на
       чужие изменения в рабочем дереве) #cli !med @blocked_by:RUNNER-03
@@ -598,6 +602,29 @@ format is deliberately compact so that agents can load the file quickly.
       Причина: миграция 051 добавила 5-арг перегрузку (p_reason DEFAULT) поверх
       4-арг сигнатуры → PostgREST не мог выбрать кандидата на любом вызове →
       кнопки «Согласовать/Вернуть» в боте всегда падали с generic-ошибкой.
+### Legacy cleanup (зомби хвосты от старых подходов; аудит 2026-09-03)
+
+- [ ] CL-01 Вычистить мёртвые остатки long-poll/wake-вебхук эпохи #db #mcp !med
+      Аудит (2026-09-03) нашёл:
+      - `mcp_agent_keys`: зомби-колонки `webhook_url`, `webhook_secret`
+        (R5 wake-вебхук, не реализован), `key_plaintext` (‼ НЕТ в миграциях —
+        дрейф для `supabase db push`), `agent_type` (никогда не использовался).
+        Все пустые (NULL), читателей 0.
+      - `agent_events_tool_check` всё ещё допускает `deploy_notify`/`fix_notify`
+        (мёртвые маркеры удалённого wait_for_tasks из миг. 050). Убрать из CHECK.
+      - Пустая папка `supabase/functions/agent-duty-runtime/` (0 файлов, не задеплоена).
+      - `lib/shared/autonomyLevels.ts`: мёртвый экспорт `READ_ONLY_ALLOWED_TOOLS`
+        (используется только `DEFAULT_ALLOWED_TOOLS`).
+      - Перегенерация `types/supabase.ts` (+ дроп `agent_type`).
+      - Доки: `docs/onitask_mcp_contract_.md` §4.10 (wait_for_tasks),
+        `docs/ARCHITECTURE-COMPACT.md` §7 (упом. удалённой agent_duty_playbook).
+
+### Wake server-side (Arch 0.9, спеки 12–13)
+
+- [x] WAKE-01 Outbox publisher + realtime-broadcast (миграция 071) #db !high ✅
+      `wake_sent_at`, `ops_publisher_tick(p_batch)`, cron '10 seconds', public-канал
+      `agent:<key_id>`, at-least-once. E2E-валидация на проде: cron→broadcast→слушатель;
+      lease без realtime работает. Broadcast = best-effort, гарантия = outbox+lease+reconcile.
       Фикс: DROP 4-арг перегрузки, каноническая 5-арг сигнатура (DEFAULT NULL).
       Верифицировано: named-call тест возвращает типизированный version_conflict.
       Правило против рецидива — `.clinerules` validation_commands.rpc_overloads.

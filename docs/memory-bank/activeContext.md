@@ -1,5 +1,32 @@
 # Active Context
 
+## Arch 0.9 Wake (stage 8) — server-side publisher REALTIME ✅ (2026-09-03)
+
+### Финальное решение (Вариант A, подтверждено владельцем)
+- **Broadcast = только best-effort wake; НЕ механизм доставки.**
+- Действительную выдачу работы даёт `dispatch_outbox(pending)` + `ops_lease` + reconcile-таймер CLI.
+- **postgres_changes отклонён**: это живой WAL-стрим без реплея для offline-клиентов + требует RNL/JWT-инфраструктуры (spec 15) + RLS-утечки outbox. Broadcast/poll дешевле и надёжнее.
+
+### Что сделано
+- **Миграция 071_outbox_wake.sql** (применена через MCP):
+  - `dispatch_outbox.wake_sent_at timestamptz` — сторож однократной отправки (at-least-once guard). Статусы `pending`/`published` и `published_at` НЕ затрагиваются (`published` = «забран ops_lease»).
+  - `public.ops_publisher_tick(p_batch int DEFAULT 100)` — drain pending → JOIN `mcp_agent_keys` → `realtime.send(payload, 'work.available', 'agent:'||key_id, false)` (public-канал), per-row `BEGIN/EXCEPTION`: успех → `wake_sent_at=now()`, сбой → `error` (строка остаётся pending — доставка через lease/riper).
+  - cron `ops-publisher-tick` `'10 seconds'` → `SELECT public.ops_publisher_tick(100);`.
+  - `payload`: `{event_id (outbox.id), type:'work.available', workspace_id, agent_key_id, ts}` — БЕЗ task_id/секретов.
+- **`tools/wake-sniff.mjs`** — dev-only подписка на публичный канал `agent:<key_id>`.
+
+### Валидация (на проде, project atarmvtzvlwhkheeabeb)
+- `wake_sent_at` создана; `ops_publisher_tick` работает; `has_function_privilege(postgres, realtime.send) = true`; cron активен.
+- **End-to-end подтверждён**: cron взял pending-строку → broadcast получен слушателем на канале `agent:156bc...` (payload корректен, без task_id).
+- **Lease без Realtime работает**: тот же pending забран через `ops_lease` (task_version 17→18). → broadcast — чистое ускорение, надёжность не зависит от realtime.
+- **Диагностика**: client→client и SQL→client broadcast работают; публикаций `supabase_realtime` для таблиц НЕТ (пустая), outbox RLS-on без политик (это намеренно).
+
+### Следующие шаги
+- **Этап CLI-рантайма** (spec 14): poll-only + realtime-listener на публичном канале (без JWT/RNL). Reconcile-таймер = гарантия.
+- **Legacy cleanup (отдельная задача CL-01)**: зомби-колонки `mcp_agent_keys` (`webhook_url`, `webhook_secret`, `key_plaintext` [нет в миграциях], `agent_type`), CHECK `agent_events_tool_check` (убрать `deploy_notify`/`fix_notify`), пустая папка `supabase/functions/agent-duty-runtime/`, мёртвый `READ_ONLY_ALLOWED_TOOLS`, перегенерация `types/supabase.ts`, `RUNNER-02/03` в TASKS.md.
+
+---
+
 ## Architecture 0.9 — Stage 4 (MCP 0.9 tools) ЗАВЕРШЕН (2026-08-31)
 
 **Status:** ✅ Код написан, type-check ✅. Lint сломан на уровне окружения
