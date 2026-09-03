@@ -1,5 +1,14 @@
 # Active Context
 
+## Arch 0.9 — CL-01 Legacy cleanup ✅ (2026-09-03)
+
+**Вычищены зомби-остатки long-poll/wake-webhook эпохи (миграция 072):**
+- Дропнуты колонки `mcp_agent_keys`: `webhook_url`, `webhook_secret`, `key_plaintext` (дрейф — не было в миграциях), `agent_type`.
+- `agent_events_tool_check` ужесточён: убраны `deploy_notify`/`fix_notify`.
+- Удалены: пустая папка `supabase/functions/agent-duty-runtime/`, мёртвый экспорт `READ_ONLY_ALLOWED_TOOLS` (autonomyLevels.ts), `agent_type` из `types/supabase.ts`.
+- LEGACY-баннеры: `docs/onitask_mcp_contract_.md` (шапка), `docs/ARCHITECTURE-COMPACT.md` §7.
+- **Верификация:** колонок нет; CHECK без легаси-маркеров; ни одна функция/вьюха БД не ссылается на дропнутые колонки; advisors без новых находок; type-check ✅.
+
 ## Arch 0.9 Wake (stage 8) — server-side publisher REALTIME ✅ (2026-09-03)
 
 ### Финальное решение (Вариант A, подтверждено владельцем)
@@ -23,7 +32,7 @@
 
 ### Следующие шаги
 - **Этап CLI-рантайма** (spec 14): poll-only + realtime-listener на публичном канале (без JWT/RNL). Reconcile-таймер = гарантия.
-- **Legacy cleanup (отдельная задача CL-01)**: зомби-колонки `mcp_agent_keys` (`webhook_url`, `webhook_secret`, `key_plaintext` [нет в миграциях], `agent_type`), CHECK `agent_events_tool_check` (убрать `deploy_notify`/`fix_notify`), пустая папка `supabase/functions/agent-duty-runtime/`, мёртвый `READ_ONLY_ALLOWED_TOOLS`, перегенерация `types/supabase.ts`, `RUNNER-02/03` в TASKS.md.
+- ~~**Legacy cleanup (CL-01)**~~ — ✅ выполнен 2026-09-03 (миграция 072, см. шапку).
 
 ---
 

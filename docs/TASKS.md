@@ -604,20 +604,20 @@ format is deliberately compact so that agents can load the file quickly.
       кнопки «Согласовать/Вернуть» в боте всегда падали с generic-ошибкой.
 ### Legacy cleanup (зомби хвосты от старых подходов; аудит 2026-09-03)
 
-- [ ] CL-01 Вычистить мёртвые остатки long-poll/wake-вебхук эпохи #db #mcp !med
-      Аудит (2026-09-03) нашёл:
-      - `mcp_agent_keys`: зомби-колонки `webhook_url`, `webhook_secret`
-        (R5 wake-вебхук, не реализован), `key_plaintext` (‼ НЕТ в миграциях —
+- [x] CL-01 Вычистить мёртвые остатки long-poll/wake-вебхук эпохи #db #mcp !med ✅
+      Аудит (2026-09-03) нашёл и вычищено (миграция 072 + правки кода/доков):
+      - `mcp_agent_keys`: дропнуты `webhook_url`, `webhook_secret`
+        (R5 wake-вебхук, не реализован), `key_plaintext` (‼ был НЕ в миграциях —
         дрейф для `supabase db push`), `agent_type` (никогда не использовался).
-        Все пустые (NULL), читателей 0.
-      - `agent_events_tool_check` всё ещё допускает `deploy_notify`/`fix_notify`
-        (мёртвые маркеры удалённого wait_for_tasks из миг. 050). Убрать из CHECK.
-      - Пустая папка `supabase/functions/agent-duty-runtime/` (0 файлов, не задеплоена).
-      - `lib/shared/autonomyLevels.ts`: мёртвый экспорт `READ_ONLY_ALLOWED_TOOLS`
-        (используется только `DEFAULT_ALLOWED_TOOLS`).
-      - Перегенерация `types/supabase.ts` (+ дроп `agent_type`).
-      - Доки: `docs/onitask_mcp_contract_.md` §4.10 (wait_for_tasks),
-        `docs/ARCHITECTURE-COMPACT.md` §7 (упом. удалённой agent_duty_playbook).
+      - `agent_events_tool_check` ужесточён: убраны `deploy_notify`/`fix_notify`
+        (мёртвые маркеры удалённого wait_for_tasks из миг. 050).
+      - Удалена пустая папка `supabase/functions/agent-duty-runtime/`.
+      - `lib/shared/autonomyLevels.ts`: убран мёртвый экспорт `READ_ONLY_ALLOWED_TOOLS`.
+      - `types/supabase.ts`: убран `agent_type` (3 места).
+      - Доки: LEGACY-баннеры в `docs/onitask_mcp_contract_.md` (шапка) и
+        `docs/ARCHITECTURE-COMPACT.md` §7 (agent_duty_playbook).
+      Верификация: колонок нет, CHECK обновлён, ни одна функция/вьюха БД
+      не ссылается на дропнутые колонки, advisors без новых находок, type-check ✅
 
 ### Wake server-side (Arch 0.9, спеки 12–13)
 

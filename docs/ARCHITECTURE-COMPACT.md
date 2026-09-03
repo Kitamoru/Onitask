@@ -140,6 +140,8 @@ workers (
 
 ## 7. workspace_settings — ключевые поля
 
+> ⚠️ **CL-01 (2026-09-03):** поле `agent_duty_playbook` (и протокол Duty Mode long-poll) удалено из системы — duty-контур заменён на `ops_lease` + Realtime broadcast (Arch 0.9, спеки 12–14). Упоминание ниже — легаси.
+
 `enable_cognitive_budget` · `story_points_config` · `velocity_window_days` · `flow_config` (`stuck_threshold_hours`, `overload_threshold`, `wip_alert_multiplier`) · `realtime_subscription_level` · `workspace_context` (Admin, ≤800 симв) · `workspace_context_cache` (system, ≤500 симв) · `context_stale` · `standup_config` · `doc_kb_config` · `f04_config` · `quota_config` · `agent_duty_playbook` (Admin-overrides протокола Duty Mode per уровень: `{observer, tasks, full}`) · `data_sharing_level` (`minimal`/`standard`/`full`) · `mcp_api_keys` (allowed_tools per key, `{}` = legacy all)
 
 ---

@@ -600,7 +600,6 @@ export type Database = {
       mcp_agent_keys: {
         Row: {
           agent_name: string
-          agent_type: string | null
           allowed_tools: Json
           can_send_messages: boolean
           created_at: string
@@ -615,7 +614,6 @@ export type Database = {
         }
         Insert: {
           agent_name: string
-          agent_type?: string | null
           allowed_tools?: Json
           can_send_messages?: boolean
           created_at?: string
@@ -630,7 +628,6 @@ export type Database = {
         }
         Update: {
           agent_name?: string
-          agent_type?: string | null
           allowed_tools?: Json
           can_send_messages?: boolean
           created_at?: string
