@@ -43,6 +43,7 @@
     "node_modules",
     "docs/onitask-boards",
     "docs/onitask-desk-create",
-    "docs/mcp new doc"
+    "docs/mcp new doc",
+    "docs/playbook-archive"
   ]
 }

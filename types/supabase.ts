@@ -1614,7 +1614,6 @@ export type Database = {
       }
       workspace_settings: {
         Row: {
-          agent_duty_playbook: Json | null
           context_stale: boolean
           data_sharing_level: string
           deadline_signals: Json | null
@@ -1634,7 +1633,6 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
-          agent_duty_playbook?: Json | null
           context_stale?: boolean
           data_sharing_level?: string
           deadline_signals?: Json | null
@@ -1654,7 +1652,6 @@ export type Database = {
           workspace_id: string
         }
         Update: {
-          agent_duty_playbook?: Json | null
           context_stale?: boolean
           data_sharing_level?: string
           deadline_signals?: Json | null
