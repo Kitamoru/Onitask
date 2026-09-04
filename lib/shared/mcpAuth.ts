@@ -97,6 +97,12 @@ export function isToolAllowed(tool: string, allowed: 'all' | string[]): boolean 
 
 export interface AgentKeyContext {
   workspaceId: string;
+  /**
+   * WorkerPlan §10.6 (RUNNER-02): mcp_agent_keys.id — public wake-channel id
+   * ('agent:<agent_key_id>', migration 071). Resolved from the key so the
+   * worker never enters it manually (whoami → Realtime subscribe).
+   */
+  agentKeyId: string;
   allowedTools: 'all' | string[];
   canSendMessages: boolean;
   maxTasksPerMinute: number;
@@ -116,7 +122,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
   const { data: key, error } = await supabase
     .from('mcp_agent_keys')
     .select(
-      'workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute'
+      'id, workspace_id, agent_name, allowed_tools, can_send_messages, max_tasks_per_minute'
     )
     .eq('key_hash', keyHash)
     .is('revoked_at', null)
@@ -134,6 +140,7 @@ export async function resolveAgentKey(rawKey: string): Promise<AgentKeyContext> 
 
   return {
     workspaceId: key.workspace_id as string,
+    agentKeyId: key.id as string,
     allowedTools: normalizeAllowedTools(key.allowed_tools),
     canSendMessages: key.can_send_messages as boolean,
     maxTasksPerMinute:

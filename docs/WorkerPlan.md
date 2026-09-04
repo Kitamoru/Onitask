@@ -1,9 +1,14 @@
 # Onitask Agent Worker — План реализации (WorkerPlan)
 
-**Версия:** 1.0
+**Версия:** 1.1
 **Дата:** 2026-09-04
 **Статус:** Согласован к реализации (все решения верифицированы по коду/миграциям)
-**Связанные доки:** refactor-ai 01 (Ops API), 03 (Duty Runtime), 09 (Reaper), 12–14 (Wake/CLI), `docs/TASKS.md` RUNNER-02…06
+**Связанные доки:** refactor-ai 01 (Ops API), 03 (Duty Runtime), 04 (Bot synergy),
+07 (Bot notify emit), 09 (Reaper), 12–14 (Wake/CLI), `docs/TASKS.md` RUNNER-02…06
+
+> **v1.1 (2026-09-04):** добавлены §3.9 (Review Flow — полный цикл: бот-кнопки,
+> approve/fix, requeue) и §10 (Quick Launch: one-liner, авто-резолв `agent_key_id`
+> и supabase-конфига wake из api_key; Realtime wake — базовый «будильник», без JWT).
 
 ---
 
@@ -51,7 +56,7 @@ Supabase будит (broadcast, best-effort) · ops_lease выдаёт рабо�
 | Идентификатор | Кто создаёт | Жизнь | Назначение |
 |---|---|---|---|
 | `api_key` | Сервер (`mcp_agent_keys`, 1 ключ = 1 агент) | Постоянный | `Authorization: Bearer <key>`. Identity (workspace_id, agent_name) резолвится **сервером** из ключа (INV 9) |
-| `agent_key_id` (UUID) | Сервер | Постоянный | Не секрет. Канал wake `agent:<agent_key_id>`. Из UI настроек → конфиг |
+| `agent_key_id` (UUID) | Сервер | Постоянный | Не секрет. Канал wake `agent:<agent_key_id>`. **Резолвится сервером из api_key** (`resolveAgentKey` возвращает `id`) — отдельный ключ и ручной ввод не нужны, приходит в `whoami` |
 | `runtime_id` (UUID) | **Воркер**, при старте процесса | Жизнь процесса | Fencing всех ops-вызовов. Не восстанавливается между рестартами |
 | `execution_id` (UUID) | **Сервер**, при `ops_lease` | Один lease | Домен выполнения; воркер держит в памяти, runner'у не нужен |
 | `receipt` | **Сервер**, при lease | Один lease | Для `ops_ack` |
@@ -123,19 +128,62 @@ CAS-miss → `409 version_conflict`. Пишет `agent_events(tool='ops_terminal
 CTX-02: `workspace_context` и `memory_summary` статичны в рамках сессии — первый
 вызов полный, далее `include_*: false` (экономия контекста из playbook → код воркера).
 
-### 3.8. Wake (071)
+### 3.8. Wake (071) — базовый «будильник»
 
 Broadcast `work.available` на public-канал `agent:<agent_key_id>`, payload
 `{event_id, type, workspace_id, agent_key_id, ts}` (без task_id). Best-effort:
 потеря не критична — гарантия = poll + outbox + reaper.
+
+Подписка воркера — **публичная, без JWT** (spec 15 с JWT-обменом отклонена как
+переусложнение): воркер подключается с publishable anon key, а конфиг
+(`supabase_url`, `supabase_anon_key`, `agent_key_id`) получает с сервера через
+`GET /api/agent/whoami` (Bearer api_key; identity + wake-config одним вызовом —
+✅ реализовано, см. §10.6). Wake — механизм мгновенного пробуждения,
+но не доставки: после wake воркер обязан сделать `ops_lease`.
+
+### 3.9. Review Flow — полный цикл после `ops_terminal(review)`
+
+Сдача работы — только половина цикла. Воркеру важна и обратная связь: как
+человек принимает/возвращает задачу и как она возвращается к агенту.
+
+```text
+ops_terminal(review, summary)          # воркер сдаёт работу
+  → server (одна TX): column='review' + agent_events(tool='ops_terminal')
+    + enrichment_queue(bot_notify / task_review, reason=summary)   # миграции 062+064 (G6)
+  → bot-notify EF → Telegram DM ревьюеру (fallback: автору):
+      карточка «Что сделано: <summary>» + кнопки
+      [Согласовать → ra:approve:<task_id>] [Вернуть → ra:fix:<task_id>]   # doc 04/07
+  ├─ ra:approve → review_action(approve) → column='done' → task_done notify
+  └─ ra:fix → pending «напишите причину» → текст → review_action(fix, p_reason)
+        → metadata.last_fix_reason + INSERT dispatch_outbox(attempt=1)  # requeue, 064 R7
+        → wake → воркер забирает задачу следующим ops_lease
+        → get_task_context отдаёт last_fix_reason в task.metadata
+```
+
+Правила воркера в этом цикле:
+
+- `summary` в terminal — человекочитаемый отчёт «что сделано»: он попадает в
+  Telegram-карточку (G6). ≤1000 символов, без секретов.
+- После `ra:fix` задача приходит с тем же `task_id` и новым `attempt` в lease
+  (fencing обычный). Контекст задачи перечитываем; workspace_context /
+  memory_summary остаются в кэше воркера (CTX-02 не ломается).
+- Воркер НЕ опрашивает результат ревью — его будит только новый outbox/wake
+  или poll. По кнопкам никаких действий — это серверный контур (bot webhook →
+  `review_action` RPC; бот никогда не зовёт ops, doc 04).
+- E2E-покрытие (матрица 08): E04 (terminal review → notify), E11 (approve →
+  done), E12 (fix → requeue).
 
 ---
 
 ## 4. Жизненный цикл воркера
 
 ```
-START      runtime_id = uuidv4(); конфиг; (опц.) PID-file для удобства, не для корректности
-WAKE       RealtimeListener (канал agent:<key_id>) + PollManager (fallback, всегда жив)
+START      runtime_id = uuidv4(); конфиг; whoami (resolveAgentKey → workspace_id,
+           agent_name, allowed_tools, agent_key_id) — fail → exit 3, без цикла
+WAKE       whoami (Bearer key → identity + agent_key_id + supabase_url/anon_key;
+           нет wake-config → warn + poll-only) → RealtimeListener
+           (public-канал agent:<key_id>, anon key, БЕЗ JWT) + PollManager
+           (fallback, всегда жив)
 LEASE      ops_lease {runtime_id}
              ├─ job:null → sleep(active 30с | idle 5мин, адаптивно) → LEASE
              └─ job → CONTEXT
@@ -152,7 +200,8 @@ SHUTDOWN   SIGTERM/SIGINT → kill runner (SIGINT, 5с grace, SIGKILL)
            → close realtime → exit 0
 ```
 
-Режимы CLI: `start` (daemon), `once` (одна задача — CI/отладка), `ping` (JSON-RPC ping).
+Режимы CLI: `start` (daemon), `once` (одна задача — CI/отладка), `whoami`
+(verify identity + agent_key_id; auth-ошибка → exit 3), `ping` (JSON-RPC ping).
 
 ## 5. Протокол Runner (stdin/stdout)
 
@@ -203,7 +252,7 @@ SHUTDOWN   SIGTERM/SIGINT → kill runner (SIGINT, 5с grace, SIGKILL)
 | `ops_terminal` | `version_conflict` (409) | Перечитать `task.version` → retry terminal ×1 → иначе `ops_nack('other')` |
 | `ops_terminal/ack` | `execution_not_found` (404) / `claim_closed` (409) | Lease утерян (reaper) → лог, IDLE, задача вернётся сама |
 | `ops_ack` | `terminal_required` (409) | Не должен случиться (terminal идёт перед ack) — лог fail-loud |
-| Auth | `invalid_credentials` (401), `agent_not_allowed`/`forbidden_workspace` (403) | Fatal: конфиг неверен — exit ≠ 0 |
+| Auth / whoami | 401 (`unauthorized` из whoami / `invalid_credentials` из ops), 403 `forbidden_workspace`/`agent_not_allowed` | Fatal: конфиг неверен — exit 3 (exit-коды doc 03). `whoami` прогоняет проверку до цикла; отсутствие wake-config → warn + poll-only (не fatal) |
 | Realtime | disconnect | Reconnect 1→2→4…30с; после reconnect — немедленный lease; poll работает всегда |
 
 Логирование: stdout/stderr воркера (структурно: ts, level, event, execution_id).
@@ -226,7 +275,7 @@ SHUTDOWN   SIGTERM/SIGINT → kill runner (SIGINT, 5с grace, SIGKILL)
 
 ```
 worker/
-├── bin/cli.ts                  # start | once | ping; Node ≥24 (type stripping, без сборки)
+├── bin/cli.ts                  # start | once | whoami | ping; Node ≥24 (type stripping, без сборки)
 ├── config.ts                   # env → Config (валидация при старте, fail-loud)
 ├── mcpClient.ts                # JSON-RPC 2.0 tools/call, парс error.data.{type,http_status}
 ├── wake/realtimeListener.ts    # @supabase/supabase-js (уже в root deps), канал agent:<key_id>
@@ -238,19 +287,22 @@ worker/
 └── types.ts
 ```
 
-Запуск из репо (npm-install -g — отдельная упаковка после стабилизации):
+Запуск — см. §10 Quick Launch (one-liner + `.env.example`). Полный конфиг:
 
 ```bash
-node worker/bin/cli.ts start
-```
-
-Конфиг (.env / окружение):
-
-```bash
+# ── Обязательные: этого достаточно для полного запуска с Realtime wake ─────
 ONITASK_BASE_URL=https://onitask.vercel.app
-ONITASK_API_KEY=<секрет>            # 1 ключ = 1 агент
-ONITASK_AGENT_KEY_ID=<uuid>         # НЕ секрет; канал wake agent:<key_id>
-ONITASK_AGENT_NAME=Drift            # для X-Agent-Name (проверка INV 9)
+ONITASK_API_KEY=sk_<hex64>          # 1 ключ = 1 агент; UI: Настройки → MCP-ключи
+
+# ── Резолвятся сервером из api_key — НЕ вводятся вручную ───────────────────
+#   workspace_id, agent_name   ← resolveAgentKey (INV 9)
+#   agent_key_id               ← resolveAgentKey (добавить id в select) → whoami
+#   supabase_url + anon_key    ← GET /api/agent/whoami (для wake)
+
+# ── Опциональные ────────────────────────────────────────────────────────────
+ONITASK_AGENT_NAME=Drift            # только assert-match ключу (INV 9); обычно не нужен
+ONITASK_AGENT_KEY_ID=               # оверрайд (иначе из whoami)
+ONITASK_SUPABASE_ANON_KEY=          # оверрайд, если realtime-config недоступен
 ONITASK_RUNNER_CMD="claude -p"      # команда раннера
 ONITASK_ENABLE_REALTIME=true        # false → чистый poll-only
 ONITASK_POLL_ACTIVE_MS=30000
@@ -266,7 +318,7 @@ ONITASK_RUNNER_TIMEOUT_MS=3600000   # жёсткий потолок задачи
 
 | Этап | Содержание | Проверка |
 |---|---|---|
-| W1 | Каркас: config + mcpClient + poll-only lease-цикл (`once`) | `node worker/bin/cli.ts once` на проде: lease → лог job / job:null; `ping` ✅ |
+| W1 | Каркас: config + mcpClient + whoami + poll-only lease-цикл (`once`) | `whoami` ✅ (identity + agent_key_id; auth fail → exit 3); `once` на проде: lease → лог job / job:null; `ping` ✅ |
 | W2 | Runner: spawn, stdin/stdout-контракт, terminal/ack/nack | E2E с echo-раннером: задача → review → ack; runner exit 1 → nack → requeue |
 | W3 | HeartbeatTimer + матрица ошибок + graceful shutdown | `kill -9` воркера → задача возвращается reaper'ом ~21,5 мин; SIGTERM → nack requeue сразу |
 | W4 | Realtime wake + adaptive poll | wake-событие → немедленный lease (wake-sniff подтверждён, WAKE-01) |
@@ -274,6 +326,84 @@ ONITASK_RUNNER_TIMEOUT_MS=3600000   # жёсткий потолок задачи
 
 `npm run type-check` зелёный на каждом этапе. Реализация — под задачей **RUNNER-02**
 (`docs/TASKS.md`), runner-адаптеры — RUNNER-03.
+
+## 10. Quick Launch — запуск за 30 секунд
+
+Минимум для полноценного воркера с Realtime wake — **два значения**: base URL
+и api_key. Всё остальное (identity, `agent_key_id`, supabase-конфиг wake-канала)
+сервер резолвит из ключа — никаких отдельных ключей и ручных UUID.
+
+### 10.1. One-liner
+
+```bash
+# Linux / macOS / WSL
+ONITASK_API_KEY=sk_<hex64> \
+ONITASK_BASE_URL=https://onitask.vercel.app \
+  node worker/bin/cli.ts start
+```
+
+```powershell
+# Windows PowerShell
+$env:ONITASK_API_KEY='sk_<hex64>'; $env:ONITASK_BASE_URL='https://onitask.vercel.app'
+node worker/bin/cli.ts start
+```
+
+`npm-install -g` / `npx onitask-agent start` — отдельная упаковка после
+стабилизации (TASKS.md RUNNER-02, npm-only v0).
+
+### 10.2. Что происходит при старте
+
+```text
+GET /api/agent/whoami (Bearer api_key) — один вызов:
+  → workspace_id, agent_name, allowed_tools, agent_key_id,
+    supabase_url, supabase_anon_key (public, не секрет)
+  └ 401/403                      → exit 3 (конфиг неверен, fail-loud)
+  └ supabase_url/anon_key = null → warn, poll-only (доставка = lease + reaper)
+Realtime.subscribe               → канал agent:<agent_key_id> (public, anon key, без JWT)
+  └ broadcast work.available     → немедленный ops_lease
+```
+
+Realtime — базовый «будильник» (ADR 12), но не механизм доставки: потеря wake
+не страшна, poll-цикл (30с active / 5мин idle) подхватит работу.
+
+### 10.3. Где взять api_key
+
+UI onitask → Настройки → MCP-ключи → «Создать ключ» (`POST /api/mcp-keys`,
+формат `sk_<hex64>`, показывается один раз). Это **единственный секрет воркера** —
+тот же ключ используется для MCP-подключения IDE (Cursor/Cline):
+1 ключ = 1 агент (ADR R2).
+
+### 10.4. .env.example
+
+```bash
+# worker/.env.example
+ONITASK_BASE_URL=https://onitask.vercel.app
+ONITASK_API_KEY=sk_replace_me           # единственный секрет
+# ONITASK_AGENT_NAME=                   # опц.: assert-match имени ключа
+ONITASK_ENABLE_REALTIME=true
+ONITASK_POLL_ACTIVE_MS=30000
+ONITASK_POLL_IDLE_MS=300000
+ONITASK_RUNNER_CMD=claude -p
+ONITASK_RUNNER_TIMEOUT_MS=3600000
+# оверрайды авто-резолва (обычно не нужны):
+# ONITASK_AGENT_KEY_ID=
+# ONITASK_SUPABASE_ANON_KEY=
+```
+
+### 10.5. Проверка перед запуском
+
+```bash
+node worker/bin/cli.ts whoami   # → workspace_id, agent_name, allowed_tools, agent_key_id; auth fail → exit 3
+node worker/bin/cli.ts ping     # → JSON-RPC ping
+node worker/bin/cli.ts once     # одна задача (CI/отладка)
+```
+
+### 10.6. Зависимости на сервере (code, вне воркера — RUNNER-02)
+
+| Изменение | Файл | Статус |
+|---|---|---|
+| `id` в select `resolveAgentKey` + поле `agentKeyId` в `AgentKeyContext` | `lib/shared/mcpAuth.ts` | ✅ реализовано |
+| `GET /api/agent/whoami` — identity + `agent_key_id` + `supabase_url`/`supabase_anon_key` одним вызовом по Bearer api_key (public-канал; spec 15 с JWT отклонена) | `src/app/api/agent/whoami/route.ts` | ✅ реализовано |
 
 
 

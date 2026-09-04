@@ -1,5 +1,22 @@
 # Active Context
 
+## Arch 0.9 — WorkerPlan v1.1: Review Flow + Quick Launch (2026-09-04)
+
+**`docs/WorkerPlan.md` v1.1** (уточнение v1.0 по фидбеку владельца — флоу review
+и запуска были не проработаны). Новое:
+- **§3.9 Review Flow** — полный цикл: ops_terminal(review, summary) →
+  bot_notify(task_review) → Telegram-карточка с ra:approve/ra:fix →
+  review_action RPC → done ИЛИ ra:fix → last_fix_reason + dispatch_outbox
+  requeue → следующий ops_lease (миграции 062/064, доки 04/07, E2E E04/E11/E12).
+- **§10 Quick Launch** — one-liner: `ONITASK_API_KEY + ONITASK_BASE_URL`
+  достаточно (Realtime wake — базовый «будильник», БЕЗ JWT): `agent_key_id`
+  резолвится сервером из api_key (resolveAgentKey + `id` в select),
+  supabase_url/anon_key — через новый `GET /api/agent/realtime-config`
+  (замена spec 15, JWT-обмен отклонён как переусложнение).
+- CLI: `start | once | whoami | ping`; whoami-verify → exit 3 при auth-ошибке.
+- **Server-зависимости RUNNER-02 (§10.6):** `id` в select resolveAgentKey
+  (`lib/shared/mcpAuth.ts` ~118); новый route `/api/agent/realtime-config`.
+
 ## Arch 0.9 — WorkerPlan готов (RUNNER-02) (2026-09-04)
 
 **`docs/WorkerPlan.md` v1.0** — полный план agent-worker (daemon) с секцией
