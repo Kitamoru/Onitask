@@ -1,5 +1,22 @@
 # Active Context
 
+## Arch 0.9 — WorkerPlan готов (RUNNER-02) (2026-09-04)
+
+**`docs/WorkerPlan.md` v1.0** — полный план agent-worker (daemon) с секцией
+верификации консистентности по коду. Ключевое:
+- Транспорт: **только MCP** (`/api/mcp`, JSON-RPC 2.0 `tools/call`), auth = Bearer api_key, identity из ключа (INV 9).
+- `ops_heartbeat` **продлевает lease** (062:182–186: `expires_at=now()+20min`) — `ops_renew_lease` не нужен; интервал = `heartbeat_interval_seconds` из lease-ответа (60с).
+- `lease_expired` существует только у heartbeat; на terminal/ack — `404 execution_not_found`/`409 stale_claim`.
+- `send_message_to_chat` **доступен агенту через MCP** (bot-токен серверно) — исходное решение playbook валидно; `bot_notify_queue` не существует (очередь = `enrichment_queue type='bot_notify'`, service-only).
+- Квота в ops-контуре = `rate_limited` (429) / `quota_unavailable` (503 fail-closed), не `quota_exceeded`.
+- Провал runner'а = `ops_nack` (outcome 'failure' не существует; terminal = review|escalate|handoff).
+- SIGTERM → `ops_nack('runtime_busy')` (requeue), НЕ escalate (без спама Operator Queue).
+- Recovery незавершённых задач = серверный reaper (cron 1 мин, ~21,5 мин worst case); воркер при старте ничего не восстанавливает.
+- Из playbook перенесено в код воркера: duty-loop, seq, адаптивный poll, heartbeat-таймер, CTX-02 экономия контекста (1-й вызов полный, далее `include_*:false`), graceful shutdown, `<full_id>: <статус>`-отчётность.
+- Структура: `worker/` (bin/cli.ts, mcpClient, wake/, orchestrator/, runner/), Node ≥24 type stripping, `@supabase/supabase-js` из root deps. Этапы W1–W5.
+
+**Next:** реализация W1 (каркас: config + mcpClient + poll-only lease-цикл).
+
 ## Arch 0.9 — CL-01 Legacy cleanup ✅ (2026-09-03)
 
 **Вычищены зомби-остатки long-poll/wake-webhook эпохи (миграция 072):**

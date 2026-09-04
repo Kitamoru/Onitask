@@ -576,6 +576,9 @@ format is deliberately compact so that agents can load the file quickly.
       ops-цикл (lease → ctx → runner → heartbeat* → terminal → ack) по doc 03 /
       REST /api/agent/ops/*, reconcile-таймер (30–60с active / 2–5мин idle),
       exit-коды 0–6 #cli !high
+      ✅ План готов и верифицирован по коду: `docs/WorkerPlan.md` (контракты 062/071,
+      матрица ошибок, runner stdin/stdout, этапы W1–W5). Реализация через MCP
+      (/api/mcp, JSON-RPC 2.0) как единая точка входа.
 - [ ] RUNNER-03 Executor plugin interface + адаптер claude-code headless
       (`claude -p` в repo_path); также wake-listener на публичном канале
       `agent:<key_id>` (broadcast 'work.available' → lease) — best-effort,
