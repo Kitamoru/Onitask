@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, SwipeDebugPanel } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
@@ -59,6 +59,9 @@ function FlowBoardPageContent() {
     accentColor: 'var(--color-accent-amber)',
   });
   const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
+  const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
+
+
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -203,9 +206,14 @@ function FlowBoardPageContent() {
     setColumnSheet({ open: true, column, label, accentColor });
   }, []);
 
-  const handleColumnSheetClose = useCallback(() => {
+    const handleColumnSheetClose = useCallback(() => {
     setColumnSheet((prev) => ({ ...prev, open: false }));
   }, []);
+
+  const handleWorkerClick = useCallback((worker: WorkerCardData) => {
+    setSelectedWorker(worker);
+  }, []);
+
 
   const handleTaskTap = useCallback((taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
@@ -407,7 +415,8 @@ function FlowBoardPageContent() {
           onBoardCreate={handleBoardCreate}
           initData={tgInitData}
           workspaceId={state.activeWorkspaceId ?? undefined}
-          onColumnClick={handleColumnClick}
+                    onColumnClick={handleColumnClick}
+          onWorkerClick={handleWorkerClick}
           onToggleView={toggleView}
         />
       )}
@@ -441,7 +450,7 @@ function FlowBoardPageContent() {
           onTaskTap={handleTaskTap}
         />
 
-        {/* Task view/edit bottom sheet */}
+                        {/* Task view/edit bottom sheet */}
         <TaskViewEdit
           open={!!selectedTask}
           onClose={() => setSelectedTask(null)}
@@ -457,6 +466,16 @@ function FlowBoardPageContent() {
             dispatch({ type: 'REMOVE_TASK', payload: taskId });
             setSelectedTask(null);
           }}
+        />
+
+                        {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
+        <WorkerSheet
+        <WorkerSheet
+          open={!!selectedWorker}
+          onClose={() => setSelectedWorker(null)}
+          worker={selectedWorker!}
+          tasks={tasks}
+          sprint={sprint}
         />
 
         {/* Debug panel for swipe logging (development only) */}

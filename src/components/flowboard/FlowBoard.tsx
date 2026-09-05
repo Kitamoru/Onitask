@@ -118,7 +118,9 @@ export interface FlowBoardProps {
   /** Current workspace ID — used to create sprints in the correct workspace */
   workspaceId?: string;
   /** Called when a task status card (column) is clicked — opens task bottom sheet */
-  onColumnClick?: (column: string, label: string, accentColor: string) => void;
+    onColumnClick?: (column: string, label: string, accentColor: string) => void;
+  /** Open the worker bottom sheet (Figma 622:29869) */
+  onWorkerClick?: (worker: WorkerCardData) => void;
   /** Toggle between flowboard and stream views */
   onToggleView?: () => void;
 }
@@ -549,7 +551,16 @@ export function UserAvatar({ displayName, avatarUrl, size = 'md' }: { displayNam
   );
 }
 
-export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData | AgentCardData; type?: 'worker' | 'agent' }) {
+export function PersonCard({
+  person,
+  type = 'worker',
+  onClick,
+}: {
+  person: WorkerCardData | AgentCardData;
+  type?: 'worker' | 'agent';
+  /** Click opens the worker bottom sheet */
+  onClick?: () => void;
+}) {
   const displayName = 'displayName' in person ? person.displayName : person.name;
   const avatarUrl = 'avatarUrl' in person ? person.avatarUrl : undefined;
   const cognitiveWeight = person.cognitiveWeight;
@@ -560,17 +571,34 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
   const overloaded = person.overloaded;
   const tasks = person.tasks;
 
-  return (
-    <NotchedPanel
-      corner="action"
-      radius={4}
-      notch={8}
-      borderWidth={1}
-      border="var(--color-line)"
-      fill="var(--color-surface)"
-      contentClassName="flex flex-col gap-2 p-3"
-      aria-label={`${displayName}${roleLabel ? `, ${roleLabel}` : ''}`}
+    return (
+    <div
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={onClick ? 'cursor-pointer outline-none' : undefined}
+      aria-label={onClick ? `Открыть ${displayName}` : undefined}
     >
+      <NotchedPanel
+        corner="action"
+        radius={4}
+        notch={8}
+        borderWidth={1}
+        border="var(--color-line)"
+        fill="var(--color-surface)"
+        contentClassName="flex flex-col gap-2 p-3"
+        aria-label={`${displayName}${roleLabel ? `, ${roleLabel}` : ''}`}
+      >
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-1">
           <UserAvatar displayName={displayName} avatarUrl={avatarUrl} />
@@ -625,8 +653,9 @@ export function PersonCard({ person, type = 'worker' }: { person: WorkerCardData
             Нет активных задач · уточни статус
           </p>
         )}
-      </div>
+            </div>
     </NotchedPanel>
+    </div>
   );
 }
 
@@ -964,8 +993,13 @@ export function FlowBoard({
       <div className="flex flex-col gap-4">
         <DeskSectionHeader title="Участники" />
         <div className="flex flex-col gap-3">
-          {workers.map((worker) => (
-            <PersonCard key={worker.id} person={worker} type="worker" />
+                    {workers.map((worker) => (
+            <PersonCard
+              key={worker.id}
+              person={worker}
+              type="worker"
+              onClick={onWorkerClick ? () => onWorkerClick(worker) : undefined}
+            />
           ))}
         </div>
         <Button variant="outline" onClick={onAddWorker} aria-label="Добавить коллегу" type="button">

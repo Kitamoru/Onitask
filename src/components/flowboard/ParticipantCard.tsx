@@ -19,8 +19,10 @@ export interface ParticipantCardProps {
   displayName: string;
   /** Optional avatar URL */
   avatarUrl?: string;
-  /** Role label shown as badge */
+    /** Role label shown as badge */
   role: 'Постановщик' | 'Исполнитель' | 'Проверяющий';
+  /** Optional click handler (worker card → bottom sheet) */
+  onClick?: () => void;
   /** Optional extra CSS classes */
   className?: string;
 }
@@ -36,11 +38,28 @@ export default function ParticipantCard({
   displayName,
   avatarUrl,
   role,
+  onClick,
   className = '',
 }: ParticipantCardProps) {
   return (
     <Card className={className}>
-      <div className="flex items-center gap-3">
+      <div
+        className={`flex items-center gap-3 ${onClick ? 'cursor-pointer' : ''}`}
+        onClick={onClick}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        aria-label={onClick ? `Открыть ${displayName}` : undefined}
+      >
         {/* Avatar */}
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-secondary"

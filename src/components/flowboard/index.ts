@@ -1,4 +1,5 @@
 export { FlowBoard, PersonCard, UserAvatar, CognitiveWeightIndicator, PriorityBadge } from './FlowBoard';
+export { WorkerSheet } from './WorkerSheet';
 export { OnboardingModal } from './OnboardingModal';
 export { InviteModal } from './InviteModal';
 export { ColumnTasksSheet } from './ColumnTasksSheet';
@@ -13,3 +14,4 @@ export type {
   AgentCardData,
 } from './FlowBoard';
 export type { ColumnTasksSheetProps } from './ColumnTasksSheet';
+export type { WorkerSheetProps, WorkerSheetTab } from './WorkerSheet';
