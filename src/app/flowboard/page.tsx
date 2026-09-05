@@ -468,8 +468,7 @@ function FlowBoardPageContent() {
           }}
         />
 
-                        {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
-        <WorkerSheet
+                                {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
         <WorkerSheet
           open={!!selectedWorker}
           onClose={() => setSelectedWorker(null)}

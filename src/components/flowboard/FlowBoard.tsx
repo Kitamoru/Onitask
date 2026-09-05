@@ -80,6 +80,8 @@ export interface WorkerCardData {
   roleLabel: string;
   overloaded?: boolean;
   tasks: string[];
+  /** Worker type: human or AI agent */
+  type: 'human' | 'agent';
 }
 
 export interface AgentCardData {
@@ -678,6 +680,7 @@ export function FlowBoard({
   initData,
   workspaceId,
   onColumnClick,
+  onWorkerClick,
   onToggleView,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────

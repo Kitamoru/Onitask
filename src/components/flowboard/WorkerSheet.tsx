@@ -421,7 +421,7 @@ function AccessTab({ worker }: { worker: WorkerCardData }) {
       <div className="flex flex-col gap-3 pt-2">
         <Button
           type="button"
-          variant="primary"
+          variant="solid"
           onClick={() => alert('Сохранение доступа will be available soon')}
         >
           Сохранить информацию
@@ -441,7 +441,7 @@ function AccessTab({ worker }: { worker: WorkerCardData }) {
         </span>
         <Button
           type="button"
-          variant="secondary"
+          variant="outline"
           onClick={() => alert('Отзыв доступа will be available soon')}
         >
           Отозвать доступ
