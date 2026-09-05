@@ -1,5 +1,34 @@
 # Active Context
 
+## GC/Retention audit + миграция 073 (2026-09-05) ✅
+
+**Аудит retention по live-БД** (`atarmvtzvlwhkheeabeb`): были защищены только
+`agent_events` (7d, cron 2), `enrichment_queue(done)` (3d, cron 3),
+`bot_task_drafts` (TTL, cron 13). **Найдены незакрытые накопительные таблицы.**
+
+**Применено: миграция `073_log_gc_jobs.sql`** (6 функций GC, все пакетные,
+`SECURITY DEFINER`-нет, `REVOKE EXECUTE FROM PUBLIC`; cron зарегистрирован вручную):
+- `gc_task_events(p_batch=5000)` — `task_events` старше 30 дней (Master §9;
+  LTM consolidate не задеплоен — hard-delete защищает от роста). Cron `gc-task-events` `30 3 * * *` (jobid 21).
+- `gc_ops_history()` — `dispatch_outbox` published старше 7 дней +
+  `task_executions` closed/expired старше 30 дней (receipts CASCADE). Cron `gc-ops-history` `0 4 * * *` (jobid 22).
+- `gc_enrichment_queue_failed()` — `enrichment_queue` failed старше 7 дней
+  (done чистит прежний cron). Cron `gc-enrichment-failed` `15 4 * * *` (jobid 23).
+- `gc_bot_review_fix_pending()` — TTL-строки (`expires_at`), очистка ночная
+  раз в сутки `30 1 * * *` (jobid 27; consumer лениво чистит истёкшие сам,
+  поэтому ежечасно не нужно).
+- `gc_telegram_message_queue()` — sent/failed старше 7 дней. Cron `45 4 * * *` (jobid 25).
+- `gc_consolidation_errors()` — лог LTM, 30 дней. Cron `0 5 * * *` (jobid 26).
+
+**Валидация:** все 6 функций выполнены в БД (вернули 0 — старых данных нет);
+`cron.job` — 16 активных джобов; migration history содержит `073_log_gc_jobs`;
+advisors без новых находок. Master §9 обновлён (таблица хранения + pg_cron).
+
+**Замечено, не чинилось (вне scope):** `telegram_message_queue` не имеет
+потребителя (bot-notify читает только `enrichment_queue type='bot_notify'`,
+код `sendMessageToChat` пишет в `telegram_message_queue` впустую) —
+функциональный пробел, не связан с засорением.
+
 ## Arch 0.9 — WorkerPlan v1.1: Review Flow + Quick Launch (2026-09-04)
 
 **`docs/WorkerPlan.md` v1.1** (уточнение v1.0 по фидбеку владельца — флоу review

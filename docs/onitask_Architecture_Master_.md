@@ -1539,14 +1539,21 @@ function generateTaskPrefix(slug: string): PrefixResult {
 
 | Таблица | Срок хранения | Действие |
 |---|---|---|
-| task_events | 30 дней | Memory Consolidation → удаление |
-| agent_events | 7 дней | Полное удаление |
-| enrichment_queue (done) | 3 дня | Удаление обработанных |
+| task_events | 30 дней | Memory Consolidation → удаление; GC `gc-task-events` (миг. 073, hard-delete пакетами) |
+| agent_events | 7 дней | Полное удаление (cron `gc-agent-events`) |
+| enrichment_queue (done) | 3 дня | Удаление обработанных (cron `gc-enrichment-queue`) |
+| enrichment_queue (failed) | 7 дней | GC `gc-enrichment-failed` (миг. 073) |
 | task_column_history | бессрочно | — |
 | workspace_documents | до явного удаления Admin/Owner | CASCADE удаляет чанки |
 | workspace_doc_chunks | CASCADE от workspace_documents | — |
 | assignment_history | бессрочно (в рамках workspace) | CASCADE при удалении workspace |
 | task_relations | бессрочно (в рамках workspace) | CASCADE при удалении tasks/workspace |
+| dispatch_outbox (published) | 7 дней | GC `gc-ops-history` (миг. 073): `published_at < now()-7d` |
+| task_executions (closed/expired) | 30 дней | GC `gc-ops-history` (миг. 073); `dispatch_receipts` — CASCADE |
+| dispatch_receipts | вместе с task_executions | CASCADE от task_executions |
+| bot_review_fix_pending | TTL 1 час (`expires_at`) | GC `gc-bot-review-fix-pending` (миг. 073, ежедневно 01:30 UTC) |
+| telegram_message_queue (sent/failed) | 7 дней | GC `gc-telegram-queue` (миг. 073) |
+| consolidation_errors | 30 дней | GC `gc-consolidation-errors` (миг. 073) |
 
 ### pg_cron jobs
 
@@ -1566,6 +1573,32 @@ SELECT cron.schedule('gc-agent-events', '0 3 * * *',
 SELECT cron.schedule('gc-enrichment-queue', '0 4 * * *',
   $$DELETE FROM enrichment_queue
     WHERE status = 'done' AND processed_at < NOW() - INTERVAL '3 days'$$);
+
+-- GC task_events: ежедневно в 03:30 UTC (миграция 073)
+SELECT cron.schedule('gc-task-events', '30 3 * * *',
+  $$SELECT public.gc_task_events(5000)$$);
+
+-- GC ops-история Arch 0.9 (outbox published + executions closed): ежедневно в 04:00 UTC (миграция 073)
+SELECT cron.schedule('gc-ops-history', '0 4 * * *',
+  $$SELECT public.gc_ops_history(5000)$$);
+
+-- GC enrichment_queue failed: ежедневно в 04:15 UTC (миграция 073)
+SELECT cron.schedule('gc-enrichment-failed', '15 4 * * *',
+  $$SELECT public.gc_enrichment_queue_failed(5000)$$);
+
+-- GC bot_review_fix_pending (TTL expires_at 1ч): ежедневно в 01:30 UTC (миграция 073)
+-- Достаточно раз в сутки: consumer (webhook tryConsumeReviewFixReason) сам
+-- лениво удаляет истёкшие pending при чтении.
+SELECT cron.schedule('gc-bot-review-fix-pending', '30 1 * * *',
+  $$SELECT public.gc_bot_review_fix_pending(5000)$$);
+
+-- GC telegram_message_queue (sent/failed): ежедневно в 04:45 UTC (миграция 073)
+SELECT cron.schedule('gc-telegram-queue', '45 4 * * *',
+  $$SELECT public.gc_telegram_message_queue(5000)$$);
+
+-- GC consolidation_errors: ежедневно в 05:00 UTC (миграция 073)
+SELECT cron.schedule('gc-consolidation-errors', '0 5 * * *',
+  $$SELECT public.gc_consolidation_errors(5000)$$);
 
 -- Мониторинг зависших pending: каждые 10 минут
 SELECT cron.schedule('monitor-enrichment-queue', '*/10 * * * *', $$
