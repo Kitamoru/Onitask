@@ -332,6 +332,13 @@ format is deliberately compact so that agents can load the file quickly.
       security §4.1. Файл: `src/app/api/mcp/send_message_to_chat/route.ts`.
 - [x] MCP-08 `undo/:event_id` (`state_before` Memento, окно 5 мин) #mcp !med @blocked_by:MCP-03
       Файл: `src/app/api/mcp/undo/[eventId]/route.ts`.
+- [ ] MCP-15 `telegram_message_queue` — мёртвый механизм: нет консьюмера #mcp #bot !med @deferred
+      Аудит GC/retention (2026-09-05): единственный writer — `sendMessageToChat.ts`
+      (insert status='pending'), консьюмер отсутствует (bot-notify читает только
+      enrichment_queue type='bot_notify'; в репо нет SELECT/UPDATE/DELETE по
+      таблице). Строки висят pending вечно. Пути применения (не решено):
+      расширить bot-notify на чтение очереди / перевести на enrichment_queue
+      bot_notify / отложенный асинхронный канал. Детали: activeContext.md 2026-09-05.
 - [x] MCP-09 `state_before` Memento + INSERT `agent_events` + шаблонная генерация summary #mcp !high @blocked_by:MCP-03
       Встроено во все handler'ы через `logAgentEvent()` в `mcpAuth.ts`.
 - [x] MCP-10 Error handling matrix (все HTTP-коды §6 mcp_contract) #mcp !med @blocked_by:MCP-03,INV-09,MCP-04,MCP-05,MCP-06,MCP-07,MCP-08

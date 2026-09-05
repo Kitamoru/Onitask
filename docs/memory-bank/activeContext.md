@@ -1,5 +1,30 @@
 # Active Context
 
+## Performance Advisor: INFO-линты закрыты, WARN — к решению (2026-09-05) ✅/⏳
+
+**INFO `unindexed_foreign_keys` — исправлено (миграции 074 + 074-fix):** добавлены
+покрывающие индексы для всех 14 FK-колонок без индекса: `tasks.created_by/
+assigned_to/reviewer_id/active_claim_id`, `dispatch_outbox.task_id`,
+`dispatch_receipts.outbox_id`, `mcp_agent_keys.created_by/workspace_id`,
+`bot_review_fix_pending.workspace_id`, `enrichment_queue.workspace_id`,
+`invite_links.workspace_id` (под именем `_full`, т.к. старое занято частичным),
+`profiles.last_active_workspace_id` (`_full`), `task_column_history.moved_by`,
+`telegram_message_queue.workspace_id`. Проверка pg_constraint/pg_index — пусто.
+Примечание: частичные индексы (WHERE ...) НЕ используются RI-проверками FK.
+
+**WARN остаются (решение за владельцем):**
+- `auth_rls_initplan` — ~20 политик с inline `auth.uid()` (пересчёт per-row).
+  Влияния на текущем объёме нет; фикс = переписать на `(select auth.uid())` —
+  поведенчески безопасно, но трогает много политик.
+- `multiple_permissive_policies` — `tracker.columns` (authenticated SELECT/
+  UPDATE) и `bot_task_drafts` (owner + service). Owner-политики bot_task_drafts
+  — легитимный owner-scope, мерж не требуется.
+- ✅ **security-fix `bot_task_drafts` (миграция 075):** `bot_task_drafts_service_all`
+  был `TO public USING(true)` (дыра: анонимы читали/писали все черновики) —
+  пересоздан `TO service_role USING(true)`. Owner-политики не тронуты;
+  `purge_expired_bot_task_drafts()` — SECURITY DEFINER, не затронут.
+  Проверено: `public_wide_policies=0`.
+
 ## GC/Retention audit + миграция 073 (2026-09-05) ✅
 
 **Аудит retention по live-БД** (`atarmvtzvlwhkheeabeb`): были защищены только
@@ -24,10 +49,22 @@
 `cron.job` — 16 активных джобов; migration history содержит `073_log_gc_jobs`;
 advisors без новых находок. Master §9 обновлён (таблица хранения + pg_cron).
 
-**Замечено, не чинилось (вне scope):** `telegram_message_queue` не имеет
-потребителя (bot-notify читает только `enrichment_queue type='bot_notify'`,
-код `sendMessageToChat` пишет в `telegram_message_queue` впустую) —
-функциональный пробел, не связан с засорением.
+**Замечено, не чинилось (вне scope):** `telegram_message_queue` — «мёртвый»
+механизм, сохранено как отложенная задача (TASKS.md MCP-15, @deferred):
+- **Writer единственный:** `lib/domain/agent/sendMessageToChat.ts` (MCP/REST
+  инструмент `send_message_to_chat`, миграция 024). Кладет строку с
+  `status='pending'`, `priority='normal'`, `source_agent`, `message` (после
+  sanitize, ≤4000); проверяет привязку чата к воркспейсу; отдельный лёгкий
+  лимит (не тратит AI-квоту).
+- **Consumer отсутствует:** bot-notify читает только `enrichment_queue
+  type='bot_notify'`; в репо нет ни SELECT, ни UPDATE, ни DELETE по этой
+  таблице (кроме моего GC). В БД — только `gc_telegram_message_queue` +
+  триггер `updated_at`.
+- **Состояние на 2026-09-05:** 0 строк. Агент получает `{success:true,
+  message_id:0}`, строка висит `pending` вечно (GC чистит только sent/failed).
+- **Потенциальные пути применения (не решено):** расширить bot-notify
+  читать очередь; перевести доставку на enrichment_queue type='bot_notify';
+  сделать отложенный асинхронный канал для агентов.
 
 ## Arch 0.9 — WorkerPlan v1.1: Review Flow + Quick Launch (2026-09-04)
 
