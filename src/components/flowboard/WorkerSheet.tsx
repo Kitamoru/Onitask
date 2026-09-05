@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Segments } from '@/components/ui/desk-ui';
 import { Button } from '@/components/ui/desk-ui';
+import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { TaskCard } from '@/components/stream/StreamView';
 import {
   UserAvatar,
@@ -99,7 +100,7 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
     <BottomSheet open={open} onClose={onClose}>
       <div className="flex flex-col" role="dialog" aria-modal="true" aria-label="Воркер">
         {/* 1. Header — worker card (Figma 622:29872) */}
-        <WorkerHeader worker={worker} metrics={metrics} />
+        <WorkerHeader worker={worker} />
 
         {/* 2. Сегменты — Статус / Доступы */}
         <div className="px-4">
@@ -139,80 +140,56 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
 
 function WorkerHeader({
   worker,
-  metrics,
 }: {
   worker: WorkerCardData;
-  metrics: { velocity: number };
 }) {
-  const captionStyle: React.CSSProperties = {
-    fontFamily: 'var(--font-family-display)',
-    fontSize: 'var(--text-body-sm)',
-    lineHeight: '18px',
-    fontWeight: 500,
-    color: '#8B8B8B',
-  };
-
   return (
-    <div
-      className="relative flex flex-col gap-3 px-4 py-12"
-      style={{ width: 390, backgroundColor: '#0A0A0A' }}
+    <NotchedPanel
+      corner="action"
+      radius={4}
+      notch={8}
+      borderWidth={1}
+      border="var(--color-line)"
+      fill="var(--color-surface)"
+      contentClassName="flex flex-col gap-2 p-3"
+      aria-label={`${worker.displayName}${worker.roleLabel ? `, ${worker.roleLabel}` : ''}`}
     >
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-1">
           <UserAvatar displayName={worker.displayName} avatarUrl={worker.avatarUrl} />
           <CognitiveWeightIndicator weight={worker.cognitiveWeight} />
         </div>
-
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
             <span
               style={{
                 fontFamily: 'var(--font-family-display)',
-                fontSize: '16px',
-                lineHeight: '20px',
-                fontWeight: 500,
-                color: '#FAFAFA',
+                fontSize: 'var(--text-body-md)',
+                lineHeight: 'var(--text-body-md-line)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
               }}
             >
               {worker.displayName}
             </span>
             {worker.overloaded && <PriorityBadge label="Перегружен" color="red" />}
           </div>
-
-          <p style={captionStyle}>
+          <p
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
             {worker.type === 'agent' ? 'AI-агент' : 'Пользователь'} · {worker.roleLabel}
           </p>
-
-          <div className="flex items-center gap-1">
-            <span
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 500,
-                color: '#FAFAFA',
-              }}
-            >
-              {metrics.velocity}
-            </span>
-            <span style={captionStyle}>SP/д</span>
-            <span style={captionStyle}>•</span>
-            <span
-              style={{
-                fontFamily: 'var(--font-family-display)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 500,
-                color: worker.trendUp ? 'var(--color-error)' : '#FAFAFA',
-              }}
-            >
-                            {worker.activeDays}д ↑
-            </span>
-          </div>
         </div>
       </div>
-    </div>
+    </NotchedPanel>
   );
 }
-
 // ─── Status: метрики ───────────────────────────────────────────────────────────
 
 interface StatusMetricsProps {
@@ -437,7 +414,7 @@ function AccessTab({ worker }: { worker: WorkerCardData }) {
           }}
           className="text-center"
         >
-                    вы также может
+                    вы также можете
         </span>
         <Button
           type="button"
