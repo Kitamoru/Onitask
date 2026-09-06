@@ -149,7 +149,13 @@ function FlowBoardPageContent() {
     return metrics.workers
       .filter(w => w.type === 'human')
       .map(w => {
-        const workerTasks = tasks.filter(t => t.assigned_to === w.id);
+        const workerTasks = tasks.filter(t => {
+          const isAssignee = t.assigned_to === w.id;
+          const isReviewer = t.reviewer_id === w.id;
+          if (isReviewer) return t.column === 'review';
+          if (isAssignee) return t.column === 'in_progress' || t.column === 'review';
+          return false;
+        });
         return {
           id: w.id,
           displayName: w.display_name,

@@ -652,7 +652,7 @@ export function PersonCard({
           ))
         ) : (
           <p style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', lineHeight: 'var(--text-body-sm-line)', color: 'var(--color-text-muted)' }}>
-            Нет активных задач · уточни статус
+            Нет задач в работе или на проверке
           </p>
         )}
             </div>
