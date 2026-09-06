@@ -469,15 +469,13 @@ function FlowBoardPageContent() {
         />
 
                                 {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
-        {selectedWorker && (
-          <WorkerSheet
-            open={!!selectedWorker}
-            onClose={() => setSelectedWorker(null)}
-            worker={selectedWorker}
-            tasks={tasks}
-            sprint={sprint}
-          />
-        )}
+        <WorkerSheet
+          open={!!selectedWorker}
+          onClose={() => setSelectedWorker(null)}
+          worker={selectedWorker}
+          tasks={tasks}
+          sprint={sprint}
+        />
 
         {/* Debug panel for swipe logging (development only) */}
         {process.env.NODE_ENV === 'development' && (

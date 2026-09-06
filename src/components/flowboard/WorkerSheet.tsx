@@ -33,7 +33,7 @@ export interface WorkerSheetProps {
   open: boolean;
   onClose: () => void;
   /** Воркер, по которому открыт sheet */
-  worker: WorkerCardData;
+  worker?: WorkerCardData | null;
   /** Все задачи текущей доски */
   tasks: TaskEntity[];
   /** Активный спринт (если включён) */
@@ -58,26 +58,34 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
 
   // Задачи воркера в `in_progress` (назначенные исполнителем) и `review` (проверяющий)
   const inProgressTasks = useMemo(
-    () => tasks.filter((t) => t.assigned_to === worker.id && t.column === 'in_progress'),
-    [tasks, worker.id],
+    () =>
+      worker
+        ? tasks.filter((t) => t.assigned_to === worker.id && t.column === 'in_progress')
+        : [],
+    [tasks, worker?.id],
   );
   const reviewTasks = useMemo(
-    () => tasks.filter((t) => t.reviewer_id === worker.id && t.column === 'review'),
-    [tasks, worker.id],
+    () =>
+      worker
+        ? tasks.filter((t) => t.reviewer_id === worker.id && t.column === 'review')
+        : [],
+    [tasks, worker?.id],
   );
   const workingTasks = useMemo(
     () =>
-      tasks.filter(
-        (t) =>
-          t.assigned_to === worker.id &&
-          (t.column === 'in_progress' || t.column === 'review'),
-      ),
-    [tasks, worker.id],
+      worker
+        ? tasks.filter(
+            (t) =>
+              t.assigned_to === worker.id &&
+              (t.column === 'in_progress' || t.column === 'review'),
+          )
+        : [],
+    [tasks, worker?.id],
   );
 
   // Метрики считаются на клиенте
   const metrics = useMemo(() => {
-    const velocity = worker.spPerDay; // SP/день
+    const velocity = worker?.spPerDay ?? 0; // SP/день
     let daysLeft = METRIC_WINDOW_DAYS;
     if (sprint && sprint.isActive) {
       daysLeft = Math.max(0, sprint.totalDays - sprint.daysElapsed);
@@ -94,11 +102,12 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
       assignedSP,
       gap,
     };
-  }, [worker.spPerDay, workingTasks, sprint]);
+  }, [worker?.spPerDay, workingTasks, sprint]);
 
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="flex flex-col gap-6 px-4 pb-6" aria-label="Воркер">
+      {worker ? (
+        <div className="flex flex-col gap-6 px-4 pb-6" aria-label="Воркер">
         {/* 1. Header — worker card (Figma 622:29872) */}
         <WorkerHeader worker={worker} />
 
@@ -129,7 +138,8 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
         )}
 
         {tab === 'access' && <AccessTab worker={worker} />}
-      </div>
+        </div>
+      ) : null}
     </BottomSheet>
   );
 }
