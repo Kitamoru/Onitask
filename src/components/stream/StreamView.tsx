@@ -156,7 +156,7 @@ function LayoutListIcon() {
  *   4. svetofor-accent-light SVG decoration (bottom)
  *   5. ref-bg-shape-inner SVG decoration (bottom)
  */
-export function TaskCard({ task }: { task: TaskEntity }) {
+export function TaskCard({ task, onClick }: { task: TaskEntity; onClick?: () => void }) {
   const priorityColor =
     task.priority === 'critical' || task.priority === 'high'
       ? 'red'
@@ -190,6 +190,13 @@ export function TaskCard({ task }: { task: TaskEntity }) {
   const workspaceDisplayName = task.workspace_name ?? task.workspace_prefix;
 
   return (
+    <div
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
     <NotchedPanel
       corner="action"
       radius={4}
@@ -319,6 +326,7 @@ export function TaskCard({ task }: { task: TaskEntity }) {
       </div>
 
     </NotchedPanel>
+    </div>
   );
 }
 
@@ -590,7 +598,7 @@ export function StreamView({
         onToggle={() => toggleColumn('in_progress')}
       >
         {inProgressTasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
         ))}
       </AccordionSection>
 
@@ -601,7 +609,7 @@ export function StreamView({
         onToggle={() => toggleColumn('backlog')}
       >
         {backlogTasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
         ))}
       </AccordionSection>
 
@@ -612,7 +620,7 @@ export function StreamView({
         onToggle={() => toggleColumn('review')}
       >
         {reviewTasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
         ))}
       </AccordionSection>
 
@@ -623,7 +631,7 @@ export function StreamView({
         onToggle={() => toggleColumn('done')}
       >
         {doneTasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
         ))}
       </AccordionSection>
 

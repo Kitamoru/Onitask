@@ -393,6 +393,7 @@ function FlowBoardPageContent() {
           error={dataError}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
           onMoveTask={handleMoveTask}
+          onTaskTap={handleTaskTap}
           onToggleView={toggleView}
         />
       ) : (
