@@ -5,6 +5,7 @@ import { IconChevronDown } from '@tabler/icons-react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
+import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
 import type { TaskEntity } from '@/types/flowboard';
 
 // ─── Avatar placeholder helper ────────────────────────────────────────────────
@@ -339,12 +340,14 @@ function AccordionSection({
   count,
   open,
   onToggle,
+  accentColor,
   children,
 }: {
   label: string;
   count: number;
   open: boolean;
   onToggle: () => void;
+  accentColor: string;
   children: React.ReactNode;
 }) {
   return (
@@ -357,14 +360,14 @@ function AccordionSection({
         aria-expanded={open}
         aria-label={`${label}: ${count} задач${count === 1 ? 'а' : count < 5 ? 'и' : ''}. ${open ? 'Свернуть' : 'Развернуть'}`}
       >
-        {/* Amber accent line — 3px wide */}
+        {/* Accent line — 3px wide */}
         <div
           className="shrink-0"
           style={{
             width: '3px',
             height: '17px',
             borderRadius: '1.5px',
-            backgroundColor: 'var(--color-accent-amber)',
+            backgroundColor: accentColor,
           }}
           aria-hidden="true"
         />
@@ -596,6 +599,7 @@ export function StreamView({
         count={inProgressTasks.length}
         open={!!expandedColumns.in_progress}
         onToggle={() => toggleColumn('in_progress')}
+        accentColor={COLUMN_ACCENTS.in_progress}
       >
         {inProgressTasks.map((task) => (
           <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
@@ -607,6 +611,7 @@ export function StreamView({
         count={backlogTasks.length}
         open={!!expandedColumns.backlog}
         onToggle={() => toggleColumn('backlog')}
+        accentColor={COLUMN_ACCENTS.backlog}
       >
         {backlogTasks.map((task) => (
           <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
@@ -618,6 +623,7 @@ export function StreamView({
         count={reviewTasks.length}
         open={!!expandedColumns.review}
         onToggle={() => toggleColumn('review')}
+        accentColor={COLUMN_ACCENTS.review}
       >
         {reviewTasks.map((task) => (
           <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
@@ -629,6 +635,7 @@ export function StreamView({
         count={doneTasks.length}
         open={!!expandedColumns.done}
         onToggle={() => toggleColumn('done')}
+        accentColor={COLUMN_ACCENTS.done}
       >
         {doneTasks.map((task) => (
           <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />

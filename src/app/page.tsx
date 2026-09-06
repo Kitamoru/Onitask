@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { getPreferredView } from '@/lib/viewPreference';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -42,7 +43,8 @@ export default function HomePage() {
       router.replace('/board/create');
     } else if (data?.is_new_user === false) {
       hasNavigatedRef.current = true;
-      router.replace('/flowboard');
+      const preferred = getPreferredView();
+      router.replace(preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard');
     }
     // If error or no data, stay on this page and show error below
   }, [isLoading, data?.is_new_user, router]);

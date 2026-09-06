@@ -35,7 +35,7 @@ export interface ColumnTasksSheetProps {
 
 const COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
 
-const COLUMN_ACCENTS: Record<string, string> = {
+export const COLUMN_ACCENTS: Record<string, string> = {
   in_progress: 'var(--color-accent-amber)',
   backlog: 'var(--color-text-primary)',
   review: 'var(--color-signal-cyan)',

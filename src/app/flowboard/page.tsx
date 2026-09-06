@@ -14,6 +14,7 @@ import type {
 } from '@/types/flowboard';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
+import { setPreferredView } from '@/lib/viewPreference';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -46,8 +47,10 @@ function FlowBoardPageContent() {
   // Toggle between flowboard and stream views
   const toggleView = useCallback(() => {
     if (isStreamView) {
+      setPreferredView('flowboard');
       router.push('/flowboard');
     } else {
+      setPreferredView('stream');
       router.push('/flowboard?view=stream');
     }
   }, [isStreamView, router]);

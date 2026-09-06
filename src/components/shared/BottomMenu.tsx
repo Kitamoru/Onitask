@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { setPreferredView } from '@/lib/viewPreference';
 import {
   IconLayoutList,
   IconGridDots,
@@ -141,6 +142,7 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
       // just re-navigate to /flowboard, discarding our ?view=stream toggle.
       e?.preventDefault();
       if (!isOnFlowboard) {
+        setPreferredView('flowboard');
         router.push('/flowboard');
         return;
       }
@@ -149,6 +151,7 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
       // reliably on every toggle, including the very first one.
       const nextIsStream = !isStreamView;
       setIsStreamView(nextIsStream);
+      setPreferredView(nextIsStream ? 'stream' : 'flowboard');
       router.push(nextIsStream ? '/flowboard?view=stream' : '/flowboard');
     },
     [isOnFlowboard, isStreamView, router],
