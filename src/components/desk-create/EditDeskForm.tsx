@@ -16,6 +16,7 @@ import {
   type ExternalLink,
 } from "@/components/desk-create/ExternalLinksCard";
 import { TrafficLightCard } from "@/components/desk-create/TrafficLightCard";
+import { ColleagueSelectSheet, type ColleagueItem } from "@/components/desk-create/ColleagueSelectSheet";
 
 const DEFAULT_SP_HOURS = { 1: "1 час", 3: "1 час", 5: "1 час", 7: "1 час", 13: "1 час" };
 
@@ -41,6 +42,7 @@ export function EditDeskForm({
   initialData,
   serverDocuments,
   isOwner,
+  availableColleagues = [],
 }: {
   workspaceId: string;
   initialData: {
@@ -60,6 +62,8 @@ export function EditDeskForm({
   };
   serverDocuments?: ServerDocument[];
   isOwner: boolean;
+  /** Colleagues available to add (active + deleted from this board) */
+  availableColleagues?: ColleagueItem[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -101,6 +105,11 @@ export function EditDeskForm({
   const [trafficLightEnabled, setTrafficLightEnabled] = useState(initialData.trafficLightEnabled);
   const [warningDays, setWarningDays] = useState(initialData.warningDays);
   const [urgentDays, setUrgentDays] = useState(initialData.urgentDays);
+
+  // Coworking state
+  const [selectedColleagues, setSelectedColleagues] = useState<Set<string>>(new Set());
+  const [colleagueSheetOpen, setColleagueSheetOpen] = useState(false);
+  const [addingMembers, setAddingMembers] = useState(false);
 
   const canSubmit = name.trim().length > 0;
 
@@ -283,6 +292,32 @@ export function EditDeskForm({
         throw new Error(data.error || 'Failed to update workspace');
       }
 
+      // After workspace update succeeds, add any staged colleagues
+      if (selectedColleagues.size > 0) {
+        setAddingMembers(true);
+        try {
+          const memberRes = await fetch(`/api/workspaces/${workspaceId}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              init_data: initData,
+              source_ids: Array.from(selectedColleagues),
+            }),
+          });
+
+          if (!memberRes.ok) {
+            const memberErr = await memberRes.json().catch(() => ({}));
+            console.error('Failed to add members:', memberErr);
+            // Don't throw — workspace settings are already saved
+            // Show error but allow navigation
+          }
+        } catch (err) {
+          console.error('Add members error:', err);
+        } finally {
+          setAddingMembers(false);
+        }
+      }
+
       // Success - navigate to boards list
       router.push('/boards');
     } catch (err) {
@@ -362,11 +397,11 @@ export function EditDeskForm({
         </section>
 
         <CoworkingSection
-          availableCount={0}
-          selectedColleagues={[]}
-          onOpenSelect={() => {}}
-          readOnly
-          disabled
+          availableCount={availableColleagues.length}
+          selectedColleagues={Array.from(selectedColleagues).map(
+            (sid) => availableColleagues.find((c) => c.source_id === sid)!
+          )}
+          onOpenSelect={() => setColleagueSheetOpen(true)}
         />
 
         <ContextSection value={context} onChange={setContext} />
@@ -479,6 +514,27 @@ export function EditDeskForm({
           )}
         </div>
       </div>
+
+      {/* Colleague selection sheet */}
+      <ColleagueSelectSheet
+        open={colleagueSheetOpen}
+        onClose={() => setColleagueSheetOpen(false)}
+        colleagues={availableColleagues}
+        selectedIds={selectedColleagues}
+        onToggle={(sourceId) => {
+          setSelectedColleagues((prev) => {
+            const next = new Set(prev);
+            if (next.has(sourceId)) {
+              next.delete(sourceId);
+            } else {
+              next.add(sourceId);
+            }
+            return next;
+          });
+        }}
+        onConfirm={() => setColleagueSheetOpen(false)}
+        title="Добавить коллег"
+      />
     </div>
   );
 }

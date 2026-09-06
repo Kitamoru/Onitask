@@ -6,6 +6,10 @@
  * Returns all human workers from workspaces where the authenticated user is owner.
  * Excludes the current user. Deduplicates by source_id (one colleague may be in multiple boards).
  *
+ * Optional query param `workspace_id` — when provided, also returns workers who were
+ * previously removed from that workspace (is_active = false), so the edit form can
+ * show deleted colleagues for re-invitation.
+ *
  * Response: { success: true, data: [{ source_id, display_name }] }
  */
 
@@ -17,6 +21,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const initData = url.searchParams.get('init_data') || undefined;
+    const targetWorkspaceId = url.searchParams.get('workspace_id') || undefined;
 
     // 1. Authenticate
     const auth = await authenticateRequest(initData);
@@ -30,7 +35,7 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient();
     const profileId = auth.profileId!;
 
-    console.log('colleagues API: profileId =', profileId);
+    console.log('colleagues API: profileId =', profileId, 'targetWorkspaceId =', targetWorkspaceId);
 
     // 2. Find workspace IDs where this user is owner
     //    Use JOIN with profiles to match by telegram_id instead of source_id
@@ -84,9 +89,32 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 4. Deduplicate by source_id (keep first occurrence per person)
+    // 4. If targetWorkspaceId is provided, also fetch deleted workers from that workspace
+    let deletedColleagues: Array<{ source_id: string; display_name: string }> = [];
+    if (targetWorkspaceId) {
+      const { data: deleted, error: delError } = await supabase
+        .from('workers')
+        .select('source_id, display_name')
+        .eq('workspace_id', targetWorkspaceId)
+        .eq('type', 'human')
+        .eq('is_active', false)
+        .neq('source_id', profileId);
+
+      if (delError) {
+        console.error('colleagues: deleted workers query error', delError);
+      } else {
+        deletedColleagues = (deleted || []).map((d: any) => ({
+          source_id: d.source_id,
+          display_name: d.display_name || '',
+        }));
+      }
+    }
+
+    // 5. Deduplicate by source_id (keep first occurrence per person)
     const seen = new Set<string>();
     const uniqueColleagues: Array<{ source_id: string; display_name: string }> = [];
+
+    // First add active colleagues
     for (const c of (colleagues || [])) {
       const sid = (c as any).source_id;
       if (!seen.has(sid)) {
@@ -95,6 +123,15 @@ export async function GET(req: NextRequest) {
           source_id: sid,
           display_name: (c as any).display_name || '',
         });
+      }
+    }
+
+    // Then add deleted colleagues (only if not already present)
+    for (const c of deletedColleagues) {
+      const sid = c.source_id;
+      if (!seen.has(sid)) {
+        seen.add(sid);
+        uniqueColleagues.push(c);
       }
     }
 

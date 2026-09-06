@@ -84,7 +84,7 @@ export default function BoardDetailPage() {
           throw new Error(json.error || 'Failed to load board data');
         }
 
-        const { workers: workersData, workspaces: wsData } = json.data;
+        const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData } = json.data;
 
         // Find workspace by slug
         const ws = (wsData ?? []).find((w: any) => w.slug === slug);
@@ -150,9 +150,9 @@ export default function BoardDetailPage() {
         const amberSignal = signals.find((s: any) => s.level === 'amber' || s.value >= 2);
         const redSignal = signals.find((s: any) => s.level === 'red' || s.value <= 1);
 
-        // Count colleagues (human workers in this workspace)
-        const memberWorkers = (workersData ?? []).filter(
-          (w: any) => w.workspace_id === ws.id && w.type === 'human',
+        // Count colleagues (active human workers in this workspace)
+        const memberWorkers = (allWorkersData ?? []).filter(
+          (w: any) => w.workspace_id === ws.id && w.type === 'human' && w.is_active === true,
         );
 
         setDetailProps({

@@ -6,6 +6,7 @@ import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { EditDeskForm } from '@/components/desk-create/EditDeskForm';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
+import type { ColleagueItem } from '@/components/desk-create/ColleagueSelectSheet';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -46,6 +47,7 @@ export default function BoardEditPage() {
     urgentDays: number;
   } | null>(null);
   const [serverDocuments, setServerDocuments] = useState<ServerDocument[]>([]);
+  const [availableColleagues, setAvailableColleagues] = useState<ColleagueItem[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -152,6 +154,17 @@ export default function BoardEditPage() {
           warningDays: amberSignal?.value ?? 3,
           urgentDays: redSignal?.value ?? 1,
         });
+
+        // 4. Load colleagues (active + deleted from this board)
+        const collRes = await fetch(
+          `/api/workspaces/colleagues?init_data=${encodeURIComponent(getTelegramInitData())}&workspace_id=${ws.id}`,
+        );
+        if (collRes.ok) {
+          const collJson = await collRes.json();
+          if (collJson.success) {
+            setAvailableColleagues(collJson.data ?? []);
+          }
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
@@ -221,6 +234,7 @@ export default function BoardEditPage() {
         initialData={initialData}
         serverDocuments={serverDocuments}
         isOwner={isOwner}
+        availableColleagues={availableColleagues}
       />
     </main>
   );
