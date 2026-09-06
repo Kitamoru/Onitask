@@ -597,8 +597,19 @@ export function TaskCreatorSheet({
         initData={initData}
         onConfirm={handlePreviewConfirm}
         onClose={handleClose}
-        onCancel={() => {
+        onCancel={async () => {
           setPreviewOpen(false);
+          if (previewTaskId) {
+            try {
+              await fetch(`/api/tasks/${previewTaskId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ init_data: initData }),
+              });
+            } catch {
+              // DELETE failed — silently ignore; user returns to form anyway
+            }
+          }
           setPreviewTaskId(null);
           setPreviewParse(null);
         }}
@@ -724,7 +735,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
                   color: 'var(--color-text-primary)',
                 }}
               >
-                Задача создана
+                Черновик создан
               </h2>
             </div>
             <button
@@ -883,7 +894,7 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
                 cursor: isSaveDisabled ? 'not-allowed' : 'pointer',
               }}
             >
-              {saving ? 'Сохранение…' : 'Готово'}
+              {saving ? 'Сохранение…' : 'Создать'}
             </button>
           </div>
         </div>
