@@ -1,5 +1,38 @@
 # Active Context
 
+# Active Context
+
+## AGENT-08: вкладка «Комментарии» — ЗАВЕРШЕНО (2026-09-06) ✅
+
+**Реализовано (все этапы плана):**
+- **Миграция 076** (`076_task_comments.sql`, применена на `atarmvtzvlwhkheeabeb`):
+  durable-таблица `task_comments` (retention безлимитный, GC не трогает), RLS
+  `task_comments_select_member` (single-per-table), security-fix — дроп
+  `task_events_insert_comment` (дыра спуфинга автора из 002), RPC `get_task_feed`
+  (task_comments + task_column_history + agent_events 7д, keyset-пагинация).
+  Багфикс в ходе применения: алиасы колонок в первой ветке UNION (иначе
+  `item_id does not exist`).
+- **API**: `GET/POST /api/tasks/[id]/comments` (auth initData, tenancy-check,
+  автор server-side через `getActiveWorkerInWorkspace` — R6), broadcast
+  `comment_created` на `task-comments-<task_id>` (best-effort).
+- **Клиент**: `src/lib/api/comments.ts`, типы `src/types/comments.ts`.
+- **UI**: `TaskCommentsPanel` (342 строки: лента + optimistic submit + broadcast
+  + composer TextArea/Button, ◆ для агентов, `formatFeedTime` в `src/lib/date.ts`),
+  интеграция в `TaskViewEdit` (вкладка comments), экспорт из index.ts.
+- **Доки/ADR**: `docs/memory-bank/decisions.md` ADR-2026-09-06 (R1–R8),
+  flow_.md §22, Master §6.10-бис + §9 retention, TASKS.md AGENT-08 → [x].
+- **Валидация**: `npm run type-check` ✅; advisors — новых нарушений нет;
+  `types/supabase.ts` регенерирован.
+
+**Отложено (Phase 2 / отдельные задачи):** edit/delete комментариев, replies
+(`parent_id`), вложения задач (`ref_task_id`), MCP `add_task_comment`,
+retention-настройка per-workspace.
+
+retry_count: 0. Блокеров нет.
+
+---
+
+
 ## Performance Advisor: INFO-линты закрыты, WARN — к решению (2026-09-05) ✅/⏳
 
 **INFO `unindexed_foreign_keys` — исправлено (миграции 074 + 074-fix):** добавлены

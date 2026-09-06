@@ -819,7 +819,7 @@ CREATE TABLE task_events (
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   task_id      uuid REFERENCES tasks(id) ON DELETE CASCADE,
   event_type   text,
-  -- 'status_change' | 'comment' | 'assignment' | 'enrichment' | 'parse_rewrite'
+  -- 'enrichment' | 'parse_rewrite'   (см. примечание ниже)
   payload      jsonb,
   consolidated boolean DEFAULT false,
   created_at   timestamptz DEFAULT NOW()
@@ -829,6 +829,38 @@ CREATE INDEX idx_task_events_task_id      ON task_events (task_id);
 CREATE INDEX idx_task_events_consolidated ON task_events (consolidated, created_at)
   WHERE consolidated = false;
 ```
+
+> **ADR-2026-09-06 (миг. 076):** `event_type='comment'` и
+> `status_change`/`assignment` в `task_events` не используются.
+> Комментарии — отдельная durable-таблица `task_comments` (ниже),
+> хроника статусов — `task_column_history` (§6.x). `task_events`
+> остаётся append-only логом AI-событий (`enrichment`, `parse_rewrite`)
+> для Memory Consolidation, retention 30 дней (§9).
+
+### 6.10-бис Комментарии задач (durable, миг. 076)
+
+```sql
+CREATE TABLE task_comments (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  task_id      uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_id    uuid REFERENCES workers(id) ON DELETE SET NULL, -- server-side only
+  author_name  text NOT NULL,   -- снимок display_name при вставке
+  author_type  text NOT NULL,   -- 'human' | 'agent'
+  body         text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+  source       text NOT NULL DEFAULT 'twa',  -- 'twa' | 'mcp' | 'telegram' | 'system'
+  parent_id    uuid REFERENCES task_comments(id),  -- ответы (Phase 2)
+  ref_task_id  uuid REFERENCES tasks(id),          -- вложения (Phase 2)
+  edited_at    timestamptz,
+  deleted_at   timestamptz,   -- мягкое удаление (Phase 2)
+  consolidated boolean DEFAULT false,
+  created_at   timestamptz DEFAULT NOW()
+);
+```
+
+Retention — **безлимитный**, GC-джобы таблицу не трогают. Запись — только
+через Route Handlers (service role); RLS — SELECT для членов воркспейса.
+Единый фид вкладки «Комментарии» — RPC `get_task_feed` (flow §22).
 
 ### 6.11 Вспомогательные таблицы
 
@@ -1540,6 +1572,7 @@ function generateTaskPrefix(slug: string): PrefixResult {
 | Таблица | Срок хранения | Действие |
 |---|---|---|
 | task_events | 30 дней | Memory Consolidation → удаление; GC `gc-task-events` (миг. 073, hard-delete пакетами) |
+| task_comments | безлимитно | Durable-контент, GC не трогает (миг. 076, ADR-2026-09-06) |
 | agent_events | 7 дней | Полное удаление (cron `gc-agent-events`) |
 | enrichment_queue (done) | 3 дня | Удаление обработанных (cron `gc-enrichment-queue`) |
 | enrichment_queue (failed) | 7 дней | GC `gc-enrichment-failed` (миг. 073) |

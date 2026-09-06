@@ -957,6 +957,93 @@ export type Database = {
           },
         ]
       }
+      task_comments: {
+        Row: {
+          author_id: string | null
+          author_name: string
+          author_type: string
+          body: string
+          consolidated: boolean
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          parent_id: string | null
+          ref_task_id: string | null
+          source: string
+          task_id: string
+          workspace_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          author_name: string
+          author_type: string
+          body: string
+          consolidated?: boolean
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          parent_id?: string | null
+          ref_task_id?: string | null
+          source?: string
+          task_id: string
+          workspace_id: string
+        }
+        Update: {
+          author_id?: string | null
+          author_name?: string
+          author_type?: string
+          body?: string
+          consolidated?: boolean
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          parent_id?: string | null
+          ref_task_id?: string | null
+          source?: string
+          task_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "task_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_comments_ref_task_id_fkey"
+            columns: ["ref_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_comments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_events: {
         Row: {
           consolidated: boolean
@@ -2164,6 +2251,25 @@ export type Database = {
       find_task_by_full_id: { Args: { p_full_id: string }; Returns: string }
       get_edge_fn_url: { Args: never; Returns: string }
       get_my_workspace_ids: { Args: never; Returns: string[] }
+      get_task_feed: {
+        Args: {
+          p_cursor_created?: string
+          p_cursor_id?: string
+          p_limit?: number
+          p_task_id: string
+        }
+        Returns: {
+          item_id: string
+          kind: string
+          author_id: string | null
+          author_name: string
+          author_type: string
+          body: string | null
+          created_at: string
+          edited_at: string | null
+          payload: Json
+        }[]
+      }
       get_task_subgraph: {
         Args: { p_task_id: string; p_workspace_id: string }
         Returns: {

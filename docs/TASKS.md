@@ -387,7 +387,7 @@ format is deliberately compact so that agents can load the file quickly.
 - [ ] AGENT-06 Pill «🔄 Цепочка ×N» для `handoff_chain` (Phase 1.1 — можно отложить за MVP) #ui !low @blocked_by:AGENT-01
 - [ ] AGENT-07 Task Sheet, вкладка «Детали» (`ai_hint`, описание, метаданные, кнопка «→ следующая колонка») #ui !high @blocked_by:AGENT-04
       flow_.md §22.
-- [ ] AGENT-08 Task Sheet, вкладка «Комментарии» (люди + `agent_events.summary` + `task_events`, поле ввода → `event_type='comment'`) #ui !med @blocked_by:AGENT-04
+- [x] AGENT-08 Task Sheet, вкладка «Комментарии» (фид: `task_comments` + `task_column_history` + `agent_events` через RPC `get_task_feed`; composer → POST `/api/tasks/:id/comments`; live через broadcast `task-comments-<task_id>`; ADR-2026-09-06, миг. 076) #ui !med
       flow_.md §22, Master §6.10.
 - [ ] AGENT-09 Route Handler `POST /api/tasks/:id/relations` (создание связей task_relations через UI) #db !med @blocked_by:INV-13
       flow_.md §22, dev_setup §2.2. Ошибки: самоссылка, дубль связи.

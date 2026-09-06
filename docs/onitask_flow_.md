@@ -601,11 +601,28 @@ SQL — см. [onitask_team_tab.md §2.7](onitask_team_tab.md#27-operator-queue)
 
 ### Вкладка «Комментарии»
 
-- Хронологический список: комментарии людей + `agent_events.summary` + `task_events`
-- Разделение: обычный фон (люди), фиолетовый (AI-агенты), teal (системные)
-- Поле ввода → `task_events INSERT { event_type: 'comment' }`
+> **ADR-2026-09-06:** комментарии вынесены из `task_events` в отдельную
+> durable-таблицу `task_comments` (миг. 076). Причины: (1) `gc_task_events`
+> (073) сжигает строки старше 30 дней без фильтра по `event_type` —
+> пользовательский контент терялся бы; (2) `task_events` не имеет FK на
+> `workers(id)` — автор жил бы только в jsonb; (3) комментариям нужны
+> edit/delete/replies, `task_events` остаётся immutable-логом консолидации.
+> Подробно: `docs/memory-bank/decisions.md`.
 
-> **DDL:** `task_events` с `event_type = 'comment'` (Master §6.10). Отдельная таблица не нужна.
+- Источники фида — RPC `get_task_feed(task_id, cursor_created, cursor_id, limit)`:
+  - `task_comments` (durable, безлимитный retention) — люди + агенты;
+  - `task_column_history` (durable) — хроника перемещений по колонкам;
+  - `agent_events.summary` (transient, окно 7 дней по retention).
+- Разделение: обычный фон (люди), фиолетовый ◆ (AI-агенты), teal (системные).
+- Поле ввода → `POST /api/tasks/:id/comments` (Route Handler, автор
+  резолвится server-side из initData; клиент не может подменить автора).
+- Live-обновления: server-side broadcast `comment_created` на канал
+  `task-comments-<task_id>` (TWA не имеет Supabase-JWT → `postgres_changes`
+  недоступен клиенту).
+- Keyset-пагинация по `(created_at, item_id)` DESC.
+
+> **DDL:** `task_comments` — миг. 076 (Master §6.10-бис). API: `src/app/api/tasks/:id/comments`.
+> Phase 2: ответы (`parent_id`), вложения задач (`ref_task_id`), edit/delete (soft).
 
 ---
 

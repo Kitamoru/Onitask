@@ -166,3 +166,26 @@ export function getMonthGrid(monthDate: Date): { date: Date; inMonth: boolean }[
 
   return cells;
 }
+/**
+ * Formats a timestamp for the task feed ("Comments" tab), per Figma 322-27840:
+ * - today     → "today 11:30"
+ * - yesterday → "yesterday 11:30"
+ * - older     → "DD.MM.YYYY"
+ */
+export function formatFeedTime(date: Date | string | null): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const now = new Date();
+
+  if (isSameDay(d, now)) {
+    return `сегодня ${hhmm}`;
+  }
+  if (isSameDay(d, addDays(now, -1))) {
+    return `вчера ${hhmm}`;
+  }
+  return formatDate(d);
+}
+

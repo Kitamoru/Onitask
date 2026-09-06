@@ -34,6 +34,7 @@ import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask, deleteTask } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
+import { TaskCommentsPanel } from './TaskCommentsPanel';
 
 export interface TaskViewEditProps {
   /** Whether the bottom sheet is open */
@@ -289,6 +290,23 @@ export function TaskViewEdit({
             ]}
           />
 
+          {/* Комментарии tab (AGENT-08): feed + composer */}
+          {tab === 'comments' && task?.id && (
+            <div className="h-[60vh] min-h-0">
+              <TaskCommentsPanel
+                taskId={task.id}
+                workers={workers.map((w) => ({
+                  id: w.id,
+                  avatarUrl: w.avatarUrl,
+                }))}
+              />
+            </div>
+          )}
+
+          {/* General sections — only on the «Общее» tab */}
+          {tab === 'general' && (
+            <>
+
           {/* Ключевой контекст */}
           <section>
             <SectionHeader title="Ключевой контекст" />
@@ -468,6 +486,8 @@ export function TaskViewEdit({
               </Card>
             </div>
           </section>
+            </>
+          )}
 
           {/* Error */}
           {error && (
