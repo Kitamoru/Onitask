@@ -11,7 +11,8 @@
  * не запрашиваются — показываем 0 с заготовкой под будущее подключение.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Segments } from '@/components/ui/desk-ui';
 import { Button } from '@/components/ui/desk-ui';
@@ -24,6 +25,7 @@ import {
 } from '@/components/flowboard/FlowBoard';
 import type { TaskEntity } from '@/types/flowboard';
 import type { WorkerCardData, SprintInfo } from '@/types/flowboard';
+import { revokeWorkerAccess } from '@/lib/api/flow';
 
 const METRIC_WINDOW_DAYS = 14;
 
@@ -38,6 +40,14 @@ export interface WorkerSheetProps {
   tasks: TaskEntity[];
   /** Активный спринт (если включён) */
   sprint?: SprintInfo | null;
+  /** UUID текущего воркспейса (доски) */
+  workspaceId?: string;
+  /** Название текущего воркспейса (доски) */
+  workspaceName?: string;
+  /** Может ли текущий пользователь отзывать доступы (owner/admin) */
+  canRevoke?: boolean;
+  /** Callback при успешном отзыве доступа */
+  onRevokeSuccess?: () => void;
 }
 
 const SEGMENTS: { value: WorkerSheetTab; label: string }[] = [
@@ -53,8 +63,30 @@ const ROLE_DISPLAY: Record<string, string> = {
   viewer: '👁 Наблюдатель',
 };
 
-export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerSheetProps) {
+export function WorkerSheet({
+  open,
+  onClose,
+  worker,
+  tasks,
+  sprint,
+  workspaceId,
+  workspaceName,
+  canRevoke,
+  onRevokeSuccess,
+}: WorkerSheetProps) {
   const [tab, setTab] = useState<WorkerSheetTab>('status');
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  // Reset revoke state when sheet opens
+  useEffect(() => {
+    if (open) {
+      setShowRevokeConfirm(false);
+      setRevoking(false);
+      setRevokeError(null);
+    }
+  }, [open]);
 
   // Задачи воркера в `in_progress` (назначенные исполнителем) и `review` (проверяющий)
   const inProgressTasks = useMemo(
@@ -104,8 +136,90 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
     };
   }, [worker?.spPerDay, workingTasks, sprint]);
 
+  // ─── Revoke access ────────────────────────────────────────────────────────
+
+  const handleRevokeAccess = useCallback(async () => {
+    if (!worker?.id) return;
+    setRevoking(true);
+    setShowRevokeConfirm(false);
+    try {
+      const result = await revokeWorkerAccess(worker.id);
+      if (result.error) {
+        setRevokeError(result.error);
+        return;
+      }
+      onRevokeSuccess?.();
+      onClose();
+    } catch (err) {
+      setRevokeError(err instanceof Error ? err.message : 'Ошибка отзыва доступа');
+    } finally {
+      setRevoking(false);
+    }
+  }, [worker?.id, onRevokeSuccess, onClose]);
+
+  // Revoke confirm — portal to body, above BottomSheet transform context
+  const revokeConfirmModal =
+    showRevokeConfirm &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+        onClick={() => {
+          if (!revoking) setShowRevokeConfirm(false);
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="revoke-title"
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-6"
+          style={{ backgroundColor: '#1A1A1A' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p
+            id="revoke-title"
+            className="mb-2 text-center text-lg font-semibold"
+            style={{ color: '#FAFAFA' }}
+          >
+            Вы точно хотите забрать доступы к доске у {worker?.displayName}?
+          </p>
+          <p className="mb-6 text-center text-sm" style={{ color: '#8B8B8B' }}>
+            {worker?.displayName} потеряет доступ к доске «{workspaceName}» и не сможет
+            взаимодействовать с задачами. Это действие необратимо.
+          </p>
+          {revokeError && (
+            <p className="mb-4 text-center text-sm" style={{ color: '#EF4444' }}>
+              {revokeError}
+            </p>
+          )}
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="solid"
+              onClick={handleRevokeAccess}
+              disabled={revoking}
+              fill="#EF4444"
+              textColor="#FAFAFA"
+            >
+              {revoking ? 'Отзыв...' : 'Да, отозвать доступы'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowRevokeConfirm(false)}
+              disabled={revoking}
+              style={{ borderColor: '#333', color: '#8B8B8B' }}
+            >
+              Отмена
+            </Button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
-    <BottomSheet open={open} onClose={onClose}>
+    <>
+      <BottomSheet open={open} onClose={onClose}>
       {worker ? (
         <div className="flex flex-col gap-6 px-4 pb-6" aria-label="Воркер">
         {/* 1. Header — worker card (Figma 622:29872) */}
@@ -137,10 +251,20 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
           </div>
         )}
 
-        {tab === 'access' && <AccessTab worker={worker} />}
+        {tab === 'access' && (
+          <AccessTab
+            worker={worker}
+            canRevoke={canRevoke}
+            onRevoke={() => setShowRevokeConfirm(true)}
+          />
+        )}
         </div>
       ) : null}
     </BottomSheet>
+
+      {/* Revoke confirm — portal above BottomSheet transform context */}
+      {revokeConfirmModal}
+    </>
   );
 }
 
@@ -384,9 +508,15 @@ function TaskSection({
   );
 }
 
-// ─── Access tab (UI-only) ──────────────────────────────────────────────────────
+// ─── Access tab ────────────────────────────────────────────────────────────────
 
-function AccessTab({ worker }: { worker: WorkerCardData }) {
+interface AccessTabProps {
+  worker: WorkerCardData;
+  canRevoke?: boolean;
+  onRevoke?: () => void;
+}
+
+function AccessTab({ worker, canRevoke, onRevoke }: AccessTabProps) {
   return (
     <div className="flex flex-col gap-6">
       {/* Роль в доске — read-only поле */}
@@ -424,13 +554,23 @@ function AccessTab({ worker }: { worker: WorkerCardData }) {
         >
                     вы также можете
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => alert('Отзыв доступа will be available soon')}
-        >
-          Отозвать доступ
-        </Button>
+        {canRevoke ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onRevoke}
+          >
+            Отозвать доступы
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+          >
+            Отозвать доступы
+          </Button>
+        )}
       </div>
     </div>
   );

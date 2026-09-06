@@ -389,6 +389,13 @@ function FlowBoardPageContent() {
   const isNewUser = authData?.is_new_user === true;
   const needsOnboarding = !authData?.worker?.workspace_id && !authLoading && !authError && isNewUser;
 
+  // Вычисляем роль текущего пользователя в активном воркспейсе
+  const activeWs = authData?.workspaces?.find(
+    (w) => w.id === state.activeWorkspaceId,
+  );
+  const canRevoke = activeWs?.role === 'owner' || activeWs?.role === 'admin';
+  const workspaceName = activeWs?.name ?? '';
+
   return (
     <>
       {isStreamView ? (
@@ -485,6 +492,13 @@ function FlowBoardPageContent() {
           worker={selectedWorker}
           tasks={tasks}
           sprint={sprint}
+          workspaceId={state.activeWorkspaceId ?? undefined}
+          workspaceName={workspaceName}
+          canRevoke={canRevoke}
+          onRevokeSuccess={() => {
+            setSelectedWorker(null);
+            refreshMetrics({ force: true });
+          }}
         />
 
         {/* Debug panel for swipe logging (development only) */}

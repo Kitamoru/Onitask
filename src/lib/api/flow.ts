@@ -162,6 +162,32 @@ export async function deleteTask(
 }
 
 /**
+ * POST /api/workers/:workerId/revoke — Revoke a worker's access to the board.
+ */
+export async function revokeWorkerAccess(
+  workerId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/workers/${workerId}/revoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Revoke failed' };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.
  */
