@@ -176,8 +176,11 @@ export async function POST(req: NextRequest) {
         }));
       }
 
-      // Return primary workspace worker info — use actual worker.id, not profileId
-      const primaryWorker = workers?.[0] || null;
+      // Return worker for the active workspace (fallback to first if no active ws)
+      const primaryWorker =
+        workers?.find((w) => w.workspace_id === lastActiveWorkspaceId) ||
+        workers?.[0] ||
+        null;
 
       const response: InitResponse = {
         worker: {

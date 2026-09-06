@@ -221,7 +221,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
       });
     }
     setSending(false);
-  }, [text, sending, taskId]);
+  }, [text, sending, taskId, currentUserId]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const avatarFor = (item: TaskFeedItem): string | undefined => {
