@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 /**
- * TaskCommentsPanel вЂ” В«РљРѕРјРјРµРЅС‚Р°СЂРёРёВ» tab of the task bottom sheet (AGENT-08).
+ * TaskCommentsPanel — «Комментарии» tab of the task bottom sheet (AGENT-08).
  *
  * Feed sources (RPC get_task_feed, migration 076):
  *  - kind 'comment': durable task_comments (humans + agents)
@@ -10,12 +10,12 @@
  *
  * Live updates: server-side broadcast `comment_created` on the public
  * `task-comments-<taskId>` channel (the TWA client has no Supabase JWT, so
- * postgres_changes is not deliverable вЂ” see migration 076 header).
+ * postgres_changes is not deliverable — see migration 076 header).
  *
- * Submit flow: optimistic append (pending row) в†’ POST в†’ replace with the
- * server row; the server broadcast may arrive first вЂ” dedup by item_id.
+ * Submit flow: optimistic append (pending row) → POST → replace with the
+ * server row; the server broadcast may arrive first — dedup by item_id.
  *
- * Based on: Figma 322-27840, docs/onitask_flow_.md В§22 (ADR-2026-09-06).
+ * Based on: Figma 322-27840, docs/onitask_flow_.md §22 (ADR-2026-09-06).
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -25,30 +25,30 @@ import { formatFeedTime } from '@/lib/date';
 import { TextArea } from '@/components/ui/desk-ui';
 import type { TaskFeedItem } from '@/types/comments';
 
-/** Column keys в†’ ru labels (match TaskForm / board column names) */
+/** Column keys → ru labels (match TaskForm / board column names) */
 const COLUMN_LABELS: Record<string, string> = {
-  inbox: 'Р’С…РѕРґСЏС‰РёРµ',
-  backlog: 'Р’ РѕС‡РµСЂРµРґРё',
-  in_progress: 'Р’ СЂР°Р±РѕС‚Рµ',
-  review: 'РќР° РїСЂРѕРІРµСЂРєРµ',
-  done: 'Р“РѕС‚РѕРІРѕ',
+  inbox: 'Входящие',
+  backlog: 'В очереди',
+  in_progress: 'В работе',
+  review: 'На проверке',
+  done: 'Готово',
 };
 
 function columnLabel(key: unknown): string {
-  return COLUMN_LABELS[String(key)] ?? String(key ?? 'вЂ”');
+  return COLUMN_LABELS[String(key)] ?? String(key ?? '—');
 }
 
-// в”Ђв”Ђв”Ђ Avatar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Avatar ──────────────────────────────────────────────────────────────────
 
 function FeedAvatar({ item, avatarUrl }: { item: TaskFeedItem; avatarUrl?: string }) {
   const size = 32;
 
   if (item.kind === 'status') {
-    return null; // System/status line вЂ” single row, no avatar
+    return null; // System/status line — single row, no avatar
   }
 
   if (item.author_type === 'agent') {
-    // Agents have no avatar вЂ” violet в—† (agent identity mark).
+    // Agents have no avatar — violet ◆ (agent identity mark).
     return (
       <div
         className="flex shrink-0 items-center justify-center rounded-full"
@@ -61,7 +61,7 @@ function FeedAvatar({ item, avatarUrl }: { item: TaskFeedItem; avatarUrl?: strin
         }}
         aria-hidden
       >
-        в—†
+        ◆
       </div>
     );
   }
@@ -101,9 +101,11 @@ export interface TaskCommentsPanelProps {
   taskId: string;
   /** Workspace workers (for avatar resolution of comment authors) */
   workers: { id: string; avatarUrl?: string }[];
+  /** Current user's worker ID — own comments render avatar on the right */
+  currentUserId?: string;
 }
 
-export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
+export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommentsPanelProps) {
   const [items, setItems] = useState<TaskFeedItem[]>([]); // ascending by created_at
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -113,7 +115,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
-  // в”Ђв”Ђ Load first page в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── Load first page ────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -125,7 +127,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
         setError(res.error);
         setItems([]);
       } else {
-        // RPC returns newest-first в†’ render chronologically (newest at bottom)
+        // RPC returns newest-first → render chronologically (newest at bottom)
         setItems([...res.items].reverse());
         setHasMore(res.hasMore);
       }
@@ -136,7 +138,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
     };
   }, [taskId]);
 
-  // в”Ђв”Ђ Live updates via server-side broadcast в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── Live updates via server-side broadcast ─────────────────────────────────
   useEffect(() => {
     const supabase = getClient();
     const channel = supabase
@@ -157,7 +159,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
     };
   }, [taskId]);
 
-  // в”Ђв”Ђ Load more (older) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── Load more (older) ──────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
     const oldest = items[0];
     if (!oldest || loadingMore) return;
@@ -176,7 +178,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
     setLoadingMore(false);
   }, [taskId, items, loadingMore]);
 
-  // в”Ђв”Ђ Submit в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
@@ -191,8 +193,8 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
       {
         item_id: tempId,
         kind: 'comment',
-        author_id: null,
-        author_name: 'Р’С‹',
+        author_id: currentUserId ?? null,
+        author_name: 'Вы',
         author_type: 'human',
         body: trimmed,
         created_at: new Date().toISOString(),
@@ -207,7 +209,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
       // Roll back the optimistic row
       setItems((prev) => prev.filter((i) => i.item_id !== tempId));
       setText(trimmed); // restore the draft
-      setSendError(res.error || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№');
+      setSendError(res.error || 'Не удалось отправить комментарий');
     } else {
       // Replace the temp row with the server row (dedupe against broadcast)
       setItems((prev) => {
@@ -221,7 +223,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
     setSending(false);
   }, [text, sending, taskId]);
 
-  // в”Ђв”Ђ Derived в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── Derived ────────────────────────────────────────────────────────────────
   const avatarFor = (item: TaskFeedItem): string | undefined => {
     if (!item.author_id) return undefined;
     return workers.find((w) => w.id === item.author_id)?.avatarUrl;
@@ -229,18 +231,18 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
 
   const canSend = text.trim().length > 0 && !sending;
 
-  // в”Ђв”Ђв”Ђ Render в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Feed */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
-          <div className="py-8 text-center text-[13px] text-text-muted">Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+          <div className="py-8 text-center text-[13px] text-text-muted">Загрузка…</div>
         ) : error ? (
           <div className="py-8 text-center text-[13px] text-text-muted">{error}</div>
         ) : items.length === 0 ? (
           <div className="py-8 text-center text-[13px] text-text-muted">
-            РљРѕРјРјРµРЅС‚Р°СЂРёРµРІ РїРѕРєР° РЅРµС‚
+            Комментариев пока нет
           </div>
         ) : (
           <>
@@ -251,13 +253,13 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
                 disabled={loadingMore}
                 className="mx-auto mb-3 block text-[12px] text-text-muted underline-offset-2 hover:underline disabled:opacity-50"
               >
-                {loadingMore ? 'Р—Р°РіСЂСѓР·РєР°вЂ¦' : 'РџРѕРєР°Р·Р°С‚СЊ Р±РѕР»РµРµ СЃС‚Р°СЂС‹Рµ'}
+                {loadingMore ? 'Загрузка…' : 'Показать более старые'}
               </button>
             )}
 
             <div className="flex flex-col gap-4">
               {items.map((item) => {
-                // в”Ђв”Ђ System status line (single centered row, no bubble) в”Ђв”Ђ
+                // ── System status line (single centered row, no bubble) ──
                 if (item.kind === 'status') {
                   const from = columnLabel(item.payload?.from_column);
                   const to = columnLabel(item.payload?.to_column);
@@ -266,12 +268,12 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
                       key={item.item_id}
                       className="text-center text-[12px] leading-4 text-text-muted"
                     >
-                      {item.author_name}: {from} в†’ {to} В· {formatFeedTime(item.created_at)}
+                      {item.author_name}: {from} → {to} · {formatFeedTime(item.created_at)}
                     </div>
                   );
                 }
 
-                // в”Ђв”Ђ Agent activity row в”Ђв”Ђ
+                // ── Agent activity row ──
                 if (item.kind === 'agent') {
                   return (
                     <div
@@ -290,10 +292,17 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
                   );
                 }
 
-                // в”Ђв”Ђ Comment bubble (Figma 322-27840) в”Ђв”Ђ
+                {/* ── Comment bubble (Figma 322-27840) ── */}
                 const isPending = !!item.payload?.pending;
+                const isOwn =
+                  currentUserId != null &&
+                  item.author_id === currentUserId &&
+                  item.author_type === 'human';
                 return (
-                  <div key={item.item_id} className="flex items-start gap-2.5">
+                  <div
+                    key={item.item_id}
+                    className={`flex items-start gap-2.5 ${isOwn ? 'flex-row-reverse justify-end' : ''}`}
+                  >
                     <FeedAvatar item={item} avatarUrl={avatarFor(item)} />
                     <div
                       className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2"
@@ -329,7 +338,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
               value={text}
               onChange={setText}
               maxLength={2000}
-              placeholder="РўРµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏ"
+              placeholder="Текст сообщения"
               onKeyDown={(e) => {
                 // Enter = send, Shift+Enter = newline
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -343,7 +352,7 @@ export function TaskCommentsPanel({ taskId, workers }: TaskCommentsPanelProps) {
             type="button"
             onClick={handleSubmit}
             disabled={!canSend}
-            aria-label="РћС‚РїСЂР°РІРёС‚СЊ"
+            aria-label="Отправить"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text transition-opacity disabled:opacity-40"
           >
             <svg

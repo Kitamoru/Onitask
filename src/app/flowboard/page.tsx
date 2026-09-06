@@ -483,6 +483,7 @@ function FlowBoardPageContent() {
             dispatch({ type: 'REMOVE_TASK', payload: taskId });
             setSelectedTask(null);
           }}
+          currentUserId={authData?.worker?.id}
         />
 
                                 {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}

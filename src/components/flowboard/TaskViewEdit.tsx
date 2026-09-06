@@ -51,6 +51,8 @@ export interface TaskViewEditProps {
   onSave?: (task: TaskEntity) => void;
   /** Called immediately after successful task deletion (before onClose) */
   onDelete?: (taskId: string) => void;
+  /** Current user's worker ID (for highlighting own comments on the right) */
+  currentUserId?: string;
   /** Custom className */
   className?: string;
 }
@@ -63,6 +65,7 @@ export function TaskViewEdit({
   mode = 'view',
   onSave,
   onDelete,
+  currentUserId,
   className = '',
 }: TaskViewEditProps) {
   const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
@@ -293,12 +296,13 @@ export function TaskViewEdit({
           {/* Комментарии tab (AGENT-08): feed + composer */}
           {tab === 'comments' && task?.id && (
             <div className="h-[60vh] min-h-0">
-              <TaskCommentsPanel
+                            <TaskCommentsPanel
                 taskId={task.id}
                 workers={workers.map((w) => ({
                   id: w.id,
                   avatarUrl: w.avatarUrl,
                 }))}
+                currentUserId={currentUserId}
               />
             </div>
           )}
@@ -489,8 +493,8 @@ export function TaskViewEdit({
             </>
           )}
 
-          {/* Error */}
-          {error && (
+          {/* Error — only on the «Общее» tab (irrelevant in comments) */}
+          {tab === 'general' && error && (
             <div
               className="px-3 py-2 rounded text-sm"
               style={{
@@ -505,8 +509,8 @@ export function TaskViewEdit({
             </div>
           )}
 
-          {/* Actions */}
-          {isView && !isNew && (
+          {/* Actions — only on the «Общее» tab (irrelevant in comments) */}
+          {tab === 'general' && isView && !isNew && (
             <div className="mt-2">
               <Button
                 variant="solid"
@@ -517,8 +521,7 @@ export function TaskViewEdit({
               </Button>
             </div>
           )}
-
-          {isEdit && (
+          {tab === 'general' && isEdit && (
             <div className="mt-2 flex flex-col gap-2">
               <Button
                 onClick={handleSave}
