@@ -98,22 +98,20 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
 
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="flex flex-col" role="dialog" aria-modal="true" aria-label="Воркер">
+      <div className="flex flex-col gap-6 px-4 pb-6" aria-label="Воркер">
         {/* 1. Header — worker card (Figma 622:29872) */}
         <WorkerHeader worker={worker} />
 
         {/* 2. Сегменты — Статус / Доступы */}
-        <div className="px-4">
-          <Segments<WorkerSheetTab>
-            options={SEGMENTS}
-            value={tab}
-            onChange={setTab}
-            aria-label="Вкладки воркера"
-          />
-        </div>
+        <Segments<WorkerSheetTab>
+          options={SEGMENTS}
+          value={tab}
+          onChange={setTab}
+          aria-label="Вкладки воркера"
+        />
 
         {tab === 'status' && (
-          <div className="flex flex-col gap-6 px-4">
+          <div className="flex flex-col gap-6">
             <StatusMetrics metrics={metrics} />
             <TaskSection
               color="var(--color-accent-amber)"
@@ -130,7 +128,7 @@ export function WorkerSheet({ open, onClose, worker, tasks, sprint }: WorkerShee
           </div>
         )}
 
-                {tab === 'access' && <AccessTab worker={worker} />}
+        {tab === 'access' && <AccessTab worker={worker} />}
       </div>
     </BottomSheet>
   );
@@ -335,7 +333,7 @@ function TaskSection({
   emptyNote: string;
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <div
           style={{ width: 2, height: 18, borderRadius: 2, backgroundColor: color }}
@@ -367,7 +365,7 @@ function TaskSection({
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-                    {tasks.map((task) => (
+          {tasks.map((task) => (
             <TaskCard key={task.id} task={task} />
           ))}
         </div>
@@ -380,7 +378,7 @@ function TaskSection({
 
 function AccessTab({ worker }: { worker: WorkerCardData }) {
   return (
-    <div className="flex flex-col gap-6 px-4 pb-6">
+    <div className="flex flex-col gap-6">
       {/* Роль в доске — read-only поле */}
       <FieldGroup label="Роль в доске">
         <ReadOnlyField value={ROLE_DISPLAY[worker.roleLabel] ?? worker.roleLabel} />
@@ -395,7 +393,7 @@ function AccessTab({ worker }: { worker: WorkerCardData }) {
       </FieldGroup>
 
       {/* Кнопки */}
-      <div className="flex flex-col gap-3 pt-2">
+      <div className="flex flex-col gap-4">
         <Button
           type="button"
           variant="solid"
