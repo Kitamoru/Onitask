@@ -61,6 +61,7 @@ export function BottomSheet({
   const lastTimeRef = useRef(0);
   const velocityRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const startedInHandleZone = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
 
   // Apply the drag offset to the `--sheet-y` CSS variable directly on the DOM
@@ -89,6 +90,7 @@ export function BottomSheet({
       const startX = e.touches[0].clientX;
       const startY = e.touches[0].clientY;
       const inHandleZone = startY - el.getBoundingClientRect().top <= HANDLE_ZONE_HEIGHT;
+      startedInHandleZone.current = inHandleZone;
       dragStartX.current = startX;
       dragStartY.current = startY;
       lastYRef.current = startY;
@@ -126,6 +128,11 @@ export function BottomSheet({
         return;
       }
       if (!draggingRef.current) {
+        // Only claim the gesture if it started in the handle zone. Without this
+        // guard, a short (non-scrollable) content — e.g. the «Комментарии» tab
+        // where scrollTop is always 0 — would let any downward swipe anywhere on
+        // the sheet close it, making the active close zone far too large.
+        if (!startedInHandleZone.current) return;
         // Small dead zone before claiming the gesture
         if (deltaY <= 8) return;
         draggingRef.current = true;
