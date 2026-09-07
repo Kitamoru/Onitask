@@ -342,6 +342,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const currentInitData = initDataRef.current;
       if (!currentInitData) {
         console.warn('[DataContext] loadBoardsData called before initData is available');
+        // Do not block the UI in a broken environment (no Telegram initData):
+        // release the first-load gate so the GlobalLoader can hide.
+        dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
         return;
       }
 
@@ -490,6 +493,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             : 'failed_to_load_boards_data';
         console.error('[DataContext] failed to load boards data:', err);
         setDataError(message);
+        // Release the first-load gate even on failure, so dataError screens
+        // with a retry button become reachable instead of an infinite loader.
+        dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
       }
     },
     [],
@@ -538,6 +544,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (targetWorkspaceId) {
       dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: targetWorkspaceId });
       loadBoardsData(targetWorkspaceId, { partial: true });
+    } else {
+      // Brand-new user without any workspace (is_new_user=true): there is no
+      // server data to load. Release the first-load gate so AuthLoader hides
+      // the GlobalLoader and the onboarding flow (/board/create) can render.
+      // Previously this branch was a no-op and firstLoadDone stayed false
+      // forever — infinite loading for every new user (fixes onboarding bug).
+      dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
     }
   }, [authData?.worker?.id, workspacesKey, loadBoardsData]);
 
