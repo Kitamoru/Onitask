@@ -651,34 +651,40 @@ export async function POST(req: NextRequest) {
         { value: 1, label: '1 день', level: 'red' as const },
       ];
 
-      const { error: settingsError } = await supabase.from('workspace_settings').insert({
-        workspace_id: workspaceId,
-        story_points_config: {
-          enabled: spConfig.enabled ?? false,
-          sprint_enabled: spConfig.sprint_enabled ?? false,
-          values: spConfig.values,
-          hours_per_sp: spConfig.hours_per_sp,
-        },
-        enable_cognitive_budget: enable_cognitive_budget ?? false,
-        workspace_context: workspace_context ?? null,
-        deadline_signals: deadline_signals && deadline_signals.length > 0
-          ? deadline_signals.map((s, idx) => ({ ...s, level: (s as any).level || (idx === 0 ? 'amber' : 'red') }))
-          : defaultDeadlineSignals,
-        velocity_window_days: 14,
-        flow_config: {},
-        realtime_subscription_level: 'own_tasks',
-        data_sharing_level: 'standard',
-        mcp_api_keys: {},
-        quota_config: { agent_reserved_pct: 60, human_min_pct: 40 },
-        standup_config: { enabled: false, time_utc: '07:00', chat_id: null },
-        doc_kb_config: { enabled: doc_kb_enabled ?? true, max_file_bytes: 524288, max_total_bytes: 5242880, max_files: 20 },
-        f04_config: {
-          skip_min_clarity: 0.85,
-          skip_max_complexity: 1,
-          correction_sheet_clarity_threshold: 0.70,
-          low_clarity_tag_threshold: 0.55,
-        },
-      });
+      // Upsert (not insert): the init_workspace_settings() trigger (migration
+      // 078) may have already created the row with defaults during the
+      // workspaces INSERT. ON CONFLICT applies this workspace's real config
+      // over those defaults. mcp_api_keys was dropped in 042 — do not re-add.
+      const { error: settingsError } = await supabase
+        .from('workspace_settings')
+        .upsert({
+          workspace_id: workspaceId,
+          story_points_config: {
+            enabled: spConfig.enabled ?? false,
+            sprint_enabled: spConfig.sprint_enabled ?? false,
+            values: spConfig.values,
+            hours_per_sp: spConfig.hours_per_sp,
+          },
+          enable_cognitive_budget: enable_cognitive_budget ?? false,
+          workspace_context: workspace_context ?? null,
+          deadline_signals: deadline_signals && deadline_signals.length > 0
+            ? deadline_signals.map((s, idx) => ({ ...s, level: (s as any).level || (idx === 0 ? 'amber' : 'red') }))
+            : defaultDeadlineSignals,
+          velocity_window_days: 14,
+          flow_config: {},
+          realtime_subscription_level: 'own_tasks',
+          data_sharing_level: 'standard',
+          quota_config: { agent_reserved_pct: 60, human_min_pct: 40 },
+          standup_config: { enabled: false, time_utc: '07:00', chat_id: null },
+          doc_kb_config: { enabled: doc_kb_enabled ?? true, max_file_bytes: 524288, max_total_bytes: 5242880, max_files: 20 },
+          f04_config: {
+            skip_min_clarity: 0.85,
+            skip_max_complexity: 1,
+            correction_sheet_clarity_threshold: 0.70,
+            low_clarity_tag_threshold: 0.55,
+          },
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'workspace_id' });
 
       if (settingsError) {
         console.error('workspaces: workspace_settings creation error', settingsError);

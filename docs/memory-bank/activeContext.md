@@ -1,4 +1,41 @@
 # Active Context
+## FIX INV-08: workspace_settings гарантия на уровне БД (2026-09-07) ✅
+
+**Проблема:** миграция 042 дропнула `workspace_settings.mcp_api_keys`, но
+`POST /api/workspaces` продолжал его вставлять → INSERT падал (PGRST204,
+ошибка глоталась) → workspace без settings-строки → `/api/ai/create-task`
+падал на `.single()` (PGRST116 → «Не удалось загрузить настройки»).
+
+**Фикс (3 слоя):**
+1. **Миграция 078** (`078_workspace_settings_backfill_and_trigger.sql`,
+   применена на `atarmvtzvlwhkheeabeb`): функция `init_workspace_settings()`
+   (SECURITY DEFINER, SET search_path, ON CONFLICT DO NOTHING) + триггер
+   `trg_init_workspace_settings` AFTER INSERT ON workspaces + идемпотентный
+   backfill через `WHERE NOT EXISTS`. Паттерн зеркалит trg_init_task_counter.
+2. **`/api/workspaces`**: `.insert(...)` → `.upsert(..., { onConflict: 'workspace_id' })`,
+   `mcp_api_keys` убран, добавлен `updated_at`. ON CONFLICT перекрывает дефолты
+   триггера реальным конфигом формы, гонок нет (триггер — DO NOTHING).
+3. **`/api/ai/create-task`**: `.single()` → `.maybeSingle()` + комментарий —
+   отсутствие строки → NULL → дефолты parseF04Config, без 500.
+
+**Валидация (все зелёные):**
+- Миграция применена; сирот `workspaces w NOT EXISTS settings` = 0 (backfill сработал).
+- Транзакционный тест: INSERT workspaces → settings-строка создалась триггером
+  автоматически (`TRIGGER_TEST_PASSED settings_rows=1`), тест откатился, residue = 0.
+- Дефолты синхронизированы: миграция (trigger fn + backfill) = upsert роута
+  (velocity 14, own_tasks, standard, quota 60/40, standup 07:00, doc_kb 512KB/5MB/20, f04).
+- `npm run type-check`: единственная ошибка — pre-existing
+  `lib/shared/attachments.ts(361)` (незавершённая фича attachments/077, вне скопа).
+- Lint сломан на уровне окружения (rushstack eslint-patch vs ESLint 9) — pre-existing.
+
+**Побочно:** удалён фантомный файл `src/app/ai/create-task/route.ts` (артефакт
+сбоя редактора, создавал ошибки TS1375/TS2304). `src/lib/mcpAuth.ts` (legacy,
+0 импортов) — НЕ тронут, кандидат на удаление отдельным решением.
+
+**Next:** коммит `fix(INV-08): DB-level workspace_settings guarantee + route resilience`;
+e2e smoke создания workspace через UI после деплоя.
+
+---
 
 ## BUGFIX: BottomSheet — активная зона сворачивания на вкладке «Комментарии» (2026-09-07) ✅
 

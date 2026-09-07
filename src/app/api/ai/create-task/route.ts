@@ -121,11 +121,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Load workspace settings
+    // maybeSingle() -> a missing settings row yields NULL (not an error), so
+    // absence falls through to parseF04Config(null) defaults instead of
+    // hard-failing task creation. (Migration 078 makes missing rows impossible
+    // anyway; this guard protects against transient drift / reorgs.)
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
       .select('f04_config, workspace_context, data_sharing_level')
       .eq('workspace_id', workspaceId)
-      .single();
+      .maybeSingle();
 
     if (settingsError) {
       return NextResponse.json({ error: 'Не удалось загрузить настройки' }, { status: 500 });
