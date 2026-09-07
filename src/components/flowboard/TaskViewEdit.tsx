@@ -301,6 +301,7 @@ export function TaskViewEdit({
                 workers={workers.map((w) => ({
                   id: w.id,
                   avatarUrl: w.avatarUrl,
+                  displayName: w.displayName,
                 }))}
                 currentUserId={currentUserId}
               />

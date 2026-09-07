@@ -100,7 +100,7 @@ export interface TaskCommentsPanelProps {
   /** Task UUID */
   taskId: string;
   /** Workspace workers (for avatar resolution of comment authors) */
-  workers: { id: string; avatarUrl?: string }[];
+  workers: { id: string; avatarUrl?: string; displayName?: string }[];
   /** Current user's worker ID — own comments render avatar on the right */
   currentUserId?: string;
 }
@@ -149,6 +149,20 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
         setItems((prev) => {
           // Dedupe: the author's own POST response may have added it already
           if (prev.some((i) => i.item_id === item.item_id)) return prev;
+          // The broadcast can arrive before the POST response — replace the
+          // pending optimistic row (same author + body) instead of appending
+          // a duplicate
+          const pendingIdx = prev.findIndex(
+            (i) =>
+              i.payload?.pending === true &&
+              i.author_id === item.author_id &&
+              i.body === item.body,
+          );
+          if (pendingIdx !== -1) {
+            const next = [...prev];
+            next[pendingIdx] = item;
+            return next;
+          }
           return [...prev, item];
         });
       })
@@ -186,15 +200,18 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
     setSending(true);
     setSendError(null);
 
-    // Optimistic pending row
+    // Optimistic pending row — use the real display name so the pending
+    // block is visually identical to the final server row (no swap flicker)
     const tempId = `temp-${Date.now()}`;
+    const ownName =
+      workers.find((w) => w.id === currentUserId)?.displayName ?? 'Вы';
     setItems((prev) => [
       ...prev,
       {
         item_id: tempId,
         kind: 'comment',
         author_id: currentUserId ?? null,
-        author_name: 'Вы',
+        author_name: ownName,
         author_type: 'human',
         body: trimmed,
         created_at: new Date().toISOString(),
@@ -221,7 +238,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
       });
     }
     setSending(false);
-  }, [text, sending, taskId, currentUserId]);
+  }, [text, sending, taskId, currentUserId, workers]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const avatarFor = (item: TaskFeedItem): string | undefined => {
