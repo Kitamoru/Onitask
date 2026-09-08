@@ -1,5 +1,43 @@
 # Active Context
 
+## FEATURE: Передача владения доской + выход из доски (2026-09-08) ✅
+
+**Status:** Implemented (type-check ✅ по нашим файлам — остаточные ошибки только
+pre-existing WIP; lint сломан на уровне окружения: rushstack/eslint-patch × ESLint 9.39).
+**Migration 080 НЕ применена к БД** — Supabase MCP/CLI неавторизованы; применить вручную
+(Dashboard SQL editor / `supabase db push`): `supabase/migrations/080_transfer_ownership.sql`.
+
+**Решения (согласованы с владельцем):**
+- «Передать владение» — на СВОЕЙ карточке в WorkerSheet, у владельца показывается
+  ВМЕСТО disabled-кнопки «Отозвать доступы». Пикер преемника (другие активные human)
+  + confirm «Вы станете администратором».
+- «Покинуть доску» — на СВОЕЙ карточке не-владельца (human). У владельца кнопка
+  появляется только ПОСЛЕ передачи владения (UI-гейтинг; серверный guard остаётся).
+- Текст confirm выхода (дословно от владельца): «Вы точно хотите покинуть доску "X"?» +
+  мелким шрифтом «Вы потеряете доступ к доске "X" и не сможете взаимодействовать
+  с задачами. Это действие необратимо.» Кнопки «Да, покинуть доску» / «Отмена».
+
+**Changes:**
+1. `supabase/migrations/080_transfer_ownership.sql` — dedup-страховка + unique index
+   `uq_one_owner_per_workspace (workspace_id) WHERE role='owner'` (жёсткий инвариант
+   «ровно один owner») + SECURITY DEFINER RPC `transfer_workspace_ownership`:
+   FOR UPDATE лок строк, old owner → admin, target → owner, workspaces.owner_id
+   синхронно (best-effort, source_id::uuid по regex).
+2. `POST /api/workspaces/[id]/transfer-ownership` (новый) — только actor role='owner'
+   (403); target: human + active + эта доска + не self (400); RPC; broadcast.
+3. `POST /api/workspaces/[id]/leave` (новый) — soft-deactivate is_active=false;
+   owner → 409 owner_must_transfer_first; broadcast.
+4. `lib/api/flow.ts` — `transferWorkspaceOwnership()`, `leaveWorkspace()`.
+5. `WorkerSheet.tsx` — AccessTab: isSelfOwner → «Передать владение» (disabled без
+   кандидатов), isSelf non-owner human → «Покинуть доску»; пикер-модалка + leave-confirm
+   (portal, паттерн revoke-модалки); optimistic role→admin после передачи.
+6. `page.tsx` — `workspaceWorkers={workers}`, `onTransferSuccess` (refreshMetrics),
+   `onLeaveSuccess` (boards-needs-refresh + router.push('/boards')).
+
+**Валидация:** `npm run type-check` — только 9 pre-existing WIP-ошибок (наши файлы чистые);
+lint — env-broken (не доходит до кода). Смок: transfer → «Покинуть доску» появляется,
+leave member, leave owner → 409, чужие карточки без изменений.
+
 ## FEATURE: Вкладка «Доступы» в WorkerSheet — роль (текст) + пресет (селект) (2026-09-08) ✅
 
 **Status:** Implemented (type-check ✅ по нашим файлам; остаточные ошибки — pre-existing

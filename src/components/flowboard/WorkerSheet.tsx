@@ -7,7 +7,9 @@
  *  - «Статус»  — метрики (velocity, rework, forecast, gap) + задачи в `in_progress`/`review`
  *  - «Доступы»  — «Роль в доске» (кастомный текст, workers.role_title) +
  *                 «Пресет доступов» (селект owner/admin/member → workers.role),
- *                 кнопки «Сохранить»/«Отозвать доступ»
+ *                 кнопки «Сохранить»/«Отозвать доступ»;
+ *                 на своей карточке: «Передать владение» (у владельца,
+ *                 миграция 080) и «Покинуть доску» (у не-владельца).
  *
  * Метрики считаются на клиенте из board-tasks + спринта. Reworks (← task_column_history) пока
  * не запрашиваются — показываем 0 с заготовкой под будущее подключение.
@@ -27,7 +29,7 @@ import {
 } from '@/components/flowboard/FlowBoard';
 import type { TaskEntity } from '@/types/flowboard';
 import type { WorkerCardData, SprintInfo } from '@/types/flowboard';
-import { revokeWorkerAccess, saveWorkerAccess } from '@/lib/api/flow';
+import { revokeWorkerAccess, saveWorkerAccess, transferWorkspaceOwnership, leaveWorkspace } from '@/lib/api/flow';
 import {
   EDITABLE_PRESETS,
   PRESET_DESCRIPTIONS,
@@ -60,6 +62,12 @@ export interface WorkerSheetProps {
   currentWorkerId?: string;
   /** Callback при успешном сохранении доступов (получает обновлённую карточку воркера) */
   onSaveSuccess?: (updated: WorkerCardData) => void;
+  /** Все human-воркеры доски — кандидаты на передачу владения */
+  workspaceWorkers?: WorkerCardData[];
+  /** Callback после успешной передачи владения (refresh метрик) */
+  onTransferSuccess?: () => void;
+  /** Callback после успешного выхода из доски (навигация на /boards) */
+  onLeaveSuccess?: () => void;
 }
 
 const SEGMENTS: { value: WorkerSheetTab; label: string }[] = [
@@ -79,18 +87,35 @@ export function WorkerSheet({
   onRevokeSuccess,
   currentWorkerId,
   onSaveSuccess,
+  workspaceWorkers,
+  onTransferSuccess,
+  onLeaveSuccess,
 }: WorkerSheetProps) {
   const [tab, setTab] = useState<WorkerSheetTab>('status');
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [showTransferPicker, setShowTransferPicker] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<WorkerCardData | null>(null);
+  const [transferring, setTransferring] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
-  // Reset revoke state when sheet opens
+  // Reset revoke/transfer/leave state when sheet opens
   useEffect(() => {
     if (open) {
       setShowRevokeConfirm(false);
       setRevoking(false);
       setRevokeError(null);
+      setShowTransferPicker(false);
+      setTransferTarget(null);
+      setTransferring(false);
+      setTransferError(null);
+      setShowLeaveConfirm(false);
+      setLeaving(false);
+      setLeaveError(null);
     }
   }, [open]);
 
@@ -163,6 +188,66 @@ export function WorkerSheet({
     }
   }, [worker?.id, onRevokeSuccess, onClose]);
 
+  // Кандидаты на передачу владения: другие активные human-воркеры доски
+  const transferCandidates = useMemo(() => {
+    if (!worker || !workspaceWorkers) return [];
+    return workspaceWorkers.filter(
+      (w) => w.id !== worker.id && w.type !== 'agent' && w.role != null,
+    );
+  }, [worker, workspaceWorkers]);
+
+  const isSelfOwner = !!worker && worker.role === 'owner' &&
+    !!currentWorkerId && worker.id === currentWorkerId;
+
+  const handleTransferOwnership = useCallback(async () => {
+    if (!transferTarget || !workspaceId) return;
+    setTransferring(true);
+    setTransferError(null);
+    try {
+      const result = await transferWorkspaceOwnership(workspaceId, transferTarget.id);
+      if (result.error) {
+        setTransferError(result.error);
+        return;
+      }
+      // Optimistic: бывший владелец (открытая карточка) становится admin —
+      // кнопка «Покинуть доску» появится сразу. Refresh подтянется отдельно.
+      if (worker) {
+        onSaveSuccess?.({
+          ...worker,
+          role: 'admin',
+          roleLabel: formatWorkerRole('admin', worker.roleTitle),
+        });
+      }
+      onTransferSuccess?.();
+      setShowTransferPicker(false);
+      setTransferTarget(null);
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : 'Ошибка передачи владения');
+    } finally {
+      setTransferring(false);
+    }
+  }, [transferTarget, workspaceId, worker, onSaveSuccess, onTransferSuccess]);
+
+  const handleLeaveBoard = useCallback(async () => {
+    if (!workspaceId) return;
+    setLeaving(true);
+    setLeaveError(null);
+    try {
+      const result = await leaveWorkspace(workspaceId);
+      if (result.error) {
+        setLeaveError(result.error);
+        return;
+      }
+      setShowLeaveConfirm(false);
+      onClose();
+      onLeaveSuccess?.();
+    } catch (err) {
+      setLeaveError(err instanceof Error ? err.message : 'Ошибка выхода из доски');
+    } finally {
+      setLeaving(false);
+    }
+  }, [workspaceId, onClose, onLeaveSuccess]);
+
   // Revoke confirm — portal to body, above BottomSheet transform context
   const revokeConfirmModal =
     showRevokeConfirm &&
@@ -223,6 +308,184 @@ export function WorkerSheet({
       document.body,
     );
 
+  // Transfer picker — portal to body (same pattern as revoke confirm)
+  const transferPickerModal =
+    showTransferPicker &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+        onClick={() => {
+          if (!transferring) {
+            setShowTransferPicker(false);
+            setTransferTarget(null);
+          }
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transfer-picker-title"
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-6"
+          style={{ backgroundColor: '#1A1A1A' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p
+            id="transfer-picker-title"
+            className="mb-2 text-center text-lg font-semibold"
+            style={{ color: '#FAFAFA' }}
+          >
+            Кому передать владение доской «{workspaceName}»?
+          </p>
+          <p className="mb-4 text-center text-sm" style={{ color: '#8B8B8B' }}>
+            Новый владелец получит полный доступ к доске. Вы станете администратором.
+          </p>
+          {transferCandidates.length === 0 ? (
+            <p className="mb-4 text-center text-sm" style={{ color: '#8B8B8B' }}>
+              На доске нет других участников — передать владение некому.
+            </p>
+          ) : (
+            <div className="mb-4 flex max-h-64 flex-col gap-2 overflow-y-auto">
+              {transferCandidates.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  onClick={() => setTransferTarget(candidate)}
+                  disabled={transferring}
+                  className="flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors"
+                  style={{
+                    borderColor:
+                      transferTarget?.id === candidate.id ? '#F59E0B' : '#333',
+                    backgroundColor:
+                      transferTarget?.id === candidate.id
+                        ? 'rgba(245, 158, 11, 0.08)'
+                        : 'transparent',
+                  }}
+                >
+                  <UserAvatar
+                    displayName={candidate.displayName}
+                    avatarUrl={candidate.avatarUrl}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className="block truncate"
+                      style={{
+                        fontFamily: 'var(--font-family-display)',
+                        fontSize: 'var(--text-body-sm)',
+                        fontWeight: 500,
+                        color: '#FAFAFA',
+                      }}
+                    >
+                      {candidate.displayName}
+                    </span>
+                    <span
+                      className="block truncate"
+                      style={{
+                        fontFamily: 'Inter, system-ui, sans-serif',
+                        fontSize: '12px',
+                        color: '#8B8B8B',
+                      }}
+                    >
+                      {candidate.roleLabel}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {transferError && (
+            <p className="mb-4 text-center text-sm" style={{ color: '#EF4444' }}>
+              {transferError}
+            </p>
+          )}
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="solid"
+              onClick={handleTransferOwnership}
+              disabled={!transferTarget || transferring}
+              fill="#F59E0B"
+              textColor="#0A0A0A"
+            >
+              {transferring ? 'Передача...' : 'Да, передать владение'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowTransferPicker(false);
+                setTransferTarget(null);
+              }}
+              disabled={transferring}
+              style={{ borderColor: '#333', color: '#8B8B8B' }}
+            >
+              Отмена
+            </Button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
+  // Leave confirm — portal to body (same pattern as revoke confirm)
+  const leaveConfirmModal =
+    showLeaveConfirm &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+        onClick={() => {
+          if (!leaving) setShowLeaveConfirm(false);
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leave-title"
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-6"
+          style={{ backgroundColor: '#1A1A1A' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p
+            id="leave-title"
+            className="mb-2 text-center text-lg font-semibold"
+            style={{ color: '#FAFAFA' }}
+          >
+            Вы точно хотите покинуть доску «{workspaceName}»?
+          </p>
+          <p className="mb-6 text-center text-sm" style={{ color: '#8B8B8B' }}>
+            Вы потеряете доступ к доске «{workspaceName}» и не сможете
+            взаимодействовать с задачами. Это действие необратимо.
+          </p>
+          {leaveError && (
+            <p className="mb-4 text-center text-sm" style={{ color: '#EF4444' }}>
+              {leaveError}
+            </p>
+          )}
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="solid"
+              onClick={handleLeaveBoard}
+              disabled={leaving}
+              fill="#EF4444"
+              textColor="#FAFAFA"
+            >
+              {leaving ? 'Выход...' : 'Да, покинуть доску'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowLeaveConfirm(false)}
+              disabled={leaving}
+              style={{ borderColor: '#333', color: '#8B8B8B' }}
+            >
+              Отмена
+            </Button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
     <>
       <BottomSheet open={open} onClose={onClose}>
@@ -264,6 +527,10 @@ export function WorkerSheet({
             currentWorkerId={currentWorkerId}
             onRevoke={() => setShowRevokeConfirm(true)}
             onSaveSuccess={onSaveSuccess}
+            isSelfOwner={isSelfOwner}
+            hasTransferCandidates={transferCandidates.length > 0}
+            onTransferClick={() => setShowTransferPicker(true)}
+            onLeaveClick={() => setShowLeaveConfirm(true)}
           />
         )}
         </div>
@@ -272,6 +539,8 @@ export function WorkerSheet({
 
       {/* Revoke confirm — portal above BottomSheet transform context */}
       {revokeConfirmModal}
+      {transferPickerModal}
+      {leaveConfirmModal}
     </>
   );
 }
@@ -526,6 +795,14 @@ interface AccessTabProps {
   currentWorkerId?: string;
   onRevoke?: () => void;
   onSaveSuccess?: (updated: WorkerCardData) => void;
+  /** Своё карточка + текущий пользователь — владелец доски */
+  isSelfOwner?: boolean;
+  /** Есть ли кандидаты на передачу владения (другие активные human-воркеры) */
+  hasTransferCandidates?: boolean;
+  /** Открыть пикер преемника (владелец, своя карточка) */
+  onTransferClick?: () => void;
+  /** Открыть confirm выхода из доски (не-владелец, своя карточка) */
+  onLeaveClick?: () => void;
 }
 
 function AccessTab({
@@ -534,6 +811,10 @@ function AccessTab({
   currentWorkerId,
   onRevoke,
   onSaveSuccess,
+  isSelfOwner,
+  hasTransferCandidates,
+  onTransferClick,
+  onLeaveClick,
 }: AccessTabProps) {
   const isAgent = worker.type === 'agent' || worker.role == null;
   const isOwner = worker.role === 'owner';
@@ -718,7 +999,16 @@ function AccessTab({
         >
                     вы также можете
         </span>
-        {canRevoke ? (
+        {isSelfOwner ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onTransferClick}
+            disabled={!hasTransferCandidates}
+          >
+            Передать владение
+          </Button>
+        ) : canRevoke ? (
           <Button
             type="button"
             variant="outline"
@@ -733,6 +1023,17 @@ function AccessTab({
             disabled
           >
             Отозвать доступы
+          </Button>
+        )}
+        {/* Своя карточка не-владельца (человека) — выход из доски.
+            У владельца кнопка появляется только после передачи владения. */}
+        {isSelf && !isAgent && !isSelfOwner && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onLeaveClick}
+          >
+            Покинуть доску
           </Button>
         )}
       </div>

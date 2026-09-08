@@ -218,6 +218,14 @@ CREATE TABLE workers (
   UNIQUE (workspace_id, source_id)
 );
 
+-- Инвариант «ровно один owner на доску» (миграция 080):
+CREATE UNIQUE INDEX uq_one_owner_per_workspace ON workers (workspace_id) WHERE role = 'owner';
+-- Передача владения — атомарный RPC transfer_workspace_ownership(workspace_id, to_worker_id)
+-- (SECURITY DEFINER): owner → admin, target → owner, workspaces.owner_id синхронно.
+-- Вызывается только из POST /api/workspaces/[id]/transfer-ownership (actor = owner).
+-- Выход из доски: POST /api/workspaces/[id]/leave — soft-deactivate is_active=false;
+-- owner'у 409 owner_must_transfer_first (уйти можно только после передачи владения).
+
 CREATE INDEX idx_workers_workspace_id ON workers (workspace_id);
 ```
 

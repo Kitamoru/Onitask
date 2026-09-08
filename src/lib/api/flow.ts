@@ -219,6 +219,63 @@ export async function saveWorkerAccess(
 }
 
 /**
+ * POST /api/workspaces/:id/transfer-ownership — передать владение доской
+ * другому активному участнику (только текущий владелец).
+ *
+ * @param toWorkerId — UUID воркера-преемника (active human этой доски)
+ */
+export async function transferWorkspaceOwnership(
+  workspaceId: string,
+  toWorkerId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/workspaces/${workspaceId}/transfer-ownership`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData, to_worker_id: toWorkerId }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Transfer failed' };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
+ * POST /api/workspaces/:id/leave — покинуть доску (self-leave).
+ * Владелец должен сначала передать владение (409 owner_must_transfer_first).
+ */
+export async function leaveWorkspace(
+  workspaceId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/workspaces/${workspaceId}/leave`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Leave failed' };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.
  */

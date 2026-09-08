@@ -514,6 +514,15 @@ function FlowBoardPageContent() {
             );
             refreshMetrics({ force: true });
           }}
+          workspaceWorkers={workers}
+          onTransferSuccess={() => refreshMetrics({ force: true })}
+          onLeaveSuccess={() => {
+            // Signal boards page to skip TTL and reload immediately
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('boards-needs-refresh', Date.now().toString());
+            }
+            router.push('/boards');
+          }}
         />
 
         {/* Debug panel for swipe logging (development only) */}
