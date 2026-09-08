@@ -643,7 +643,7 @@ export function TaskViewEdit({
       <MoveTaskSheet
         open={moveSheetOpen}
         onClose={() => setMoveSheetOpen(false)}
-        task={task as TaskEntity}
+        task={task}
         currentColumn={currentTaskColumn}
         selectedColumn={moveTargetColumn}
         onSelect={setMoveTargetColumn}

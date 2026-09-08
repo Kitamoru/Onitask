@@ -36,8 +36,8 @@ export interface MoveTaskSheetProps {
   open: boolean;
   /** Callback when the sheet is closed (cancel / backdrop / swipe) */
   onClose: () => void;
-  /** The task being moved (used for the sheet header context) */
-  task: TaskEntity;
+  /** The task being moved (header context); null while no task is selected yet */
+  task?: Partial<TaskEntity> | null;
   /** Column the task currently sits in — cannot confirm a move to itself */
   currentColumn: string;
   /** Currently selected target column */
@@ -65,6 +65,9 @@ export function MoveTaskSheet({
   onSelect,
   onConfirm,
 }: MoveTaskSheetProps) {
+  // Invariant: no task selected yet → render nothing (the sheet mounts before a task is picked)
+  if (!task) return null;
+
   const columns = MOVE_COLUMN_ORDER;
   const isSameAsTarget = selectedColumn === currentColumn;
 
