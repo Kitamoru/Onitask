@@ -166,6 +166,8 @@ export async function POST(req: NextRequest) {
         id: w.id,
         display_name: w.display_name || w.id.slice(0, 8),
         type: w.type as 'human' | 'agent',
+        role: w.role,
+        role_title: w.role_title,
         cognitive_load,
         overload_threshold: overloadThreshold,
         status: cognitive_load >= 3 ? 'overloaded' : 'ok',

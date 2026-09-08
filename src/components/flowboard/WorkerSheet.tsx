@@ -5,7 +5,9 @@
  *
  * Два таба (desk-ui `Segments`):
  *  - «Статус»  — метрики (velocity, rework, forecast, gap) + задачи в `in_progress`/`review`
- *  - «Доступы»  — read-only UI этой итерации: роль + пресет доступа, кнопки «Сохранить»/«Отозвать доступ»
+ *  - «Доступы»  — «Роль в доске» (кастомный текст, workers.role_title) +
+ *                 «Пресет доступов» (селект owner/admin/member → workers.role),
+ *                 кнопки «Сохранить»/«Отозвать доступ»
  *
  * Метрики считаются на клиенте из board-tasks + спринта. Reworks (← task_column_history) пока
  * не запрашиваются — показываем 0 с заготовкой под будущее подключение.
@@ -25,7 +27,13 @@ import {
 } from '@/components/flowboard/FlowBoard';
 import type { TaskEntity } from '@/types/flowboard';
 import type { WorkerCardData, SprintInfo } from '@/types/flowboard';
-import { revokeWorkerAccess } from '@/lib/api/flow';
+import { revokeWorkerAccess, saveWorkerAccess } from '@/lib/api/flow';
+import {
+  EDITABLE_PRESETS,
+  PRESET_DESCRIPTIONS,
+  PRESET_LABELS,
+  formatWorkerRole,
+} from '@/lib/roles';
 
 const METRIC_WINDOW_DAYS = 14;
 
@@ -48,20 +56,16 @@ export interface WorkerSheetProps {
   canRevoke?: boolean;
   /** Callback при успешном отзыве доступа */
   onRevokeSuccess?: () => void;
+  /** ID воркера текущего пользователя — свою «Роль в доске» можно править всегда */
+  currentWorkerId?: string;
+  /** Callback при успешном сохранении доступов (получает обновлённую карточку воркера) */
+  onSaveSuccess?: (updated: WorkerCardData) => void;
 }
 
 const SEGMENTS: { value: WorkerSheetTab; label: string }[] = [
   { value: 'status', label: 'Статус' },
   { value: 'access', label: 'Доступы' },
 ];
-
-// Read-only: роль в доске, маппится из известных ролей воркспейса.
-const ROLE_DISPLAY: Record<string, string> = {
-  owner: '👑 Владелец',
-  admin: '⚙️ Администратор',
-  member: '👤 Участник',
-  viewer: '👁 Наблюдатель',
-};
 
 export function WorkerSheet({
   open,
@@ -73,6 +77,8 @@ export function WorkerSheet({
   workspaceName,
   canRevoke,
   onRevokeSuccess,
+  currentWorkerId,
+  onSaveSuccess,
 }: WorkerSheetProps) {
   const [tab, setTab] = useState<WorkerSheetTab>('status');
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
@@ -255,7 +261,9 @@ export function WorkerSheet({
           <AccessTab
             worker={worker}
             canRevoke={canRevoke}
+            currentWorkerId={currentWorkerId}
             onRevoke={() => setShowRevokeConfirm(true)}
+            onSaveSuccess={onSaveSuccess}
           />
         )}
         </div>
@@ -315,7 +323,7 @@ function WorkerHeader({
               color: 'var(--color-text-muted)',
             }}
           >
-            {worker.type === 'agent' ? 'AI-агент' : 'Пользователь'} · {worker.roleLabel}
+            {worker.roleLabel}
           </p>
         </div>
       </div>
@@ -512,34 +520,190 @@ function TaskSection({
 
 interface AccessTabProps {
   worker: WorkerCardData;
+  /** Может ли текущий пользователь менять пресеты и чужие роли (owner/admin) */
   canRevoke?: boolean;
+  /** ID воркера текущего пользователя (свою роль можно править всегда) */
+  currentWorkerId?: string;
   onRevoke?: () => void;
+  onSaveSuccess?: (updated: WorkerCardData) => void;
 }
 
-function AccessTab({ worker, canRevoke, onRevoke }: AccessTabProps) {
+function AccessTab({
+  worker,
+  canRevoke,
+  currentWorkerId,
+  onRevoke,
+  onSaveSuccess,
+}: AccessTabProps) {
+  const isAgent = worker.type === 'agent' || worker.role == null;
+  const isOwner = worker.role === 'owner';
+  const isSelf = !!currentWorkerId && worker.id === currentWorkerId;
+  // Пресет: owner/admin, кроме owner-цели и самого себя.
+  const canEditPreset = !isAgent && !isOwner && !!canRevoke && !isSelf;
+  // Должность: своя — всегда, чужая — owner/admin.
+  const canEditTitle = !isAgent && (isSelf || !!canRevoke);
+
+  const [roleTitle, setRoleTitle] = useState(worker.roleTitle ?? '');
+  const [preset, setPreset] = useState(worker.role ?? 'member');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Sync при обновлении воркера после сохранения/refresh
+  useEffect(() => {
+    setRoleTitle(worker.roleTitle ?? '');
+    setPreset(worker.role ?? 'member');
+  }, [worker.id, worker.role, worker.roleTitle]);
+
+  const titleDirty = canEditTitle && roleTitle.trim() !== (worker.roleTitle ?? '');
+  const presetDirty = canEditPreset && preset !== (worker.role ?? 'member');
+  const dirty = titleDirty || presetDirty;
+  const canSave = dirty && !saving;
+
+  const handleSave = useCallback(async () => {
+    if (!worker.id) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const body: { preset?: 'admin' | 'member'; role_title?: string | null } = {};
+      if (presetDirty) body.preset = preset as 'admin' | 'member';
+      if (titleDirty) {
+        const trimmed = roleTitle.trim();
+        body.role_title = trimmed === '' ? null : trimmed;
+      }
+
+      const result = await saveWorkerAccess(worker.id, body);
+      if (result.error) {
+        setSaveError(result.error);
+        return;
+      }
+
+      // Optimistic: обновляем карточку в родителе (refresh подтянется отдельно)
+      const newRole = presetDirty ? preset : worker.role;
+      const newTitle = titleDirty ? roleTitle.trim() || null : (worker.roleTitle ?? null);
+      onSaveSuccess?.({
+        ...worker,
+        role: newRole,
+        roleTitle: newTitle,
+        roleLabel: formatWorkerRole(newRole, newTitle),
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  }, [worker, presetDirty, titleDirty, preset, roleTitle, onSaveSuccess]);
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Роль в доске — read-only поле */}
+      {/* Роль в доске — кастомный текст (должность) */}
       <FieldGroup label="Роль в доске">
-        <ReadOnlyField value={ROLE_DISPLAY[worker.roleLabel] ?? worker.roleLabel} />
+        {isAgent ? (
+          <ReadOnlyField value="AI-агент" />
+        ) : canEditTitle ? (
+          <input
+            type="text"
+            value={roleTitle}
+            maxLength={50}
+            placeholder="Например: Маркетолог"
+            onChange={(e) => setRoleTitle(e.target.value)}
+            className="w-full rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-3 outline-none placeholder:text-[#8B8B8B] focus:border-[var(--color-text-muted)]"
+            style={{
+              height: 40,
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontSize: '14px',
+              lineHeight: '20px',
+              fontWeight: 500,
+              color: '#FAFAFA',
+            }}
+          />
+        ) : (
+          <ReadOnlyField value={roleTitle || '—'} />
+        )}
       </FieldGroup>
 
-      {/* Пресет доступов — селектор (выключен в UI-only итерации) */}
+      {/* Пресет доступов — селект (Владелец/Администратор/Участник доски) */}
       <FieldGroup label="Пресет доступов">
-        <SelectField value="Руководитель" />
-        <HelperText>
-          «Руководитель» обладает <u>этими доступами</u>
-        </HelperText>
+        {isAgent ? (
+          <ReadOnlyField value="—" />
+        ) : isOwner ? (
+          <>
+            <ReadOnlyField value={PRESET_LABELS.owner} />
+            <HelperText>{PRESET_DESCRIPTIONS.owner}</HelperText>
+          </>
+        ) : canEditPreset ? (
+          <>
+            <div className="relative">
+              <select
+                value={preset}
+                onChange={(e) => setPreset(e.target.value)}
+                aria-label="Пресет доступов"
+                className="w-full appearance-none rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-3 outline-none"
+                style={{
+                  height: 40,
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontSize: '14px',
+                  lineHeight: '20px',
+                  fontWeight: 500,
+                  color: '#FAFAFA',
+                }}
+              >
+                {EDITABLE_PRESETS.map((p) => (
+                  <option key={p} value={p}>
+                    {PRESET_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+                width={20}
+                height={20}
+                viewBox="0 0 17 17"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4.25 6.25L8.5 10.5L12.75 6.25"
+                  stroke="#8B8B8B"
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <HelperText>
+              «{PRESET_LABELS[preset]}» — {PRESET_DESCRIPTIONS[preset]}
+            </HelperText>
+          </>
+        ) : (
+          <>
+            <ReadOnlyField value={PRESET_LABELS[preset] ?? PRESET_LABELS.member} />
+            <HelperText>Менять пресет может владелец или администратор доски</HelperText>
+          </>
+        )}
       </FieldGroup>
 
       {/* Кнопки */}
       <div className="flex flex-col gap-4">
+        {saveError && (
+          <p
+            className="text-center"
+            style={{
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontSize: '12px',
+              lineHeight: '14px',
+              color: '#EF4444',
+            }}
+          >
+            {saveError}
+          </p>
+        )}
         <Button
           type="button"
           variant="solid"
-          onClick={() => alert('Сохранение доступа will be available soon')}
+          disabled={!canSave}
+          onClick={handleSave}
         >
-          Сохранить информацию
+          {saving ? 'Сохранение...' : 'Сохранить информацию'}
         </Button>
         <span
           style={{
@@ -612,36 +776,6 @@ function ReadOnlyField({ value }: { value: string }) {
       >
         {value}
       </span>
-    </div>
-  );
-}
-
-function SelectField({ value }: { value: string }) {
-  return (
-    <div
-      className="flex w-full items-center justify-between rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-3"
-      style={{ height: 40 }}
-    >
-      <span
-        style={{
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: '14px',
-          lineHeight: '20px',
-          fontWeight: 500,
-          color: '#FAFAFA',
-        }}
-      >
-        {value}
-      </span>
-      <svg width={20} height={20} viewBox="0 0 17 17" fill="none" aria-hidden="true">
-        <path
-          d="M4.25 6.25L8.5 10.5L12.75 6.25"
-          stroke="#8B8B8B"
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
     </div>
   );
 }

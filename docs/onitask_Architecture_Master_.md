@@ -202,6 +202,11 @@ CREATE TABLE workers (
   role         text CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
   -- role: обязателен для type='human'; NULL для type='agent'.
   -- Смена role — только через service role. RLS запрещает самостоятельную смену (002_rls.sql).
+  -- UI: role = «Пресет доступов» (Владелец/Администратор/Участник доски).
+  role_title   text CHECK (char_length(role_title) <= 50),
+  -- role_title (миграция 079): кастомная «Роль в доске» — должность воркера
+  -- («Маркетолог», «Фронтендер»); NULL = не задана. Мутируется только через
+  -- PATCH /api/workers/[workerId]/access (свою — любой, чужую — owner/admin).
   display_name text NOT NULL,
   source_id    text NOT NULL, -- profiles.id для human, 'agent::<name>' для agent
   -- profiles — public.profiles (§6.17), связывает Supabase Auth с onitask.

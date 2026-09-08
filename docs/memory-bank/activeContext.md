@@ -1,5 +1,44 @@
 # Active Context
 
+## FEATURE: Вкладка «Доступы» в WorkerSheet — роль (текст) + пресет (селект) (2026-09-08) ✅
+
+**Status:** Implemented (type-check ✅ по нашим файлам; остаточные ошибки — pre-existing
+WIP 077-attachments / TelegramDeepLinkRouter; lint сломан на уровне окружения).
+
+**Решения (согласованы с владельцем):**
+- «Роль в доске» = кастомный текст (должность) → новая колонка `workers.role_title`
+  (миграция 079, ≤ 50 симв, nullable).
+- «Пресет доступов» = селект **Владелец доски / Администратор доски / Участник доски**
+  → существующий `workers.role` (owner/admin/member). Лейблы всегда полные, чтобы
+  читались как доступы, а не как должность. `viewer` в UI не показывается.
+- Формат отображения в карточке/шапке: **«Пресет · Роль»** («Администратор доски ·
+  Маркетолог»); без должности — просто пресет; агенты — «AI-агент».
+- Права: пресет меняет owner/admin, кроме owner-цели и себя; должность — свою всегда,
+  чужую owner/admin; должность owner'а — только он сам.
+
+**Changes:**
+1. `supabase/migrations/079_workers_role_title.sql` — `ALTER TABLE workers ADD COLUMN role_title`.
+2. `types/supabase.ts` — role_title в Row/Insert/Update (ручная регенерация).
+3. `src/lib/roles.ts` (новый) — PRESET_LABELS / EDITABLE_PRESETS / PRESET_DESCRIPTIONS /
+   formatWorkerRole() — единый источник лейблов.
+4. `PATCH /api/workers/[workerId]/access` (новый роут, по образцу revoke):
+   валидации preset ∈ {admin, member}, role_title ≤ 50; permission-матрица выше;
+   service-role update + broadcast `task_changed`.
+5. `/api/flow/metrics` + `/api/workspaces/my-data` — `role`/`role_title` в workers-ответе.
+6. `WorkerSheet.tsx` — таб «Доступы» рабочий: текстовый input роли, живой селект
+   пресета (read-only у owner и не-admin), «Сохранить информацию» активна при dirty,
+   PATCH + inline-ошибка; мёртвые ROLE_DISPLAY/SelectField удалены.
+7. `page.tsx` — roleLabel из formatWorkerRole (хардкод «Участник команды» удалён),
+   currentWorkerId + onSaveSuccess (optimistic update sheet + refreshMetrics).
+8. `DataContext.tsx` — FlowMetrics.workers + role/role_title; worker-заглушка role_title: null.
+
+**Валидация:** `npm run type-check` — по затронутым файлам чисто (8 ошибок pre-existing
+вне скопа). `npm run lint` — сломан окружением (rushstack patch vs ESLint 9), pre-existing.
+
+**Next:** `supabase db push` на dev/проект; ручной smoke: смена пресета admin↔member,
+сохранение должности, 403-кейсы; потом commit `feat(flowboard): worker access tab`.
+
+---
 ## FEATURE: Move Task sheet + Переместить/Редактировать в TaskViewEdit (2026-09-08) ✅
 
 **Status:** Completed (type-check ✅; lint сломан на уровне окружения — pre-existing).

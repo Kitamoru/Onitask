@@ -15,6 +15,7 @@ import type {
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
+import { formatWorkerRole } from '@/lib/roles';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -63,8 +64,6 @@ function FlowBoardPageContent() {
   });
   const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
-
-
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -163,7 +162,9 @@ function FlowBoardPageContent() {
           spPerDay: 3.5,
           trendUp: true,
           activeDays: 5,
-          roleLabel: 'Участник команды',
+          roleLabel: formatWorkerRole(w.role, w.role_title),
+          role: w.role,
+          roleTitle: w.role_title,
           overloaded: w.status === 'overloaded',
           tasks: tasksToWorkerTaskList(workerTasks),
           type: 'human',
@@ -185,6 +186,8 @@ function FlowBoardPageContent() {
           trendUp: true,
           activeDays: 5,
           roleLabel: 'AI-агент',
+          role: w.role,
+          roleTitle: w.role_title,
           overloaded: w.status === 'overloaded',
           tasks: tasksToWorkerTaskList(workerTasks),
         } as AgentCardData;
@@ -203,7 +206,9 @@ function FlowBoardPageContent() {
         spPerDay: w.type === 'agent' ? 5.0 : 3.5,
         trendUp: true,
         activeDays: 5,
-        roleLabel: w.type === 'agent' ? 'AI-агент' : 'Участник команды',
+        roleLabel: w.type === 'agent' ? 'AI-агент' : formatWorkerRole(w.role, w.role_title),
+        role: w.role,
+        roleTitle: w.role_title,
         overloaded: w.status === 'overloaded',
         tasks: tasksToWorkerTaskList(workerTasks),
         type: w.type,
@@ -497,8 +502,16 @@ function FlowBoardPageContent() {
           workspaceId={state.activeWorkspaceId ?? undefined}
           workspaceName={workspaceName}
           canRevoke={canRevoke}
+          currentWorkerId={authData?.worker?.id}
           onRevokeSuccess={() => {
             setSelectedWorker(null);
+            refreshMetrics({ force: true });
+          }}
+          onSaveSuccess={(updated) => {
+            // Optimistic: обновляем открытый sheet + карточки, затем подтверждаем refresh'ем
+            setSelectedWorker(
+              (prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev),
+            );
             refreshMetrics({ force: true });
           }}
         />

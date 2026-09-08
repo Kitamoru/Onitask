@@ -188,6 +188,37 @@ export async function revokeWorkerAccess(
 }
 
 /**
+ * PATCH /api/workers/:workerId/access — Save access preset and/or role title
+ * (вкладка «Доступы» боттом-шита воркера).
+ *
+ * @param body.preset      — пресет доступов: 'admin' | 'member' (owner не выдаётся)
+ * @param body.role_title  — кастомная «Роль в доске» (строка ≤ 50 симв. или null)
+ */
+export async function saveWorkerAccess(
+  workerId: string,
+  body: { preset?: 'admin' | 'member'; role_title?: string | null },
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/workers/${workerId}/access`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData, ...body }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Save failed' };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.
  */

@@ -1490,6 +1490,7 @@ export type Database = {
           id: string
           is_active: boolean
           role: string | null
+          role_title: string | null
           source_id: string
           type: string
           workspace_id: string
@@ -1500,6 +1501,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           role?: string | null
+          role_title?: string | null
           source_id: string
           type: string
           workspace_id: string
@@ -1510,6 +1512,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           role?: string | null
+          role_title?: string | null
           source_id?: string
           type?: string
           workspace_id?: string

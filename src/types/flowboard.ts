@@ -87,6 +87,10 @@ export interface AgentCardData {
   activeDays: number;
   /** Role label */
   roleLabel: string;
+  /** Preset access role in workspace: owner/admin/member (null for agents) */
+  role?: string | null;
+  /** Custom role title (должность), e.g. "Маркетолог" */
+  roleTitle?: string | null;
   /** Whether agent is overloaded */
   overloaded?: boolean;
   /** List of active task references */
@@ -110,8 +114,12 @@ export interface WorkerCardData {
   trendUp: boolean;
   /** Active days count */
   activeDays: number;
-  /** Role label, e.g. "🎪 Лидер команды" */
+  /** Role label, e.g. "Администратор доски · Маркетолог" */
   roleLabel: string;
+  /** Preset access role in workspace: owner/admin/member (null for agents) */
+  role?: string | null;
+  /** Custom role title (должность), e.g. "Маркетолог" */
+  roleTitle?: string | null;
   /** Whether worker is overloaded */
   overloaded?: boolean;
   /** List of active task references */
@@ -195,6 +203,10 @@ export interface WorkerMetricData {
   display_name: string;
   /** Worker type: human or agent */
   type: 'human' | 'agent';
+  /** Preset access role: owner/admin/member/viewer (null for agents) */
+  role: string | null;
+  /** Custom role title (должность), e.g. "Маркетолог" */
+  role_title: string | null;
   /** Cognitive load (0–3 scale) */
   cognitive_load: number;
   /** Overload threshold */

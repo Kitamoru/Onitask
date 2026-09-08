@@ -87,6 +87,8 @@ export interface FlowMetrics {
     id: string;
     display_name: string;
     type: 'human' | 'agent';
+    role: string | null;
+    role_title: string | null;
     status: 'ok' | 'overloaded';
     cognitive_load: number;
   }>;
@@ -513,6 +515,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       source_id: '',
       type: 'human',
       role: authData.worker.role,
+      role_title: null,
       display_name: authData.worker.display_name,
       is_active: true,
       created_at: new Date().toISOString(),

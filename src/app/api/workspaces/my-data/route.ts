@@ -55,6 +55,8 @@ interface FlowMetricsResponse {
     id: string;
     display_name: string;
     type: 'human' | 'agent';
+    role: string | null;
+    role_title: string | null;
     status: 'ok' | 'overloaded';
     cognitive_load: number;
   }>;
@@ -397,6 +399,8 @@ function computeMetricsFromData(
       id: w.id,
       display_name: w.display_name || w.id.slice(0, 8),
       type: w.type as 'human' | 'agent',
+      role: w.role,
+      role_title: w.role_title,
       cognitive_load,
       status: cognitive_load >= 3 ? 'overloaded' : 'ok',
     };
