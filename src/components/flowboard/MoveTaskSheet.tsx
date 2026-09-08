@@ -83,15 +83,13 @@ export function MoveTaskSheet({
         {/* Header — task context (full_id + title) */}
         <div className="flex flex-col gap-1">
           <h3 className="text-[17px] font-semibold text-text">Переместить задачу</h3>
-          <div className="flex items-baseline gap-1.5">
-            <span className="font-mono text-sm font-medium text-text-secondary">
-              {task.full_id}
-            </span>
-            <span className="text-sm text-text-secondary">·</span>
-            <span className="truncate text-sm font-medium text-text-secondary">
-              {task.title}
-            </span>
-          </div>
+          {/* Number on its own line, full title below — no truncation */}
+          <span className="font-mono text-sm font-medium text-text-secondary">
+            {task.full_id}
+          </span>
+          <p className="text-sm font-medium leading-snug text-text">
+            {`· ${task.title ?? ''}`}
+          </p>
         </div>
 
         {/* Column selector blocks */}
@@ -111,7 +109,7 @@ export function MoveTaskSheet({
                 className={`w-full cursor-pointer rounded-lg border-2 bg-transparent p-3 text-left transition-colors ${
                   isActive
                     ? 'border-white'
-                    : 'border-border hover:border-line-strong'
+                    : 'border-line hover:border-white/30'
                 }`}
                 aria-pressed={isActive}
               >
@@ -149,7 +147,7 @@ export function MoveTaskSheet({
           disabled={isSameAsTarget}
           className="w-full"
         >
-          {`Переместить в → ${MOVE_COLUMN_LABELS[selectedColumn] ?? selectedColumn}`}
+          {`Переместить → ${MOVE_COLUMN_LABELS[selectedColumn] ?? selectedColumn}`}
         </Button>
       </div>
     </BottomSheet>
