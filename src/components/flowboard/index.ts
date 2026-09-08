@@ -4,6 +4,8 @@ export { OnboardingModal } from './OnboardingModal';
 export { InviteModal } from './InviteModal';
 export { ColumnTasksSheet } from './ColumnTasksSheet';
 export { TaskViewEdit } from './TaskViewEdit';
+export { MoveTaskSheet } from './MoveTaskSheet';
+export type { MoveTaskSheetProps } from './MoveTaskSheet';
 export { TaskCommentsPanel } from './TaskCommentsPanel';
 export { SwipeDebugPanel } from './SwipeDebugPanel';
 export type {

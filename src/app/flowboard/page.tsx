@@ -483,6 +483,7 @@ function FlowBoardPageContent() {
             dispatch({ type: 'REMOVE_TASK', payload: taskId });
             setSelectedTask(null);
           }}
+          onMoveTask={handleMoveTask}
           currentUserId={authData?.worker?.id}
         />
 

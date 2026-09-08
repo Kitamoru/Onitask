@@ -1,4 +1,59 @@
 # Active Context
+
+## FEATURE: Move Task sheet + Переместить/Редактировать в TaskViewEdit (2026-09-08) ✅
+
+**Status:** Completed (type-check ✅; lint сломан на уровне окружения — pre-existing).
+
+**Changes:**
+1. `MoveTaskSheet.tsx` (новый): BottomSheet `stacked`, 4 колонки (MOVE_COLUMN_ORDER),
+   круги с COLUMN_ACCENTS, amber confirm «Переместить в → <target>», disabled при
+   target = current, хаптики. Экспортирован из `flowboard/index.ts`.
+2. `TaskViewEdit.tsx`: проп `onMoveTask?: (taskId, newColumn) => void`; состояние
+   moveSheetOpen/moveTargetColumn + sync useEffect + handleMoveConfirm (useCallback:
+   onMoveTask → закрыть оба шита); блок действий: Переместить (amber Button) +
+   Редактировать (NotchedPanel corner=action, fill var(--color-bg), зелёный
+   градиент borderGradient grad-add-from/to); рендер `<MoveTaskSheet>` рядом с
+   WorkerSelectSheet (вне BottomSheet).
+3. `page.tsx`: `onMoveTask={handleMoveTask}` на `<TaskViewEdit>` (строка ~486).
+
+**Валидация:** `npm run type-check` — чисто по нашим файлам; единственная ошибка —
+pre-existing `lib/shared/attachments.ts(361)` (незавершённая фича 077, вне скопа).
+Все правки применены точечными `.Replace`-эквивалентами с точными отступами —
+дрейфа нет (git diff: только добавленные строки, 66+/4-).
+
+**Next:** ручной smoke-тест в TWA (Переместить → выбор колонки → confirm →
+оптимистичный перенос + rollback при ошибке). Commit: `feat(flowboard): move task sheet`.
+
+---
+## FIX: бесконечная загрузка для нового пользователя (2026-09-07) ✅
+
+**Проблема:** новый пользователь (без профиля) открывал TWA по ссылке → вечный
+GlobalLoader. Причина: у юзера без workspace `targetWorkspaceId = null || ''` →
+`loadBoardsData()` никогда не вызывается → `SET_FIRST_LOAD_DONE` не диспатчится →
+`AuthLoader` держит GlobalLoader (z-9999) вечно и маскирует экраны ошибок.
+
+**Фикс (3 точки):**
+1. `AuthLoader.tsx`: условие `!isLoading && (firstLoadDone || dataError || error)` +
+   safety fallback 10s.
+2. `DataContext.tsx` авто-эффект: ветка `else` (нет workspace) → `SET_FIRST_LOAD_DONE`.
+3. `DataContext.tsx loadBoardsData`: `SET_FIRST_LOAD_DONE` в catch и в early-return
+   (нет initData) — error-экраны с retry стали доступны.
+
+**Валидация:** `npm run type-check` — только pre-existing ошибка
+`lib/shared/attachments.ts(361)` (фича 077, вне скопа).
+`tests/api/init.test.ts` падает pre-existing: тест мокает `@/lib/telegramAuth`,
+а роут импортирует `src/lib/telegram/validate` → guard 500 (env). Вне скопа.
+
+**Данные:** профиль друга (telegram_id=43105240, Egor_Popov,
+`6eb9bbee-50f4-4d13-84fb-ee9242296168`) + worker `f061b4e1` (ws «Еж супер молодец»)
+удалены на `atarmvtzvlwhkheeabeb` для retest. Остатков нет (profiles/workers/auth = 0).
+
+**Коммит:** `fix(onboarding): infinite GlobalLoader for new users without workspace`
+(только AuthLoader.tsx + DataContext.tsx; рабочая копия содержит незакоммиченную
+фичу attachments/077 — не тронута).
+
+---
+
 ## FIX INV-08: workspace_settings гарантия на уровне БД (2026-09-07) ✅
 
 **Проблема:** миграция 042 дропнула `workspace_settings.mcp_api_keys`, но

@@ -15,13 +15,14 @@
  *
  * Segments: "Общее" (active) / "Комментарии" (inactive — later).
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import {
   TextInput,
   TextArea,
   Button,
+  NotchedPanel,
   Stepper,
   ToggleSwitch,
   Segments,
@@ -34,6 +35,7 @@ import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask, deleteTask } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
+import { MoveTaskSheet } from './MoveTaskSheet';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 
 export interface TaskViewEditProps {
@@ -51,6 +53,8 @@ export interface TaskViewEditProps {
   onSave?: (task: TaskEntity) => void;
   /** Called immediately after successful task deletion (before onClose) */
   onDelete?: (taskId: string) => void;
+  /** Callback when the user moves the task to a different column (optimistic — called immediately) */
+  onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Current user's worker ID (for highlighting own comments on the right) */
   currentUserId?: string;
   /** Custom className */
@@ -65,6 +69,7 @@ export function TaskViewEdit({
   mode = 'view',
   onSave,
   onDelete,
+  onMoveTask,
   currentUserId,
   className = '',
 }: TaskViewEditProps) {
@@ -96,6 +101,28 @@ export function TaskViewEdit({
   // Worker select sheets
   const [assigneeSheetOpen, setAssigneeSheetOpen] = useState(false);
   const [reviewerSheetOpen, setReviewerSheetOpen] = useState(false);
+
+  // Move task sheet (Переместить): target column picked in MoveTaskSheet
+  const currentTaskColumn = task?.column ?? 'backlog';
+  const [moveSheetOpen, setMoveSheetOpen] = useState(false);
+  const [moveTargetColumn, setMoveTargetColumn] = useState<string>(currentTaskColumn);
+
+  // Keep the move target in sync when the sheet reopens on a freshly-selected task
+  useEffect(() => {
+    if (!open) return;
+    setMoveTargetColumn(task?.column ?? 'backlog');
+  }, [open, task?.column, task?.id]);
+
+  const handleMoveConfirm = useCallback(
+    (targetColumn: string) => {
+      if (!task?.id || !onMoveTask) return;
+      onMoveTask(task.id, targetColumn);
+      // Optimistic local sync: close so the stale view doesn't linger
+      setMoveSheetOpen(false);
+      onClose();
+    },
+    [task, onMoveTask, onClose],
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -512,14 +539,39 @@ export function TaskViewEdit({
 
           {/* Actions — only on the «Общее» tab (irrelevant in comments) */}
           {tab === 'general' && isView && !isNew && (
-            <div className="mt-2">
+            <div className="mt-2 flex flex-col gap-2">
+              {/* Move — amber solid, opens the MoveTaskSheet */}
               <Button
                 variant="solid"
-                onClick={() => setInternalMode('edit')}
+                onClick={() => {
+                  setMoveTargetColumn(task?.column ?? 'backlog');
+                  setMoveSheetOpen(true);
+                }}
                 className="w-full"
               >
-                Редактировать
+                Переместить
               </Button>
+              {/* Edit — black fill + green gradient border (Добавить-style) */}
+              <NotchedPanel
+                corner="action"
+                notch={8}
+                borderWidth={1.5}
+                borderGradient={[
+                  'var(--color-grad-add-from)',
+                  'var(--color-grad-add-to)',
+                ]}
+                fill="var(--color-bg)"
+                className="h-10 w-full"
+                contentClassName="h-full w-full"
+              >
+                <button
+                  type="button"
+                  onClick={() => setInternalMode('edit')}
+                  className="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
+                >
+                  Редактировать
+                </button>
+              </NotchedPanel>
             </div>
           )}
           {tab === 'general' && isEdit && (
@@ -587,6 +639,15 @@ export function TaskViewEdit({
         }}
         title="Выберите проверяющего"
         stacked
+      />
+      <MoveTaskSheet
+        open={moveSheetOpen}
+        onClose={() => setMoveSheetOpen(false)}
+        task={task as TaskEntity}
+        currentColumn={currentTaskColumn}
+        selectedColumn={moveTargetColumn}
+        onSelect={setMoveTargetColumn}
+        onConfirm={handleMoveConfirm}
       />
     </>
   );
