@@ -535,23 +535,32 @@ export default function McpSettingsPage() {
                 {[0, 1].map((i) => (
                   <div
                     key={i}
-                    className="relative w-full px-3 py-3 animate-pulse"
+                    className="relative w-full animate-pulse"
                     style={{
-                      backgroundColor: 'var(--color-surface)',
-                      borderRadius: 6,
-                      border: '1px solid var(--color-line)',
                       clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+                      borderRadius: '0 6px 0 6px',
+                      background: 'var(--color-line)',
+                      padding: '1px',
                     }}
                   >
-                    <div className="flex flex-col gap-1">
-                      <div
-                        className="h-4 w-3/4 rounded-sm"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
-                      />
-                      <div
-                        className="h-3 w-1/2 rounded-sm"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
-                      />
+                    <div
+                      className="w-full px-3 py-3"
+                      style={{
+                        clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)',
+                        borderRadius: '0 6px 0 6px',
+                        backgroundColor: 'var(--color-surface)',
+                      }}
+                    >
+                      <div className="flex flex-col gap-1">
+                        <div
+                          className="h-4 w-3/4 rounded-sm"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                        />
+                        <div
+                          className="h-3 w-1/2 rounded-sm"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
