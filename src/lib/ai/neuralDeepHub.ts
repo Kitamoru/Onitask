@@ -33,7 +33,7 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'qwen3.6-35b-a3b-noreason',
+        model: 'qwen3.8-27b-noreason',
         messages: [
           { role: 'system', content: 'Respond ONLY with valid JSON. No markdown, no explanations, no code fences.' },
           { role: 'user', content: options.prompt },
