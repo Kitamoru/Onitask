@@ -1,4 +1,23 @@
 # Active Context
+## CLEANUP: Фаза 1 — удаление зомби-кода и неиспользуемых пакетов (2026-09-09) ✅
+
+**Status:** Done. `npm run type-check` — 25 ошибок, ВСЕ в `src/app/api/tasks/[id]/attachments/route.ts`
+(pre-existing WIP 077-attachments, не связано с очисткой). Регрессий от удаления нет.
+
+**Удалены файлы (8):**
+- `src/components/ui/Bottom` — легаси-дубликат BottomSheet.tsx (без импортов)
+- `src/components/ui/Date` — легаси-дубликат DateRangeField.tsx (без импортов)
+- `src/components/ui/DateRange` — легаси-дубликат DateRangeSheet.tsx (без импортов)
+- `src/components/ui/badge.tsx` — Badge без импортов (используется desk-ui/CountBadge)
+- `src/hooks/useKanban.ts`, `src/hooks/useTeamMetrics.ts`, `src/hooks/useAiQuota.ts` — пустые заглушки без импортов
+- `src/lib/ai/quota.ts` — стабы «Not implemented» без импортов
+
+**Сохранены (по решению владельца):** `src/lib/urgency.ts`, `src/lib/fractionalIndex.ts`.
+
+**Удалены пакеты (npm uninstall, -38 пакетов):** @tanstack/react-query, zustand, vaul,
+@dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities, framer-motion, wavesurfer.js, shadcn-ui.
+
+
 
 ## FEATURE: Передача владения доской + выход из доски (2026-09-08) ✅
 
