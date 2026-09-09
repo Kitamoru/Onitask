@@ -192,6 +192,14 @@ export async function POST(request: NextRequest) {
     const finalTitle = parsed.rewritten_title?.trim() || parsed.title;
     const finalDescription = parsed.rewritten_description?.trim() || '';
 
+    // Валидация: title обязателен (CHECK constraint tasks_title_check)
+    if (!finalTitle || !finalTitle.trim()) {
+      return NextResponse.json(
+        { error: 'При создании заголовка задачи произошла ошибка. Пожалуйста, попробуйте ещё раз.' },
+        { status: 400 }
+      );
+    }
+
     // Resolve created_by: profile → worker in this workspace
     let createdBy: string | null = null;
     if (profileId) {
