@@ -1,4 +1,19 @@
 # Active Context
+## PERF: N+1 fix — batch enrichment в GET /api/tasks (2026-09-09) ✅
+
+**Status:** Done (type-check ✅ — только pre-existing WIP-ошибки attachments).
+
+**Файл:** `src/app/api/tasks/route.ts`
+- GET: `for`-цикл `await enrichTaskRow(task)` (2×N запросов) → один вызов
+  `enrichTaskRowsBatch()` (2 групповых запроса: getWorkspaceInfos + getWorkerNames `.in(...)`).
+- Импорт: + `enrichTaskRowsBatch`, − `type EnrichedTask` (неиспользуемый);
+  `enrichTaskRow` оставлен (используется в POST).
+- Формат ответа `{ tasks, count }` и error-handling не изменились.
+- Маппинг полей идентичен enrichTaskRow (проверено: те же fallback'и full_id/task_number/names).
+
+**Эффект:** 50 задач = 100 запросов → 2 запроса.
+
+
 ## CLEANUP: Фаза 1 — удаление зомби-кода и неиспользуемых пакетов (2026-09-09) ✅
 
 **Status:** Done. `npm run type-check` — 25 ошибок, ВСЕ в `src/app/api/tasks/[id]/attachments/route.ts`

@@ -21,7 +21,7 @@ import {
   getDefaultWorkspaceId,
   isWorkspaceMember,
 } from '../../../../lib/api-auth';
-import { enrichTaskRow, type EnrichedTask } from '../../../../lib/taskEnrichment';
+import { enrichTaskRow, enrichTaskRowsBatch } from '../../../../lib/taskEnrichment';
 import type { Database } from '../../../../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
@@ -84,14 +84,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Handle async enrichment
-    const finalTasks: EnrichedTask[] = [];
-    for (const task of (data ?? []) as TasksRow[]) {
-      finalTasks.push(await enrichTaskRow(task));
-    }
+    // Batch enrichment (N+1 fix): workspace + worker lookups в 2 групповых запроса
+    // вместо 2×N одиночных. Маппинг полей идентичен enrichTaskRow.
+    const enriched = await enrichTaskRowsBatch((data ?? []) as TasksRow[]);
 
     return NextResponse.json({
-      tasks: finalTasks,
+      tasks: enriched,
       count,
     });
   } catch (err) {
