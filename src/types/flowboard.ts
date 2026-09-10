@@ -357,3 +357,57 @@ export interface PatchTaskResponse {
   /** Warning message if version mismatch */
   warning?: string;
 }
+
+// ─── Task Attachments ────────────────────────────────────────────────────────
+
+/**
+ * Attachment data returned from /api/tasks/[id]/attachments
+ * (общий контракт для GET и POST-ответов).
+ *
+ * Поля `author_type` и `source` присутствуют в GET-ответе, но могут
+ * отсутствовать в POST-ответе (например, при загрузке из TWA сразу
+ * после создания записи) — поэтому они optional.
+ */
+export interface TaskAttachmentData {
+  /** Attachment UUID */
+  id: string;
+  /** File name */
+  filename: string;
+  /** MIME type */
+  mime_type: string;
+  /** Size in bytes */
+  size_bytes: number;
+  /** Signed download URL (TTL 1 hour) or null if signing failed */
+  url: string | null;
+  /** Created at ISO string */
+  created_at: string;
+  /** Author type — присутствует в GET-ответе, может отсутствовать в POST-ответе */
+  author_type?: 'human' | 'agent';
+  /** Source — присутствует в GET-ответе, может отсутствовать в POST-ответе */
+  source?: 'telegram' | 'twa' | 'mcp' | 'bot_notif';
+}
+
+/** GET /api/tasks/[id]/attachments response */
+export interface GetTaskAttachmentsResponse {
+  success: boolean;
+  attachments: TaskAttachmentData[];
+}
+
+/** POST /api/tasks/[id]/attachments response */
+export interface UploadTaskAttachmentsResponse {
+  success: boolean;
+  attachments: Array<{
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    url: string | null;
+    created_at: string;
+  }>;
+}
+
+/** DELETE /api/tasks/[id]/attachments/[attachmentId] response */
+export interface DeleteTaskAttachmentResponse {
+  success: boolean;
+  error?: string;
+}
