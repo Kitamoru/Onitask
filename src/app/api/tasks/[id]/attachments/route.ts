@@ -96,7 +96,7 @@ export async function POST(
     const { data: worker } = await supabase
       .from('workers')
       .select('id')
-      .eq('source_id', auth.profileId)
+      .eq('source_id', auth.profileId!)
       .eq('workspace_id', workspaceId)
       .eq('type', 'human')
       .maybeSingle();
