@@ -180,7 +180,7 @@ export function TaskViewEdit({
       setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
       setAttachmentsError(null);
     } else {
-      setAttachmentsError(res.error);
+      setAttachmentsError(res.error ?? null);
     }
     setDeletingId(null);
   };

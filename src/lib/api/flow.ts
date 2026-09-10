@@ -333,6 +333,27 @@ export async function uploadTaskAttachments(
   }
 }
 
+/** DELETE /api/tasks/:id/attachments/:attachmentId — удалить файл задачи. */
+export async function deleteTaskAttachment(
+  taskId: string,
+  attachmentId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const initData = getTelegramInitData();
+    const res = await fetch(`/api/tasks/${taskId}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+      headers: { 'x-init-data': initData },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Delete failed' };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 /**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.
