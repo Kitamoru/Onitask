@@ -1,4 +1,41 @@
 # Active Context
+# Active Context
+## BUGFIX: 404 на attachments DELETE/POST — конфликт корней App Router (2026-09-10) ✅
+
+**Симптом:** приложение падало 404 при работе с файлами задачи (upload/delete).
+
+**Root cause:** DELETE-роут был создан в корневом `app/api/tasks/[id]/attachments/[attachmentId]/route.ts`
+(6-level импорты `../../../../../../lib/...`), при том что весь App Router живёт в `src/app/`.
+Когда рядом есть `app/` и `src/app/`, Next.js 15 не может резолвить два корня → роуты из `src/app/api`
+падают 404.
+
+**Fix (3 файла):**
+- **Удалён** корневой `app/` целиком (содержал только сломанный роут).
+- **Создан** `src/app/api/tasks/[id]/attachments/[attachmentId]/route.ts` — тот же DELETE
+  (auth `extractInitData` + `isWorkspaceMember` по workspace задачи, storage best-effort,
+  манифест с фильтром `.eq('task_id', taskId)`), но 7-level импорты `../../../../../../../lib/...`.
+- **`src/lib/api/flow.ts`**: POST `uploadTaskAttachments` шёл без заголовка auth —
+  `extractInitData` не читает multipart-тело (только `x-init-data` header / JSON body).
+  Добавлен `headers: { 'x-init-data': initData }`. Поле `init_data` в FormData оставлено
+  (не вредит).
+
+**UI (TaskViewEdit.tsx)** — блок «📎 Файлы» в эталоне DocumentsCard уже реализован:
+NotchedPanel-строки + кнопка X (спиннер при удалении), полоса `uploadCount/uploadTotal`,
+CountBadge current/5, кнопка загрузки NotchedPanel field. `deleteTaskAttachment` в flow.ts
+был добавлен коммитом 9107391.
+
+**Валидация:** `npm run type-check` ✅ (EXIT 0). `npx vitest run`: workspaceContextCache 4/4 ✅;
+init.test 4 failed — pre-existing env-фейл (см. запись CLEANUP ниже), к фиксу отношения не имеет.
+`_diag.txt` / `tsc_out.txt` / `tsc_check.txt` удалены.
+
+**Урок:** при создании роутов проверять корень (`src/app`, не `app`) — и что `extractInitData`
+не покрывает multipart; для POST-загрузок заголовок обязателен.
+
+retry_count: 0. Блокеров нет.
+
+---
+## FILE-01..08: Файлы задач + коммуникация агент↔человек (2026-09-10) ✅
+
 ## FILE-01..08: Файлы задач + коммуникация агент↔человек (2026-09-10) ✅
 
 **Реализовано (TASKS.md Stage 14):**

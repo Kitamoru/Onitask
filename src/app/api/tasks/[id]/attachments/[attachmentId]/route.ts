@@ -3,23 +3,23 @@
 // Удаляет бинарник из Storage (best-effort) + строку манифеста.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '../../../../../../lib/supabase';
+import { createServerClient } from '../../../../../../../lib/supabase';
 import {
   authenticateRequest,
   extractInitData,
   isWorkspaceMember,
-} from '../../../../../../lib/api-auth';
+} from '../../../../../../../lib/api-auth';
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; attachmentId: string }> }
+  { params }: { params: Promise<{ id: string; attachmentId: string }> },
 ) {
   try {
     const auth = await authenticateRequest(await extractInitData(req));
     if (!auth.authenticated) {
       return NextResponse.json(
         { error: auth.error || 'Unauthorized' },
-        { status: auth.status || 401 }
+        { status: auth.status || 401 },
       );
     }
     const { id: taskId, attachmentId } = await params;
@@ -42,7 +42,7 @@ export async function DELETE(
     if (
       !(await isWorkspaceMember(
         auth.profileId!,
-        attachment.workspace_id as string
+        attachment.workspace_id as string,
       ))
     ) {
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
@@ -58,7 +58,7 @@ export async function DELETE(
       } catch (storageErr) {
         console.error(
           '[DELETE attachment] storage remove error:',
-          storageErr
+          storageErr,
         );
       }
     }

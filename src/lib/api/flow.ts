@@ -321,6 +321,7 @@ export async function uploadTaskAttachments(
 
     const res = await fetch(`/api/tasks/${taskId}/attachments`, {
       method: 'POST',
+      headers: { 'x-init-data': initData },
       body: formData,
     });
     const json = await res.json();
