@@ -17,6 +17,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import {
   TextInput,
@@ -28,16 +29,25 @@ import {
   Segments,
   SectionHeader,
   Card,
+  CountBadge,
 } from '@/components/ui/desk-ui';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask, deleteTask } from '@/lib/api/flow';
-import { getTaskAttachments, uploadTaskAttachments, type TaskAttachment } from '@/lib/api/flow';
+import {
+  getTaskAttachments,
+  uploadTaskAttachments,
+  deleteTaskAttachment,
+  type TaskAttachment,
+} from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
+
+/** Максимальное число файлов на задачу (синхронизировано с backend-лимитом) */
+const MAX_ATTACHMENTS = 5;
 
 export interface TaskViewEditProps {
   /** Whether the bottom sheet is open */
@@ -102,27 +112,77 @@ export function TaskViewEdit({
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Прогресс и удаление (паттерн DocumentsCard)
+  const [uploading, setUploading] = useState(false);
+  const [uploadCount, setUploadCount] = useState(0);
+  const [uploadTotal, setUploadTotal] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadAttachments = useCallback(async () => {
-    if (!task?.id) return;
+    if (!task?.id) {
+      setAttachments([]);
+      setAttachmentsError(null);
+      return;
+    }
     setAttachmentsLoading(true);
     const res = await getTaskAttachments(task.id);
     setAttachments(res.attachments ?? []);
     setAttachmentsError(res.error);
     setAttachmentsLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id]);
 
   const handleAttachFiles = async (files: FileList | null) => {
     if (!files || !task?.id) return;
-    const list = Array.from(files);
-    const res = await uploadTaskAttachments(task.id, list);
-    if (res.error) {
-      setAttachmentsError(res.error);
-    } else {
-      setAttachments((prev) => [...prev, ...res.attachments]);
-      setAttachmentsError(null);
+
+    const all = Array.from(files);
+    const remaining = Math.max(0, MAX_ATTACHMENTS - attachments.length);
+    const list = all.slice(0, remaining);
+
+    if (list.length === 0) {
+      setAttachmentsError(`Достигнут лимит ${MAX_ATTACHMENTS} файлов`);
+      return;
     }
+
+    setUploading(true);
+    setUploadCount(0);
+    setUploadTotal(list.length);
+    setAttachmentsError(null);
+
+    let lastError: string | null = null;
+    // Каскадная загрузка с прогрессом (uploadCount/uploadTotal)
+    for (let i = 0; i < list.length; i++) {
+      const res = await uploadTaskAttachments(task.id, [list[i]]);
+      if (res.error) {
+        lastError = res.error;
+      } else {
+        setAttachments((prev) => [...prev, ...res.attachments]);
+      }
+      setUploadCount(i + 1);
+    }
+
+    setUploading(false);
+
+    // Приоритет сообщений: усечение важнее частной ошибки
+    if (all.length > remaining) {
+      setAttachmentsError(
+        `Прикреплено ${list.length} из ${all.length} — лимит ${MAX_ATTACHMENTS} файлов`,
+      );
+    } else if (lastError) {
+      setAttachmentsError(lastError);
+    }
+  };
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!task?.id || deletingId) return;
+    setDeletingId(attachmentId);
+    const res = await deleteTaskAttachment(task.id, attachmentId);
+    if (res.success) {
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+      setAttachmentsError(null);
+    } else {
+      setAttachmentsError(res.error);
+    }
+    setDeletingId(null);
   };
 
   // Assignment state
@@ -170,7 +230,7 @@ export function TaskViewEdit({
       setShowDeleteConfirm(false);
       loadAttachments();
     }
-  }, [open, mode, initialTab]);
+  }, [open, mode, initialTab, loadAttachments]);
 
   // Sync state when task changes
   useEffect(() => {
@@ -205,6 +265,7 @@ export function TaskViewEdit({
           title: title.trim(),
           description: description || undefined,
           column: 'backlog',
+          story_points: storyPoints,
           cognitive_weight: cognitiveWeight,
           deadline: deadline ? deadline.toISOString() : undefined,
         });
@@ -220,6 +281,7 @@ export function TaskViewEdit({
         const patch: Parameters<typeof patchTask>[1] = {
           title: title.trim(),
           description: description || undefined,
+          story_points: storyPoints,
           cognitive_weight: cognitiveWeight,
           deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
@@ -234,6 +296,8 @@ export function TaskViewEdit({
         if (result.task) {
           onSave?.(result.task);
           onClose();
+        } else if (result.warning) {
+          setError(result.warning);
         }
       }
     } catch (err) {
@@ -271,12 +335,8 @@ export function TaskViewEdit({
   const reviewerWorker = findWorker(reviewerId);
 
   // Humans and AI agents are both assignable (agents receive tasks via MCP)
-  const availableForAssignee = workers.filter(
-    (w) => w.id !== reviewerId,
-  );
-  const availableForReviewer = workers.filter(
-    (w) => w.id !== assignedTo,
-  );
+  const availableForAssignee = workers.filter((w) => w.id !== reviewerId);
+  const availableForReviewer = workers.filter((w) => w.id !== assignedTo);
 
   // Confirm вне BottomSheet: fixed внутри transform-шита цепляется к нему,
   // а не к viewport — после скролла длинной задачи модалку не видно.
@@ -333,6 +393,8 @@ export function TaskViewEdit({
       document.body,
     );
 
+  const attachLimitReached = attachments.length >= MAX_ATTACHMENTS;
+
   return (
     <>
       <BottomSheet open={open} onClose={onClose}>
@@ -354,7 +416,7 @@ export function TaskViewEdit({
           {/* Комментарии tab (AGENT-08): feed + composer */}
           {tab === 'comments' && task?.id && (
             <div className="h-[60vh] min-h-0">
-                            <TaskCommentsPanel
+              <TaskCommentsPanel
                 taskId={task.id}
                 workers={workers.map((w) => ({
                   id: w.id,
@@ -369,241 +431,342 @@ export function TaskViewEdit({
           {/* General sections — only on the «Общее» tab */}
           {tab === 'general' && (
             <>
+              {/* Ключевой контекст */}
+              <section>
+                <SectionHeader title="Ключевой контекст" />
+                <div className="flex flex-col gap-3">
+                  <TextArea
+                    value={title}
+                    onChange={(v) => setTitle(v)}
+                    placeholder="Название задачи"
+                    disabled={isView}
+                    maxLength={500}
+                    corner="field"
+                  />
+                  <TextArea
+                    value={description}
+                    onChange={setDescription}
+                    placeholder="Описание задачи"
+                    disabled={isView}
+                    maxLength={5000}
+                    corner="field"
+                  />
+                  <SingleDateField
+                    date={deadline}
+                    onOpen={() => setIsDateSheetOpen(true)}
+                    placeholder="Дата окончания"
+                    disabled={isView}
+                  />
+                </div>
+              </section>
 
-          {/* Ключевой контекст */}
-          <section>
-            <SectionHeader title="Ключевой контекст" />
-            <div className="flex flex-col gap-3">
-              <TextArea
-                value={title}
-                onChange={(v) => setTitle(v)}
-                placeholder="Название задачи"
-                disabled={isView}
-                maxLength={500}
-                corner="field"
-              />
-              <TextArea
-                value={description}
-                onChange={setDescription}
-                placeholder="Описание задачи"
-                disabled={isView}
-                maxLength={5000}
-                corner="field"
-              />
-              <SingleDateField
-                date={deadline}
-                onOpen={() => setIsDateSheetOpen(true)}
-                placeholder="Дата окончания"
-                disabled={isView}
-              />
-            </div>
-          </section>
+              {/* Стоимость */}
+              <section>
+                <SectionHeader title="Стоимость" />
+                <div className="flex flex-col gap-3">
+                  <Stepper
+                    value={storyPoints}
+                    unitLabel={(n) => `${n} SP`}
+                    min={1}
+                    max={30}
+                    onChange={setStoryPoints}
+                    borderGradient={[
+                      'var(--color-grad-add-from)',
+                      'var(--color-grad-add-to)',
+                    ]}
+                    disabled={isView}
+                  />
+                  <Stepper
+                    value={cognitiveWeight}
+                    unitLabel={(n) => `${n} CW`}
+                    min={1}
+                    max={10}
+                    onChange={setCognitiveWeight}
+                    borderGradient={[
+                      'var(--color-grad-add-from)',
+                      'var(--color-grad-add-to)',
+                    ]}
+                    disabled={isView}
+                  />
+                </div>
+              </section>
 
-          {/* Стоимость */}
-          <section>
-            <SectionHeader title="Стоимость" />
-            <div className="flex flex-col gap-3">
-              <Stepper
-                value={storyPoints}
-                unitLabel={(n) => `${n} SP`}
-                min={1}
-                max={30}
-                onChange={setStoryPoints}
-                borderGradient={[
-                  'var(--color-grad-add-from)',
-                  'var(--color-grad-add-to)',
-                ]}
-                disabled={isView}
-              />
-              <Stepper
-                value={cognitiveWeight}
-                unitLabel={(n) => `${n} CW`}
-                min={1}
-                max={10}
-                onChange={setCognitiveWeight}
-                borderGradient={[
-                  'var(--color-grad-add-from)',
-                  'var(--color-grad-add-to)',
-                ]}
-                disabled={isView}
-              />
-            </div>
-          </section>
+              {/* Ответственность */}
+              <section>
+                <SectionHeader title="Ответственность" />
+                <div className="flex flex-col gap-3">
+                  {task?.created_by &&
+                    (() => {
+                      const creatorWorker =
+                        workers.find((w) => w.id === task.created_by) ??
+                        workers.find((w) => w.displayName === task.created_by);
+                      if (!creatorWorker) return null;
+                      return (
+                        <ParticipantCard
+                          id={creatorWorker.id}
+                          displayName={creatorWorker.displayName}
+                          avatarUrl={creatorWorker.avatarUrl}
+                          role="Постановщик"
+                        />
+                      );
+                    })()}
 
-          {/* Ответственность */}
-          <section>
-            <SectionHeader title="Ответственность" />
-            <div className="flex flex-col gap-3">
-              {task?.created_by &&
-                (() => {
-                  const creatorWorker =
-                    workers.find((w) => w.id === task.created_by) ??
-                    workers.find((w) => w.displayName === task.created_by);
-                  if (!creatorWorker) return null;
-                  return (
+                  {assigneeWorker && (
                     <ParticipantCard
-                      id={creatorWorker.id}
-                      displayName={creatorWorker.displayName}
-                      avatarUrl={creatorWorker.avatarUrl}
-                      role="Постановщик"
+                      id={assigneeWorker.id}
+                      displayName={assigneeWorker.displayName}
+                      avatarUrl={assigneeWorker.avatarUrl}
+                      role="Исполнитель"
                     />
-                  );
-                })()}
+                  )}
 
-              {assigneeWorker && (
-                <ParticipantCard
-                  id={assigneeWorker.id}
-                  displayName={assigneeWorker.displayName}
-                  avatarUrl={assigneeWorker.avatarUrl}
-                  role="Исполнитель"
-                />
-              )}
+                  {reviewerWorker && (
+                    <ParticipantCard
+                      id={reviewerWorker.id}
+                      displayName={reviewerWorker.displayName}
+                      avatarUrl={reviewerWorker.avatarUrl}
+                      role="Проверяющий"
+                    />
+                  )}
 
-              {reviewerWorker && (
-                <ParticipantCard
-                  id={reviewerWorker.id}
-                  displayName={reviewerWorker.displayName}
-                  avatarUrl={reviewerWorker.avatarUrl}
-                  role="Проверяющий"
-                />
-              )}
-
-              {!isView && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => setAssigneeSheetOpen(true)}
-                    className="w-full"
-                  >
-                    {assigneeWorker ? 'Сменить исполнителя' : 'Добавить исполнителя'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setReviewerSheetOpen(true)}
-                    className="w-full"
-                  >
-                    {reviewerWorker
-                      ? 'Сменить проверяющего'
-                      : 'Добавить проверяющего'}
-                  </Button>
-                </>
-              )}
-            </div>
-          </section>
-
-          {/* Дополнительный контекст */}
-          <section>
-            <SectionHeader title="Дополнительный контекст" />
-            <div className="flex flex-col gap-3">
-              <Card>
-                <div className="flex items-center justify-between">
-                  <span className="text-[15px] font-medium text-text">
-                    Чеклист задачи
-                  </span>
-                  <ToggleSwitch
-                    checked={checklistEnabled}
-                    onChange={setChecklistEnabled}
-                    label="Чеклист задачи"
-                    disabled={isView}
-                  />
-                </div>
-              </Card>
-              <Card>
-                <div className="flex items-center justify-between">
-                  <span className="text-[15px] font-medium text-text">
-                    Связанные задачи
-                  </span>
-                  <ToggleSwitch
-                    checked={relatedEnabled}
-                    onChange={setRelatedEnabled}
-                    label="Связанные задачи"
-                    disabled={isView}
-                  />
-                </div>
-              </Card>
-              <Card>
-                <div className="flex items-center justify-between">
-                  <span className="text-[15px] font-medium text-text">
-                    Внешние ссылки
-                  </span>
-                  <ToggleSwitch
-                    checked={linksEnabled}
-                    onChange={setLinksEnabled}
-                    label="Внешние ссылки"
-                    disabled={isView}
-                  />
-                </div>
-              </Card>
-            </div>
-          </section>
-
-          {/* 📎 Файлы задачи — всегда активный блок (FILE-05) */}
-          {!isNew && (
-          <section>
-            <SectionHeader title="Файлы" />
-            <Card>
-              <div className="flex flex-col gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.zip,.ogg,.mp3"
-                  className="hidden"
-                  onChange={(e) => {
-                    handleAttachFiles(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-                {attachments.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    {attachments.map((a) => (
-                      <div
-                        key={a.id}
-                        className="flex items-center gap-2 text-[13px] text-text-secondary"
+                  {!isView && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setAssigneeSheetOpen(true)}
+                        className="w-full"
                       >
-                        <span className="shrink-0">📎</span>
-                        {a.url ? (
-                          <a
-                            href={a.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="truncate underline"
-                          >
-                            {a.filename}
-                          </a>
-                        ) : (
-                          <span className="truncate">{a.filename}</span>
-                        )}
-                        <span className="text-text-faint">
-                          {(a.size_bytes / 1024).toFixed(0)} KB
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {attachmentsLoading && (
-                  <div className="text-[13px] text-text-faint">Загрузка…</div>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isView}
-                  className="w-full"
-                >
-                  {attachments.length > 0 ? 'Добавить файлы' : 'Прикрепить файлы'}
-                </Button>
-                {attachmentsError && (
-                  <div className="text-[12px] text-[var(--color-priority-red-text)]">
-                    {attachmentsError}
-                  </div>
-                )}
-                <div className="text-[12px] text-text-faint">
-                  До 5 файлов · до 2MB каждый · 3MB суммарно
+                        {assigneeWorker ? 'Сменить исполнителя' : 'Добавить исполнителя'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setReviewerSheetOpen(true)}
+                        className="w-full"
+                      >
+                        {reviewerWorker
+                          ? 'Сменить проверяющего'
+                          : 'Добавить проверяющего'}
+                      </Button>
+                    </>
+                  )}
                 </div>
-              </div>
-            </Card>
-          </section>
-          )}
+              </section>
+
+              {/* Дополнительный контекст */}
+              <section>
+                <SectionHeader title="Дополнительный контекст" />
+                <div className="flex flex-col gap-3">
+                  <Card>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[15px] font-medium text-text">
+                        Чеклист задачи
+                      </span>
+                      <ToggleSwitch
+                        checked={checklistEnabled}
+                        onChange={setChecklistEnabled}
+                        label="Чеклист задачи"
+                        disabled={isView}
+                      />
+                    </div>
+                  </Card>
+                  <Card>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[15px] font-medium text-text">
+                        Связанные задачи
+                      </span>
+                      <ToggleSwitch
+                        checked={relatedEnabled}
+                        onChange={setRelatedEnabled}
+                        label="Связанные задачи"
+                        disabled={isView}
+                      />
+                    </div>
+                  </Card>
+                  <Card>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[15px] font-medium text-text">
+                        Внешние ссылки
+                      </span>
+                      <ToggleSwitch
+                        checked={linksEnabled}
+                        onChange={setLinksEnabled}
+                        label="Внешние ссылки"
+                        disabled={isView}
+                      />
+                    </div>
+                  </Card>
+                </div>
+              </section>
+
+              {/* 📎 Файлы задачи — всегда активный блок (FILE-05, UI: DocumentsCard) */}
+              {!isNew && (
+                <section>
+                  <SectionHeader title="Файлы" />
+                  <Card>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.zip,.ogg,.mp3"
+                        hidden
+                        onChange={(e) => {
+                          handleAttachFiles(e.target.files);
+                          e.target.value = '';
+                        }}
+                      />
+
+                      {/* Скелетон при первичной загрузке списка */}
+                      {attachmentsLoading && attachments.length === 0 && (
+                        <div className="flex items-center gap-2 py-2 text-[13px] text-text-muted">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Загрузка файлов…
+                        </div>
+                      )}
+
+                      {/* Список файлов — NotchedPanel строки (как DocumentsCard) */}
+                      {attachments.length > 0 && (
+                        <ul className="flex flex-col gap-1.5">
+                          {attachments.map((a) => {
+                            const isDeleting = deletingId === a.id;
+                            return (
+                              <li key={a.id}>
+                                <NotchedPanel
+                                  corner="field"
+                                  fill="var(--color-surface)"
+                                  className="h-11"
+                                  contentClassName="flex h-full w-full items-center justify-between px-4 gap-2"
+                                >
+                                  {isDeleting ? (
+                                    <span className="flex items-center gap-2 text-[13px] text-text-muted">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      Удаление…
+                                    </span>
+                                  ) : (
+                                    <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                                      {a.url ? (
+                                        <a
+                                          href={a.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="truncate underline decoration-text-faint underline-offset-2"
+                                        >
+                                          {a.filename}
+                                        </a>
+                                      ) : (
+                                        <span className="truncate">{a.filename}</span>
+                                      )}
+                                      <span className="shrink-0 text-text-faint">
+                                        {formatBytes(a.size_bytes)}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {!isView && (
+                                    <button
+                                      type="button"
+                                      disabled={isDeleting}
+                                      onClick={() => handleDeleteAttachment(a.id)}
+                                      className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-[var(--color-priority-red-text)]"
+                                      aria-label="Удалить файл"
+                                    >
+                                      {isDeleting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <X className="h-4 w-4" />
+                                      )}
+                                    </button>
+                                  )}
+                                </NotchedPanel>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+
+                      {/* Полоса загрузки (как DocumentsCard uploadProgress/uploadTotal) */}
+                      {uploading && (
+                        <div className="rounded-lg bg-[var(--color-surface)] px-4 py-3">
+                          <div className="mb-1 flex items-center justify-between text-[13px]">
+                            <span className="text-text-muted">Загрузка…</span>
+                            <span className="text-text-faint">
+                              {uploadCount}/{uploadTotal}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-strong)]">
+                            <div
+                              className="h-full rounded-full bg-[var(--color-accent-amber)] transition-all duration-300"
+                              style={{
+                                width: `${
+                                  uploadTotal > 0
+                                    ? Math.round((uploadCount / uploadTotal) * 100)
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Кнопка загрузки — NotchedPanel field (как DocumentsCard) */}
+                      {!isView && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={uploading || attachLimitReached}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left disabled:opacity-40"
+                          >
+                            <NotchedPanel
+                              corner="field"
+                              fill="var(--color-surface)"
+                              className="h-full"
+                              contentClassName="flex h-full w-full items-center justify-between px-4"
+                            >
+                              <span className="truncate text-base text-text-faint">
+                                {uploading
+                                  ? 'Загрузка…'
+                                  : attachLimitReached
+                                  ? 'Достигнут лимит файлов'
+                                  : attachments.length > 0
+                                  ? 'Добавить файлы'
+                                  : 'Выберите файл'}
+                              </span>
+                              <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
+                            </NotchedPanel>
+                          </button>
+
+                          {/* Лимиты + счётчик (как DocumentsCard) */}
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="flex-1 text-[13px] leading-[1.4] text-text-muted">
+                              до {MAX_ATTACHMENTS} файлов, до 2 МБ каждый, 3 МБ суммарно
+                            </p>
+                            <CountBadge>
+                              {attachments.length}/{MAX_ATTACHMENTS}
+                            </CountBadge>
+                          </div>
+                        </>
+                      )}
+
+                      {/* View-режим без файлов */}
+                      {isView &&
+                        !attachmentsLoading &&
+                        attachments.length === 0 && (
+                          <p className="py-2 text-[13px] text-text-faint">
+                            Нет прикреплённых файлов
+                          </p>
+                        )}
+
+                      {attachmentsError && (
+                        <div className="flex items-center gap-1.5 text-[12px] text-[var(--color-priority-red-text)]">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {attachmentsError}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </section>
+              )}
             </>
           )}
 
@@ -737,4 +900,14 @@ export function TaskViewEdit({
       />
     </>
   );
+}
+
+/** Форматирование размера файла: 0 B / 512 B / 1.2 KB / 3.4 MB */
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
 }

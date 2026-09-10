@@ -90,6 +90,18 @@ export async function POST(
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
+    // Автор загрузки: резолвим worker текущего профиля в этом workspace.
+    // Если воркер не найден (напр. профиль без human-воркера) — null,
+    // колонка uploaded_by должна быть nullable.
+    const { data: worker } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('profile_id', auth.profileId)
+      .eq('workspace_id', workspaceId)
+      .eq('type', 'human')
+      .maybeSingle();
+    const uploadedBy = (worker?.id as string | undefined) ?? null;
+
     const form = await req.formData();
     const files = form.getAll('files') as File[];
     if (files.length === 0) return NextResponse.json({ error: 'files required' }, { status: 400 });
@@ -124,10 +136,17 @@ export async function POST(
       const uuidName = crypto.randomUUID().replace(/-/g, '');
       const storagePath = `${workspaceId}/${taskId}/${uuidName}.${ext}`;
 
+      // Одно и то же безопасное имя используем в БД и в ответе,
+      // чтобы UI после reload не увидел другое значение.
+      const safeName = sanitizeAttachmentFilename(f.name);
+
       const { error: upErr } = await supabase.storage
         .from('task-attachments')
         .upload(storagePath, bytes, { contentType: mime });
-      if (upErr) continue;
+      if (upErr) {
+        console.error('[POST attachments] storage upload error:', storagePath, upErr);
+        continue;
+      }
 
       const { data: row, error: insErr } = await supabase
         .from('task_attachments')
@@ -135,34 +154,64 @@ export async function POST(
           workspace_id: workspaceId,
           task_id: taskId,
           execution_id: null,
-          filename: sanitizeAttachmentFilename(f.name),
+          filename: safeName,
           mime_type: mime,
           size_bytes: bytes.length,
           storage_path: storagePath,
-          uploaded_by: null,
+          uploaded_by: uploadedBy,
           author_type: 'human',
           source: 'twa',
         })
         .select()
         .single();
       if (insErr) {
-        await supabase.storage.from('task-attachments').remove([storagePath]);
+        // Откатываем только что загруженный бинарник (best-effort),
+        // ошибку очистки логируем — иначе получим «сироту» в Storage без следов.
+        const { error: rmErr } = await supabase.storage
+          .from('task-attachments')
+          .remove([storagePath]);
+        if (rmErr) {
+          console.error(
+            '[POST attachments] orphan cleanup failed:',
+            storagePath,
+            rmErr
+          );
+        }
+        console.error('[POST attachments] manifest insert error:', insErr);
         continue;
       }
       const url = await createAttachmentSignedUrl(supabase, storagePath, 3600);
       saved.push({
         id: row.id,
-        filename: f.name,
+        filename: safeName,
         mime_type: mime,
         size_bytes: bytes.length,
         url,
         created_at: row.created_at,
       });
     }
+
+    // Ни один файл не сохранился — отдаём 500, чтобы клиент показал ошибку,
+    // а не «успех с пустым списком».
+    if (saved.length === 0) {
+      return NextResponse.json(
+        { error: 'upload_failed', detail: 'Не удалось загрузить ни один файл' },
+        { status: 500 },
+      );
+    }
+
+    // Частичный успех — 200 + warning, UI может показать предупреждение.
+    if (saved.length < files.length) {
+      return NextResponse.json({
+        success: true,
+        attachments: saved,
+        warning: `Загружено ${saved.length} из ${files.length}`,
+      });
+    }
+
     return NextResponse.json({ success: true, attachments: saved });
   } catch (err) {
     console.error('[POST attachments] error:', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }
-
