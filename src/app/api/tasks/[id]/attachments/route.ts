@@ -27,6 +27,7 @@ export async function GET(
     if (!auth.authenticated) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: auth.status || 401 });
     }
+    const profileId = auth.profileId!;
     const { id: taskId } = await params;
     const supabase = createServerClient();
 
@@ -36,7 +37,7 @@ export async function GET(
       .eq('id', taskId)
       .maybeSingle();
     if (!task) return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
-    if (!(await isWorkspaceMember(auth.profileId!, task.workspace_id as string))) {
+    if (!(await isWorkspaceMember(profileId, task.workspace_id as string))) {
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
@@ -76,6 +77,7 @@ export async function POST(
     if (!auth.authenticated) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: auth.status || 401 });
     }
+    const profileId = auth.profileId!;
     const { id: taskId } = await params;
     const supabase = createServerClient();
 
@@ -86,7 +88,7 @@ export async function POST(
       .maybeSingle();
     if (!task) return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
     const workspaceId = task.workspace_id as string;
-    if (!(await isWorkspaceMember(auth.profileId!, workspaceId))) {
+    if (!(await isWorkspaceMember(profileId, workspaceId))) {
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
@@ -96,7 +98,7 @@ export async function POST(
     const { data: worker } = await supabase
       .from('workers')
       .select('id')
-      .eq('source_id', auth.profileId!)
+      .eq('source_id', profileId)
       .eq('workspace_id', workspaceId)
       .eq('type', 'human')
       .maybeSingle();
