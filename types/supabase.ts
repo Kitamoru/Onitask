@@ -1044,6 +1044,163 @@ export type Database = {
           },
         ]
       }
+      task_attachments: {
+        Row: {
+          author_type: string
+          created_at: string
+          execution_id: string | null
+          filename: string
+          id: string
+          mime_type: string
+          size_bytes: number
+          source: string
+          storage_path: string
+          task_id: string
+          uploaded_by: string | null
+          workspace_id: string
+        }
+        Insert: {
+          author_type: string
+          created_at?: string
+          execution_id?: string | null
+          filename: string
+          id?: string
+          mime_type: string
+          size_bytes: number
+          source?: string
+          storage_path: string
+          task_id: string
+          uploaded_by?: string | null
+          workspace_id: string
+        }
+        Update: {
+          author_type?: string
+          created_at?: string
+          execution_id?: string | null
+          filename?: string
+          id?: string
+          mime_type?: string
+          size_bytes?: number
+          source?: string
+          storage_path?: string
+          task_id?: string
+          uploaded_by?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "task_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_attach_pending: {
+        Row: {
+          chat_id: number
+          created_at: string
+          expires_at: string
+          file_meta: Json
+          id: string
+          task_full_id: string | null
+          telegram_user_id: number
+          workspace_id: string
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          expires_at?: string
+          file_meta?: Json
+          id?: string
+          task_full_id?: string | null
+          telegram_user_id: number
+          workspace_id: string
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          expires_at?: string
+          file_meta?: Json
+          id?: string
+          task_full_id?: string | null
+          telegram_user_id?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_attach_pending_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_task_messages: {
+        Row: {
+          chat_id: number
+          created_at: string
+          id: string
+          message_id: number
+          task_id: string
+          workspace_id: string
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          id?: string
+          message_id: number
+          task_id: string
+          workspace_id: string
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          id?: string
+          message_id?: number
+          task_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_task_messages_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_task_messages_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_events: {
         Row: {
           consolidated: boolean

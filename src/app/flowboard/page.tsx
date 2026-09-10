@@ -64,6 +64,10 @@ function FlowBoardPageContent() {
   });
   const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
+  // FILE-03: deep-link «Обсудить задачу» → открыть вкладку «Комментарии»
+  const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
+
+
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
@@ -85,9 +89,13 @@ function FlowBoardPageContent() {
     const task = tasks.find(matchTask);
     if (task) {
       setSelectedTask(task);
+      // FILE-03: ?tab=comments → открыть вкладку «Комментарии»
+      const tabParam = searchParams.get('tab');
+      setOpenTaskTab(tabParam === 'comments' ? 'comments' : 'general');
       // Clean URL: remove ?open_task=
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open_task');
+      params.delete('tab');
       const cleanQuery = params.toString();
       router.replace(`/flowboard${cleanQuery ? '?' + cleanQuery : ''}`, { scroll: false });
     }
@@ -479,6 +487,7 @@ function FlowBoardPageContent() {
           task={selectedTask}
           workers={assignableWorkers}
           mode="view"
+          initialTab={openTaskTab}
           onSave={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             setSelectedTask(null);

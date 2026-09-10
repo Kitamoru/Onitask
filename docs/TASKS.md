@@ -332,13 +332,10 @@ format is deliberately compact so that agents can load the file quickly.
       security §4.1. Файл: `src/app/api/mcp/send_message_to_chat/route.ts`.
 - [x] MCP-08 `undo/:event_id` (`state_before` Memento, окно 5 мин) #mcp !med @blocked_by:MCP-03
       Файл: `src/app/api/mcp/undo/[eventId]/route.ts`.
-- [ ] MCP-15 `telegram_message_queue` — мёртвый механизм: нет консьюмера #mcp #bot !med @deferred
-      Аудит GC/retention (2026-09-05): единственный writer — `sendMessageToChat.ts`
-      (insert status='pending'), консьюмер отсутствует (bot-notify читает только
-      enrichment_queue type='bot_notify'; в репо нет SELECT/UPDATE/DELETE по
-      таблице). Строки висят pending вечно. Пути применения (не решено):
-      расширить bot-notify на чтение очереди / перевести на enrichment_queue
-      bot_notify / отложенный асинхронный канал. Детали: activeContext.md 2026-09-05.
+- [x] MCP-15 `telegram_message_queue` — консьюмер добавлен (FILE-01, 2026-09-10) #mcp #bot !med ✅
+      bot-notify `drainTelegramMessageQueue()`: pending/retrying → sendMessage
+      (+inline-кнопка «Обсудить задачу» по metadata.full_id) + файлы (base64 →
+      multipart) → sent/failed, retry max_retries=3. Оживляет send_message_to_chat.
 - [x] MCP-09 `state_before` Memento + INSERT `agent_events` + шаблонная генерация summary #mcp !high @blocked_by:MCP-03
       Встроено во все handler'ы через `logAgentEvent()` в `mcpAuth.ts`.
 - [x] MCP-10 Error handling matrix (все HTTP-коды §6 mcp_contract) #mcp !med @blocked_by:MCP-03,INV-09,MCP-04,MCP-05,MCP-06,MCP-07,MCP-08
@@ -659,7 +656,49 @@ format is deliberately compact so that agents can load the file quickly.
 | 11 | AI Flow Summary | 5 |
 | 12 | LTM Pipeline | 4 |
 | 13 | Calendar Integration | 6 |
-| **Итого** | | **136** |
+| 14 | FILES (артефакты задач + TG) | 8 |
+| **Итого** | | **144** |
+
+---
+
+## Stage 14 · FILES — артефакты задач + коммуникация агент↔человек через Telegram (2026-09-10)
+
+> Решение владельца: вариант **B** (Storage bucket + манифест, base64 только как транспорт
+> для JSON-каналов агента). Две изолированные сущности: `documents` (Knowledge Base, RAG)
+> и `task-attachments` (артефакты задач). Каскад: строки БД — ON DELETE CASCADE,
+> бинарники Storage — явная очистка в DELETE-роуте + GC-сирот (Phase 2).
+
+- [x] FILE-01 Исходящие файлы агента: `opsTerminalCore` + attachments (#mcp #db #msg !high)
+      Миг. 077: `task_attachments` (связка `execution_id` → идемпотентный retry, UNIQUE(execution_id, filename)),
+      bucket `task-attachments`, расширение `telegram_message_queue` (attachments/metadata).
+      `lib/shared/attachments.ts`: whitelist + magic-bytes + лимиты (≤5, ≤2MB/файл, ≤3MB суммарно).
+      `bot-notify`: `sendTaskAttachments` после карточки (review + done),
+      `drainTelegramMessageQueue` — консьюмер для send_message_to_chat (чинит MCP-15).
+- [x] FILE-02 Reply-маппинг: `bot_task_messages` (UNIQUE(chat_id, message_id)) #bot #db !med
+      webhook пишет маппинг при отправке карточки созданной задачи (`rememberBotTaskMessage`).
+      bot-notify: task_review + task_done карточки — тоже пишут маппинг (локальный helper,
+      ON CONFLICT DO NOTHING) — reply+файл работает на любых карточках задач.
+- [x] FILE-03 `send_message_to_chat` + attachments + task_id + inline-кнопка «Обсудить задачу» #mcp #bot !high
+      `SendMessageToChatParams` расширен (`attachments`, `task_id`); metadata.full_id →
+      deep-link `task_<full_id>_comments`; доставка через очередь (consumer FILE-01).
+      Deep-link: `TelegramDeepLinkRouter` + `/flowboard?tab=comments` → TaskViewEdit вкладка «Комментарии».
+- [x] FILE-04 Входящие файлы в TG: `/attach`, reply+файл, файл+caption, pending full_id #bot !med
+      `src/lib/bot/attachments.ts` + `bot_attach_pending` (TTL 15 мин, purge-cron).
+      Сценарии: reply→attach; `/attach`+файл→спросить full_id; файл+caption→задача+attach;
+      файл без caption→спросить назначение. full_id резолв через `find_task_by_full_id`.
+- [x] FILE-05 TWA: блок «📎 Файлы» в TaskViewEdit (GET-подгрузка, upload) + `GET/POST /api/tasks/[id]/attachments` #ui #api !high
+      Убран toggle «Зависимые задачи» (UI-only артефакт, не task_relations). Блок всегда активен,
+      паттерн DocumentsCard, лимиты 5/2MB/3MB.
+- [x] FILE-06 Входные файлы агенту: `get_task_context` + `include_attachments` (signed URL TTL 1ч) #mcp !med
+      Opt-out флаг по паттерну CTX-02; default false (payload-hygiene).
+- [x] FILE-07 Каскад и cleanup: строки CASCADE + Storage remove в `DELETE /api/tasks/[id]` #db #api !high
+      GC-сирот бинарников — миг. 081: `gc_orphan_task_attachments()` (объект бакета без
+      манифеста, старше 1ч → bulk delete через Storage API `net.http_post` + Vault
+      service_role_key, паттерн 041; прямой DELETE из storage.objects заблокирован
+      `storage.protect_delete`) + defensive-очистка манифест-строк без задачи.
+      Cron `gc-orphan-task-attachments` 03:10 UTC daily.
+- [x] FILE-08 Read-only MCP tool `get_task_comments` — фид «Комментарии» для duty poll #mcp !med
+      Обёртка над RPC `get_task_feed` (076). Вариант A — poll; Realtime (B) — перспектива.
 
 ---
 

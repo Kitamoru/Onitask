@@ -51,18 +51,28 @@ async function routeByStartParam(
 ) {
   console.info('[TG-DL] Processing start_param:', startParam);
 
-  // Match task deep links: "task_BOOP-39"
+  // Match task deep links: "task_BOOP-39" → открыть задачу
+  // and "task_BOOP-39_comments" → открыть сразу вкладку «Комментарии» (FILE-03)
   const taskMatch = startParam.match(/^task_([A-Za-z]+-\d+)$/);
-  if (taskMatch) {
-    const fullId = taskMatch[1];
-    console.info('[TG-DL] Task deep link detected, fullId:', fullId);
+  const taskCommentsMatch = startParam.match(/^task_([A-Za-z]+-\d+)_comments$/);
+  const fullId = taskMatch?.[1] ?? taskCommentsMatch?.[1];
+  if (taskMatch || taskCommentsMatch) {
+    console.info(
+      '[TG-DL] Task deep link detected, fullId:',
+      fullId,
+      'comments:',
+      Boolean(taskCommentsMatch)
+    );
 
     // Use setTimeout to avoid race condition with initial page load / Suspense.
     // Delay increased to ensure Next.js routing is fully stable.
     setTimeout(() => {
-      const targetPath = `/flowboard?open_task=${encodeURIComponent(fullId)}`;
-      console.info('[TG-DL] Navigating to:', targetPath);
-      router.replace(targetPath, { scroll: false });
+      const targetFullId = fullId ?? '';
+      const query = taskCommentsMatch
+        ? `/flowboard?open_task=${encodeURIComponent(targetFullId)}&tab=comments`
+        : `/flowboard?open_task=${encodeURIComponent(targetFullId)}`;
+      console.info('[TG-DL] Navigating to:', query);
+      router.replace(query, { scroll: false });
     }, 500);
     return;
   }

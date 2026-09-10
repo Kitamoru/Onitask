@@ -1,4 +1,41 @@
 # Active Context
+## FILE-01..08: Файлы задач + коммуникация агент↔человек (2026-09-10) ✅
+
+**Реализовано (TASKS.md Stage 14):**
+- **Миграция 077** (применена на `atarmvtzvlwhkheeabeb`): `task_attachments` (манифест, связка
+  `execution_id`→идемпотентность, UNIQUE(execution_id,filename)), `bot_task_messages`
+  (reply-маппинг), `bot_attach_pending` (TTL 15 мин, purge-cron `bot-attach-ttl`),
+  расширение `telegram_message_queue` (attachments/metadata). Bucket `task-attachments` создан.
+  ⚠️ При применении: убран частичный TTL-индекс (`now()` не IMMUTABLE в предикате индекса → 42P17).
+- **Исходящие агента**: `opsTerminalCore` + attachments → Storage + манифест в metadata;
+  `bot-notify` `sendTaskAttachments` после карточки (review+done). `drainTelegramMessageQueue` —
+  консьюмер исходящей очереди (чинит MCP-15, send_message_to_chat снова доставляет).
+- **send_message_to_chat**: attachments + task_id → inline-кнопка «Обсудить задачу»
+  (deep-link `task_<full_id>_comments` → TWA вкладка «Комментарии»).
+- **Входящие TG**: `/attach` (reply / full_id), reply+файл, файл+caption→задача+attach,
+  файл без caption→спросить; `src/lib/bot/attachments.ts`.
+- **TWA**: TaskViewEdit — блок «📎 Файлы» (GET-подгрузка, upload), убран toggle «Зависимые задачи»;
+  `GET/POST /api/tasks/[id]/attachments`.
+- **Входные агенту**: `get_task_context` + `include_attachments` (signed URL TTL 1ч).
+  Новый read-only MCP tool `get_task_comments` (обёртка над `get_task_feed`, duty poll, вариант A).
+- **Каскад**: строки CASCADE; бинарники — явный `storage.remove()` в `DELETE /api/tasks/[id]`;
+  GC-сирот — миг. 081 `gc_orphan_task_attachments()` (объект без манифеста, старше 1ч →
+  Storage API bulk delete через `net.http_post` + Vault `service_role_key`; прямой DELETE из
+  storage.objects блокирует `storage.protect_delete`) + defensive-очистка строк без задачи.
+  Cron `gc-orphan-task-attachments` 03:10 UTC. Fire-and-forget с самоисцелением: упавший
+  запрос → объект останется без манифеста → GC заберёт следующей ночью.
+- **Reply-маппинг из bot-notify**: task_review + task_done карточки пишут `bot_task_messages`
+  (локальный `rememberBotTaskMessage`, ON CONFLICT DO NOTHING) — reply+файл работает на
+  любых карточках задач, не только на карточке создания.
+- **Валидация**: `npm run type-check` ✅ (типы регенерированы/дополнены вручную: task_attachments,
+  bot_task_messages, bot_attach_pending). ADR-2026-09-10. Smoke GC: `smoke_run = 0` ✅.
+
+**Отложено (Phase 2):** Realtime `task-comments-<task_id>` для агентов (вариант B);
+read-only allowed_tools для get_task_comments.
+
+retry_count: 0. Блокеров нет.
+
+---
 ## PERF: N+1 fix — batch enrichment в GET /api/tasks (2026-09-09) ✅
 
 **Status:** Done (type-check ✅ — только pre-existing WIP-ошибки attachments).

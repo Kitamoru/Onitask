@@ -1,5 +1,54 @@
 # Architectural Decisions (ADR log)
 
+## ADR-2026-09-10: Файлы задач — вариант B (Storage + манифест), base64 только транспорт (FILE-01..08)
+
+**Статус:** принято · **Задачи:** FILE-01..08 (TASKS.md Stage 14)
+
+### Контекст
+
+Понадобился обмен файлами агент ↔ человек через Telegram + прикрепление файлов к задачам
+(TWA и бот). Два архитектурных решения обсуждены детально:
+
+- **Вариант A:** хранить base64 прямо в `task_executions.attachments` (JSONB) — без bucket.
+  Проблемы: раздувание JSONB (3MB → ~4MB на строку), GC `gc_ops_history` (073, 30 дней)
+  сжигает файлы вместе с execution, retry `ops_terminal` (version_conflict) дублирует файлы
+  без idempotency-ключа.
+- **Вариант B (принят):** Storage bucket `task-attachments` (бинарник, приватный) + таблица
+  `task_attachments` (манифест). base64 — ТОЛЬКО транспорт для JSON-каналов агента
+  (ops_terminal / send_message_to_chat), декодируется на сервере и не хранится.
+
+### Решение
+
+- **F1:** `task_attachments` — манифест (workspace/task/execution/filename/mime/size/path/source/author_type).
+  `execution_id` + `UNIQUE(execution_id, filename)` → идемпотентный retry ops_terminal.
+  Каскад строк — ON DELETE CASCADE; бинарники — явный `storage.remove()` в `DELETE /api/tasks/[id]`
+  (порядок: файлы из Storage → DELETE tasks) + GC-сирот (Phase 2).
+- **F2:** reply-маппинг `bot_task_messages` (UNIQUE(chat_id, message_id)) — флоу «reply на карточку + файл →
+  прикрепить». Пишут webhook (карточки /task) и bot-notify (task_review/task_done карточки,
+  локальный helper с ON CONFLICT DO NOTHING).
+- **F3:** `send_message_to_chat` + `attachments[]` + `task_id` → inline-кнопка «Обсудить задачу»
+  (deep-link `task_<full_id>_comments` → TaskViewEdit вкладка Комментарии). Доставка через
+  `telegram_message_queue`, консьюмер — bot-notify `drainTelegramMessageQueue` (чинит MCP-15).
+- **F4:** входящие файлы в TG: `/attach` (reply/full_id), файл+caption→задача+attach,
+  буфер `bot_attach_pending` (TTL 15 мин). full_id — всегда явно, списки задач в TG не показываем.
+- **F5:** TWA — блок «📎 Файлы» в TaskViewEdit (GET-подгрузка при открытии, multipart-upload).
+  Убран toggle «Зависимые задачи» (UI-only артефакт `metadata.dependent_tasks`, не `task_relations`).
+- **F6:** входные файлы агенту — `get_task_context` + `include_attachments` (манифест + signed URL TTL 1ч,
+  не base64; default false по CTX-02).
+- **F7:** MIME — whitelist app-level (`lib/shared/attachments.ts`, НЕ CHECK в БД) + magic-bytes;
+  лимиты ≤5 файлов, ≤2MB/файл (base64), ≤3MB суммарно.
+- **F8:** duty poll — read-only MCP tool `get_task_comments` (обёртка над RPC `get_task_feed`).
+  Realtime (`task-comments-<task_id>`) — перспектива (вариант B, не MVP).
+
+### Последствия
+
+- Хранение файлов едино: Storage + манифест; base64 живёт только в транзите (JSON MCP / outbox-очередь,
+  GC telegram_message_queue 7 дней).
+- Идемпотентность retry ops_terminal без дублей; файлы переживают GC execution.
+- Две изолированные сущности: `documents` (Knowledge Base, RAG) и `task-attachments` (артефакты задач) — не смешиваются.
+
+---
+
 ## ADR-2026-09-06: Комментарии — отдельная таблица `task_comments` (миг. 076)
 
 **Статус:** принято · **Задача:** AGENT-08 · **Дизайн:** Figma 322-27840

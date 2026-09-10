@@ -15,7 +15,7 @@
  *
  * Segments: "Общее" (active) / "Комментарии" (inactive — later).
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import {
@@ -33,6 +33,7 @@ import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { patchTask, createTask, deleteTask } from '@/lib/api/flow';
+import { getTaskAttachments, uploadTaskAttachments, type TaskAttachment } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
@@ -57,6 +58,8 @@ export interface TaskViewEditProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Current user's worker ID (for highlighting own comments on the right) */
   currentUserId?: string;
+  /** FILE-03: initial tab for deep-link «Обсудить задачу» → comments */
+  initialTab?: 'general' | 'comments';
   /** Custom className */
   className?: string;
 }
@@ -71,6 +74,7 @@ export function TaskViewEdit({
   onDelete,
   onMoveTask,
   currentUserId,
+  initialTab = 'general',
   className = '',
 }: TaskViewEditProps) {
   const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
@@ -91,8 +95,35 @@ export function TaskViewEdit({
   );
   const [checklistEnabled, setChecklistEnabled] = useState(false);
   const [relatedEnabled, setRelatedEnabled] = useState(false);
-  const [dependentEnabled, setDependentEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
+
+  // FILE-05: файлы задачи (всегда активный блок, GET-подгрузка при открытии)
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadAttachments = useCallback(async () => {
+    if (!task?.id) return;
+    setAttachmentsLoading(true);
+    const res = await getTaskAttachments(task.id);
+    setAttachments(res.attachments ?? []);
+    setAttachmentsError(res.error);
+    setAttachmentsLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
+
+  const handleAttachFiles = async (files: FileList | null) => {
+    if (!files || !task?.id) return;
+    const list = Array.from(files);
+    const res = await uploadTaskAttachments(task.id, list);
+    if (res.error) {
+      setAttachmentsError(res.error);
+    } else {
+      setAttachments((prev) => [...prev, ...res.attachments]);
+      setAttachmentsError(null);
+    }
+  };
 
   // Assignment state
   const [assignedTo, setAssignedTo] = useState<string | null>(task?.assigned_to ?? null);
@@ -134,11 +165,12 @@ export function TaskViewEdit({
   useEffect(() => {
     if (open) {
       setInternalMode(mode);
-      setTab('general');
+      setTab(initialTab);
       setError(null);
       setShowDeleteConfirm(false);
+      loadAttachments();
     }
-  }, [open, mode]);
+  }, [open, mode, initialTab]);
 
   // Sync state when task changes
   useEffect(() => {
@@ -165,7 +197,6 @@ export function TaskViewEdit({
         ...(task?.metadata ?? {}),
         checklist: checklistEnabled ? (task?.metadata?.checklist ?? []) : [],
         related_tasks: relatedEnabled ? (task?.metadata?.related_tasks ?? []) : [],
-        dependent_tasks: dependentEnabled ? (task?.metadata?.dependent_tasks ?? []) : [],
         external_links: linksEnabled ? (task?.metadata?.external_links ?? []) : [],
       };
 
@@ -493,19 +524,6 @@ export function TaskViewEdit({
               <Card>
                 <div className="flex items-center justify-between">
                   <span className="text-[15px] font-medium text-text">
-                    Зависимые задачи
-                  </span>
-                  <ToggleSwitch
-                    checked={dependentEnabled}
-                    onChange={setDependentEnabled}
-                    label="Зависимые задачи"
-                    disabled={isView}
-                  />
-                </div>
-              </Card>
-              <Card>
-                <div className="flex items-center justify-between">
-                  <span className="text-[15px] font-medium text-text">
                     Внешние ссылки
                   </span>
                   <ToggleSwitch
@@ -518,6 +536,74 @@ export function TaskViewEdit({
               </Card>
             </div>
           </section>
+
+          {/* 📎 Файлы задачи — всегда активный блок (FILE-05) */}
+          {!isNew && (
+          <section>
+            <SectionHeader title="Файлы" />
+            <Card>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.zip,.ogg,.mp3"
+                  className="hidden"
+                  onChange={(e) => {
+                    handleAttachFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                {attachments.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    {attachments.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 text-[13px] text-text-secondary"
+                      >
+                        <span className="shrink-0">📎</span>
+                        {a.url ? (
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate underline"
+                          >
+                            {a.filename}
+                          </a>
+                        ) : (
+                          <span className="truncate">{a.filename}</span>
+                        )}
+                        <span className="text-text-faint">
+                          {(a.size_bytes / 1024).toFixed(0)} KB
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {attachmentsLoading && (
+                  <div className="text-[13px] text-text-faint">Загрузка…</div>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isView}
+                  className="w-full"
+                >
+                  {attachments.length > 0 ? 'Добавить файлы' : 'Прикрепить файлы'}
+                </Button>
+                {attachmentsError && (
+                  <div className="text-[12px] text-[var(--color-priority-red-text)]">
+                    {attachmentsError}
+                  </div>
+                )}
+                <div className="text-[12px] text-text-faint">
+                  До 5 файлов · до 2MB каждый · 3MB суммарно
+                </div>
+              </div>
+            </Card>
+          </section>
+          )}
             </>
           )}
 

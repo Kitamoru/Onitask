@@ -275,6 +275,64 @@ export async function leaveWorkspace(
   }
 }
 
+// ─── Attachments (FILE-05) ──────────────────────────────────────────────────
+
+export interface TaskAttachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string | null;
+  created_at: string;
+  author_type?: string;
+  source?: string;
+}
+
+/** GET /api/tasks/:id/attachments — список файлов задачи. */
+export async function getTaskAttachments(
+  taskId: string,
+): Promise<{ attachments: TaskAttachment[]; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+    const res = await fetch(`/api/tasks/${taskId}/attachments`, {
+      method: 'GET',
+      headers: { 'x-init-data': initData },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { attachments: [], error: json.error || 'Load failed' };
+    }
+    return { attachments: json.attachments ?? [], error: null };
+  } catch (err) {
+    return { attachments: [], error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/** POST /api/tasks/:id/attachments — загрузка файлов (multipart). */
+export async function uploadTaskAttachments(
+  taskId: string,
+  files: File[],
+): Promise<{ attachments: TaskAttachment[]; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+    formData.append('init_data', initData);
+
+    const res = await fetch(`/api/tasks/${taskId}/attachments`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { attachments: [], error: json.error || 'Upload failed' };
+    }
+    return { attachments: json.attachments ?? [], error: null };
+  } catch (err) {
+    return { attachments: [], error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 /**
  * POST /api/tasks — Create a new task.
  * Uses fetch to server-side API.

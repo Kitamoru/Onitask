@@ -9,6 +9,7 @@ import {
   getTaskColumnHistory,
   getTaskSubgraph,
 } from '../../shared/mcpAuth';
+import { createAttachmentSignedUrl } from '../../shared/attachments';
 import { taskNotFound, internalError } from '../../shared/errors';
 import type {
   GetTaskContextParams,
@@ -28,6 +29,9 @@ export async function getTaskContext(
   const includeWorkspaceContext =
     params.include_workspace_context !== false;
   const includeMemorySummary = params.include_memory_summary !== false;
+  // FILE-06: вложения задачи (метаданные + signed URL) — default false
+  // (payload-hygiene; агент запрашивает явно, когда нужны файлы)
+  const includeAttachments = params.include_attachments === true;
   const eventsLimit = Math.min(
     Math.max(params.events_limit ?? 20, 0),
     20
@@ -100,6 +104,44 @@ export async function getTaskContext(
   // --- Subgraph (A-12) --------------------------------------------------------------------
   const subgraph = await getTaskSubgraph(workspaceId, params.task_id);
 
+  // --- Attachments (FILE-06): только если агент явно запросил ---------------
+  let attachments: Array<{
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    url: string | null;
+    created_at: string;
+  }> | null = null;
+  if (includeAttachments) {
+    try {
+      const { data: rows } = await supabase
+        .from('task_attachments')
+        .select('id, filename, mime_type, size_bytes, storage_path, created_at')
+        .eq('task_id', params.task_id)
+        .order('created_at', { ascending: true })
+        .limit(10);
+      attachments = [];
+      for (const row of rows ?? []) {
+        const url = await createAttachmentSignedUrl(
+          supabase,
+          row.storage_path as string,
+          3600
+        );
+        attachments.push({
+          id: row.id as string,
+          filename: row.filename as string,
+          mime_type: row.mime_type as string,
+          size_bytes: row.size_bytes as number,
+          url,
+          created_at: row.created_at as string,
+        });
+      }
+    } catch {
+      attachments = null; // graceful degradation
+    }
+  }
+
   return {
     success: true,
     task: {
@@ -126,6 +168,7 @@ export async function getTaskContext(
     memory_summary: memorySummary,
     workspace_context: workspaceContext,
     relevant_docs: relevantDocs,
+    attachments,
     subgraph:
       (subgraph as GetTaskContextResult['subgraph']) ?? null,
   };

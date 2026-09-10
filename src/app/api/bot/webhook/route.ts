@@ -36,6 +36,15 @@ import {
   clearPendingTask,
   isPendingTaskMode,
 } from '../../../../../src/lib/bot/taskDraft';
+import {
+  extractFileFromMessage,
+  isAllowedBotFile,
+  downloadTelegramFileBytes,
+  saveAttachmentToTask,
+  setBotAttachPending,
+  consumeBotAttachPending,
+} from '../../../../../src/lib/bot/attachments';
+import { resolveTaskIdByReply, rememberBotTaskMessage } from '../../../../../lib/shared/attachments';
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
@@ -352,6 +361,18 @@ async function dispatchUpdate(update: any): Promise<void> {
       return;
     }
 
+    // FILE-04: /attach — прикрепить файл к задаче
+    if (command === 'attach') {
+      await handleAttachCommand(
+        chatId,
+        effectiveUserId,
+        workspaceId,
+        args,
+        message
+      );
+      return;
+    }
+
     if (command === 'backlog') {
       const gateMessage = await checkFreemiumBoundary(
         'backlog',
@@ -570,6 +591,68 @@ async function dispatchUpdate(update: any): Promise<void> {
     return;
   }
 
+  // FILE-04: pending attach — юзер ввёл full_id (без /attach) → прикрепить
+  if (
+    !parsedCommand &&
+    text &&
+    looksLikeTaskFullId(text) &&
+    workspaceResult
+  ) {
+    const pending = await consumeBotAttachPending(chatId);
+    if (pending && pending.length > 0) {
+      const fullId = text.trim().toUpperCase();
+      const taskId = await resolveTaskIdByFullId(
+        fullId,
+        workspaceResult.workspace_id
+      );
+      if (!taskId) {
+        await sendMessage(BOT_TOKEN, {
+          chat_id: chatId,
+          text: `⚠️ Задача ${escapeHtml(fullId)} не найдена.`,
+        });
+        return;
+      }
+      let attached = 0;
+      let failed = 0;
+      for (const meta of pending) {
+        const dl = await downloadTelegramFileBytes(BOT_TOKEN, meta.file_id);
+        if (dl) {
+          const ok = await saveAttachmentToTask({
+            workspaceId: workspaceResult.workspace_id,
+            taskId,
+            userId: effectiveUserId,
+            filename: meta.filename,
+            bytes: dl.bytes,
+          });
+          if (ok) attached++;
+          else failed++;
+        } else failed++;
+      }
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: `✅ Файлы прикреплены к ${escapeHtml(fullId)}${
+          failed ? ` · ${failed} не удалось` : ''
+        }`,
+      });
+      return;
+    }
+  }
+
+  // FILE-04: входящий файл (document/photo) без команды
+  if (!parsedCommand) {
+    const fileAttachment = extractFileFromMessage(message);
+    if (fileAttachment) {
+      await handleIncomingFileMessage(
+        chatId,
+        effectiveUserId,
+        workspaceResult?.workspace_id ?? '',
+        fileAttachment,
+        message
+      );
+      return;
+    }
+  }
+
   // No pending — help
   await sendMessage(BOT_TOKEN, { chat_id: chatId, text: HELP_TEXT });
 }
@@ -676,6 +759,282 @@ async function handleCommandRequiringWorkspace(
     text: '✅ Черновик сохранён! Выберите доску:',
     reply_markup: keyboard,
   });
+}
+
+async function handleAttachCommand(
+  chatId: number,
+  userId: number,
+  workspaceId: string,
+  args: string,
+  message?: any
+): Promise<void> {
+  if (!BOT_TOKEN) return;
+
+  const fileAttachment = extractFileFromMessage(message);
+  const reply = message?.reply_to_message;
+
+  // Приоритет 1: reply на карточку задачи → attach
+  if (reply && reply.message_id) {
+    const taskId = await resolveTaskIdByReply({
+      supabase,
+      chatId,
+      messageId: reply.message_id,
+    });
+    if (!taskId) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Не нашёл задачу этого сообщения. Ответьте reply на карточку задачи + пришлите файл, или укажите full_id: /attach ALPHA-123 + файл.',
+      });
+      return;
+    }
+    if (!fileAttachment) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '📎 Пришлите файл вместе с /attach (reply на карточку задачи).',
+      });
+      return;
+    }
+    if (!isAllowedBotFile(fileAttachment.filename)) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Этот тип файла не поддерживается.',
+      });
+      return;
+    }
+    const dl = await downloadTelegramFileBytes(BOT_TOKEN, fileAttachment.fileId);
+    if (!dl) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Не удалось скачать файл, попробуйте ещё раз.',
+      });
+      return;
+    }
+    const ok = await saveAttachmentToTask({
+      workspaceId,
+      taskId,
+      userId,
+      filename: dl.filename,
+      bytes: dl.bytes,
+      mimeType: fileAttachment.mimeHint,
+    });
+    await sendMessage(BOT_TOKEN, {
+      chat_id: chatId,
+      text: ok ? '✅ Файл прикреплён к задаче.' : '⚠️ Не удалось прикрепить файл.',
+    });
+    return;
+  }
+
+  // Приоритет 2: файл есть, без reply → буфер + запрос full_id
+  if (fileAttachment) {
+    if (!isAllowedBotFile(fileAttachment.filename)) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Этот тип файла не поддерживается.',
+      });
+      return;
+    }
+    const ok = await setBotAttachPending({
+      workspaceId,
+      chatId,
+      userId,
+      fileId: fileAttachment.fileId,
+      filename: fileAttachment.filename,
+    });
+    await sendMessage(BOT_TOKEN, {
+      chat_id: chatId,
+      text: ok
+        ? '📎 Файл сохранён. Укажите full_id задачи, к которой прикрепить (например ALPHA-123):'
+        : '⚠️ Не удалось сохранить файл. Попробуйте ещё раз.',
+    });
+    return;
+  }
+
+  // Приоритет 3: args = full_id + есть pending
+  const fullId = args.trim().toUpperCase();
+  if (looksLikeTaskFullId(fullId)) {
+    const pending = await consumeBotAttachPending(chatId);
+    if (!pending || pending.length === 0) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: '⚠️ Нет сохранённого файла. Пришлите /attach + файл, затем укажите full_id.',
+      });
+      return;
+    }
+    const taskId = await resolveTaskIdByFullId(fullId, workspaceId);
+    if (!taskId) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: `⚠️ Задача ${escapeHtml(fullId)} не найдена в этой доске.`,
+      });
+      return;
+    }
+    let attached = 0;
+    let failed = 0;
+    for (const meta of pending) {
+      const dl = await downloadTelegramFileBytes(BOT_TOKEN, meta.file_id);
+      if (dl) {
+        const ok = await saveAttachmentToTask({
+          workspaceId,
+          taskId,
+          userId,
+          filename: meta.filename,
+          bytes: dl.bytes,
+        });
+        if (ok) attached++;
+        else failed++;
+      } else failed++;
+    }
+    await sendMessage(BOT_TOKEN, {
+      chat_id: chatId,
+      text: `✅ Файлы прикреплены к ${escapeHtml(fullId)}${
+        failed ? ` · ${failed} не удалось` : ''
+      }`,
+    });
+    return;
+  }
+
+  await sendMessage(BOT_TOKEN, {
+    chat_id: chatId,
+    text:
+      '📎 Чтобы прикрепить файл к задаче:\n' +
+      '1) /attach + файл, затем укажите full_id\n' +
+      '2) или reply на карточку задачи + пришлите файл\n' +
+      '3) или /attach ALPHA-123 + файл',
+  });
+}
+
+async function resolveTaskIdByFullId(
+  fullId: string,
+  workspaceId: string
+): Promise<string | null> {
+  const { data } = await supabase.rpc('find_task_by_full_id', {
+    p_full_id: fullId,
+  });
+  if (!data) return null;
+  // Проверка tenant-изоляции: задача должна принадлежать этой доске
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('id', data as string)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+  return task ? (task.id as string) : null;
+}
+
+async function handleIncomingFileMessage(
+  chatId: number,
+  userId: number,
+  workspaceId: string,
+  fileAttachment: any,
+  message: any
+): Promise<void> {
+  if (!BOT_TOKEN) return;
+
+  if (!workspaceId) {
+    await sendMessage(BOT_TOKEN, {
+      chat_id: chatId,
+      text: '⚠️ Сначала выберите рабочее пространство (/start).',
+    });
+    return;
+  }
+  if (!isAllowedBotFile(fileAttachment.filename)) {
+    await sendMessage(BOT_TOKEN, {
+      chat_id: chatId,
+      text: '⚠️ Этот тип файла не поддерживается.',
+    });
+    return;
+  }
+
+  // 1) Reply на карточку задачи → attach
+  const reply = message?.reply_to_message;
+  if (reply && reply.message_id) {
+    const taskId = await resolveTaskIdByReply({
+      supabase,
+      chatId,
+      messageId: reply.message_id,
+    });
+    if (taskId) {
+      const dl = await downloadTelegramFileBytes(
+        BOT_TOKEN,
+        fileAttachment.fileId
+      );
+      const ok =
+        dl &&
+        (await saveAttachmentToTask({
+          workspaceId,
+          taskId,
+          userId,
+          filename: dl.filename,
+          bytes: dl.bytes,
+          mimeType: fileAttachment.mimeHint,
+        }));
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: ok
+          ? '✅ Файл прикреплён к задаче.'
+          : '⚠️ Не удалось прикрепить файл.',
+      });
+      return;
+    }
+  }
+
+  // 2) Файл + caption → задача из caption + attach (файл уходит в pending)
+  const caption = (message?.caption ?? '').trim();
+  if (caption) {
+    await setBotAttachPending({
+      workspaceId,
+      chatId,
+      userId,
+      fileId: fileAttachment.fileId,
+      filename: fileAttachment.filename,
+    });
+    await handleCommandRequiringWorkspace(
+      chatId,
+      userId,
+      'task',
+      caption,
+      message
+    );
+    return;
+  }
+
+  // 3) Файл без caption → буфер + спросить назначение
+  await setBotAttachPending({
+    workspaceId,
+    chatId,
+    userId,
+    fileId: fileAttachment.fileId,
+    filename: fileAttachment.filename,
+  });
+  await sendMessage(BOT_TOKEN, {
+    chat_id: chatId,
+    text:
+      '📎 Файл сохранён. Назначение?\n' +
+      '— Чтобы прикрепить к существующей задаче, укажите full_id (например ALPHA-123)\n' +
+      '— Чтобы создать новую задачу, пришлите её текст',
+  });
+}
+
+/** Прикрепление файлов, забуференных до создания задачи (caption-флоу). */
+async function attachPendingFilesToTask(
+  taskId: string,
+  workspaceId: string,
+  chatId: number
+): Promise<void> {
+  const pending = await consumeBotAttachPending(chatId);
+  if (!pending || pending.length === 0 || !BOT_TOKEN) return;
+  for (const meta of pending) {
+    const dl = await downloadTelegramFileBytes(BOT_TOKEN, meta.file_id);
+    if (dl) {
+      await saveAttachmentToTask({
+        workspaceId,
+        taskId,
+        userId: 0,
+        filename: meta.filename,
+        bytes: dl.bytes,
+      });
+    }
+  }
 }
 
 async function handleBacklog(
@@ -1335,13 +1694,26 @@ async function executeDraftInWorkspaceByChat(
 
   const taskCard = buildTaskCard(cardData, 'created');
 
+  // FILE-04: файлы, забуференные до создания задачи (document + caption)
+  await attachPendingFilesToTask(task.id, workspaceId, chatId);
+
   try {
-    await sendMessage(token, {
+    const sentMsg = await sendMessage(token, {
       chat_id: chatId,
       text: taskCard.text,
       parse_mode: 'HTML',
       reply_markup: taskCard.replyMarkup,
     });
+    // FILE-02: reply-маппинг message_id → task_id (для «reply + файл → прикрепить»)
+    if (sentMsg?.message_id) {
+      await rememberBotTaskMessage({
+        supabase,
+        workspaceId,
+        taskId: task.id,
+        chatId,
+        messageId: sentMsg.message_id,
+      });
+    }
   } catch (err) {
     console.error('[Bot Webhook] sendMessage (task card) failed:', err);
     await sendMessage(token, {
@@ -1421,6 +1793,9 @@ async function createTaskFallback(
     workspaceHandle: wsForFallback?.name || wsForFallback?.slug || '',
     clarityScore: null,
   };
+
+  // FILE-04: файлы, забуференные до создания задачи (fallback-путь)
+  await attachPendingFilesToTask(task.id, workspaceId, chatId);
 
   const taskCard = buildTaskCard(cardData, 'created');
 

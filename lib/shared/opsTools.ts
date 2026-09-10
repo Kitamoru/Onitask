@@ -13,6 +13,13 @@ import {
   OpsApiError,
   type OpsRequestContext,
 } from './opsTransport';
+import { getSupabaseClient } from './mcpAuth';
+import {
+  validateAttachments,
+  uploadAttachmentToStorage,
+  AttachmentValidationError,
+  type AttachmentMeta,
+} from './attachments';
 
 // ============================================================================
 // ops_lease — POST /api/agent/ops/lease (01 §1) / MCP contract 02
@@ -64,6 +71,62 @@ export async function opsHeartbeatCore(
 
 const TERMINAL_OUTCOMES = new Set(['review', 'escalate', 'handoff']);
 
+/**
+ * FILE-01: загрузить attachments агента в Storage + task_attachments,
+ * вернуть манифест для metadata. Идемпотентность: при retry ops_terminal
+ * (version_conflict) файлы уже привязаны к execution_id → повторный upload
+ * пропускается по имени файла.
+ */
+async function persistTerminalAttachments(
+  ctx: OpsRequestContext,
+  executionId: string,
+  body: Record<string, unknown>
+): Promise<AttachmentMeta[]> {
+  const raw = body.attachments;
+  if (raw === undefined || raw === null) return [];
+
+  let inputs;
+  try {
+    inputs = validateAttachments(raw);
+  } catch (err) {
+    if (err instanceof AttachmentValidationError) {
+      throw new OpsApiError(400, 'invalid_request', err.message);
+    }
+    throw err;
+  }
+  if (inputs.length === 0) return [];
+
+  const supabase = getSupabaseClient();
+  const taskId = requireUuid(body.task_id, 'task_id');
+
+  // Уже загруженные для этого execution (retry) — пропускаем по имени
+  const { data: existing } = await supabase
+    .from('task_attachments')
+    .select('filename')
+    .eq('execution_id', executionId);
+  const existingNames = new Set(
+    (existing ?? []).map((r) => r.filename as string)
+  );
+
+  const manifest: AttachmentMeta[] = [];
+  for (const input of inputs) {
+    if (existingNames.has(input.filename)) continue;
+    const meta = await uploadAttachmentToStorage({
+      supabase,
+      workspaceId: ctx.workspaceId,
+      taskId,
+      executionId,
+      filename: input.filename,
+      contentBase64: input.content_base64,
+      source: 'mcp',
+      authorType: 'agent',
+      uploadedBy: null,
+    });
+    manifest.push(meta);
+  }
+  return manifest;
+}
+
 export async function opsTerminalCore(
   _ctx: OpsRequestContext,
   executionId: string,
@@ -106,6 +169,17 @@ export async function opsTerminalCore(
       ? null
       : requireString(body.next_owner, 'next_owner');
 
+  // FILE-01: attachments агента → Storage + task_attachments + манифест в metadata
+  const attachmentManifest = await persistTerminalAttachments(
+    _ctx,
+    execution,
+    body
+  );
+  const finalMetadata = { ...(metadata as Record<string, unknown>) };
+  if (attachmentManifest.length > 0) {
+    finalMetadata.attachments = attachmentManifest;
+  }
+
   return callOpsRpc('ops_terminal', {
     p_execution_id: execution,
     p_runtime_id: runtimeId,
@@ -113,7 +187,7 @@ export async function opsTerminalCore(
     p_task_version: body.task_version,
     p_outcome: body.outcome,
     p_summary: summary,
-    p_metadata: metadata,
+    p_metadata: finalMetadata,
     p_next_owner: nextOwner,
   });
 }

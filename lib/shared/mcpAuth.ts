@@ -26,6 +26,7 @@ export type McpToolName =
   | 'get_tasks_by_column'
   | 'get_workspace_settings'
   | 'get_task_context'
+  | 'get_task_comments'
   | 'create_task'
   | 'move_task'
   | 'escalate_task'

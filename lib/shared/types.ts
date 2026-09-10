@@ -154,10 +154,20 @@ export interface EscalateTaskResult {
 // send_message_to_chat (§4.6)
 // ============================================================================
 
+export interface SendMessageAttachmentInput {
+  filename: string;
+  content_base64: string;
+  caption?: string;
+}
+
 export interface SendMessageToChatParams extends DomainContext {
   chat_id: number;
   text: string; // max 4096
   parse_mode?: 'HTML' | 'MarkdownV2';
+  /** FILE-03: UUID связанной задачи — добавляет инлайн-кнопку «Обсудить задачу» */
+  task_id?: string;
+  /** FILE-03: файлы агента (максимум 5, ≤2MB base64 на файл, ≤3MB суммарно) */
+  attachments?: SendMessageAttachmentInput[];
 }
 
 export interface SendMessageToChatResult {
@@ -182,6 +192,8 @@ export interface GetTaskContextParams extends DomainContext {
   include_memory_summary?: boolean;
   /** CTX-02: cap on returned agent_events. Default 20, max 20. */
   events_limit?: number;
+  /** FILE-06: default false. Load task attachments (metadata + signed URLs) when true. */
+  include_attachments?: boolean;
 }
 
 export interface SubgraphEdge {
@@ -234,7 +246,43 @@ export interface GetTaskContextResult {
     content: string;
     similarity: number;
   }> | null;
+  /** FILE-06: attachments (metadata + signed URL), null when include_attachments=false */
+  attachments: Array<{
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    url: string | null;
+    created_at: string;
+  }> | null;
   subgraph: SubgraphEdge[] | null;
+}
+
+// ============================================================================
+// get_task_comments (FILE-08)
+// ============================================================================
+
+export interface GetTaskCommentsParams extends DomainContext {
+  task_id: string;
+  /** keyset-пагинация фида (ниже курсора) */
+  cursor_created?: string;
+  cursor_id?: string;
+  /** default 30, max 100 */
+  limit?: number;
+}
+
+export interface GetTaskCommentsResult {
+  items: Array<{
+    item_id: string;
+    kind: 'comment' | 'status' | 'agent';
+    author_id: string | null;
+    author_name: string;
+    author_type: 'human' | 'agent' | 'system';
+    body: string | null;
+    created_at: string;
+    edited_at: string | null;
+    payload: Record<string, unknown> | null;
+  }>;
 }
 
 // ============================================================================

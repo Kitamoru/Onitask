@@ -22,6 +22,7 @@ import { escalateTask } from '../../../../lib/domain/agent/escalateTask';
 import { handoffTask } from '../../../../lib/domain/agent/handoffTask';
 import { sendMessageToChat } from '../../../../lib/domain/agent/sendMessageToChat';
 import { getTaskContext } from '../../../../lib/domain/agent/getTaskContext';
+import { getTaskComments } from '../../../../lib/domain/agent/getTaskComments';
 import { undo } from '../../../../lib/domain/agent/undo';
 import {
   opsLeaseCore,
@@ -125,13 +126,31 @@ const TOOLS = [
   },
   {
     name: 'send_message_to_chat',
-    description: 'Send a Telegram message to a linked chat (max 4096 chars).',
+    description:
+      'Send a Telegram message to a linked chat (max 4096 chars) with optional file attachments and an optional task link. ' +
+      'attachments: array of {filename, content_base64, caption?} — max 5 files, ≤2MB base64 each, ≤3MB total, MIME whitelist. ' +
+      'task_id: when provided, adds an inline «Обсудить задачу» button deep-linking to the task comments tab.',
     inputSchema: {
       type: 'object',
       properties: {
         chat_id: { type: 'number' },
         text: { type: 'string', maxLength: 4096 },
         parse_mode: { type: 'string', enum: ['HTML', 'MarkdownV2'] },
+        task_id: { type: 'string', description: 'UUID of the related task (adds inline button).' },
+        attachments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              filename: { type: 'string' },
+              content_base64: { type: 'string' },
+              caption: { type: 'string' },
+            },
+            required: ['filename', 'content_base64'],
+            additionalProperties: false,
+          },
+          maxItems: 5,
+        },
       },
       required: ['chat_id', 'text'],
     },
@@ -139,8 +158,9 @@ const TOOLS = [
   {
     name: 'get_task_context',
     description:
-      'Full task context: history, agent events, memory, docs, subgraph. ' +
-      'Optional flags to trim payload: include_workspace_context / include_memory_summary (default true — pass false for per-task calls, fetch those once at session start), events_limit (default 20).',
+      'Full task context: history, agent events, memory, docs, subgraph, attachments. ' +
+      'Optional flags to trim payload: include_workspace_context / include_memory_summary (default true — pass false for per-task calls, fetch those once at session start), events_limit (default 20). ' +
+      'include_attachments (default false) — when true, returns task attachments metadata + signed download URLs.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -148,6 +168,26 @@ const TOOLS = [
         include_workspace_context: { type: 'boolean' },
         include_memory_summary: { type: 'boolean' },
         events_limit: { type: 'number', maximum: 20 },
+        include_attachments: { type: 'boolean' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'get_task_comments',
+    description:
+      'Read the task comments feed (durable comments + column history + recent agent events). ' +
+      'Use to check for new human comments on your task during duty poll (keyset-paginated). Read-only, no quota cost.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        cursor_created: {
+          type: 'string',
+          description: 'ISO timestamp cursor (feed is DESC) — pass from last item.created_at.',
+        },
+        cursor_id: { type: 'string' },
+        limit: { type: 'number', maximum: 100 },
       },
       required: ['task_id'],
     },
@@ -188,7 +228,8 @@ const TOOLS = [
     description:
       'Fenced completion of an execution: outcome = review | escalate | handoff. ' +
       'This is the ONLY way an agent finishes work in 0.9 — never use move_task for your own task (INV 4). ' +
-      'Returns a receipt required by ops_ack.',
+      'Returns a receipt required by ops_ack. ' +
+      'Optional attachments: array of {filename, content_base64, caption?} — files are stored to task attachments and sent to Telegram with the task card (max 5 files, ≤2MB base64 each, ≤3MB total).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -200,6 +241,20 @@ const TOOLS = [
         summary: { type: 'string' },
         metadata: { type: 'object' },
         next_owner: { type: 'string', description: 'Agent name for handoff outcome.' },
+        attachments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              filename: { type: 'string' },
+              content_base64: { type: 'string' },
+              caption: { type: 'string' },
+            },
+            required: ['filename', 'content_base64'],
+            additionalProperties: false,
+          },
+          maxItems: 5,
+        },
       },
       required: ['execution_id', 'runtime_id', 'task_id', 'task_version', 'outcome'],
     },
@@ -345,6 +400,14 @@ async function dispatchTool(
         chat_id: args.chat_id as number,
         text: args.text as string,
         parse_mode: args.parse_mode as 'HTML' | 'MarkdownV2' | undefined,
+        task_id: args.task_id as string | undefined,
+        attachments: args.attachments as
+          | Array<{
+              filename: string;
+              content_base64: string;
+              caption?: string;
+            }>
+          | undefined,
       });
     case 'get_task_context':
       return getTaskContext({
@@ -357,6 +420,15 @@ async function dispatchTool(
           | boolean
           | undefined,
         events_limit: args.events_limit as number | undefined,
+        include_attachments: args.include_attachments as boolean | undefined,
+      });
+    case 'get_task_comments':
+      return getTaskComments({
+        ...base,
+        task_id: args.task_id as string,
+        cursor_created: args.cursor_created as string | undefined,
+        cursor_id: args.cursor_id as string | undefined,
+        limit: args.limit as number | undefined,
       });
     case 'ops_lease':
       return opsLeaseCore(opsCtx(ctx), args);

@@ -12,6 +12,15 @@
 
 **Supersedes:** `onitask · MCP Contract v0.7.1` (июнь 2026)
 
+> **Δ 2026-09-10 (FILE-01..08):**
+> - `send_message_to_chat` — добавлены `attachments[]` (`{filename, content_base64, caption?}`,
+>   ≤5 файлов, ≤2MB base64 на файл, ≤3MB суммарно, MIME-whitelist + magic-bytes)
+>   и `task_id` (inline-кнопка «Обсудить задачу» → deep-link `task_<full_id>_comments`).
+> - `ops_terminal` — добавлены `attachments[]` (файлы → Storage `task-attachments` + манифест
+>   в metadata; идемпотентность retry по `execution_id`). bot-notify отправляет файлы после карточки (review+done).
+> - `get_task_context` — добавлен `include_attachments` (default false): возвращает манифест + signed URL (TTL 1ч).
+> - **Новый** read-only tool `get_task_comments` (фид «Комментарии» для duty poll, keyset-пагинация, обёртка над RPC `get_task_feed`).
+
 ---
 
 ## 0. Scope MVP (что в Scope / что нет)

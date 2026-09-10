@@ -57,9 +57,15 @@ serve(async (req) => {
     for (const job of jobs) {
       await processJob(job);
     }
-    return new Response(JSON.stringify({ processed: jobs.length }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // MCP-15 / FILE-01: consumer исходящей очереди агента
+    // (проброс send_message_to_chat + файлов в Telegram)
+    const queueSent = await drainTelegramMessageQueue();
+    return new Response(
+      JSON.stringify({ processed: jobs.length, queueSent }),
+      {
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   } catch (err) {
     console.error('[bot-notify] Error:', err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
@@ -228,7 +234,22 @@ async function processTaskDoneNotification(job: {
   const taskCard = buildTaskNotifyCard(card, 'done', { reason });
 
   for (const telegramId of recipients) {
-    await sendTelegramMessage(telegramId, taskCard.text, taskCard.replyMarkup);
+    const messageId = await sendTelegramMessage(
+      telegramId,
+      taskCard.text,
+      taskCard.replyMarkup
+    );
+    // FILE-02: reply-маппинг message_id → task_id
+    if (messageId) {
+      await rememberBotTaskMessage({
+        taskId: job.payload.task_id as string,
+        workspaceId: job.workspace_id,
+        chatId: telegramId,
+        messageId,
+      });
+    }
+    // FILE-01: итоговые артефакты агента — после карточки
+    await sendTaskAttachments(telegramId, job.payload.task_id as string | undefined);
   }
 }
 
@@ -308,7 +329,22 @@ async function processTaskReviewNotification(job: {
   const taskCard = buildTaskNotifyCard(card, 'review', { reason, taskId });
 
   for (const telegramId of recipients) {
-    await sendTelegramMessage(telegramId, taskCard.text, taskCard.replyMarkup);
+    const messageId = await sendTelegramMessage(
+      telegramId,
+      taskCard.text,
+      taskCard.replyMarkup
+    );
+    // FILE-02: reply-маппинг message_id → task_id
+    if (messageId) {
+      await rememberBotTaskMessage({
+        taskId: taskId ?? '',
+        workspaceId: job.workspace_id,
+        chatId: telegramId,
+        messageId,
+      });
+    }
+    // FILE-01: результат агента перед апрувом — после карточки
+    await sendTaskAttachments(telegramId, taskId);
   }
 }
 
@@ -897,6 +933,267 @@ function taskDeepLink(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}`);
 }
 
+/** FILE-01/03: deep-link сразу на вкладку «Комментарии» задачи */
+function taskCommentsDeepLink(fullId: string): string {
+  return miniAppDeepLink(`task_${fullId}_comments`);
+}
+
+// ============================================================================
+// Исходящие файлы агента (FILE-01/03)
+// ============================================================================
+
+const EXTENSION_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx:
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx:
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  zip: 'application/zip',
+  ogg: 'audio/ogg',
+  mp3: 'audio/mpeg',
+};
+
+const PHOTO_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
+
+function decodeBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function mimeForFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return EXTENSION_MIME[ext] ?? 'application/octet-stream';
+}
+
+function sanitizeAttachmentFilename(filename: string): string {
+  // Telegram требует имя без path-traversal; берём только basename.
+  const base = filename.replace(/\\/g, '/').split('/').pop() ?? 'file';
+  return base.slice(-120);
+}
+
+/**
+ * Отправить один файл в чат: фото (png/jpg/webp/gif) → sendPhoto,
+ * остальное → sendDocument. Бросает при ошибке (для retry очереди).
+ */
+async function sendTelegramFile(
+  chatId: number,
+  attachment: Record<string, unknown>
+): Promise<void> {
+  const filename = sanitizeAttachmentFilename(
+    String(attachment.filename ?? 'file')
+  );
+  const contentBase64 = String(attachment.content_base64 ?? '');
+  if (!contentBase64) throw new Error('attachment missing content_base64');
+  const bytes = decodeBase64(contentBase64);
+  const mime = mimeForFilename(filename);
+  const isPhoto = PHOTO_EXTENSIONS.test(filename);
+  const method = isPhoto ? 'sendPhoto' : 'sendDocument';
+  const field = isPhoto ? 'photo' : 'document';
+
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append(field, new Blob([bytes], { type: mime }), filename);
+  const caption = String(attachment.caption ?? '').trim();
+  if (caption) form.append('caption', caption.slice(0, 1024));
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`;
+  const resp = await fetch(url, { method: 'POST', body: form });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Telegram ${method} failed (${resp.status}): ${body}`);
+  }
+}
+
+/**
+ * Прочитать attachments, сохранённые для задачи (ops_terminal → task_attachments),
+ * скачать байты из Storage и отправить в чат ПОСЛЕ текстовой карточки.
+ * Ошибка per-file не роняет остальные.
+ */
+async function sendTaskAttachments(
+  chatId: number,
+  taskId: string | undefined
+): Promise<number> {
+  if (!taskId) return 0;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data: rows } = await supabase
+    .from('task_attachments')
+    .select('filename, mime_type, storage_path, size_bytes')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true })
+    .limit(10);
+  if (!rows || rows.length === 0) return 0;
+
+  let sent = 0;
+  for (const row of rows as Array<Record<string, unknown>>) {
+    try {
+      const storagePath = String(row.storage_path ?? '');
+      if (!storagePath) continue;
+      const { data: blob } = await supabase.storage
+        .from('task-attachments')
+        .download(storagePath);
+      if (!blob) continue;
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const filename = sanitizeAttachmentFilename(String(row.filename ?? ''));
+      const form = new FormData();
+      form.append('chat_id', String(chatId));
+      const isPhoto = PHOTO_EXTENSIONS.test(filename);
+      form.append(
+        isPhoto ? 'photo' : 'document',
+        new Blob([bytes], {
+          type: String(row.mime_type ?? mimeForFilename(filename)),
+        }),
+        filename
+      );
+      const method = isPhoto ? 'sendPhoto' : 'sendDocument';
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`;
+      const resp = await fetch(url, { method: 'POST', body: form });
+      if (resp.ok) sent++;
+      else
+        console.error(
+          `[bot-notify] sendTaskAttachment ${filename} failed: ${resp.status} ${await resp.text()}`
+        );
+    } catch (err) {
+      console.error('[bot-notify] sendTaskAttachment error:', err);
+    }
+  }
+  return sent;
+}
+
+// ============================================================================
+// telegram_message_queue consumer (MCP-15 / FILE-01)
+// ============================================================================
+
+/**
+ * FILE-02: reply-маппинг message_id карточки → task_id (для «reply + файл → прикрепить»).
+ * INSERT ... ON CONFLICT DO NOTHING (UNIQUE(chat_id, message_id)).
+ */
+async function rememberBotTaskMessage(opts: {
+  taskId: string;
+  workspaceId: string;
+  chatId: number;
+  messageId: number;
+}): Promise<void> {
+  if (!opts.taskId || !opts.messageId) return;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await supabase
+      .from('bot_task_messages')
+      .upsert(
+        {
+          workspace_id: opts.workspaceId,
+          task_id: opts.taskId,
+          chat_id: opts.chatId,
+          message_id: opts.messageId,
+        },
+        { onConflict: 'chat_id,message_id', ignoreDuplicates: true }
+      );
+  } catch (err) {
+    console.error('[bot-notify] rememberBotTaskMessage error:', err);
+  }
+}
+
+/**
+ * Читает pending/retrying строки исходящей очереди агента и шлёт их в Telegram.
+ * Текст (sendMessage, с inline-кнопкой по metadata.full_id) → затем файлы
+ * (attachments, base64 → multipart). Sent/failed проставляет по результату,
+ * retry_count инкрементируется (policy max_retries=3 из 024).
+ */
+async function drainTelegramMessageQueue(): Promise<number> {
+  if (!TELEGRAM_BOT_TOKEN) return 0;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data, error } = await supabase
+    .from('telegram_message_queue')
+    .select(
+      'id, telegram_chat_id, message, attachments, metadata, status, retry_count, max_retries'
+    )
+    .in('status', ['pending', 'retrying'])
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(10);
+
+  if (error || !data) {
+    if (error) console.error('[bot-notify] queue read error:', error);
+    return 0;
+  }
+
+  let processed = 0;
+  for (const row of data as Array<Record<string, unknown>>) {
+    const chatId = Number(row.telegram_chat_id);
+    try {
+      const text = String(row.message ?? '').trim();
+      const metadata = (row.metadata as Record<string, unknown>) ?? {};
+      const attachments =
+        (row.attachments as Array<Record<string, unknown>>) ?? [];
+
+      if (text.length > 0) {
+        let replyMarkup:
+          | {
+              inline_keyboard: Array<
+                Array<{ text: string; url?: string; callback_data?: string }>
+              >;
+            }
+          | undefined;
+        if (metadata.full_id) {
+          replyMarkup = {
+            inline_keyboard: [
+              [
+                {
+                  text: '💬 Обсудить задачу',
+                  url: taskCommentsDeepLink(String(metadata.full_id)),
+                },
+              ],
+            ],
+          };
+        }
+        await sendTelegramMessage(chatId, text, replyMarkup, true);
+      }
+      for (const attachment of attachments) {
+        await sendTelegramFile(chatId, attachment);
+      }
+
+      await supabase
+        .from('telegram_message_queue')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          error_message: null,
+        })
+        .eq('id', row.id);
+      processed++;
+    } catch (err) {
+      const retryCount = ((row.retry_count as number) ?? 0) + 1;
+      const maxRetries = (row.max_retries as number) ?? 3;
+      const failed = retryCount >= maxRetries;
+      await supabase
+        .from('telegram_message_queue')
+        .update({
+          status: failed ? 'failed' : 'retrying',
+          retry_count: retryCount,
+          failed_at: failed ? new Date().toISOString() : null,
+          error_message: String(
+            err instanceof Error ? err.message : err
+          ).slice(0, 500),
+        })
+        .eq('id', row.id);
+    }
+  }
+  return processed;
+}
+
 async function sendTelegramMessage(
   chatId: number,
   html: string,
@@ -904,8 +1201,9 @@ async function sendTelegramMessage(
     inline_keyboard: Array<
       Array<{ text: string; url?: string; callback_data?: string }>
     >;
-  }
-): Promise<void> {
+  },
+  throwOnError = false
+): Promise<number | null> {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -922,5 +1220,11 @@ async function sendTelegramMessage(
     console.error(
       `[bot-notify] Telegram sendMessage failed (chat_id=${chatId}): ${resp.status} ${body}`
     );
+    if (throwOnError) {
+      throw new Error(`Telegram sendMessage ${resp.status} ${body}`);
+    }
+    return null;
   }
+  const data = await resp.json();
+  return data?.result?.message_id ?? null;
 }

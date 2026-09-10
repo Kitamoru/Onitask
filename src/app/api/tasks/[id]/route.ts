@@ -270,6 +270,23 @@ export async function DELETE(
       .delete()
       .eq('task_id', taskId);
 
+    // FILE-07: бинарники вложений из Storage (строки task_attachments каскадят
+    // сами по ON DELETE CASCADE; объекты в bucket — нет, чистим явно ДО delete)
+    try {
+      const { data: attachRows } = await anySupabase
+        .from('task_attachments')
+        .select('storage_path')
+        .eq('task_id', taskId);
+      const paths = (attachRows ?? []).map(
+        (r: { storage_path: string }) => r.storage_path
+      );
+      if (paths.length > 0) {
+        await anySupabase.storage.from('task-attachments').remove(paths);
+      }
+    } catch (storageErr) {
+      console.error('[DELETE /api/tasks/:id] attachment storage cleanup error:', storageErr);
+    }
+
     // Finally, delete the task itself
     const { error: deleteError } = await supabase
       .from('tasks')
