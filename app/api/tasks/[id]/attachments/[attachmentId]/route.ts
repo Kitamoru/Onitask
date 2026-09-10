@@ -3,12 +3,12 @@
 // Удаляет бинарник из Storage (best-effort) + строку манифеста.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '../../../../../../../lib/supabase';
+import { createServerClient } from '../../../../../../lib/supabase';
 import {
   authenticateRequest,
   extractInitData,
   isWorkspaceMember,
-} from '../../../../../../../lib/api-auth';
+} from '../../../../../../lib/api-auth';
 
 export async function DELETE(
   req: NextRequest,
