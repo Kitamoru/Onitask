@@ -248,16 +248,9 @@ export function TaskViewEdit({
         setTimeout(() => URL.revokeObjectURL(objUrl), 10_000);
         return;
       } catch {
-        // CORS/офлайн/webview-квирки → уровень 3
-      }
-
-      // Ур. 3: системный браузер (роут отвечает attachment → мгновенное скачивание)
-      const tgOpen = (window as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } })
-        .Telegram?.WebApp;
-      if (typeof tgOpen?.openLink === 'function') {
-        tgOpen.openLink(url);
-      } else {
-        window.open(url, '_blank', 'noopener');
+        // CORS/офлайн/webview-квирки — НЕ уходим на openLink (в TWA он открывает
+        // пустую страницу-attachment, с которой нельзя вернуться). Показываем ошибку.
+        throw new Error('Скачивание недоступно на этом клиенте. Попробуйте на телефоне.');
       }
     } catch (err) {
       setAttachmentsError(err instanceof Error ? err.message : 'Не удалось открыть файл');

@@ -58,10 +58,27 @@ export async function GET(
         // RFC 5987/6266: filename* — UTF-8 (кириллица), filename= — ASCII fallback
         'Content-Disposition': `attachment; filename="${asciiFallback(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
         'Cache-Control': 'private, no-store',
+        // CORS: fetch→blob из TWA (любой origin) должен иметь доступ к телу ответа.
+        // Авторизация — через capability-токен в query; публичный GET-файл — безопасен.
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
       },
     });
   } catch (err) {
     console.error('[GET attachment file] error:', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
+}
+
+/** CORS preflight (fetch→blob в WebView). */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
 }
