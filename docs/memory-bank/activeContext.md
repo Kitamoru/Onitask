@@ -1,5 +1,38 @@
 # Active Context
 # Active Context
+## FILE-10: Скачивание без выхода из TWA — прокси + HMAC-токен + каскад (2026-09-11) ✅
+
+**Симптомы из прода (после FILE-09):** (1) имя файла при скачивании — «тарабарщина.xlsx»
+(Storage не формирует RFC 5987 для не-ASCII в Content-Disposition); (2) openLink уводил
+на *.supabase.co и там предлагалось скачать; (3) на iOS WKWebView программные скачивания
+ненадёжны в принципе.
+
+**Решение — прокси на нашем домене + capability-токен:**
+- `lib/shared/downloadToken.ts` (new): HMAC-SHA256(TELEGRAM_BOT_TOKEN, taskId:attId:exp),
+  TTL 300с, timing-safe verify.
+- POST `[attachmentId]`: вместо storage-подписи → токен + прокси-URL
+  `${origin}/api/tasks/.../file?t=<token>` (+ `filename` в ответе).
+- `GET [attachmentId]/file` (new): verify токен → `storage.download()` (service-role) →
+  `Content-Disposition: attachment; filename="ascii"; filename*=UTF-8''<utf8>` +
+  `Cache-Control: private, no-store`.
+- `TaskViewEdit`: каскад — `WebApp.downloadFile(url, filename)` (нативно, Bot API 7.7+,
+  без навигации; типизирован в useTelegramAuth) → `fetch→blob→anchor download` (в TWA) →
+  `openLink` (наш роут отвечает attachment → мгновенное скачивание). supabase-домен
+  исчез из пути человека полностью.
+- Почему Telegram при чём: webview-страница не может писать в файловую систему
+  устройства; на iOS «скачать» может только нативный хост → его запрос не может нести
+  заголовки → нужен самоавторизующийся URL (токен).
+
+**Валидация:** tsc EXIT 0 ✅; vitest: downloadToken 6/6 ✅ (подделка/scope/TTL/мусор),
+общий ран = baseline (init.test 4 — pre-existing). Коммит e0e275d.
+
+**Мануальный чек-лист (TWA):** Android — каскад (уровень 1 или 2, скачивание без
+выхода из приложения); iOS — уровень 1; кириллическое имя; экспирация токена
+(повторный клик через >5 мин — выдаётся свежий); офлайн-клик → ошибка в блоке.
+
+retry_count: 0. Блокеров нет.
+
+---
 ## FILE-09: Files UX — React Query + manifest-only + on-demand скачивание (2026-09-11) ✅
 
 **Проблемы (3):**

@@ -710,7 +710,18 @@ format is deliberately compact so that agents can load the file quickly.
       → fallback window.open. Дефолты QC: staleTime 60с, gcTime 30мин, refetchOnWindowFocus false
       (TWA), retry 1. Проверено: tsc EXIT 0; build compile+types OK (page-data fail /api/bot/webhook —
       локально нет env, на Vercel vars есть); vitest = baseline (4/4 cache, init.test — pre-existing).
-- [ ] FILE-10 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
+- [x] FILE-10 Скачивание без выхода из TWA: прокси на нашем домене + HMAC-токен + каскад (2026-09-11) #ui #api !high
+      Проблемы в проде: тарабарщина в имени (Storage не делает RFC 5987 для кириллицы),
+      openLink уводил на *.supabase.co, на iOS WKWebView вообще ненадёжен для программных скачиваний.
+      Решение: POST [attachmentId] чеканит capability-токен (HMAC-SHA256 от TELEGRAM_BOT_TOKEN,
+      TTL 5 мин, scope taskId+attachmentId) и возвращает прокси-URL НАШЕГО домена;
+      GET /file?t= проверяет токен (timing-safe) → storage.download() →
+      Content-Disposition с filename* UTF-8 + ASCII fallback (имя файла корректно везде);
+      клиентский каскад: Telegram.WebApp.downloadFile (нативно, Bot API 7.7+, без навигации)
+      → fetch→blob→anchor (полностью в TWA) → openLink (роут отвечает attachment — сразу скачивание).
+      supabase-домен исчез из пути человека. Тесты токена 6/6 (подделка/scope/экспирация/мусор).
+      Хелпер: lib/shared/downloadToken.ts. Агентский путь (get_task_context) не тронут.
+- [ ] FILE-12 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
       Гарантийный второй потребитель React Query (против «зомби-зависимости №2»).
 - [ ] FILE-11 Realtime-инвалидация `task_attachments` (Phase 2) #ui #db !low
       Живое обновление открытой шторки (агент приложил файл → появился у клиента).
