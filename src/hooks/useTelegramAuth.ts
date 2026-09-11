@@ -48,6 +48,9 @@ interface TelegramWebAppExtended extends Window {
       switchInlineQuery: (query: string, chat_types?: string[]) => void;
       openLink: (url: string, options?: { try_open_browser: boolean }) => boolean;
       openTelegramLink: (url: string) => void;
+      /** Bot API 7.7+: нативное скачивание хост-приложением (без навигации).
+       *  Возвращает false при отказе (версия клиента / невалидный URL). */
+      downloadFile?: (url: string, file_name: string) => boolean;
       HapticFeedback: {
         impactOccurred: (impactType: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
         notificationOccurred: (notificationType: 'error' | 'success' | 'warning') => void;

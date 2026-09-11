@@ -203,8 +203,13 @@ export function TaskViewEdit({
   };
 
   /**
-   * Скачивание файла: on-demand подпись → системный браузер.
-   * В TWA webview target="_blank" ненадёжен — канонический путь openLink().
+   * Скачивание файла: on-demand прокси-URL → каскад уровней.
+   * Ур.1 downloadFile — нативное скачивание хостом Telegram (Bot API 7.7+),
+   *   без навигации; единственный надёжный путь на iOS (WKWebView игнорирует
+   *   программные скачивания). Токен в URL — хост не может нести заголовки.
+   * Ур.2 fetch→blob — полностью внутри webview (Android/обычный браузер).
+   * Ур.3 openLink — системный браузер на НАШ роут (attachment-диспозиция →
+   *   скачивание сразу, без «страницы supabase»).
    */
   const handleDownloadAttachment = async (attachment: TaskAttachment) => {
     if (!task?.id || downloadingId) return;
@@ -212,10 +217,38 @@ export function TaskViewEdit({
     setAttachmentsError(null);
     try {
       const url = await signTaskAttachment(task.id, attachment.id);
-      const tg = (window as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } })
+
+      // Ур. 1: нативное скачивание хостом Telegram
+      const tg = (window as { Telegram?: { WebApp?: { downloadFile?: (u: string, name: string) => boolean } } })
         .Telegram?.WebApp;
-      if (typeof tg?.openLink === 'function') {
-        tg.openLink(url);
+      if (typeof tg?.downloadFile === 'function') {
+        const ok = tg.downloadFile(url, attachment.filename);
+        if (ok !== false) return;
+      }
+
+      // Ур. 2: полностью внутри TWA — blob → программный клик
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Не удалось получить файл');
+        const blob = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = attachment.filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objUrl), 10_000);
+        return;
+      } catch {
+        // CORS/офлайн/webview-квирки → уровень 3
+      }
+
+      // Ур. 3: системный браузер (роут отвечает attachment → мгновенное скачивание)
+      const tgOpen = (window as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } })
+        .Telegram?.WebApp;
+      if (typeof tgOpen?.openLink === 'function') {
+        tgOpen.openLink(url);
       } else {
         window.open(url, '_blank', 'noopener');
       }

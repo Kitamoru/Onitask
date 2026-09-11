@@ -1,5 +1,6 @@
-// POST/DELETE /api/tasks/[id]/attachments/[attachmentId] — FILE-05.
-// POST   → on-demand подпись download-URL (manifest-only список; URL свежий при каждом клике).
+// POST/DELETE /api/tasks/[id]/attachments/[attachmentId] — FILE-05/10.
+// POST   → on-demand выдача прокси-URL скачивания (HMAC-токен, TTL 5 мин) —
+//          пользователь получает ссылку на НАШ домен, а не на supabase.
 // DELETE → удалить файл задачи.
 // Auth через Telegram initData; tenant-изоляция через workspace задачи.
 
@@ -10,9 +11,7 @@ import {
   extractInitData,
   isWorkspaceMember,
 } from '../../../../../../../lib/api-auth';
-import { createAttachmentSignedUrl } from '../../../../../../../lib/shared/attachments';
-
-const SIGN_TTL_SECONDS = 3600; // 1 час — достаточно для браузерной загрузки по клику
+import { mintAttachmentDownloadToken } from '../../../../../../../lib/shared/downloadToken';
 
 export async function POST(
   req: NextRequest,
@@ -57,15 +56,13 @@ export async function POST(
       return NextResponse.json({ error: 'Файл отсутствует в хранилище' }, { status: 404 });
     }
 
-    // download-диспозиция: браузер скачивает файл с оригинальным именем
-    const url = await createAttachmentSignedUrl(supabase, storagePath, SIGN_TTL_SECONDS, {
-      download: attachment.filename as string,
-    });
-    if (!url) {
-      return NextResponse.json({ error: 'Не удалось открыть файл' }, { status: 500 });
-    }
+    // Прокси-URL на нашем домене + capability-токен (самоавторизующийся —
+    // Telegram.WebApp.downloadFile делает нативный запрос без заголовков)
+    const origin = process.env.NEXT_PUBLIC_WEBAPP_URL || new URL(req.url).origin;
+    const token = mintAttachmentDownloadToken(taskId, attachmentId);
+    const url = `${origin}/api/tasks/${taskId}/attachments/${attachmentId}/file?t=${token}`;
 
-    return NextResponse.json({ success: true, url });
+    return NextResponse.json({ success: true, url, filename: attachment.filename });
   } catch (err) {
     console.error('[POST attachment sign] error:', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
