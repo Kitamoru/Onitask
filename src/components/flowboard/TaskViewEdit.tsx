@@ -204,9 +204,14 @@ export function TaskViewEdit({
 
   /**
    * Скачивание файла: on-demand прокси-URL → каскад уровней.
-   * Ур.1 downloadFile — нативное скачивание хостом Telegram (Bot API 7.7+),
+   * Ур.1 downloadFile — нативное скачивание хостом Telegram (Bot API 8.0+),
    *   без навигации; единственный надёжный путь на iOS (WKWebView игнорирует
    *   программные скачивания). Токен в URL — хост не может нести заголовки.
+   *   ВАЖНО: официальная сигнатура — downloadFile(params, callback), где
+   *   params = { url, file_name } (объект, НЕ два строковых аргумента).
+   *   Результат приходит только асинхронно через callback(accepted: boolean) —
+   *   accepted означает «пользователь принял нативный попап», а не
+   *   «файл гарантированно скачался».
    * Ур.2 fetch→blob — полностью внутри webview (Android/обычный браузер).
    * Ур.3 openLink — системный браузер на НАШ роут (attachment-диспозиция →
    *   скачивание сразу, без «страницы supabase»).
@@ -219,18 +224,32 @@ export function TaskViewEdit({
       const url = await signTaskAttachment(task.id, attachment.id);
 
       // Ур. 1: нативное скачивание хостом Telegram.
-      // downloadFile БРОСАЕТ исключение при невалидных параметрах (не возвращает false) —
-      // оборачиваем в try/catch, чтобы уйти на уровень 2, а не на ошибку.
-      const tg = (window as { Telegram?: { WebApp?: { downloadFile?: (u: string, name: string) => boolean } } })
-        .Telegram?.WebApp;
-      if (typeof tg?.downloadFile === 'function') {
-        let ok: boolean | undefined;
-        try {
-          ok = tg.downloadFile(url, attachment.filename);
-        } catch {
-          ok = false; // WebAppDownloadFileParamInvalid и т.п. → уровень 2
+      // downloadFile принимает params-объект { url, file_name } и вызывает
+      // callback(accepted) асинхронно — оборачиваем в Promise, чтобы дождаться
+      // реального ответа хоста, а не гадать по синхронному return.
+      const tg = (
+        window as {
+          Telegram?: {
+            WebApp?: {
+              downloadFile?: (
+                params: { url: string; file_name: string },
+                callback?: (accepted: boolean) => void,
+              ) => void;
+            };
+          };
         }
-        if (ok !== false) return;
+      ).Telegram?.WebApp;
+
+      if (typeof tg?.downloadFile === 'function') {
+        const accepted = await new Promise<boolean>((resolve) => {
+          try {
+            tg.downloadFile!({ url, file_name: attachment.filename }, (ok) => resolve(!!ok));
+          } catch {
+            // WebAppDownloadFileParamInvalid и т.п. → уровень 2
+            resolve(false);
+          }
+        });
+        if (accepted) return;
       }
 
       // Ур. 2: полностью внутри TWA — blob → программный клик
