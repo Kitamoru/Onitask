@@ -282,30 +282,47 @@ export interface TaskAttachment {
   filename: string;
   mime_type: string;
   size_bytes: number;
-  url: string | null;
   created_at: string;
   author_type?: string;
   source?: string;
 }
 
-/** GET /api/tasks/:id/attachments — список файлов задачи. */
-export async function getTaskAttachments(
-  taskId: string,
-): Promise<{ attachments: TaskAttachment[]; error: string | null }> {
-  try {
-    const initData = getTelegramInitData();
-    const res = await fetch(`/api/tasks/${taskId}/attachments`, {
-      method: 'GET',
-      headers: { 'x-init-data': initData },
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      return { attachments: [], error: json.error || 'Load failed' };
-    }
-    return { attachments: json.attachments ?? [], error: null };
-  } catch (err) {
-    return { attachments: [], error: err instanceof Error ? err.message : 'Unknown error' };
+/**
+ * GET /api/tasks/:id/attachments — манифест файлов задачи (без signed URL).
+ * Throwing-контракт для useQuery: ошибка сети/сервера — исключение.
+ */
+export async function getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {
+  const initData = getTelegramInitData();
+  const res = await fetch(`/api/tasks/${taskId}/attachments`, {
+    method: 'GET',
+    headers: { 'x-init-data': initData },
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Не удалось загрузить файлы');
   }
+  return json.attachments ?? [];
+}
+
+/**
+ * POST /api/tasks/:id/attachments/:attachmentId — подписать download-URL
+ * по требованию (on-demand). URL свежий при каждом клике — никогда не протухает.
+ * Бросает исключение при ошибке (useMutation-совместимо).
+ */
+export async function signTaskAttachment(
+  taskId: string,
+  attachmentId: string,
+): Promise<string> {
+  const initData = getTelegramInitData();
+  const res = await fetch(`/api/tasks/${taskId}/attachments/${attachmentId}`, {
+    method: 'POST',
+    headers: { 'x-init-data': initData },
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Не удалось открыть файл');
+  }
+  return json.url as string;
 }
 
 /** POST /api/tasks/:id/attachments — загрузка файлов (multipart). */

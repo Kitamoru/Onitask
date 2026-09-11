@@ -699,6 +699,22 @@ format is deliberately compact so that agents can load the file quickly.
       Cron `gc-orphan-task-attachments` 03:10 UTC daily.
 - [x] FILE-08 Read-only MCP tool `get_task_comments` — фид «Комментарии» для duty poll #mcp !med
       Обёртка над RPC `get_task_feed` (076). Вариант A — poll; Realtime (B) — перспектива.
+- [x] FILE-09 Files UX: React Query + manifest-only список + on-demand скачивание (2026-09-11) #ui #api !high
+      Проблемы: гонка файлов между задачами (кэш-ключ), тяжёлый GET (N+1 подписей),
+      сломанное скачивание в TWA (target="_blank" мёртв в webview).
+      Решение: @tanstack/react-query v5 (возвращён осознанно, ADR-2026-09-11; zustand не возвращается);
+      queryKey `['task-attachments', taskId]` — изоляция by design; кэш = единственный источник
+      истины (setQueryData append/delete, invalidate после каскада; локальный список удалён);
+      GET = чистый манифест БЕЗ подписей; POST `[attachmentId]` — on-demand подпись с
+      `download: filename` (Content-Disposition attachment); клиент: Telegram.WebApp.openLink
+      → fallback window.open. Дефолты QC: staleTime 60с, gcTime 30мин, refetchOnWindowFocus false
+      (TWA), retry 1. Проверено: tsc EXIT 0; build compile+types OK (page-data fail /api/bot/webhook —
+      локально нет env, на Vercel vars есть); vitest = baseline (4/4 cache, init.test — pre-existing).
+- [ ] FILE-10 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
+      Гарантийный второй потребитель React Query (против «зомби-зависимости №2»).
+- [ ] FILE-11 Realtime-инвалидация `task_attachments` (Phase 2) #ui #db !low
+      Живое обновление открытой шторки (агент приложил файл → появился у клиента).
+      Требует security-review: publication/RLS канала, scoping по workspace.
 
 ---
 

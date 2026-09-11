@@ -377,8 +377,6 @@ export interface TaskAttachmentData {
   mime_type: string;
   /** Size in bytes */
   size_bytes: number;
-  /** Signed download URL (TTL 1 hour) or null if signing failed */
-  url: string | null;
   /** Created at ISO string */
   created_at: string;
   /** Author type — присутствует в GET-ответе, может отсутствовать в POST-ответе */

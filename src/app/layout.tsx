@@ -8,6 +8,7 @@ import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
 import { DataProvider } from "@/contexts/DataContext";
 import { TelegramDeepLinkRouter } from "./TelegramDeepLinkRouter";
+import { QueryProviders } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,6 +58,7 @@ export default function RootLayout({
         strategy="beforeInteractive"
       />
         <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
+          <QueryProviders>
           <TelegramProvider>
             <TelegramThemeProvider>
               <DataProvider>
@@ -72,6 +74,7 @@ export default function RootLayout({
               </DataProvider>
             </TelegramThemeProvider>
           </TelegramProvider>
+          </QueryProviders>
         </body>
     </html>
   );

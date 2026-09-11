@@ -318,11 +318,12 @@ export async function uploadAttachmentToStorage(opts: {
 export async function createAttachmentSignedUrl(
   supabase: SupabaseClient,
   storagePath: string,
-  ttlSeconds = 3600
+  ttlSeconds = 3600,
+  opts?: { download?: string }
 ): Promise<string | null> {
   const { data, error } = await supabase.storage
     .from('task-attachments')
-    .createSignedUrl(storagePath, ttlSeconds);
+    .createSignedUrl(storagePath, ttlSeconds, opts?.download ? { download: opts.download } : undefined);
   return error || !data ? null : data.signedUrl;
 }
 

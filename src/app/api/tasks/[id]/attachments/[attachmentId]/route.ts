@@ -1,6 +1,7 @@
-// DELETE /api/tasks/[id]/attachments/[attachmentId] — FILE-05: удалить файл задачи.
+// POST/DELETE /api/tasks/[id]/attachments/[attachmentId] — FILE-05.
+// POST   → on-demand подпись download-URL (manifest-only список; URL свежий при каждом клике).
+// DELETE → удалить файл задачи.
 // Auth через Telegram initData; tenant-изоляция через workspace задачи.
-// Удаляет бинарник из Storage (best-effort) + строку манифеста.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../../../lib/supabase';
@@ -9,6 +10,67 @@ import {
   extractInitData,
   isWorkspaceMember,
 } from '../../../../../../../lib/api-auth';
+import { createAttachmentSignedUrl } from '../../../../../../../lib/shared/attachments';
+
+const SIGN_TTL_SECONDS = 3600; // 1 час — достаточно для браузерной загрузки по клику
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; attachmentId: string }> },
+) {
+  try {
+    const auth = await authenticateRequest(await extractInitData(req));
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: auth.error || 'Unauthorized' },
+        { status: auth.status || 401 },
+      );
+    }
+    const { id: taskId, attachmentId } = await params;
+    const supabase = createServerClient();
+
+    // Манифест + workspace задачи для tenant-проверки
+    const { data: attachment, error: fetchError } = await supabase
+      .from('task_attachments')
+      .select('id, storage_path, filename, workspace_id')
+      .eq('id', attachmentId)
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+    if (!attachment) {
+      return NextResponse.json({ error: 'Файл не найден' }, { status: 404 });
+    }
+    if (
+      !(await isWorkspaceMember(
+        auth.profileId!,
+        attachment.workspace_id as string,
+      ))
+    ) {
+      return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
+    }
+
+    const storagePath = attachment.storage_path as string;
+    if (!storagePath) {
+      return NextResponse.json({ error: 'Файл отсутствует в хранилище' }, { status: 404 });
+    }
+
+    // download-диспозиция: браузер скачивает файл с оригинальным именем
+    const url = await createAttachmentSignedUrl(supabase, storagePath, SIGN_TTL_SECONDS, {
+      download: attachment.filename as string,
+    });
+    if (!url) {
+      return NextResponse.json({ error: 'Не удалось открыть файл' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, url });
+  } catch (err) {
+    console.error('[POST attachment sign] error:', err);
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
+}
 
 export async function DELETE(
   req: NextRequest,

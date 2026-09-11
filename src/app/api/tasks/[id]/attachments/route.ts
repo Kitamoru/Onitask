@@ -43,24 +43,21 @@ export async function GET(
 
     const { data: rows } = await supabase
       .from('task_attachments')
-      .select('id, filename, mime_type, size_bytes, storage_path, created_at, author_type, source')
+      .select('id, filename, mime_type, size_bytes, created_at, author_type, source')
       .eq('task_id', taskId)
       .order('created_at', { ascending: true });
 
-    const attachments = [];
-    for (const row of rows ?? []) {
-      const url = await createAttachmentSignedUrl(supabase, row.storage_path as string, 3600);
-      attachments.push({
-        id: row.id,
-        filename: row.filename,
-        mime_type: row.mime_type,
-        size_bytes: row.size_bytes,
-        url,
-        created_at: row.created_at,
-        author_type: row.author_type,
-        source: row.source,
-      });
-    }
+    // Manifest-only (FILE-05 perf): бинарники и подписи не трогаем —
+    // download-URL подписывается on-demand через POST [attachmentId].
+    const attachments = (rows ?? []).map((row) => ({
+      id: row.id,
+      filename: row.filename,
+      mime_type: row.mime_type,
+      size_bytes: row.size_bytes,
+      created_at: row.created_at,
+      author_type: row.author_type,
+      source: row.source,
+    }));
     return NextResponse.json({ success: true, attachments });
   } catch (err) {
     console.error('[GET attachments] error:', err);

@@ -1,5 +1,53 @@
 # Active Context
 # Active Context
+## FILE-09: Files UX — React Query + manifest-only + on-demand скачивание (2026-09-11) ✅
+
+**Проблемы (3):**
+1. Гонка при переключении задач — медленный ответ GET задачи A затирал список задачи B
+   (локальный `useState` без guard'а), пользователь видел «чужие» файлы.
+2. Каждое открытие шторки = GET с N+1 подписями Storage (до ~1.5с хвост).
+3. Скачивание сломано: `<a target="_blank">` в TWA webview мёртв; signed URL с
+   inline-диспозицией не скачивается.
+
+**Решение (см. ADR-2026-09-11 в decisions.md):**
+- **React Query v5 возвращён** (осознанно; zustand — нет). `src/app/providers.tsx`:
+  QueryClient в useState, дефолты staleTime 60с / gcTime 30мин / retry 1 /
+  refetchOnWindowFocus false. Обёрнут в layout как внешний провайдер.
+- **TaskViewEdit**: `useQuery(['task-attachments', taskId])` (изоляция by design,
+  без placeholderData); кэш = единственный источник истины — локальный список удалён;
+  upload-каскад: append каждого файла через `setQueryData` + один invalidate после
+  цикла; delete — фильтр через setQueryData; скачивание: `handleDownloadAttachment`
+  → `signTaskAttachment` (спиннер на строке) → `Telegram.WebApp.openLink` /
+  fallback `window.open`; иконка Download в строке (работает и в view-режиме).
+- **flow.ts**: `getTaskAttachments` → throwing-контракт (манифест без url);
+  **новый** `signTaskAttachment(taskId, attachmentId)`.
+- **Сервер**: GET `/api/tasks/[id]/attachments` — чистый манифест БЕЗ подписей
+  (N+1 устранён полностью); POST `[attachmentId]` — on-demand подпись
+  `createSignedUrl(path, 3600, { download: filename })` + tenant-проверка по
+  workspace задачи (паттерн DELETE); `lib/shared/attachments.ts` — хелпер принял
+  `opts?: { download?: string }`. Агентский путь (`get_task_context`) не тронут.
+- **Типы**: `TaskAttachmentData`/`TaskAttachment` — без `url`.
+
+**Валидация:** `type-check` EXIT 0 ✅; `next build` — compile+types OK, падение
+page-data `/api/bot/webhook` = pre-existing локальный env-гэп (vars в Vercel — по
+решению владельца); vitest = baseline (workspaceContextCache 4/4 ✅, init.test
+4 failed — pre-existing env-фейл); devtools в бандле нет (grep ✅).
+
+**16 «Problems» в VS Code** — ESLint 9.39 × rushstack/eslint-patch несовместимость
+(pre-existing, `Failed to patch ESLint`), не TS. Починка линтера — отдельный таск.
+
+**Мануальный чек-лист после деплоя:** upload с прогрессом (пошаговое появление) ·
+delete · быстрое A→B (нет чужих файлов) · повторное открытие <60с мгновенно ·
+скачивание png/pdf + кириллическое имя (Content-Disposition) · офлайн-клик →
+ошибка · view-режим скачивает · deep-link comments · **пост-деплой проверка
+прод-чанка /flowboard** (урок missing_init_data).
+
+**Follow-ups (TASKS.md):** FILE-10 комментарии → `useInfiniteQuery`; FILE-11
+Realtime-инвалидация (Phase 2, security-review).
+
+retry_count: 0. Блокеров нет.
+
+---
 ## BUGFIX: 404 на attachments DELETE/POST — конфликт корней App Router (2026-09-10) ✅
 
 **Симптом:** приложение падало 404 при работе с файлами задачи (upload/delete).

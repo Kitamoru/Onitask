@@ -17,7 +17,8 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Upload, X, Loader2, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import {
   TextInput,
@@ -39,6 +40,7 @@ import {
   getTaskAttachments,
   uploadTaskAttachments,
   deleteTaskAttachment,
+  signTaskAttachment,
   type TaskAttachment,
 } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
@@ -107,33 +109,39 @@ export function TaskViewEdit({
   const [relatedEnabled, setRelatedEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
 
-  // FILE-05: файлы задачи (всегда активный блок, GET-подгрузка при открытии)
-  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  // FILE-05: файлы задачи — манифест через React Query (изоляция по queryKey per task,
+  // устраняет гонку «файлы задачи A показаны в шторке задачи B»).
+  // Кэш = единственный источник истины: upload/delete обновляют setQueryData, после каскада — invalidate.
+  const queryClient = useQueryClient();
+  const attachmentsQueryKey = ['task-attachments', task?.id] as const;
+  const {
+    data: attachments = [],
+    isPending: attachmentsLoading,
+    error: attachmentsQueryError,
+  } = useQuery({
+    queryKey: attachmentsQueryKey,
+    queryFn: () => getTaskAttachments(task!.id!),
+    enabled: open && !!task?.id,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
+  });
+  // Ошибки действий (upload/delete/download) поверх ошибки самого запроса
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const attachmentsErrorText =
+    attachmentsError ??
+    (attachmentsQueryError instanceof Error ? attachmentsQueryError.message : null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Прогресс и удаление (паттерн DocumentsCard)
+  // Прогресс, удаление и скачивание (паттерн DocumentsCard)
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
   const [uploadTotal, setUploadTotal] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const loadAttachments = useCallback(async () => {
-    if (!task?.id) {
-      setAttachments([]);
-      setAttachmentsError(null);
-      return;
-    }
-    setAttachmentsLoading(true);
-    const res = await getTaskAttachments(task.id);
-    setAttachments(res.attachments ?? []);
-    setAttachmentsError(res.error);
-    setAttachmentsLoading(false);
-  }, [task?.id]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleAttachFiles = async (files: FileList | null) => {
     if (!files || !task?.id) return;
 
+    const taskId = task.id;
     const all = Array.from(files);
     const remaining = Math.max(0, MAX_ATTACHMENTS - attachments.length);
     const list = all.slice(0, remaining);
@@ -149,18 +157,25 @@ export function TaskViewEdit({
     setAttachmentsError(null);
 
     let lastError: string | null = null;
-    // Каскадная загрузка с прогрессом (uploadCount/uploadTotal)
+    // Каскадная загрузка с прогрессом (uploadCount/uploadTotal);
+    // каждый успешный файл сразу попадает в кэш (без дублей — единственный источник истины)
     for (let i = 0; i < list.length; i++) {
-      const res = await uploadTaskAttachments(task.id, [list[i]]);
+      const res = await uploadTaskAttachments(taskId, [list[i]]);
       if (res.error) {
         lastError = res.error;
-      } else {
-        setAttachments((prev) => [...prev, ...res.attachments]);
+      } else if (res.attachments.length > 0) {
+        queryClient.setQueryData<TaskAttachment[]>(attachmentsQueryKey, (prev = []) => [
+          ...prev,
+          ...res.attachments,
+        ]);
       }
       setUploadCount(i + 1);
     }
 
     setUploading(false);
+
+    // Сверка с сервером после каскада (частичный успех, порядок, подписи)
+    queryClient.invalidateQueries({ queryKey: attachmentsQueryKey });
 
     // Приоритет сообщений: усечение важнее частной ошибки
     if (all.length > remaining) {
@@ -177,12 +192,38 @@ export function TaskViewEdit({
     setDeletingId(attachmentId);
     const res = await deleteTaskAttachment(task.id, attachmentId);
     if (res.success) {
-      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+      queryClient.setQueryData<TaskAttachment[]>(attachmentsQueryKey, (prev = []) =>
+        prev.filter((a) => a.id !== attachmentId),
+      );
       setAttachmentsError(null);
     } else {
       setAttachmentsError(res.error ?? null);
     }
     setDeletingId(null);
+  };
+
+  /**
+   * Скачивание файла: on-demand подпись → системный браузер.
+   * В TWA webview target="_blank" ненадёжен — канонический путь openLink().
+   */
+  const handleDownloadAttachment = async (attachment: TaskAttachment) => {
+    if (!task?.id || downloadingId) return;
+    setDownloadingId(attachment.id);
+    setAttachmentsError(null);
+    try {
+      const url = await signTaskAttachment(task.id, attachment.id);
+      const tg = (window as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } })
+        .Telegram?.WebApp;
+      if (typeof tg?.openLink === 'function') {
+        tg.openLink(url);
+      } else {
+        window.open(url, '_blank', 'noopener');
+      }
+    } catch (err) {
+      setAttachmentsError(err instanceof Error ? err.message : 'Не удалось открыть файл');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   // Assignment state
@@ -228,9 +269,9 @@ export function TaskViewEdit({
       setTab(initialTab);
       setError(null);
       setShowDeleteConfirm(false);
-      loadAttachments();
+      setAttachmentsError(null);
     }
-  }, [open, mode, initialTab, loadAttachments]);
+  }, [open, mode, initialTab]);
 
   // Sync state when task changes
   useEffect(() => {
@@ -629,6 +670,7 @@ export function TaskViewEdit({
                         <ul className="flex flex-col gap-1.5">
                           {attachments.map((a) => {
                             const isDeleting = deletingId === a.id;
+                            const isDownloading = downloadingId === a.id;
                             return (
                               <li key={a.id}>
                                 <NotchedPanel
@@ -643,24 +685,37 @@ export function TaskViewEdit({
                                       Удаление…
                                     </span>
                                   ) : (
+                                    <>
                                     <span className="flex min-w-0 items-center gap-2 text-[13px]">
                                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                                      {a.url ? (
-                                        <a
-                                          href={a.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="truncate underline decoration-text-faint underline-offset-2"
-                                        >
-                                          {a.filename}
-                                        </a>
-                                      ) : (
-                                        <span className="truncate">{a.filename}</span>
-                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={isDownloading}
+                                        onClick={() => handleDownloadAttachment(a)}
+                                        className="min-w-0 truncate text-left underline decoration-text-faint underline-offset-2 transition-colors hover:text-text-primary disabled:opacity-50"
+                                        aria-label={`Скачать ${a.filename}`}
+                                      >
+                                        {a.filename}
+                                      </button>
                                       <span className="shrink-0 text-text-faint">
                                         {formatBytes(a.size_bytes)}
                                       </span>
                                     </span>
+                                    {/* Скачивание — доступно и в view-режиме */}
+                                    <button
+                                      type="button"
+                                      disabled={isDownloading}
+                                      onClick={() => handleDownloadAttachment(a)}
+                                      className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
+                                      aria-label="Скачать файл"
+                                    >
+                                      {isDownloading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Download className="h-4 w-4" />
+                                      )}
+                                    </button>
+                                    </>
                                   )}
                                   {!isView && (
                                     <button
@@ -757,10 +812,10 @@ export function TaskViewEdit({
                           </p>
                         )}
 
-                      {attachmentsError && (
+                      {attachmentsErrorText && (
                         <div className="flex items-center gap-1.5 text-[12px] text-[var(--color-priority-red-text)]">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          {attachmentsError}
+                          {attachmentsErrorText}
                         </div>
                       )}
                     </div>
