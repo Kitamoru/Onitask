@@ -57,10 +57,16 @@ export async function POST(
     }
 
     // Прокси-URL на нашем домене + capability-токен (самоавторизующийся —
-    // Telegram.WebApp.downloadFile делает нативный запрос без заголовков)
-    const origin = process.env.NEXT_PUBLIC_WEBAPP_URL || new URL(req.url).origin;
+    // Telegram.WebApp.downloadFile делает нативный запрос без заголовков).
+    // ВАЖНО: downloadFile требует https:// — иначе WebAppDownloadFileParamInvalid.
+    // Приоритет: явный NEXT_PUBLIC_WEBAPP_URL → https://${VERCEL_URL} → origin запроса.
+    const origin =
+      process.env.NEXT_PUBLIC_WEBAPP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : new URL(req.url).origin);
+    // Последний рубеж: никогда не отдавать не-https (Telegram отвергнет)
+    const safeOrigin = origin.replace(/^http:\/\//, 'https://');
     const token = mintAttachmentDownloadToken(taskId, attachmentId);
-    const url = `${origin}/api/tasks/${taskId}/attachments/${attachmentId}/file?t=${token}`;
+    const url = `${safeOrigin}/api/tasks/${taskId}/attachments/${attachmentId}/file?t=${token}`;
 
     return NextResponse.json({ success: true, url, filename: attachment.filename });
   } catch (err) {

@@ -218,11 +218,18 @@ export function TaskViewEdit({
     try {
       const url = await signTaskAttachment(task.id, attachment.id);
 
-      // Ур. 1: нативное скачивание хостом Telegram
+      // Ур. 1: нативное скачивание хостом Telegram.
+      // downloadFile БРОСАЕТ исключение при невалидных параметрах (не возвращает false) —
+      // оборачиваем в try/catch, чтобы уйти на уровень 2, а не на ошибку.
       const tg = (window as { Telegram?: { WebApp?: { downloadFile?: (u: string, name: string) => boolean } } })
         .Telegram?.WebApp;
       if (typeof tg?.downloadFile === 'function') {
-        const ok = tg.downloadFile(url, attachment.filename);
+        let ok: boolean | undefined;
+        try {
+          ok = tg.downloadFile(url, attachment.filename);
+        } catch {
+          ok = false; // WebAppDownloadFileParamInvalid и т.п. → уровень 2
+        }
         if (ok !== false) return;
       }
 
