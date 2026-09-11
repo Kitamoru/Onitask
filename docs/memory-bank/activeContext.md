@@ -1,5 +1,29 @@
 # Active Context
 # Active Context
+## FILE-10b: Hotfix WebAppDownloadFileParamInvalid (2026-09-11) ✅
+
+**Симптом:** ошибка `WebAppDownloadFileParamInvalid` при клике «скачать» в TWA.
+
+**Root cause (2 дефекта):**
+1. **Сервер:** прокси-URL строился как `NEXT_PUBLIC_WEBAPP_URL || new URL(req.url).origin`.
+   Telegram `downloadFile` ТРЕБУЕТ `https://` — без явного env (или на http://localhost)
+   URL был http → Telegram бросал исключение. Правильный паттерн уже есть в
+   `webhook/route.ts`: `NEXT_PUBLIC_WEBAPP_URL || `https://${VERCEL_URL}``.
+2. **Клиент:** `WebApp.downloadFile` при невалидных параметрах БРОСАЕТ исключение,
+   а не возвращает `false`. Каскад ловил только `ok === false` → исключение пролетало
+   во внешний catch → показывалась ошибка вместо перехода на уровень 2 (fetch→blob).
+
+**Fix:**
+- POST `[attachmentId]/route.ts`: origin = `NEXT_PUBLIC_WEBAPP_URL || https://${VERCEL_URL}
+  || origin запроса` + принудительный https (`replace(/^http:\/\//,'https://')`) — никогда
+  не отдаём не-https.
+- TaskViewEdit `handleDownloadAttachment`: `downloadFile` обёрнут в try/catch
+  (throw → `ok=false` → уровень 2), т.е. каскад всегда продолжается.
+
+Валидация: tsc EXIT 0 ✅. Коммит e082981.
+
+---
+
 ## FILE-10: Скачивание без выхода из TWA — прокси + HMAC-токен + каскад (2026-09-11) ✅
 
 **Симптомы из прода (после FILE-09):** (1) имя файла при скачивании — «тарабарщина.xlsx»
