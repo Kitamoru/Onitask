@@ -384,6 +384,7 @@ export async function createTask(payload: {
   story_points?: number;
   cognitive_weight?: number;
   deadline?: string;
+  metadata?: Record<string, unknown>;
 }): Promise<{ task: TaskEntity | null; error: string | null }> {
   try {
     const initData = getTelegramInitData();

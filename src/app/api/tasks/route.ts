@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
       needs_human,
       tags,
       source,
+      metadata,
       workspace_id: requestedWorkspaceId,
     } = body;
 
@@ -173,6 +174,11 @@ export async function POST(request: NextRequest) {
       is_inbox: !column, // auto-set inbox if no explicit column
       tags: tags ?? [],
       source: source ?? 'manual',
+      // metadata (external_links / checklist / related_tasks) — только валидный объект
+      metadata:
+        metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : null,
       created_by: worker.id,
     } as Database['public']['Tables']['tasks']['Insert'] & { created_by: string };
 

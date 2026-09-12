@@ -47,6 +47,7 @@ import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
+import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
 /** Максимальное число файлов на задачу (синхронизировано с backend-лимитом) */
 const MAX_ATTACHMENTS = 5;
@@ -108,6 +109,7 @@ export function TaskViewEdit({
   const [checklistEnabled, setChecklistEnabled] = useState(false);
   const [relatedEnabled, setRelatedEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
+  const [links, setLinks] = useState<ExternalLink[]>([]);
 
   // FILE-05: файлы задачи — манифест через React Query (изоляция по queryKey per task,
   // устраняет гонку «файлы задачи A показаны в шторке задачи B»).
@@ -341,6 +343,11 @@ export function TaskViewEdit({
       setDeadline(task.deadline ? new Date(task.deadline) : null);
       setAssignedTo(task.assigned_to ?? null);
       setReviewerId(task.reviewer_id ?? null);
+      // Внешние ссылки: инициализируем из metadata (как в настройках доски —
+      // если ссылки есть, блок открыт включённым)
+      const taskLinks = (task.metadata?.external_links ?? []) as ExternalLink[];
+      setLinks(taskLinks);
+      setLinksEnabled(taskLinks.length > 0);
     }
   }, [task]);
 
@@ -356,7 +363,7 @@ export function TaskViewEdit({
         ...(task?.metadata ?? {}),
         checklist: checklistEnabled ? (task?.metadata?.checklist ?? []) : [],
         related_tasks: relatedEnabled ? (task?.metadata?.related_tasks ?? []) : [],
-        external_links: linksEnabled ? (task?.metadata?.external_links ?? []) : [],
+        external_links: linksEnabled ? links : [],
       };
 
       if (isNew) {
@@ -367,6 +374,7 @@ export function TaskViewEdit({
           story_points: storyPoints,
           cognitive_weight: cognitiveWeight,
           deadline: deadline ? deadline.toISOString() : undefined,
+          metadata,
         });
         if (result.error) {
           setError(result.error);
@@ -681,19 +689,14 @@ export function TaskViewEdit({
                       />
                     </div>
                   </Card>
-                  <Card>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[15px] font-medium text-text">
-                        Внешние ссылки
-                      </span>
-                      <ToggleSwitch
-                        checked={linksEnabled}
-                        onChange={setLinksEnabled}
-                        label="Внешние ссылки"
-                        disabled={isView}
-                      />
-                    </div>
-                  </Card>
+                  <ExternalLinksCard
+                    enabled={linksEnabled}
+                    onEnabledChange={setLinksEnabled}
+                    links={links}
+                    onLinksChange={setLinks}
+                    disabled={isView}
+                    readOnly={isView}
+                  />
                 </div>
               </section>
 
