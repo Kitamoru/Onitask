@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 import { Card } from "@/components/ui/desk-ui/Card";
 import { ToggleSwitch } from "@/components/ui/desk-ui/ToggleSwitch";
@@ -27,17 +27,6 @@ export function ExternalLinksCard({
 }) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-
-  // iOS WKWebView: `overflow-hidden` предок между инпутом и скролл-контейнером
-  // шторки ломает reveal-логику при открытии клавиатуры (WebKit сбрасывает
-  // scrollTop → «прыжок вверх»). Держим clipping только на время анимации
-  // (300ms), в settled-состоянии — overflow-visible.
-  const [settled, setSettled] = useState(enabled);
-  useEffect(() => {
-    setSettled(false);
-    const t = setTimeout(() => setSettled(true), 300);
-    return () => clearTimeout(t);
-  }, [enabled]);
 
   const canAdd = enabled && title.trim() && url.trim();
 
@@ -66,11 +55,11 @@ export function ExternalLinksCard({
         />
       </div>
 
-      <div
-        className={`transition-[max-height,opacity] duration-300 ease-in-out ${
-          enabled ? "max-h-[480px] opacity-100" : "max-h-0 opacity-0"
-        } ${settled ? "overflow-visible" : "overflow-hidden"}`}
-      >
+      {/* Conditional render вместо max-h/overflow-обёртки: не оставляем
+          clipping/анимационных предков вокруг инпутов — iOS WebKit иначе
+          ломает scroll-reveal при открытии клавиатуры (прыжок/блик). */}
+      {enabled && (
+        <div className="animate-[fade-in_300ms_ease-out]">
         {links.length > 0 && (
           <ul className="mb-3 flex flex-col gap-2">
             {links.map((link, i) => (
@@ -143,7 +132,8 @@ export function ExternalLinksCard({
             </Button>
           </>
         )}
-      </div>
+        </div>
+      )}
     </Card>
   );
 }
