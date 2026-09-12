@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Card } from "@/components/ui/desk-ui/Card";
 import { ToggleSwitch } from "@/components/ui/desk-ui/ToggleSwitch";
@@ -27,6 +27,17 @@ export function ExternalLinksCard({
 }) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
+
+  // iOS WKWebView: `overflow-hidden` предок между инпутом и скролл-контейнером
+  // шторки ломает reveal-логику при открытии клавиатуры (WebKit сбрасывает
+  // scrollTop → «прыжок вверх»). Держим clipping только на время анимации
+  // (300ms), в settled-состоянии — overflow-visible.
+  const [settled, setSettled] = useState(enabled);
+  useEffect(() => {
+    setSettled(false);
+    const t = setTimeout(() => setSettled(true), 300);
+    return () => clearTimeout(t);
+  }, [enabled]);
 
   const canAdd = enabled && title.trim() && url.trim();
 
@@ -56,11 +67,9 @@ export function ExternalLinksCard({
       </div>
 
       <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          enabled
-            ? "max-h-[800px] opacity-100"
-            : "max-h-0 opacity-0"
-        }`}
+        className={`transition-[max-height,opacity] duration-300 ease-in-out ${
+          enabled ? "max-h-[480px] opacity-100" : "max-h-0 opacity-0"
+        } ${settled ? "overflow-visible" : "overflow-hidden"}`}
       >
         {links.length > 0 && (
           <ul className="mb-3 flex flex-col gap-2">
@@ -101,6 +110,16 @@ export function ExternalLinksCard({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Название ресурса"
                 disabled={disabled || !enabled}
+                onFocus={(e) => {
+                  // Страховка от iOS-прыжка: после завершения раскрытия
+                  // аккуратно дотягиваем поле в видимую зону (nearest —
+                  // no-op, если поле уже видно).
+                  const el = e.currentTarget;
+                  setTimeout(
+                    () => el.scrollIntoView({ block: "nearest" }),
+                    350,
+                  );
+                }}
               />
               <TextInput
                 value={url}
@@ -109,6 +128,13 @@ export function ExternalLinksCard({
                 disabled={disabled || !enabled}
                 inputMode="url"
                 autoCapitalize="none"
+                onFocus={(e) => {
+                  const el = e.currentTarget;
+                  setTimeout(
+                    () => el.scrollIntoView({ block: "nearest" }),
+                    350,
+                  );
+                }}
               />
             </div>
 
