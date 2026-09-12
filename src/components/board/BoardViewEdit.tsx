@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SectionHeader } from "@/components/ui/desk-ui/SectionHeader";
 import { Button } from "@/components/ui/desk-ui/Button";
@@ -20,52 +20,52 @@ import { ColleagueSelectSheet, type ColleagueItem } from "@/components/desk-crea
 
 const DEFAULT_SP_HOURS = { 1: "1 час", 3: "1 час", 5: "1 час", 7: "1 час", 13: "1 час" };
 
-export type EditDeskFormValue = {
+export interface BoardViewEditInitialData {
   name: string;
   slug: string;
   spCostEnabled: boolean;
-  spHours: typeof DEFAULT_SP_HOURS;
+  spHours?: typeof DEFAULT_SP_HOURS;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
   context: string;
   documentsEnabled: boolean;
-  documents: File[];
   linksEnabled: boolean;
   links: ExternalLink[];
   trafficLightEnabled: boolean;
   warningDays: number;
   urgentDays: number;
-};
+}
 
-export function EditDeskForm({
-  workspaceId,
-  initialData,
-  serverDocuments,
-  isOwner,
-  availableColleagues = [],
-}: {
+export interface BoardViewEditProps {
   workspaceId: string;
-  initialData: {
-    name: string;
-    slug: string;
-    spCostEnabled: boolean;
-    spHours?: typeof DEFAULT_SP_HOURS;
-    spSprintEnabled: boolean;
-    cognitiveWeightEnabled: boolean;
-    context: string;
-    documentsEnabled: boolean;
-    linksEnabled: boolean;
-    links: ExternalLink[];
-    trafficLightEnabled: boolean;
-    warningDays: number;
-    urgentDays: number;
-  };
+  /** Может ли текущий пользователь редактировать доску (owner). */
+  canEdit: boolean;
+  /** Начальный режим: из ?edit=1 или устаревшего роута /edit. Для canEdit=false всегда view. */
+  initialMode?: "view" | "edit";
+  initialData: BoardViewEditInitialData;
   serverDocuments?: ServerDocument[];
-  isOwner: boolean;
-  /** Colleagues available to add (active + deleted from this board) */
+  /** Коллеги для выбора в режиме edit (active + deleted этой доски). */
   availableColleagues?: ColleagueItem[];
-}) {
+  /** Кол-во активных участников (показывается в view-режиме). */
+  memberCount?: number;
+}
+
+export function BoardViewEdit({
+  workspaceId,
+  canEdit,
+  initialMode = "view",
+  initialData,
+  serverDocuments = [],
+  availableColleagues = [],
+  memberCount = 0,
+}: BoardViewEditProps) {
   const router = useRouter();
+
+  // Режим — локальное состояние этой страницы (вход в edit не навигирует).
+  // Не-овнер не получает edit-режим даже через ?edit=1 / устаревший /edit.
+  const [mode, setMode] = useState<"view" | "edit">(canEdit ? initialMode : "view");
+  const isView = mode === "view";
+
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -114,11 +114,19 @@ export function EditDeskForm({
   const canSubmit = name.trim().length > 0;
 
   function getTelegramInitData(): string {
-    if (typeof window !== 'undefined') {
-      return (window as any).Telegram?.WebApp?.initData || '';
+    if (typeof window !== "undefined") {
+      return (window as any).Telegram?.WebApp?.initData || "";
     }
-    return '';
+    return "";
   }
+
+  /** Вход в редактирование — мгновенное переключение, без навигации/перезагрузки. */
+  const enterEdit = () => {
+    if (!canEdit) return;
+    setError(null);
+    setMode("edit");
+    router.replace(`/board/${slug}?edit=1`);
+  };
 
   /**
    * Upload local files to the workspace documents endpoint.
@@ -246,12 +254,6 @@ export function EditDeskForm({
     setSaving(true);
     setError(null);
 
-    // Optimistic UI: immediately reflect changes in the UI
-    // by updating local state variables before the API call completes
-    const optimisticName = name;
-    const optimisticContext = context;
-    const optimisticLinks = links;
-
     try {
       // First, upload any local files (this is inherently not optimistic - must succeed)
       const uploadSuccess = await uploadLocalFiles();
@@ -318,11 +320,15 @@ export function EditDeskForm({
         }
       }
 
-      // Success - navigate to boards list
+      // Success — navigate to boards list (как было до объединения).
+      // /boards при следующем входе форсит refresh через boards-needs-refresh.
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('boards-needs-refresh', Date.now().toString());
+      }
       router.push('/boards');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      
+
       // Rollback: restore original values on failure
       setName(originalValuesRef.current.name);
       setContext(originalValuesRef.current.context);
@@ -335,7 +341,7 @@ export function EditDeskForm({
       setTrafficLightEnabled(originalValuesRef.current.trafficLightEnabled);
       setWarningDays(originalValuesRef.current.warningDays);
       setUrgentDays(originalValuesRef.current.urgentDays);
-      
+
       setError(`Не удалось сохранить: ${message}`);
       console.error('Failed to update workspace:', message);
     } finally {
@@ -345,7 +351,7 @@ export function EditDeskForm({
 
   return (
     <div className="flex flex-col">
-      {/* Scrollable form body */}
+      {/* Scrollable body — один canvas секций, режим включает/выключает disabled (как TaskViewEdit) */}
       <div
         className="flex flex-col gap-6 px-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
@@ -378,6 +384,7 @@ export function EditDeskForm({
             <SprintActivationCard
               enabled={spSprintEnabled}
               onEnabledChange={setSpSprintEnabled}
+              disabled={isView}
             />
             {spSprintEnabled && (
               <StoryPointCostCard
@@ -387,24 +394,32 @@ export function EditDeskForm({
                 onHoursChange={(sp, value) =>
                   setSpHours((prev) => ({ ...prev, [sp]: value }))
                 }
+                disabled={isView}
               />
             )}
             <CognitiveWeightCard
               enabled={cognitiveWeightEnabled}
               onEnabledChange={setCognitiveWeightEnabled}
+              disabled={isView}
             />
           </div>
         </section>
 
         <CoworkingSection
-          availableCount={availableColleagues.length}
-          selectedColleagues={Array.from(selectedColleagues).map(
-            (sid) => availableColleagues.find((c) => c.source_id === sid)!
-          )}
+          availableCount={isView ? memberCount : availableColleagues.length}
+          selectedColleagues={
+            isView
+              ? []
+              : Array.from(selectedColleagues).map(
+                  (sid) => availableColleagues.find((c) => c.source_id === sid)!
+                )
+          }
           onOpenSelect={() => setColleagueSheetOpen(true)}
+          disabled={isView}
+          readOnly={isView}
         />
 
-        <ContextSection value={context} onChange={setContext} />
+        <ContextSection value={context} onChange={setContext} disabled={isView} />
 
         <section>
           <SectionHeader title="Дополнительные материалы" />
@@ -412,18 +427,22 @@ export function EditDeskForm({
             <DocumentsCard
               enabled={documentsEnabled}
               onEnabledChange={setDocumentsEnabled}
-              files={localFiles}
+              files={isView ? [] : localFiles}
               onFilesChange={setLocalFiles}
               serverDocuments={docs}
               onDeleteServerDocument={handleDeleteDocument}
               uploading={uploading}
               deletingId={deletingId}
+              disabled={isView}
+              readOnly={isView}
             />
             <ExternalLinksCard
               enabled={linksEnabled}
               onEnabledChange={setLinksEnabled}
               links={links}
               onLinksChange={setLinks}
+              disabled={isView}
+              readOnly={isView}
             />
           </div>
         </section>
@@ -434,15 +453,16 @@ export function EditDeskForm({
             enabled={trafficLightEnabled}
             onEnabledChange={setTrafficLightEnabled}
             warningDays={warningDays}
-            onUrgentDaysChange={setUrgentDays}
-            urgentDays={urgentDays}
             onWarningDaysChange={setWarningDays}
+            urgentDays={urgentDays}
+            onUrgentDaysChange={setUrgentDays}
+            disabled={isView}
           />
         </section>
       </div>
 
-      {/* Delete confirmation modal */}
-      {showDeleteConfirm && isOwner && (
+      {/* Delete confirmation modal — только owner (как в EditDeskForm) */}
+      {showDeleteConfirm && canEdit && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
@@ -488,31 +508,43 @@ export function EditDeskForm({
         </div>
       )}
 
-      {/* Inline CTA */}
+      {/* Footer CTA — view: «Редактировать» (только owner); edit: Сохранить / Удалить */}
       <div
         className="px-4 pt-4 lg:hidden"
         style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <div className="flex flex-col gap-3">
-          <Button
-            variant="solid"
-            disabled={!canSubmit || saving || uploading}
-            onClick={handleSubmit}
-          >
-            {saving ? 'Сохранение...' : uploading ? 'Загрузка документов...' : 'Сохранить'}
-          </Button>
-          {isOwner && (
+        {isView ? (
+          canEdit && (
             <Button
               variant="solid"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={saving || uploading || deletingWorkspace}
-              fill="#EF4444"
-              textColor="#FAFAFA"
+              onClick={enterEdit}
+              className="w-full"
             >
-              Удалить доску
+              Редактировать
             </Button>
-          )}
-        </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="solid"
+              disabled={!canSubmit || saving || uploading}
+              onClick={handleSubmit}
+            >
+              {saving ? 'Сохранение...' : uploading ? 'Загрузка документов...' : 'Сохранить'}
+            </Button>
+            {canEdit && (
+              <Button
+                variant="solid"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving || uploading || deletingWorkspace}
+                fill="#EF4444"
+                textColor="#FAFAFA"
+              >
+                Удалить доску
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Colleague selection sheet */}

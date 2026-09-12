@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
-import { BoardDetail } from '@/components/board';
+import { BoardViewEdit } from '@/components/board';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
-import type { ColleagueItem } from '@/components/desk-create/CoworkingSection';
+import type { ColleagueItem } from '@/components/desk-create/ColleagueSelectSheet';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -15,10 +15,12 @@ function useScrollReset() {
 }
 
 /**
- * Board Detail Page — displays the content of a single board/workspace.
+ * Board Detail Page — единая страница view/edit доски (паттерн TaskViewEdit).
  *
- * Route: /board/[slug]
- * Uses the same desk-ui layout as the edit page, but all fields are disabled.
+ * Route: /board/[slug] (?edit=1 — начальный режим редактирования)
+ * Загрузка данных — один раз при входе в доску; переключение view↔edit —
+ * мгновенное локальное переключение режима без навигации/перезагрузки.
+ * /board/[slug]/edit — устаревший алиас, редиректит на ?edit=1.
  */
 
 function getTelegramInitData(): string {
@@ -33,27 +35,32 @@ export default function BoardDetailPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params?.slug as string;
+  const searchParams = useSearchParams();
   const { isLoading: authLoading, error: authError, data: authData } = useTelegramAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailProps, setDetailProps] = useState<{
-    boardName: string;
-    slug: string;
-    spCostEnabled: boolean;
-    spSprintEnabled: boolean;
-    spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
-    cognitiveWeightEnabled: boolean;
-    availableColleagueCount: number;
-    selectedColleagues: ColleagueItem[];
-    context: string;
-    documentsEnabled: boolean;
-    linksEnabled: boolean;
-    links: ExternalLink[];
+  const [renderData, setRenderData] = useState<{
+    workspaceId: string;
+    canEdit: boolean;
+    memberCount: number;
+    initialData: {
+      name: string;
+      slug: string;
+      spCostEnabled: boolean;
+      spSprintEnabled: boolean;
+      spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
+      cognitiveWeightEnabled: boolean;
+      context: string;
+      documentsEnabled: boolean;
+      linksEnabled: boolean;
+      links: ExternalLink[];
+      trafficLightEnabled: boolean;
+      warningDays: number;
+      urgentDays: number;
+    };
     serverDocuments: ServerDocument[];
-    trafficLightEnabled: boolean;
-    warningDays: number;
-    urgentDays: number;
+    availableColleagues: ColleagueItem[];
   } | null>(null);
 
   useEffect(() => {
@@ -92,6 +99,10 @@ export default function BoardDetailPage() {
           router.push('/boards');
           return;
         }
+
+        // Может ли текущий пользователь редактировать доску (owner)
+        const myWorker = (workersData ?? []).find((w: any) => w.workspace_id === ws.id);
+        const canEdit = myWorker?.role === 'owner';
 
         // 2. Load workspace settings and links
         const settingsRes = await fetch(`/api/workspaces/${ws.id}/settings`, {
@@ -143,6 +154,23 @@ export default function BoardDetailPage() {
           console.error('Board detail: failed to load documents', err);
         }
 
+        // 4. Load colleagues — один раз при входе в доску, чтобы вход в edit
+        //    не требовал повторной загрузки (мгновенное переключение).
+        let availableColleagues: ColleagueItem[] = [];
+        try {
+          const collRes = await fetch(
+            `/api/workspaces/colleagues?init_data=${encodeURIComponent(getTelegramInitData())}&workspace_id=${ws.id}`,
+          );
+          if (collRes.ok) {
+            const collJson = await collRes.json();
+            if (collJson.success) {
+              availableColleagues = collJson.data ?? [];
+            }
+          }
+        } catch (err) {
+          console.error('Board detail: failed to load colleagues', err);
+        }
+
         // Parse deadline_signals with level field
         const signals = (settingsData?.deadline_signals ?? []) as any[];
         const hasSignals = signals.length > 0;
@@ -155,29 +183,33 @@ export default function BoardDetailPage() {
           (w: any) => w.workspace_id === ws.id && w.type === 'human' && w.is_active === true,
         );
 
-        setDetailProps({
-          boardName: ws.name || '',
-          slug: ws.slug || '',
-          spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
-          spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
-          spHours: (settingsData?.story_points_config?.hours_per_sp) as
-            | { 1: string; 3: string; 5: string; 7: string; 13: string }
-            | undefined,
-          cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
-          availableColleagueCount: memberWorkers.length,
-          selectedColleagues: [],
-          context: settingsData?.workspace_context || '',
-          // Show documents section if feature was enabled OR if there are existing documents
-          documentsEnabled: (settingsData?.doc_kb_config?.enabled ?? false) || serverDocuments.length > 0,
-          linksEnabled: linksData.length > 0,
-          links: linksData.map((link: any) => ({
-            label: link.name || link.label || '',
-            url: link.url || '',
-          })),
+        setRenderData({
+          workspaceId: ws.id,
+          canEdit,
+          memberCount: memberWorkers.length,
+          initialData: {
+            name: ws.name || '',
+            slug: ws.slug || '',
+            spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
+            spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
+            spHours: (settingsData?.story_points_config?.hours_per_sp) as
+              | { 1: string; 3: string; 5: string; 7: string; 13: string }
+              | undefined,
+            cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
+            context: settingsData?.workspace_context || '',
+            // Show documents section if feature was enabled OR if there are existing documents
+            documentsEnabled: (settingsData?.doc_kb_config?.enabled ?? false) || serverDocuments.length > 0,
+            linksEnabled: linksData.length > 0,
+            links: linksData.map((link: any) => ({
+              label: link.name || link.label || '',
+              url: link.url || '',
+            })),
+            trafficLightEnabled: hasSignals,
+            warningDays: amberSignal?.value ?? 3,
+            urgentDays: redSignal?.value ?? 1,
+          },
           serverDocuments,
-          trafficLightEnabled: hasSignals,
-          warningDays: amberSignal?.value ?? 3,
-          urgentDays: redSignal?.value ?? 1,
+          availableColleagues,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
@@ -230,9 +262,11 @@ export default function BoardDetailPage() {
     );
   }
 
-  if (!detailProps) {
+  if (!renderData) {
     return null;
   }
+
+  const initialMode: 'view' | 'edit' = searchParams?.get('edit') === '1' ? 'edit' : 'view';
 
   return (
     <main
@@ -243,7 +277,15 @@ export default function BoardDetailPage() {
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}
     >
-      <BoardDetail {...detailProps} />
+      <BoardViewEdit
+        workspaceId={renderData.workspaceId}
+        initialData={renderData.initialData}
+        serverDocuments={renderData.serverDocuments}
+        canEdit={renderData.canEdit}
+        initialMode={initialMode}
+        availableColleagues={renderData.availableColleagues}
+        memberCount={renderData.memberCount}
+      />
 
       {/* Back button — below BoardDetail */}
       <div

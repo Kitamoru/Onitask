@@ -33,11 +33,11 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | | BoardCard | BoardCard.tsx | data, onClick, isActive, isSelected, onSelect | Board card in list |
-| | BoardDetail | BoardDetail.tsx | boardName, slug, sprint, sprintTasks, colleagues, externalLinks, documents, deadlineWarningDays, boardSettings, loading | Board detail view (read-only). Uses desk-create sections in disabled mode |
+| | BoardViewEdit | BoardViewEdit.tsx | workspaceId, canEdit, initialMode ('view' \| 'edit'), initialData, serverDocuments, availableColleagues, memberCount | Board detail view/edit 2-in-1 (pattern of TaskViewEdit). Single canvas of desk-create sections; view mode = fields disabled + solid «Редактировать» (only owner); edit mode = save / delete (owner). Mode = local state, switch without navigation/refetch |
 | | RiskPulse | RiskPulse.tsx | data | Risk indicators grid |
 | | WorkspaceWizard | WorkspaceWizard.tsx | — | Workspace setup wizard |
 
-**Types**: `BoardCardData`, `BoardStats`, `SprintInfo`, `BoardDetailProps`, `WorkerCardData`, `ExternalLinkData`, `DocumentData`
+**Types**: `BoardCardData`, `BoardStats`, `SprintInfo`, `BoardViewEditProps`, `WorkerCardData`, `ExternalLinkData`, `DocumentData`
 
 ---
 
@@ -46,7 +46,6 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | | CreateDeskForm | CreateDeskForm.tsx | onSubmit, onAddColleague | Board creation form |
-| | EditDeskForm | EditDeskForm.tsx | workspaceId, initialData, onAddColleague | Board editing form |
 | | BasicInfoSection | BasicInfoSection.tsx | name, slug, onNameChange, onSlugChange, disabled | Name + @desk input |
 | | StoryPointCostCard | StoryPointCostCard.tsx | enabled, onEnabledChange, hoursBySp, onHoursChange, disabled | SP cost config |
 | | CognitiveWeightCard | CognitiveWeightCard.tsx | enabled, onEnabledChange, disabled | Cognitive weight toggle |
@@ -56,7 +55,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | ExternalLinksCard | ExternalLinksCard.tsx | enabled, onEnabledChange, links, onLinksChange, disabled | External links |
 | | TrafficLightCard | TrafficLightCard.tsx | enabled, warningDays, urgentDays, onWarningDaysChange, onUrgentDaysChange, disabled | Deadline signals |
 
-**Types**: `CreateDeskFormValue`, `EditDeskFormValue`, `ExternalLink`
+**Types**: `CreateDeskFormValue`, `ExternalLink`
 
 ---
 
@@ -86,7 +85,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | CognitiveWeightIndicator | FlowBoard.tsx | weight | Cognitive weight dots. Exported from index |
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
 | | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
-| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet (Figma 1:663 task-create). Single canvas with sections: Ключевой контекст (название, описание, дедлайн через `SingleDateField`/`SingleDateSheet`), Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки — каждый toggle в `Card`, как `SprintActivationCard`). Uses `Segments` (Общее/Комментарии), `SectionHeader`, `Card`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`, `SingleDateField`, `SingleDateSheet`. View mode locks fields + solid "Редактировать" button (like BoardDetail). |
+| | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet (Figma 1:663 task-create). Single canvas with sections: Ключевой контекст (название, описание, дедлайн через `SingleDateField`/`SingleDateSheet`), Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки — каждый toggle в `Card`, как `SprintActivationCard`). Uses `Segments` (Общее/Комментарии), `SectionHeader`, `Card`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`, `SingleDateField`, `SingleDateSheet`. View mode locks fields + solid "Редактировать" button (like BoardViewEdit). |
 
 **Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`, `TaskViewEdit`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`, `TaskViewEditProps`
@@ -181,7 +180,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | 1:433 | BottomMenu | BottomMenu.tsx | ✅ |
 | 1:913 | BoardForm | CreateDeskForm.tsx | ✅ |
 | desk card | BoardCard | BoardCard.tsx | ✅ |
-| desk detail | BoardDetail | BoardDetail.tsx | ✅ |
+| desk detail | BoardViewEdit | BoardViewEdit.tsx | ✅ (2-in-1 view/edit) |
 | task-card | BoardCard | BoardCard.tsx | ✅ |
 | risk-pulse | RiskPulse | RiskPulse.tsx | ✅ |
 | 98:6093 desks-stream | StreamView | StreamView.tsx | ✅ |

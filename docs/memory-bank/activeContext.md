@@ -1,5 +1,33 @@
 # Active Context
 # Active Context
+## FILE-13: Board view/edit — единая страница по паттерну TaskViewEdit (2026-09-12) ✅
+
+**Проблема:** `/board/[slug]` (view) и `/board/[slug]/edit` — отдельные роуты; при
+переходе в edit страница перемонтировалась и заново выполняла серийный fetch-каскад
+(`my-data` → `settings` → `documents` → `colleagues`). Долгая первая загрузка в edit.
+
+**Решение:** объединены в один роут `/board/[slug]` с локальным режимом
+`'view' | 'edit'` (паттерн TaskViewEdit), `?edit=1` — начальный режим (mirror в URL,
+эффект загрузки зависит только от slug/auth, поэтому смена параметра не перезагружает).
+- `src/components/board/BoardViewEdit.tsx` (new, 2-in-1): один canvas секций desk-create,
+  `disabled/readOnly` по `isView`; реальные хендлеры всегда, гейт — `disabled`;
+  CTA «Редактировать» (только `canEdit`), save→`/boards` (как было), delete по-прежнему.
+- `src/app/board/[slug]/page.tsx`: одну загрузку, `canEdit` из workers payload
+  (role === 'owner'), коллеги грузятся один раз при входе (мгновенный вход в edit);
+  `initialMode` из `?edit=1`; не-овнер форсит view.
+- `src/app/board/[slug]/edit/page.tsx`: алиас → `router.replace('/board/{slug}?edit=1')`.
+- Удалены `BoardDetail.tsx` и `EditDeskForm.tsx` (поглощены); экспорты в обоих `index.ts`.
+- Права: не-овнер не видит «Редактировать» и не получает edit даже по прямому URL
+  (быв. поведение: не-овнер мог открыть edit-страницу и менять поля).
+
+**Валидация:** `npm run type-check` EXIT 0 ✅. `next build` — прервался по таймауту
+инструмента на шаге «Creating an optimized production build» (не ошибка кода);
+по прецеденту FILE-12 сборка валит только pre-existing `/api/bot/webhook` без env.
+
+**Ручной QA (остаётся):** view→edit мгновенно (0 запросов в Network); save→/boards +
+свежие карточки (boards-needs-refresh); delete; документы upload/remove; коллеги;
+не-овнер (нет кнопки, прямой `?edit=1` → read-only); алиас `/edit`; «Назад» из view.
+
 ## FILE-12: Комментарии → useInfiniteQuery (2026-09-12) ✅
 
 **Сделано:** фид комментариев в шторке переведён с локального `useState` на

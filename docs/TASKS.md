@@ -723,6 +723,10 @@ format is deliberately compact so that agents can load the file quickly.
       Хелпер: lib/shared/downloadToken.ts. Агентский путь (get_task_context) не тронут.
 - [x] FILE-12 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
       Гарантийный второй потребитель React Query (против «зомби-зависимости №2»).
+- [x] FILE-13 Board view/edit — единая страница по паттерну TaskViewEdit #ui !med
+      Объединены /board/[slug] и /board/[slug]/edit: локальный режим view/edit,
+      мгновенное переключение без повторной загрузки; /edit — алиас → ?edit=1.
+      BoardDetail.tsx/EditDeskForm.tsx → BoardViewEdit.tsx; не-овнер — read-only.
 - [ ] FILE-11 Realtime-инвалидация `task_attachments` (Phase 2) #ui #db !low
       Живое обновление открытой шторки (агент приложил файл → появился у клиента).
       Требует security-review: publication/RLS канала, scoping по workspace.

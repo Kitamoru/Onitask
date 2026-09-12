@@ -1,7 +1,5 @@
 export { CreateDeskForm } from './CreateDeskForm';
 export type { CreateDeskFormValue } from './CreateDeskForm';
-export { EditDeskForm } from './EditDeskForm';
-export type { EditDeskFormValue } from './EditDeskForm';
 export { BasicInfoSection } from './BasicInfoSection';
 export { StoryPointCostCard } from './StoryPointCostCard';
 export { CognitiveWeightCard } from './CognitiveWeightCard';
