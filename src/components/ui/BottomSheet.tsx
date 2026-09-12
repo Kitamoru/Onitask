@@ -270,9 +270,7 @@ export function BottomSheet({
             backgroundColor: 'var(--color-surface)',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             overscrollBehavior: 'contain',
-            // willChange убран: на iOS он держит композитный слой на
-            // скролл-панели и провоцирует микро-скачки при keyboard reveal
-            // (фокус на полях). Слайд-анимация композитится и без него.
+            willChange: 'transform',
             // Single source of truth for vertical position:
             // - open → 0px (fully visible)
             // - closed → 100% (off-screen below)
