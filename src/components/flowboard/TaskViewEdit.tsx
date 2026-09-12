@@ -241,15 +241,21 @@ export function TaskViewEdit({
       ).Telegram?.WebApp;
 
       if (typeof tg?.downloadFile === 'function') {
+        // Различаем «метод упал» и «пользователь отказался»:
+        //  - метод бросил исключение (ParamInvalid) → пробуем уровень 2;
+        //  - callback(false) = нажал «Отмена» → отменяем, НЕ качаем через blob.
+        let downloadFileFailed = false;
         const accepted = await new Promise<boolean>((resolve) => {
           try {
             tg.downloadFile!({ url, file_name: attachment.filename }, (ok) => resolve(!!ok));
           } catch {
-            // WebAppDownloadFileParamInvalid и т.п. → уровень 2
+            downloadFileFailed = true;
             resolve(false);
           }
         });
-        if (accepted) return;
+        if (accepted) return; // пользователь согласился — готово
+        if (!downloadFileFailed) return; // «Отмена» — не продолжаем загрузку
+        // иначе: метод упал → уровень 2
       }
 
       // Ур. 2: полностью внутри TWA — blob → программный клик
@@ -753,20 +759,24 @@ export function TaskViewEdit({
                                         {formatBytes(a.size_bytes)}
                                       </span>
                                     </span>
-                                    {/* Скачивание — доступно и в view-режиме */}
-                                    <button
-                                      type="button"
-                                      disabled={isDownloading}
-                                      onClick={() => handleDownloadAttachment(a)}
-                                      className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
-                                      aria-label="Скачать файл"
-                                    >
-                                      {isDownloading ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Download className="h-4 w-4" />
-                                      )}
-                                    </button>
+                                    {/* Скачивание-иконка — только в view-режиме.
+                                        В edit-режиме достаточно иконки удаления;
+                                        скачать можно тапом по имени файла. */}
+                                    {isView && (
+                                      <button
+                                        type="button"
+                                        disabled={isDownloading}
+                                        onClick={() => handleDownloadAttachment(a)}
+                                        className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
+                                        aria-label="Скачать файл"
+                                      >
+                                        {isDownloading ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Download className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    )}
                                     </>
                                   )}
                                   {!isView && (
