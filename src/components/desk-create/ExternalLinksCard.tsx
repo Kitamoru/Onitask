@@ -55,11 +55,13 @@ export function ExternalLinksCard({
         />
       </div>
 
-      {/* Conditional render вместо max-h/overflow-обёртки: не оставляем
-          clipping/анимационных предков вокруг инпутов — iOS WebKit иначе
-          ломает scroll-reveal при открытии клавиатуры (прыжок/блик). */}
+      {/* Условный рендер + анимация раскрытия expand-fade: высота растёт
+          плавно (как max-h-переход в DocumentsCard), но max-h/overflow
+          действуют только на время анимации — постоянного clipping/анимационного
+          предка вокруг инпутов не остаётся, иначе iOS WebKit ломает
+          scroll-reveal при открытии клавиатуры (прыжок/блик). */}
       {enabled && (
-        <div className="animate-[fade-in_300ms_ease-out]">
+        <div className="animate-[expand-fade_300ms_ease-out]">
         {links.length > 0 && (
           <ul className="mb-3 flex flex-col gap-2">
             {links.map((link, i) => (

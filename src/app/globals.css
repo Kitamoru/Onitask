@@ -338,6 +338,24 @@ body {
   }
 }
 
+/* Плавное раскрытие блока по высоте (визуально как max-h-переход в
+   DocumentsCard), но clipping действует только на время анимации: после её
+   завершения свойства откатываются к натуральным (overflow: visible,
+   max-height: none) — вокруг инпутов не остаётся постоянного
+   clipping-предка, иначе iOS WebKit ломает scroll-reveal при клавиатуре. */
+@keyframes expand-fade {
+  from {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  to {
+    max-height: 1200px;
+    opacity: 1;
+    overflow: hidden;
+  }
+}
+
 
 @keyframes slide-up {
   from {
