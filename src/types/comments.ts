@@ -38,6 +38,22 @@ export interface TaskFeedResponse {
   has_more: boolean;
 }
 
+/**
+ * Одна страница фида в кэше React Query (FILE-12). items сохраняют порядок API
+ * (новые сверху) — курсор следующей страницы = последний элемент загруженной.
+ */
+export interface CommentsPage {
+  items: TaskFeedItem[];
+  /** true — есть более старые элементы (следующая страница не пустая) */
+  hasMore: boolean;
+}
+
+/** Keyset-курсор следующей страницы (по старейшему элементу загруженной). */
+export interface FeedPageCursor {
+  createdAt: string;
+  itemId: string;
+}
+
 /** POST /api/tasks/[id]/comments response — the created comment as a feed item */
 export interface CreateCommentResponse {
   item: TaskFeedItem;

@@ -12,18 +12,25 @@
  * `task-comments-<taskId>` channel (the TWA client has no Supabase JWT, so
  * postgres_changes is not deliverable — see migration 076 header).
  *
+ * Pagination (FILE-12): feed lives in the React Query cache under
+ * `['task-feed', <taskId>]` — useInfiniteQuery with a keyset cursor; the
+ * cache is the single source of truth (optimistic submit + broadcast go
+ * through queryClient.setQueryData, useState only for the composer).
+ *
  * Submit flow: optimistic append (pending row) → POST → replace with the
  * server row; the server broadcast may arrive first — dedup by item_id.
  *
  * Based on: Figma 322-27840, docs/onitask_flow_.md §22 (ADR-2026-09-06).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import type { InfiniteData } from '@tanstack/react-query';
 import { getClient } from '@/lib/supabase/client';
-import { getTaskFeed, createComment } from '@/lib/api/comments';
+import { getTaskFeedPage, createComment } from '@/lib/api/comments';
 import { formatFeedTime } from '@/lib/date';
 import { TextArea } from '@/components/ui/desk-ui';
-import type { TaskFeedItem } from '@/types/comments';
+import type { CommentsPage, FeedPageCursor, TaskFeedItem } from '@/types/comments';
 
 /** Column keys → ru labels (match TaskForm / board column names) */
 const COLUMN_LABELS: Record<string, string> = {
@@ -106,37 +113,92 @@ export interface TaskCommentsPanelProps {
 }
 
 export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommentsPanelProps) {
-  const [items, setItems] = useState<TaskFeedItem[]>([]); // ascending by created_at
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
-  // ── Load first page ────────────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setHasMore(false);
-    getTaskFeed(taskId).then((res) => {
-      if (cancelled) return;
-      if (res.error) {
-        setError(res.error);
-        setItems([]);
-      } else {
-        // RPC returns newest-first → render chronologically (newest at bottom)
-        setItems([...res.items].reverse());
-        setHasMore(res.hasMore);
-      }
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [taskId]);
+  // ── Feed: useInfiniteQuery (FILE-12) ──────────────────────────────────────
+  // Второй гарантийный потребитель React Query (ADR-2026-09-11). Кэш =
+  // единственный источник истины; queryKey по задаче — изоляция (нет гонки
+  // «фид задачи A в шторке задачи B»). Панель монтируется только на вкладке
+  // «Комментарии», поэтому первый фетч — при открытии, повторное открытие
+  // < staleTime (60с) — мгновенно из кэша.
+  const queryClient = useQueryClient();
+  const feedKey = useMemo(() => ['task-feed', taskId] as const, [taskId]);
+
+  const feed = useInfiniteQuery({
+    queryKey: feedKey,
+    queryFn: ({ pageParam }) => getTaskFeedPage(taskId, pageParam),
+    initialPageParam: null as FeedPageCursor | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.items.length > 0
+        ? {
+            createdAt: lastPage.items[lastPage.items.length - 1].created_at,
+            itemId: lastPage.items[lastPage.items.length - 1].item_id,
+          }
+        : undefined,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
+  });
+
+  // Страницы приходят «новые сверху»; рендерим хронологически (новые внизу).
+  const items = (feed.data?.pages.flatMap((p) => p.items) ?? []).reverse();
+  const loading = feed.isPending && items.length === 0;
+  const loadError = feed.error
+    ? (feed.error instanceof Error ? feed.error.message : String(feed.error))
+    : null;
+
+  // ── Мутации кэша фида (кэш = единственный источник истины, паттерн FILE-09) ─
+  const mutateFeed = useCallback(
+    (updater: (pages: CommentsPage[]) => CommentsPage[] | void) => {
+      queryClient.setQueryData<InfiniteData<CommentsPage, FeedPageCursor | null>>(
+        feedKey,
+        (old) => {
+          if (!old || old.pages.length === 0) return old;
+          const next = updater(old.pages);
+          return next ? { ...old, pages: next } : old;
+        },
+      );
+    },
+    [queryClient, feedKey],
+  );
+
+  /** Новый комментарий всегда новее всех → в начало первой (новейшей) страницы. */
+  const prependFeedItem = useCallback(
+    (item: TaskFeedItem) => {
+      mutateFeed((pages) =>
+        pages.map((page, i) => (i === 0 ? { ...page, items: [item, ...page.items] } : page)),
+      );
+    },
+    [mutateFeed],
+  );
+
+  /** Заменить optimistic-строку на серверную (dedupe против broadcast). */
+  const replaceFeedItem = useCallback(
+    (tempId: string, item: TaskFeedItem) => {
+      mutateFeed((pages) => {
+        let inserted = false;
+        return pages.map((page) => {
+          const withoutTemp = page.items.filter((i) => i.item_id !== tempId);
+          const hasServer = withoutTemp.some((i) => i.item_id === item.item_id);
+          if (hasServer || inserted) return { ...page, items: withoutTemp };
+          inserted = true;
+          return { ...page, items: [item, ...withoutTemp] };
+        });
+      });
+    },
+    [mutateFeed],
+  );
+
+  /** Убрать элемент из фида (откат optimistic-строки). */
+  const removeFeedItem = useCallback(
+    (predicate: (i: TaskFeedItem) => boolean) => {
+      mutateFeed((pages) =>
+        pages.map((page) => ({ ...page, items: page.items.filter((i) => !predicate(i)) })),
+      );
+    },
+    [mutateFeed],
+  );
 
   // ── Live updates via server-side broadcast ─────────────────────────────────
   useEffect(() => {
@@ -146,24 +208,25 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
       .on('broadcast', { event: 'comment_created' }, ({ payload }: { payload: unknown }) => {
         const item = (payload as { item?: TaskFeedItem } | null)?.item;
         if (!item?.item_id) return;
-        setItems((prev) => {
-          // Dedupe: the author's own POST response may have added it already
-          if (prev.some((i) => i.item_id === item.item_id)) return prev;
-          // The broadcast can arrive before the POST response — replace the
-          // pending optimistic row (same author + body) instead of appending
-          // a duplicate
-          const pendingIdx = prev.findIndex(
-            (i) =>
-              i.payload?.pending === true &&
-              i.author_id === item.author_id &&
-              i.body === item.body,
-          );
-          if (pendingIdx !== -1) {
-            const next = [...prev];
-            next[pendingIdx] = item;
-            return next;
-          }
-          return [...prev, item];
+        mutateFeed((pages) => {
+          // Dedupe: авторский POST-ответ или предыдущий broadcast уже добавили
+          if (pages.some((p) => p.items.some((i) => i.item_id === item.item_id))) return;
+          // Broadcast может прийти ДО ответа POST — заменить optimistic-строку
+          return pages.map((page, i) => {
+            if (i !== 0) return page;
+            const pendingIdx = page.items.findIndex(
+              (candidate) =>
+                candidate.payload?.pending === true &&
+                candidate.author_id === item.author_id &&
+                candidate.body === item.body,
+            );
+            if (pendingIdx !== -1) {
+              const nextItems = [...page.items];
+              nextItems[pendingIdx] = item;
+              return { ...page, items: nextItems };
+            }
+            return { ...page, items: [item, ...page.items] };
+          });
         });
       })
       .subscribe();
@@ -171,26 +234,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [taskId]);
-
-  // ── Load more (older) ──────────────────────────────────────────────────────
-  const handleLoadMore = useCallback(async () => {
-    const oldest = items[0];
-    if (!oldest || loadingMore) return;
-    setLoadingMore(true);
-    const res = await getTaskFeed(taskId, {
-      createdAt: oldest.created_at,
-      itemId: oldest.item_id,
-    });
-    if (res.error) {
-      setError(res.error);
-    } else {
-      const older = [...res.items].reverse();
-      setItems((prev) => [...older, ...prev]);
-      setHasMore(res.hasMore);
-    }
-    setLoadingMore(false);
-  }, [taskId, items, loadingMore]);
+  }, [taskId, queryClient, feedKey, mutateFeed]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
@@ -205,40 +249,32 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
     const tempId = `temp-${Date.now()}`;
     const ownName =
       workers.find((w) => w.id === currentUserId)?.displayName ?? 'Вы';
-    setItems((prev) => [
-      ...prev,
-      {
-        item_id: tempId,
-        kind: 'comment',
-        author_id: currentUserId ?? null,
-        author_name: ownName,
-        author_type: 'human',
-        body: trimmed,
-        created_at: new Date().toISOString(),
-        edited_at: null,
-        payload: { pending: true },
-      },
-    ]);
+    const pendingItem: TaskFeedItem = {
+      item_id: tempId,
+      kind: 'comment',
+      author_id: currentUserId ?? null,
+      author_name: ownName,
+      author_type: 'human',
+      body: trimmed,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+      payload: { pending: true },
+    };
+    prependFeedItem(pendingItem);
     setText('');
 
     const res = await createComment(taskId, trimmed);
     if (res.error || !res.item) {
       // Roll back the optimistic row
-      setItems((prev) => prev.filter((i) => i.item_id !== tempId));
+      removeFeedItem((i) => i.item_id === tempId);
       setText(trimmed); // restore the draft
       setSendError(res.error || 'Не удалось отправить комментарий');
     } else {
       // Replace the temp row with the server row (dedupe against broadcast)
-      setItems((prev) => {
-        const withoutTemp = prev.filter((i) => i.item_id !== tempId);
-        if (withoutTemp.some((i) => i.item_id === res.item!.item_id)) {
-          return withoutTemp;
-        }
-        return [...withoutTemp, res.item!];
-      });
+      replaceFeedItem(tempId, res.item);
     }
     setSending(false);
-  }, [text, sending, taskId, currentUserId, workers]);
+  }, [text, sending, taskId, currentUserId, workers, prependFeedItem, replaceFeedItem, removeFeedItem]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const avatarFor = (item: TaskFeedItem): string | undefined => {
@@ -255,23 +291,26 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
           <div className="py-8 text-center text-[13px] text-text-muted">Загрузка…</div>
-        ) : error ? (
-          <div className="py-8 text-center text-[13px] text-text-muted">{error}</div>
+        ) : loadError && items.length === 0 ? (
+          <div className="py-8 text-center text-[13px] text-text-muted">{loadError}</div>
         ) : items.length === 0 ? (
           <div className="py-8 text-center text-[13px] text-text-muted">
             Комментариев пока нет
           </div>
         ) : (
           <>
-            {hasMore && (
+            {feed.hasNextPage && (
               <button
                 type="button"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
+                onClick={() => feed.fetchNextPage()}
+                disabled={feed.isFetchingNextPage}
                 className="mx-auto mb-3 block text-[12px] text-text-muted underline-offset-2 hover:underline disabled:opacity-50"
               >
-                {loadingMore ? 'Загрузка…' : 'Показать более старые'}
+                {feed.isFetchingNextPage ? 'Загрузка…' : 'Показать более старые'}
               </button>
+            )}
+            {loadError && (
+              <div className="mb-2 text-center text-[12px] text-red-400">{loadError}</div>
             )}
 
             <div className="flex flex-col gap-4">

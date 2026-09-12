@@ -721,7 +721,7 @@ format is deliberately compact so that agents can load the file quickly.
       → fetch→blob→anchor (полностью в TWA) → openLink (роут отвечает attachment — сразу скачивание).
       supabase-домен исчез из пути человека. Тесты токена 6/6 (подделка/scope/экспирация/мусор).
       Хелпер: lib/shared/downloadToken.ts. Агентский путь (get_task_context) не тронут.
-- [ ] FILE-12 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
+- [x] FILE-12 Комментарии → `useInfiniteQuery` (пагинация фида в шторке) #ui !med
       Гарантийный второй потребитель React Query (против «зомби-зависимости №2»).
 - [ ] FILE-11 Realtime-инвалидация `task_attachments` (Phase 2) #ui #db !low
       Живое обновление открытой шторки (агент приложил файл → появился у клиента).

@@ -36,6 +36,13 @@ react-query — канонический инструмент; ручной TTL-
   `Telegram.WebApp.openLink` → fallback `window.open`; signed URL не кэшируются
   и не живут в клиентской памяти.
 
+### Факт (2026-09-12)
+
+FILE-12 выполнен: комментарии — второй гарантированный потребитель React Query
+(`useInfiniteQuery`, ключ `['task-feed', taskId]`, optimistic-сабмит и broadcast через
+`setQueryData`). «Зомби-зависимость №2» исключена.
+
+
 ### Триггер пересмотра
 
 Если FILE-10 (комментарии) не будет реализован в течение разумного срока после

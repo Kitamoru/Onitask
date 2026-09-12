@@ -11,6 +11,8 @@
  */
 
 import type {
+  CommentsPage,
+  FeedPageCursor,
   TaskFeedItem,
   TaskFeedResponse,
   TaskFeedResult,
@@ -79,6 +81,20 @@ export async function getTaskFeed(
       error: err instanceof Error ? err.message : 'Unknown error',
     };
   }
+}
+
+/**
+ * Throwing-обёртка getTaskFeed для useInfiniteQuery (FILE-12, паттерн
+ * getTaskAttachments в flow.ts): ошибка → исключение, React Query кладёт её
+ * в feed.error. Страница отдаётся в API-порядке (новые сверху).
+ */
+export async function getTaskFeedPage(
+  taskId: string,
+  cursor?: FeedPageCursor | null,
+): Promise<CommentsPage> {
+  const res = await getTaskFeed(taskId, cursor ?? null);
+  if (res.error) throw new Error(res.error);
+  return { items: res.items, hasMore: res.hasMore };
 }
 
 // ─── Create ──────────────────────────────────────────────────────────────────

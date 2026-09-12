@@ -1,5 +1,29 @@
 # Active Context
 # Active Context
+## FILE-12: Комментарии → useInfiniteQuery (2026-09-12) ✅
+
+**Сделано:** фид комментариев в шторке переведён с локального `useState` на
+`useInfiniteQuery` (`['task-feed', taskId]`, staleTime 60с / gcTime 30м, keyset-курсор =
+последний элемент загруженной страницы). Кэш — единственный источник истины:
+optimistic-сабмит, broadcast-dedupe и «загрузить ещё» работают через `setQueryData`-хелперы
+(`prependFeedItem` / `replaceFeedItem` / `removeFeedItem` / `mutateFeed`). Рендер —
+`.flatMap().reverse()` (API-порядок «новые сверху» → хронология).
+
+**Файлы:** `TaskCommentsPanel.tsx` (feed/submit/broadcast/render), `lib/api/comments.ts`
+(+`getTaskFeedPage` — throwing-обёртка), `types/comments.ts` (+`CommentsPage`/`FeedPageCursor`).
+Серверный роут, RPC и миграции не тронуты.
+
+**Валидация:** tsc EXIT 0 ✅; `next build` — компиляция и проверка типов ✅, падение только
+на pre-existing `/api/bot/webhook` page-data (нет локального env — не регрессия); lint —
+pre-existing ESLint/rushstack фейл.
+
+**Ручной QA (остаётся):** «загрузить ещё» до исчерпания; optimistic-отправка + замена
+временной строки на серверную; broadcast во второй вкладке; отсутствие межзадачного
+«кровосмешения»; переоткрытие шторки <60с из кэша; сетевая ошибка первой страницы.
+
+retry_count: 0. Блокеров нет.
+
+
 ## FILE-10b: Hotfix WebAppDownloadFileParamInvalid (2026-09-11) ✅
 
 **Симптом:** ошибка `WebAppDownloadFileParamInvalid` при клике «скачать» в TWA.
