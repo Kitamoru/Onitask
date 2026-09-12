@@ -48,6 +48,8 @@ export interface BoardViewEditProps {
   availableColleagues?: ColleagueItem[];
   /** Кол-во активных участников (показывается в view-режиме). */
   memberCount?: number;
+  /** Уведомляет страницу о смене режима (для скрытия «Назад» и т.п.). */
+  onModeChange?: (mode: "view" | "edit") => void;
 }
 
 export function BoardViewEdit({
@@ -58,6 +60,7 @@ export function BoardViewEdit({
   serverDocuments = [],
   availableColleagues = [],
   memberCount = 0,
+  onModeChange,
 }: BoardViewEditProps) {
   const router = useRouter();
 
@@ -120,12 +123,12 @@ export function BoardViewEdit({
     return "";
   }
 
-  /** Вход в редактирование — мгновенное переключение, без навигации/перезагрузки. */
+  /** Вход в редактирование — мгновенное переключение, без навигации/перезагрузки/скролла. */
   const enterEdit = () => {
     if (!canEdit) return;
     setError(null);
     setMode("edit");
-    router.replace(`/board/${slug}?edit=1`);
+    onModeChange?.("edit");
   };
 
   /**
@@ -213,7 +216,8 @@ export function BoardViewEdit({
       const message = err instanceof Error ? err.message : 'Unknown error';
       alert(`Не удалось удалить доску: ${message}`);
       console.error('Failed to delete workspace:', message);
-    } finally {
+      // Сброс только при ошибке: на успехе кнопка остаётся задизейбленной
+      // до unmount при переходе на /boards.
       setDeletingWorkspace(false);
     }
   };
@@ -344,7 +348,8 @@ export function BoardViewEdit({
 
       setError(`Не удалось сохранить: ${message}`);
       console.error('Failed to update workspace:', message);
-    } finally {
+      // Сброс интерактивности только при ошибке: на успехе кнопка остаётся
+      // в состоянии «Сохранение...» до unmount при переходе на /boards.
       setSaving(false);
     }
   };

@@ -40,6 +40,9 @@ export default function BoardDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Режим edit активен либо после клика «Редактировать» (onModeChange),
+  // либо при прямом входе с ?edit=1 (для canEdit).
+  const [isEditing, setIsEditing] = useState(false);
   const [renderData, setRenderData] = useState<{
     workspaceId: string;
     canEdit: boolean;
@@ -267,6 +270,7 @@ export default function BoardDetailPage() {
   }
 
   const initialMode: 'view' | 'edit' = searchParams?.get('edit') === '1' ? 'edit' : 'view';
+  const editingNow = isEditing || (renderData.canEdit && initialMode === 'edit');
 
   return (
     <main
@@ -285,32 +289,35 @@ export default function BoardDetailPage() {
         initialMode={initialMode}
         availableColleagues={renderData.availableColleagues}
         memberCount={renderData.memberCount}
+        onModeChange={(m) => setIsEditing(m === 'edit')}
       />
 
-      {/* Back button — below BoardDetail */}
-      <div
-        className="px-4 pt-1"
-        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
-      >
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="block h-10 w-full appearance-none border-0 bg-transparent p-0"
+      {/* Back button — скрыт в режиме редактирования */}
+      {!editingNow && (
+        <div
+          className="px-4 pt-1"
+          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          <NotchedPanel
-            corner="action"
-            notch={8}
-            radius={4}
-            borderWidth={1.5}
-            borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-            fill="#101010"
-            className="h-full"
-            contentClassName="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="block h-10 w-full appearance-none border-0 bg-transparent p-0"
           >
-            Назад
-          </NotchedPanel>
-        </button>
-      </div>
+            <NotchedPanel
+              corner="action"
+              notch={8}
+              radius={4}
+              borderWidth={1.5}
+              borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+              fill="#101010"
+              className="h-full"
+              contentClassName="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text"
+            >
+              Назад
+            </NotchedPanel>
+          </button>
+        </div>
+      )}
     </main>
   );
 }
