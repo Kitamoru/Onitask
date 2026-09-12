@@ -14,6 +14,9 @@ const FLING_VELOCITY = 0.5;
 /** Telegram-style easing for the settle/return animation (matches SwipeableTaskCard) */
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
+/** Ref-count открытых BottomSheet для блокировки скролла body (см. useEffect ниже) */
+let bodyScrollLockCount = 0;
+
 /**
  * BottomSheet — slide-up panel with backdrop overlay.
  * Uses a portal to render at the document body level.
@@ -222,15 +225,19 @@ export function BottomSheet({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
 
-  // Prevent body scroll when sheet is open
+  // Prevent body scroll when sheet is open.
+  // Ref-count: вложенные (stacked) шторки не снимают лок с body, пока открыт
+  // родитель — иначе закрытие дочерней даёт «дыхание» фона (страница снова
+  // скроллится под ещё открытой шторкой).
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (!open) return;
+    bodyScrollLockCount += 1;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      bodyScrollLockCount = Math.max(bodyScrollLockCount - 1, 0);
+      if (bodyScrollLockCount === 0) {
+        document.body.style.overflow = '';
+      }
     };
   }, [open]);
 
@@ -258,7 +265,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
+        className={`relative w-full max-h-[calc(var(--tg-viewport-stable-height,90vh)-40px)] overflow-y-auto ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
         style={
