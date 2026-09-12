@@ -53,7 +53,6 @@ export function BottomSheet({
   overlay?: ReactNode;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const scrollerRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
   const draggingRef = useRef(false);
@@ -97,7 +96,7 @@ export function BottomSheet({
       lastYRef.current = startY;
       lastTimeRef.current = performance.now();
       velocityRef.current = 0;
-      draggingRef.current = inHandleZone && (scrollerRef.current?.scrollTop ?? 0) <= 0;
+      draggingRef.current = inHandleZone && el.scrollTop <= 0;
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -124,7 +123,7 @@ export function BottomSheet({
       }
 
       // List isn't at the top — let it scroll instead of closing the sheet
-      if ((scrollerRef.current?.scrollTop ?? 0) > 0) {
+      if (el.scrollTop > 0) {
         draggingRef.current = false;
         return;
       }
@@ -142,7 +141,7 @@ export function BottomSheet({
 
       // Claim the gesture: stop the browser from scrolling/overscrolling
       e.preventDefault();
-      dragOffsetRef.current = Math.min(deltaY, (scrollerRef.current?.offsetHeight ?? el.offsetHeight) * MAX_DRAG_RATIO);
+      dragOffsetRef.current = Math.min(deltaY, el.offsetHeight * MAX_DRAG_RATIO);
       setIsDragging(true);
       applyDrag(dragOffsetRef.current);
     };
@@ -171,7 +170,7 @@ export function BottomSheet({
       // Reset the drag offset so the CSS transition animates the settle/return
       applyDrag(0);
 
-      const threshold = Math.min(CLOSE_SWIPE_THRESHOLD, (scrollerRef.current?.offsetHeight ?? el.offsetHeight) * 0.15);
+      const threshold = Math.min(CLOSE_SWIPE_THRESHOLD, el.offsetHeight * 0.15);
       if (wasDragging && (offset >= threshold || velocity > FLING_VELOCITY)) {
         onClose();
       }
@@ -254,19 +253,23 @@ export function BottomSheet({
         aria-hidden="true"
       />
 
-      {/* Sheet panel — transform/slide layer ONLY (scrolling lives in the
-          inner scroller). WebKit bug: keyboard «scroll into view» inside a
-          TRANSFORMED scroll container resets scrollTop → jump to sheet top.
-          Transform stays on the wrapper; the scroller below has no transform,
-          so WebKit scrolls it correctly when focusing inputs near the bottom. */}
+      {/* Sheet panel */}
       <div
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className="relative w-full"
+        className={`relative w-full max-h-[calc(90vh-40px)] overflow-y-auto ${
+          isDragging ? '' : 'transition-transform duration-300'
+        }`}
         style={
           {
+            // Добавляем position: relative только если есть overlay,
+            // чтобы не влиять на другие компоненты, использующие BottomSheet без overlay.
+            position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
+            backgroundColor: 'var(--color-surface)',
+            clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
+            overscrollBehavior: 'contain',
             willChange: 'transform',
             // Single source of truth for vertical position:
             // - open → 0px (fully visible)
@@ -281,36 +284,23 @@ export function BottomSheet({
           } as React.CSSProperties
         }
       >
-        {/* Scroll container — no transform/willChange here on purpose */}
-        <div
-          ref={scrollerRef}
-          className="w-full max-h-[calc(90vh-40px)] overflow-y-auto"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
-            overscrollBehavior: 'contain',
-            // position: relative — только для absolute-оверлея внутри скроллера
-            position: overlay ? 'relative' : undefined,
-          }}
-        >
-          {/* Drag handle */}
-          <div className="flex justify-center pt-2 pb-2">
-            <div className="w-10 h-1 rounded-full bg-text-muted/40" />
-          </div>
-
-          {/* Children (content) */}
-          {children}
-
-          {/* Overlay — центрируется относительно скроллера, если передан */}
-          {overlay && (
-            <div
-              className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm"
-              style={{ zIndex: 10001 }} // выше панели (у панели z-index 10 или 10000)
-            >
-              {overlay}
-            </div>
-          )}
+        {/* Drag handle */}
+        <div className="flex justify-center pt-2 pb-2">
+          <div className="w-10 h-1 rounded-full bg-text-muted/40" />
         </div>
+
+        {/* Children (content) */}
+        {children}
+
+        {/* Overlay — центрируется относительно панели, если передан */}
+        {overlay && (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--color-bg-surface)]/40 backdrop-blur-sm"
+            style={{ zIndex: 10001 }} // выше панели (у панели z-index 10 или 10000)
+          >
+            {overlay}
+          </div>
+        )}
       </div>
     </div>,
     document.body,
