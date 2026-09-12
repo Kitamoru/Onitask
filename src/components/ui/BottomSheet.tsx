@@ -265,7 +265,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative w-full max-h-[calc(var(--tg-viewport-stable-height,90vh)-40px)] overflow-y-auto ${
+        className={`relative w-full max-h-[calc(var(--tg-viewport-stable-height,100dvh)-max(16px,var(--tg-content-safe-top,0px))-40px)] overflow-y-auto ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
         style={

@@ -349,8 +349,15 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
       setIsFullscreen(tg.isFullscreen || false);
     }
 
-    // 5. Subscribe to viewport changes
-    const handleViewportChange = () => {
+    // 5. Subscribe to viewport changes.
+    // Пропускаем промежуточные кадры анимации клавиатуры (isStateStable=false):
+    // каждый viewportChanged сейчас делает setState → ре-рендер всего дерева
+    // посреди анимации → джиттер при фокусе на любом поле. Обновляем React-стейт
+    // только на финальном, стабильном кадре; CSS-переменные (--tg-viewport-*)
+    // живут отдельно в TelegramThemeProvider и обновляются на каждый кадр без
+    // ре-рендера.
+    const handleViewportChange = (e?: { isStateStable?: boolean }) => {
+      if (e && e.isStateStable === false) return;
       if (tgRef.current) {
         const newExpanded = tgRef.current.isExpanded;
         const newViewportHeight = tgRef.current.viewportHeight;
