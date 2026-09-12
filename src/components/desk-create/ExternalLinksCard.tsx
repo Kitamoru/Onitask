@@ -55,13 +55,14 @@ export function ExternalLinksCard({
         />
       </div>
 
-      {/* Условный рендер + анимация раскрытия expand-fade: высота растёт
-          плавно (как max-h-переход в DocumentsCard), но max-h/overflow
-          действуют только на время анимации — постоянного clipping/анимационного
-          предка вокруг инпутов не остаётся, иначе iOS WebKit ломает
-          scroll-reveal при открытии клавиатуры (прыжок/блик). */}
-      {enabled && (
-        <div className="animate-[expand-fade_300ms_ease-out]">
+      {/* Плавное раскрытие по высоте — тот же паттерн, что в DocumentsCard
+          (max-h + opacity transition). Причинно-связь с iOS scroll-reveal
+          не подтвердилась — см. историю правок. */}
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          enabled ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         {links.length > 0 && (
           <ul className="mb-3 flex flex-col gap-2">
             {links.map((link, i) => (
@@ -134,8 +135,7 @@ export function ExternalLinksCard({
             </Button>
           </>
         )}
-        </div>
-      )}
+      </div>
     </Card>
   );
 }
