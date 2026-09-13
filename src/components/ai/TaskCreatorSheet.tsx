@@ -231,11 +231,12 @@ export function TaskCreatorSheet({
     onClose();
   }, [onClose, loading, recState]);
 
-  const handleSubmit = async (text: string) => {
+    const handleSubmit = async (text: string) => {
     if (!text.trim() || submittingRef.current) return;
     submittingRef.current = true;
     setLoading(true);
     setError(null);
+    let previewOpened = false;
     try {
       const res = await fetch('/api/ai/create-task', {
         method: 'POST',
@@ -250,7 +251,7 @@ export function TaskCreatorSheet({
       const json = await res.json();
       if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
 
-      const result = json as CreateTaskResponse;
+            const result = json as CreateTaskResponse;
       await Promise.all([
         Promise.resolve(),
         new Promise((r) => setTimeout(r, 400)),
@@ -258,11 +259,18 @@ export function TaskCreatorSheet({
       setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
+      previewOpened = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
     } finally {
       submittingRef.current = false;
-      setLoading(false);
+      if (previewOpened) {
+        // Снимаем оверлей после того, как TaskPreviewSheet покрыл шторку
+        // (slide-up 300 мс) — иначе форма мигает позади превью (механизм 2).
+        setTimeout(() => setLoading(false), 450);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -385,12 +393,12 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* Форма (видна, когда loading === false) */}
+                    {/* Форма (видна, когда loading === false) */}
           <div
             style={{
               opacity: loading ? 0 : 1,
+              visibility: loading ? 'hidden' : 'visible', // мгновенно, без fade → не просвечивает сквозь оверлей (механизм 1)
               pointerEvents: loading ? 'none' : 'auto',
-              transition: 'opacity 0.2s ease',
             }}
           >
             {/* Capture row — текстовое поле + кнопки */}
