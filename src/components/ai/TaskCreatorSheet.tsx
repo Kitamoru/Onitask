@@ -338,7 +338,6 @@ export function TaskCreatorSheet({
         open={open}
         onClose={handleClose}
         preventSwipe={loading}
-        overlay={loading ? <ProgressContent /> : null}
       >
         <div
           className="px-4 pb-6 pt-2"
@@ -385,14 +384,13 @@ export function TaskCreatorSheet({
             </button>
           </div>
 
-          {/* Форма (видна, когда loading === false) */}
-          <div
-            style={{
-              opacity: loading ? 0 : 1,
-              pointerEvents: loading ? 'none' : 'auto',
-              transition: 'opacity 0.2s ease',
-            }}
-          >
+          {/* Форма / Loading — мгновенная замена, без просвечивания */}
+          {loading ? (
+            <div className="py-10">
+              <ProgressContent />
+            </div>
+          ) : (
+          <div>
             {/* Capture row — текстовое поле + кнопки */}
             <div className="mb-4 flex items-end gap-2">
               {/* Input container с анимацией мигания бордера */}
@@ -586,6 +584,7 @@ export function TaskCreatorSheet({
               )}
             </button>
           </div>
+          )}
         </div>
       </BottomSheet>
 
