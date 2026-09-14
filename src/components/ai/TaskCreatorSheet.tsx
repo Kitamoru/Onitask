@@ -581,7 +581,7 @@ export function TaskCreatorSheet({
               onClick={handleSendClick}
               onMouseDown={(e) => e.preventDefault()}
               disabled={!hasContent || loading || recState === 'recording'}
-              className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
+              className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98] invisible"
               style={{
                 backgroundColor: hasContent && !loading && recState !== 'recording'
                   ? 'var(--color-accent-amber)'
