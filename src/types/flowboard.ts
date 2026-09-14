@@ -404,6 +404,57 @@ export interface UploadTaskAttachmentsResponse {
   }>;
 }
 
+export interface TaskSubmissionLink {
+  label: string;
+  url: string;
+}
+
+/** GET /api/tasks/[id]/submissions — последняя сдача (префилл review→done). */
+export interface LatestTaskSubmission {
+  id: string;
+  body_text: string;
+  links: TaskSubmissionLink[];
+  target_column: 'review' | 'done';
+  status: 'submitted' | 'accepted';
+  accepted_by: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  files_count: number;
+}
+
+/** SUBMIT-01: POST /api/tasks/[id]/submit — запрос на сдачу. */
+export interface SubmitTaskRequest {
+  target_column: 'review' | 'done';
+  body_text: string;
+  links: TaskSubmissionLink[];
+  attachment_ids: string[];
+  expected_version?: number;
+  edited?: boolean;
+}
+
+/** POST /api/tasks/[id]/submit — ответ (task обогащён, как в PATCH). */
+export interface SubmitTaskResponse {
+  task: TaskEntity;
+  submission_id: string | null;
+  reused: boolean;
+}
+
+/** REV-01: POST /api/tasks/[id]/review — запрос решения ревьюера. */
+export interface ReviewActionRequest {
+  action: 'approve' | 'fix';
+  /** Требуется для fix */
+  reason?: string;
+  /** Optimistic-lock: ожидаемая версия задачи (INV-09) */
+  expected_version?: number;
+}
+
+/** REV-01: ответ POST /api/tasks/[id]/review (task обогащён, как в PATCH). */
+export interface ReviewActionResponse {
+  task: TaskEntity;
+  /** Колонка после решения: 'done' (approve) | 'in_progress' (fix) */
+  new_column: 'done' | 'in_progress';
+}
+
 /** DELETE /api/tasks/[id]/attachments/[attachmentId] response */
 export interface DeleteTaskAttachmentResponse {
   success: boolean;
