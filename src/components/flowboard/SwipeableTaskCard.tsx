@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TaskCard } from '@/components/stream';
 import type { TaskEntity } from '@/types/flowboard';
 import { logEvent, logError, logState, logWarning } from '@/lib/swipeLogger';
+import { TASK_SWIPE_ENABLED } from '@/lib/features';
 
 /**
  * SwipeableTaskCard — обёртка над TaskCard с поддержкой свайпов для перемещения между колонками.
@@ -81,8 +82,11 @@ export function SwipeableTaskCard({
   const hasScrolledRef = useRef(false); // tracks whether vertical scroll threshold was exceeded
 
   const currentIndex = columnOrder.indexOf(currentColumn);
-  const canMoveNext = currentIndex >= 0 && currentIndex < columnOrder.length - 1;
-  const canMovePrev = currentIndex > 0;
+  // Гейт свайпов (TASK_SWIPE_ENABLED, см. lib/features.ts). При false карточка
+  // не уходит за порог и onMoveNext/onMovePrev не вызываются, но ТАП остаётся
+  // рабочим (он обрабатывается в тех же хендлерах по пути «слабый свайп»).
+  const canMoveNext = TASK_SWIPE_ENABLED && currentIndex >= 0 && currentIndex < columnOrder.length - 1;
+  const canMovePrev = TASK_SWIPE_ENABLED && currentIndex > 0;
 
   const cleanup = useCallback(() => {
     if (rafRef.current) {
@@ -565,7 +569,11 @@ export function SwipeableTaskCard({
       ref={cardRef}
       role="button"
       tabIndex={0}
-      aria-label={`Задача ${task.full_id}. Свайп вправо для перемещения в следующую колонку, влево — в предыдущую.`}
+      aria-label={
+        TASK_SWIPE_ENABLED
+          ? `Задача ${task.full_id}. Свайп вправо для перемещения в следующую колонку, влево — в предыдущую.`
+          : `Задача ${task.full_id}.`
+      }
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/desk-ui';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
-import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
+import type { TaskEntity, WorkerCardData, LatestTaskSubmission } from '@/types/flowboard';
 import {
   getTaskAttachments,
   uploadTaskAttachments,
@@ -50,11 +50,14 @@ import {
   patchTask,
   createTask,
   deleteTask,
+  getLatestTaskSubmission,
+  reviewTask,
   type TaskAttachment,
 } from '@/lib/api/flow';
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
+import { ReviewDecisionBlock } from './ReviewDecisionBlock';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 
@@ -76,8 +79,10 @@ export interface TaskViewEditProps {
   onSave?: (task: TaskEntity) => void;
   /** Called immediately after successful task deletion (before onClose) */
   onDelete?: (taskId: string) => void;
-  /** Callback when the user moves the task to a different column (optimistic — called immediately) */
+    /** Callback when the user moves the task to a different column (optimistic — called immediately) */
   onMoveTask?: (taskId: string, newColumn: string) => void;
+  /** REV-01: вызывается после approve/fix с обогащённой задачей (для sync store) */
+  onReviewResolved?: (task: TaskEntity) => void;
   /** Current user's worker ID (for highlighting own comments on the right) */
   currentUserId?: string;
   /** FILE-03: initial tab for deep-link «Обсудить задачу» → comments */
@@ -524,7 +529,8 @@ export function TaskViewEdit({
   mode = 'view',
   onSave,
   onDelete,
-  onMoveTask,
+     onMoveTask,
+  onReviewResolved,
   currentUserId,
   initialTab = 'general',
   className = '',
@@ -902,7 +908,45 @@ export function TaskViewEdit({
   const availableForAssignee = workers.filter((w) => w.id !== reviewerId);
   const availableForReviewer = workers.filter((w) => w.id !== assignedTo);
 
-  const attachLimitReached = attachments.length >= MAX_ATTACHMENTS;
+    const attachLimitReached = attachments.length >= MAX_ATTACHMENTS;
+
+  // REV-01: префилл «Что сделано» из последней сдачи для review-решения.
+  const { data: latestSubmissionData } = useQuery({
+    queryKey: ['task-submission-latest', task?.id],
+        queryFn: () => getLatestTaskSubmission(task!.id!),
+    enabled: !!(open && task?.id && task?.column === 'review' && isView),
+    staleTime: 30_000,
+  });
+  const latestSubmission = latestSubmissionData?.submission ?? null;
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const handleApprove = useCallback(async () => {
+    if (!task?.id) return;
+    setReviewLoading(true);
+    setReviewError(null);
+    const res = await reviewTask(task.id, {
+      action: 'approve',
+      expected_version: task.version ?? undefined,
+    });
+    if ('error' in res) setReviewError(res.error);
+    else onReviewResolved?.(res.task);
+    setReviewLoading(false);
+  }, [task, onReviewResolved]);
+
+  const handleFix = useCallback(async (reason: string) => {
+    if (!task?.id) return;
+    setReviewLoading(true);
+    setReviewError(null);
+    const res = await reviewTask(task.id, {
+      action: 'fix',
+      reason,
+      expected_version: task.version ?? undefined,
+    });
+    if ('error' in res) setReviewError(res.error);
+    else onReviewResolved?.(res.task);
+    setReviewLoading(false);
+  }, [task, onReviewResolved]);
 
   /* ---------- Delete confirm modal (portal) ---------- */
 
@@ -1069,6 +1113,19 @@ export function TaskViewEdit({
             >
               {error}
             </div>
+          )}
+
+                    {/* REV-01: решение ревьюера (approve/fix) для задач в review */}
+          {tab === 'general' && task?.column === 'review' && isView && (
+            <ReviewDecisionBlock
+              task={(task ?? null) as TaskEntity}
+              currentUserId={currentUserId}
+              latestSubmission={latestSubmission}
+              loading={reviewLoading}
+              error={reviewError}
+              onApprove={handleApprove}
+              onFix={handleFix}
+            />
           )}
 
           {tab === 'general' && isView && !isNew && (

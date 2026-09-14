@@ -13,6 +13,11 @@ import type {
   PatchTaskRequest,
   PatchTaskResponse,
   FlowMetricsResponse,
+  LatestTaskSubmission,
+  SubmitTaskRequest,
+  SubmitTaskResponse,
+  ReviewActionRequest,
+  ReviewActionResponse,
 } from '@/types/flowboard';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -349,6 +354,82 @@ export async function uploadTaskAttachments(
   } catch (err) {
     return { attachments: [], error: err instanceof Error ? err.message : 'Unknown error' };
   }
+}
+
+/**
+ * SUBMIT-01: GET /api/tasks/:id/submissions — последняя сдача задачи
+ * (префилл формы «Результат» при review→done).
+ */
+export async function getLatestTaskSubmission(
+  taskId: string,
+): Promise<{ submission: LatestTaskSubmission | null; error: string | null }> {
+  try {
+    const initData = getTelegramInitData();
+    const res = await fetch(`/api/tasks/${taskId}/submissions`, {
+      method: 'GET',
+      headers: { 'x-init-data': initData },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { submission: null, error: json.error || 'Failed to load submission' };
+    }
+    return { submission: (json.submission ?? null) as LatestTaskSubmission | null, error: null };
+  } catch (err) {
+    return {
+      submission: null,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * SUBMIT-01: POST /api/tasks/:id/submit — сдача задачи.
+ * Сервер атомарно создаёт submission (с привязкой файлов) и двигает задачу.
+ */
+export async function submitTask(
+  taskId: string,
+  payload: SubmitTaskRequest,
+): Promise<SubmitTaskResponse | { error: string }> {
+  try {
+    const initData = getTelegramInitData();
+
+    const res = await fetch(`/api/tasks/${taskId}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-init-data': initData },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { error: json.error || 'Submit failed' };
+    }
+    return json as SubmitTaskResponse;
+  } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
+ * REV-01: POST /api/tasks/:id/review — ревью-решение (approve/fix).
+ * Атомарно через RPC review_action (мг. 083).
+ */
+export async function reviewTask(
+  taskId: string,
+  payload: ReviewActionRequest,
+): Promise<ReviewActionResponse | { error: string }> {
+  const initData = getTelegramInitData();
+
+  const res = await fetch(`/api/tasks/${taskId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-init-data': initData },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    return { error: json.error || 'Review failed' };
+  }
+  return json as ReviewActionResponse;
 }
 
 /** DELETE /api/tasks/:id/attachments/:attachmentId — удалить файл задачи. */

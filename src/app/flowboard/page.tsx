@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import type {
   SprintInfo,
@@ -11,7 +11,9 @@ import type {
   WorkerCardData,
   AgentCardData,
   TaskEntity,
+  TaskSubmissionLink,
 } from '@/types/flowboard';
+import { uploadTaskAttachments, submitTask } from '@/lib/api/flow';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
@@ -66,6 +68,20 @@ function FlowBoardPageContent() {
   const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
   // FILE-03: deep-link «Обсудить задачу» → открыть вкладку «Комментарии»
   const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
+  // SUBMIT-01: сдача исполнителя — шаг «Результат» открывается при переходе
+  // в review/done из не-review колонки (backlog/in_progress → сдача).
+  // review→done/review→in_progress сюда НЕ попадают (это ревью-решение).
+  const [resultStep, setResultStep] = useState<{
+    taskId: string;
+    targetColumn: 'review' | 'done';
+  } | null>(null);
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [submitUploadCount, setSubmitUploadCount] = useState(0);
+  const [submitUploadTotal, setSubmitUploadTotal] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const resultTask = resultStep
+    ? state.tasks.items.find((t) => t.id === resultStep.taskId) ?? null
+    : null;
 
 
 
@@ -288,6 +304,19 @@ function FlowBoardPageContent() {
       if (!state.activeWorkspaceId) return;
       const task = state.tasks.items.find((t) => t.id === taskId);
       const originalColumn = task?.column;
+      // SUBMIT-01: сдача исполнителя — переход в review/done из НЕ-review колонки
+      // открывает шаг «Результат» (колонку НЕ двигаем, пока сдача не принята).
+      // review→done/review→in_progress сюда не попадают (это ревью-решение, REV-01).
+      if (
+        task &&
+        (newColumn === 'review' || newColumn === 'done') &&
+        originalColumn !== 'review' &&
+        originalColumn !== newColumn
+      ) {
+        setSubmitError(null);
+        setResultStep({ taskId, targetColumn: newColumn });
+        return;
+      }
       // Optimistic local update: move the task in the shared `tasks` array immediately
       // so column counters and the bottom sheet stay consistent without waiting for realtime.
       if (task) {
@@ -329,6 +358,60 @@ function FlowBoardPageContent() {
       }
     },
     [state.activeWorkspaceId, state.tasks.items, tgInitData, dispatch, refreshMetrics],
+  );
+
+  // SUBMIT-01: финальный шаг сдачи — файлы по одному (прогресс uploadCount/uploadTotal),
+  // затем submit_task (миг. 082): атомарно submission (с привязкой файлов) + move.
+  // Результат сабмита — обогащённый task (как в PATCH) → синк стора.
+  const handleResultSubmit = useCallback(
+    async (payload: { bodyText: string; files: File[]; links: TaskSubmissionLink[]; edited: boolean }) => {
+      if (!resultStep || !state.activeWorkspaceId) return;
+      const { taskId, targetColumn } = resultStep;
+      const currentTask = state.tasks.items.find((t) => t.id === taskId);
+      setSubmitBusy(true);
+      setSubmitError(null);
+      try {
+        // 1. Загрузка файлов (в памяти были до этого — в БД пишем только по сабмиту)
+        const attachmentIds: string[] = [];
+        const files = payload.files ?? [];
+        if (files.length > 0) {
+          setSubmitUploadTotal(files.length);
+          for (let i = 0; i < files.length; i++) {
+            setSubmitUploadCount(i);
+            const up = await uploadTaskAttachments(taskId, [files[i]]);
+            if (up.error || !up.attachments.length) {
+              throw new Error(up.error || 'Не удалось загрузить файл');
+            }
+            attachmentIds.push(up.attachments[0].id);
+          }
+          setSubmitUploadCount(files.length);
+        }
+        // 2. Сдача (RPC service-only через Route Handler)
+        const res = await submitTask(taskId, {
+          target_column: targetColumn,
+          body_text: payload.bodyText,
+          links: payload.links,
+          attachment_ids: attachmentIds,
+          expected_version: currentTask?.version ?? undefined,
+          edited: payload.edited,
+        });
+        if ('error' in res) throw new Error(res.error);
+        // 3. Синк подтверждённого состояния
+        if (res.task?.id) {
+          dispatch({ type: 'PATCH_TASK', payload: res.task });
+        }
+        setResultStep(null);
+        void refreshMetrics({ force: true });
+      } catch (err) {
+        console.error('[ResultStep] submit failed:', err);
+        setSubmitError(err instanceof Error ? err.message : 'Не удалось сдать задачу');
+      } finally {
+        setSubmitBusy(false);
+        setSubmitUploadCount(0);
+        setSubmitUploadTotal(0);
+      }
+    },
+    [resultStep, state.activeWorkspaceId, state.tasks.items, dispatch, refreshMetrics],
   );
 
 
@@ -481,7 +564,7 @@ function FlowBoardPageContent() {
         />
 
                         {/* Task view/edit bottom sheet */}
-        <TaskViewEdit
+                <TaskViewEdit
           open={!!selectedTask}
           onClose={() => setSelectedTask(null)}
           task={selectedTask}
@@ -498,7 +581,28 @@ function FlowBoardPageContent() {
             setSelectedTask(null);
           }}
           onMoveTask={handleMoveTask}
+          onReviewResolved={(updatedTask) => {
+            dispatch({ type: 'PATCH_TASK', payload: updatedTask });
+            // review решение закрывает карточку — задача уже сменила колонку.
+            setSelectedTask(null);
+          }}
           currentUserId={authData?.worker?.id}
+        />
+
+        {/* SUBMIT-01: шаг «Результат» — сдача исполнителя (backlog/in_progress → review/done) */}
+        <ResultStepSheet
+          open={!!resultStep}
+          task={resultTask}
+          targetColumn={resultStep?.targetColumn ?? null}
+          submitting={submitBusy}
+          uploadCount={submitUploadCount}
+          uploadTotal={submitUploadTotal}
+          error={submitError}
+          onSubmit={handleResultSubmit}
+          onClose={() => {
+            setSubmitError(null);
+            setResultStep(null);
+          }}
         />
 
                                 {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}

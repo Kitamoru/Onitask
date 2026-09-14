@@ -6,6 +6,8 @@ export { ColumnTasksSheet } from './ColumnTasksSheet';
 export { TaskViewEdit } from './TaskViewEdit';
 export { MoveTaskSheet } from './MoveTaskSheet';
 export type { MoveTaskSheetProps } from './MoveTaskSheet';
+export { ResultStepSheet } from './ResultStepSheet';
+export type { ResultStepSheetProps } from './ResultStepSheet';
 export { TaskCommentsPanel } from './TaskCommentsPanel';
 export { SwipeDebugPanel } from './SwipeDebugPanel';
 export type {
