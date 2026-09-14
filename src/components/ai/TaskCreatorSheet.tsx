@@ -274,9 +274,21 @@ export function TaskCreatorSheet({
     }
   };
 
-  const handleSendClick = () => {
+    const handleSendClick = () => {
     handleSubmit(input);
   };
+
+  // Blur the textarea AFTER React has committed & painted the loading state.
+  // A tap on the CTA natively blurs the input immediately, which starts the
+  // keyboard-dismiss animation BEFORE the loader is on screen — that window is
+  // what exposed the amber button sitting under BottomMenu. Blurring here
+  // (post-paint) + onMouseDown preventDefault on the buttons holds the blur
+  // until the loader renders.
+  useEffect(() => {
+    if (loading) {
+      textareaRef.current?.blur();
+    }
+  }, [loading]);
 
   const handlePreviewConfirm = () => {
     setPreviewOpen(false);
@@ -346,6 +358,7 @@ export function TaskCreatorSheet({
         open={open}
         onClose={handleClose}
         preventSwipe={loading}
+        respectKeyboard
         overlay={loading ? <ProgressContent /> : null}
       >
         <div
@@ -521,8 +534,9 @@ export function TaskCreatorSheet({
                 className="shrink-0 self-end"
               >
                 <button
-                  type="button"
+                                    type="button"
                   onClick={handleSendClick}
+                  onMouseDown={(e) => e.preventDefault()}
                   disabled={isSendDisabled}
                   className="flex h-full w-full items-center justify-center p-[14px] transition-all active:scale-95"
                   style={{
@@ -565,6 +579,7 @@ export function TaskCreatorSheet({
             <button
               type="button"
               onClick={handleSendClick}
+              onMouseDown={(e) => e.preventDefault()}
               disabled={!hasContent || loading || recState === 'recording'}
               className="w-full flex h-[54px] items-center justify-center rounded-2xl text-base font-bold transition-all active:scale-[0.98]"
               style={{

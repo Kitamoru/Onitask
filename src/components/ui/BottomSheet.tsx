@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useKeyboardOffset } from '@/hooks/useKeyboardOffset';
 
 /** Pull past this distance (or 15% of height, whichever is smaller) to dismiss */
 const CLOSE_SWIPE_THRESHOLD = 120;
@@ -46,8 +47,9 @@ export function BottomSheet({
   children,
   stacked = false,
   preventSwipe = false,
-  overlay,
+    overlay,
   keepMounted = true,
+  respectKeyboard = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -55,10 +57,20 @@ export function BottomSheet({
   stacked?: boolean;
   /** When true, disables swipe-to-close gesture */
   preventSwipe?: boolean;
-  /** Optional overlay rendered absolutely centered over the sheet content */
+    /** Optional overlay rendered absolutely centered over the sheet content */
   overlay?: ReactNode;
   keepMounted?: boolean;
+  /**
+   * When true, the sheet panel rides the on-screen keyboard by reading the
+   * live `--kb-offset` CSS variable. Needed for bottom-anchored sheets whose
+   * content sits near the keyboard (e.g. the AI task creator CTA), so the panel
+   * lowers together with the keyboard-dismiss animation instead of hanging.
+   */
+  respectKeyboard?: boolean;
 }) {
+  // Side-effect only: updates `--kb-offset` on <html> per visualViewport frame
+  // (no React re-render), so CSS can lift the panel with the keyboard.
+  useKeyboardOffset();
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
@@ -244,6 +256,10 @@ export function BottomSheet({
       }`}
       style={{
         zIndex: stacked ? 9999 : 50,
+        // Lift the panel together with the keyboard-dismiss animation so it
+        // doesn't 'hang' while BottomMenu slides down (flash of the amber CTA
+        // near the sheet's bottom edge). Reads the live --kb-offset var.
+        paddingBottom: respectKeyboard ? 'var(--kb-offset, 0px)' : undefined,
       }}
       aria-hidden={!open}
     >
@@ -262,13 +278,16 @@ export function BottomSheet({
         className={`relative w-full max-h-[calc(var(--tg-viewport-stable-height,100dvh)-max(16px,var(--tg-content-safe-top,0px))-64px)] overflow-y-auto overscroll-contain ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
-        style={
-          {
+      style={
+        {
             // Добавляем position: relative только если есть overlay,
             // чтобы не влиять на другие компоненты, использующие BottomSheet без overlay.
             position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
+            maxHeight: respectKeyboard
+              ? `calc(var(--tg-viewport-stable-height,100dvh) - max(16px,var(--tg-content-safe-top,0px)) - 64px - var(--kb-offset, 0px))`
+              : undefined,
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
             // Single source of truth for vertical position:
