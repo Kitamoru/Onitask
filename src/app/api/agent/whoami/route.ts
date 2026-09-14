@@ -1,9 +1,13 @@
 // GET /api/agent/whoami — WorkerPlan §10.6 (RUNNER-02 server dependency).
-// One call for the worker: agent identity + Realtime wake config.
+// One call for the worker: agent identity only.
 // Auth: Bearer mcp_agent_key (A-2); identity from key only (INV 9).
-// supabase_url / supabase_anon_key are publishable (NEXT_PUBLIC_*) values —
-// safe to hand out for the PUBLIC wake channel agent:<agent_key_id> (no JWT;
-// ADR 12, migration 071). Missing env → nulls: worker falls back to poll-only.
+//
+// Security: this endpoint returns identity ONLY — no Supabase keys/URLs.
+// Agents work via MCP, not direct Supabase access. If an agent needs
+// Realtime wake, it uses the public channel 'agent:<agent_name>' (migration
+// 072) with NEXT_PUBLIC_* values injected at build/deploy time — never
+// through this response. RLS policies (verified) already restrict anon-key
+// access to workspace-member scope; we avoid expanding the attack surface.
 
 import {
   bearerFromHeaders,
@@ -45,9 +49,6 @@ export async function GET(req: Request) {
         workspace_id: key.workspaceId,
         agent_name: key.keyAgentName,
         allowed_tools: key.allowedTools,
-        agent_key_id: key.agentKeyId,
-        supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? null,
-        supabase_anon_key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? null,
       },
       { status: 200 }
     );

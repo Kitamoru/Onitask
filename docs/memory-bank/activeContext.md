@@ -1,5 +1,26 @@
 # Active Context
 # Active Context
+## Whoami Security & Wake Channel Fix (2026-09-14) ✅
+
+**Проблема 1 (безопасность):** `GET /api/agent/whoami` возвращал `supabase_url` и `supabase_anon_key`. Агенту они не нужны (работает через MCP). Любой с anon key + URL может дёрнуть Supabase REST напрямую.
+
+**Проблема 2 (agent_key_id менялся):** `agent_key_id` (= `mcp_agent_keys.id`) использовался как имя Realtime-канала. При перевыпуске ключа агент получал новый `agent_key_id`, подписывался на другой канал и пропускал wake-события. Задачи по `agent_name` всё ещё были доступны через poll, но wake-механизм ломался.
+
+**Решение:**
+- `whoami` теперь возвращает только идентичность: `workspace_id`, `agent_name`, `allowed_tools`. Никаких ключей/URL.
+- Wake-канал изменён с `agent:<agent_key_id>` на `agent:<agent_name>` (стабилен, уникален в рамках workspace).
+- Миграция `084_wake_channel_by_agent_name.sql` заменяет `ops_publisher_tick`: убран JOIN с `mcp_agent_keys`, канал формируется из `dispatch_outbox.agent_name`.
+
+**Изменённые файлы:**
+- `src/app/api/agent/whoami/route.ts` — убраны `supabase_url`, `supabase_anon_key`, `agent_key_id` из ответа
+- `lib/shared/mcpAuth.ts` — убрано поле `agentKeyId` из `AgentKeyContext`, `id` из select
+- `supabase/migrations/084_wake_channel_by_agent_name.sql` — новый `ops_publisher_tick` с каналом по `agent_name`
+- `tools/wake-sniff.mjs` — принимает `agent_name` вместо `agent_key_id`
+
+**Валидация:** type-check ✅, миграция `084` применена ✅
+
+---
+
 ## FILE-13: Board view/edit — единая страница по паттерну TaskViewEdit (2026-09-12) ✅
 
 **Проблема:** `/board/[slug]` (view) и `/board/[slug]/edit` — отдельные роуты; при

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // tools/wake-sniff.mjs
-// Dev-only smoke: subscribe to a public Realtime channel 'agent:<agent_key_id>'
+// Dev-only smoke: subscribe to a public Realtime channel 'agent:<agent_name>'
 // and print any 'work.available' broadcast. Verifies the wake publisher
-// (migration 071 ops_publisher_tick) end-to-end.
+// (migration 072 ops_publisher_tick) end-to-end.
 //
 // Usage:
-//   node tools/wake-sniff.mjs <agent_key_id> [timeoutSeconds]
+//   node tools/wake-sniff.mjs <agent_name> [timeoutSeconds]
 //
 // Env:
 //   SUPABASE_URL       — https://<project>.supabase.co
@@ -13,11 +13,11 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const keyId = process.argv[2];
+const agentName = process.argv[2];
 const timeoutSec = Number(process.argv[3] ?? 120);
 
-if (!keyId) {
-  console.error('usage: node tools/wake-sniff.mjs <agent_key_id> [timeoutSeconds]');
+if (!agentName) {
+  console.error('usage: node tools/wake-sniff.mjs <agent_name> [timeoutSeconds]');
   process.exit(2);
 }
 
@@ -31,7 +31,7 @@ if (!url || !anonKey) {
 const supabase = createClient(url, anonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-const channelName = `agent:${keyId}`;
+const channelName = `agent:${agentName}`;
 const got = [];
 
 console.log(
