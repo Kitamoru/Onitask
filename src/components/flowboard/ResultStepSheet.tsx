@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Paperclip, Link2, X, Loader2 } from 'lucide-react';
+import { Paperclip, Link2, X, Loader2, Upload } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/desk-ui';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
@@ -160,9 +160,6 @@ export function ResultStepSheet({
           <p className="truncate text-sm font-medium leading-snug text-text">
             {task?.title ?? ''}
           </p>
-          <span className="text-[13px] text-text-muted">
-            {`Финальный шаг — сдача в «${targetColumn === 'done' ? 'Сделано' : 'На проверке'}»`}
-          </span>
         </div>
 
         {/* Что сделано — TextArea (компонент сам делает autosize) */}
@@ -224,13 +221,29 @@ export function ResultStepSheet({
             className="hidden"
             onChange={handleFilesPicked}
           />
-          <Button
-            variant="outline"
+          {/* Поле-пикер в стиле TaskViewEdit: NotchedPanel + иконка Upload */}
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={submitting || atFileLimit}
+            className="block h-10 w-full appearance-none border-0 bg-transparent p-0 text-left disabled:opacity-40"
           >
-            {atFileLimit ? `Лимит — ${MAX_SUBMISSION_FILES} файлов` : '+ Прикрепить файл'}
-          </Button>
+            <NotchedPanel
+              corner="field"
+              fill="var(--color-surface)"
+              className="h-full"
+              contentClassName="flex h-full w-full items-center justify-between px-4"
+            >
+              <span className="truncate text-base text-text-faint">
+                {atFileLimit
+                  ? `Лимит — ${MAX_SUBMISSION_FILES} файлов`
+                  : files.length > 0
+                    ? 'Добавить файлы'
+                    : 'Выберите файл'}
+              </span>
+              <Upload className="h-[18px] w-[18px] shrink-0 text-text-muted" />
+            </NotchedPanel>
+          </button>
         </div>
 
         {/* Ссылки [{label, url}] — формат ExternalLinksCard */}
@@ -277,7 +290,7 @@ export function ResultStepSheet({
               onClick={addLink}
               disabled={submitting || !canAddLink}
             >
-              + Добавить ссылку
+              Добавить ссылку
             </Button>
           </div>
         </div>
