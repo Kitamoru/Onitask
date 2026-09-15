@@ -7,6 +7,7 @@ import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
 import type { TaskEntity } from '@/types/flowboard';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // ─── Avatar placeholder helper ────────────────────────────────────────────────
 // Square avatar: gray border, dark bg, first letter of worker display name
@@ -457,7 +458,7 @@ export function StreamView({
         className="flex items-center justify-center h-full min-h-dvh"
         style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
       >
-        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

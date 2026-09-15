@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getClient } from '@/lib/supabase/client';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /**
  * Settings page — Figma node 65:14537 "settings".
@@ -336,7 +337,7 @@ function SettingsContent() {
           paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         }}
       >
-        <p style={{ color: 'var(--color-text-muted, #8B8B8B)' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }
@@ -421,7 +422,7 @@ export default function SettingsPage() {
           className="flex items-center justify-center min-h-dvh"
           style={{ background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' }}
         >
-          <p style={{ color: 'var(--color-text-muted, #8B8B8B)' }}>Загрузка...</p>
+          <OrbitLoader />
         </div>
       }
     >

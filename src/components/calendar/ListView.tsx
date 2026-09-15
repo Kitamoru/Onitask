@@ -10,6 +10,7 @@
 import React, { useMemo } from 'react';
 import type { CalendarEvent } from '@/types/calendar';
 import { formatDateGroupLabel, formatTimeShort } from '@/lib/calendar';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 interface ListViewProps {
   events: CalendarEvent[];
@@ -52,12 +53,7 @@ export function ListView({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <span
-          className="text-body-sm"
-          style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
-        >
-          Загрузка событий...
-        </span>
+        <OrbitLoader size={32} />
       </div>
     );
   }

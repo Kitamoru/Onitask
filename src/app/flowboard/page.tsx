@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'reac
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import type {
   SprintInfo,
   SignalData,
@@ -432,7 +433,7 @@ function FlowBoardPageContent() {
         className="flex items-center justify-center h-full min-h-dvh"
         style={{ backgroundColor: '#0A0A0A' }}
       >
-        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

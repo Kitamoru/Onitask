@@ -103,6 +103,43 @@ function FeedAvatar({ item, avatarUrl }: { item: TaskFeedItem; avatarUrl?: strin
   );
 }
 
+// ─── Loading skeleton ───────────────────────────────────────────────────────
+
+/**
+ * CommentSkeleton — заглушка ленты на время первой загрузки.
+ * Повторяет геометрию реальной карточки комментария: аватар 32px + bubble
+ * (`border-white/10 bg-white/[0.04] px-3 py-2`) с именем, временем и двумя
+ * строками текста (метрики — как у текста: leading-5 / leading-4).
+ */
+function CommentSkeleton() {
+  const bar = (className: string, alpha: number) => (
+    <div className={className} style={{ backgroundColor: `rgba(255,255,255,${alpha})` }} />
+  );
+
+  return (
+    <div className="flex flex-col gap-4" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex animate-pulse items-start gap-2.5">
+          <div
+            className="h-8 w-8 shrink-0 rounded-full"
+            style={{ backgroundColor: 'var(--color-surface-raised, #2A2A2A)' }}
+          />
+          <div className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
+            <div className="flex items-baseline justify-between gap-2">
+              {bar('h-5 w-1/3 rounded-sm', 0.08)}
+              {bar('h-4 w-10 shrink-0 rounded-sm', 0.05)}
+            </div>
+            <div className="mt-0.5">
+              {bar('h-5 w-full rounded-sm', 0.08)}
+              {bar('h-5 w-2/3 rounded-sm', 0.08)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export interface TaskCommentsPanelProps {
   /** Task UUID */
   taskId: string;
@@ -290,7 +327,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
       {/* Feed */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
-          <div className="py-8 text-center text-[13px] text-text-muted">Загрузка…</div>
+          <CommentSkeleton />
         ) : loadError && items.length === 0 ? (
           <div className="py-8 text-center text-[13px] text-text-muted">{loadError}</div>
         ) : items.length === 0 ? (

@@ -8,6 +8,7 @@ import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
 import type { ColleagueItem } from '@/components/desk-create/ColleagueSelectSheet';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -231,7 +232,7 @@ export default function BoardDetailPage() {
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-dvh" style={bgStyle}>
-        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

@@ -1,0 +1,77 @@
+/* components/shared/OrbitLoader.module.css */
+
+/* Спиннер «орбита» (вариант H): ядро-нотч в центре + светящаяся точка на орбите.
+   Вся геометрия — проценты от --orbit-size, поэтому пропорции сохраняются
+   при любом size (9px/5px/2.5px пересчитаны относительно 40px). */
+
+.orbit {
+  --orbit-notch: calc(var(--orbit-size, 40px) * 0.05);
+
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--orbit-size, 40px);
+  height: var(--orbit-size, 40px);
+}
+
+.core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22.5%;
+  height: 22.5%;
+  transform: translate(-50%, -50%);
+  border-radius: 22%;
+  clip-path: polygon(
+    var(--orbit-notch) 0,
+    100% 0,
+    100% calc(100% - var(--orbit-notch)),
+    calc(100% - var(--orbit-notch)) 100%,
+    0 100%,
+    0 var(--orbit-notch)
+  );
+  background: rgba(245, 158, 11, 0.3);
+  animation: orbitCore 2s ease-in-out infinite;
+}
+
+@keyframes orbitCore {
+  0%, 100% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  animation: orbitSpin 1.7s linear infinite;
+}
+
+.dot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 12.5%;
+  height: 12.5%;
+  margin-left: -6.25%;
+  border-radius: 50%;
+  background: var(--color-signal-yellow, #f59e0b);
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.9), 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+@keyframes orbitSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .core,
+  .track {
+    animation: none;
+  }
+}

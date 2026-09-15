@@ -9,6 +9,7 @@ import { SprintEditSheet } from '@/components/sprint/SprintEditSheet';
 import { SprintViewSheet } from '@/components/sprint/SprintViewSheet';
 import type { SprintFormValue, SprintStats } from '@/components/sprint/types';
 import { formatDateRange, computeDaysLeft, toISODate } from '@/lib/date';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /**
  * FlowBoard component — displays the flow task overview page.
@@ -841,7 +842,7 @@ export function FlowBoard({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-dvh" style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}>
-        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

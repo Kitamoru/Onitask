@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getPreferredView } from '@/lib/viewPreference';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -56,18 +57,7 @@ export default function HomePage() {
         className="flex items-center justify-center h-tg-screen"
         style={{ backgroundColor: '#0A0A0A' }}
       >
-        <div className="text-center">
-          <p
-            style={{
-              color: '#FAFAFA',
-              fontFamily: "'Inter Display', system-ui, sans-serif",
-              fontSize: '16px',
-              lineHeight: '24px',
-            }}
-          >
-            Загрузка...
-          </p>
-        </div>
+        <OrbitLoader />
       </div>
     );
   }
@@ -136,7 +126,7 @@ export default function HomePage() {
       className="flex items-center justify-center h-tg-screen"
       style={{ backgroundColor: '#0A0A0A' }}
     >
-      <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+      <OrbitLoader />
     </div>
   );
 }

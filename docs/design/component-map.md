@@ -86,6 +86,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | PriorityBadge | FlowBoard.tsx | label, color | Priority badge. Uses CSS variables for colors + `task-shape-rhombus.svg` (amber rhombus marker) |
 | | SprintCompressedInfo | FlowBoard.tsx | sprint | Sprint progress bar and statistics. Uses `progress-bar-track.svg` (green #4ADE80), `divider.svg`. Background `var(--color-surface)` (matches RiskPulse). Clickable → opens SprintViewSheet or SprintCreateSheet |
 | | TaskViewEdit | TaskViewEdit.tsx | open, onClose, task, mode ('view' \| 'edit'), workers, onSave | Task view/edit 2-in-1 bottom sheet (Figma 1:663 task-create). Single canvas with sections: Ключевой контекст (название, описание, дедлайн через `SingleDateField`/`SingleDateSheet`), Стоимость (SP/CW steppers), Ответственность (соисполнители/наблюдатели), Доп. контекст (чеклист, связанные, зависимые, внешние ссылки — каждый toggle в `Card`, как `SprintActivationCard`). Uses `Segments` (Общее/Комментарии), `SectionHeader`, `Card`, `TextInput`, `TextArea`, `Stepper`, `ToggleSwitch`, `Button`, `SingleDateField`, `SingleDateSheet`. View mode locks fields + solid "Редактировать" button (like BoardViewEdit). |
+| | TaskCommentsPanel | TaskCommentsPanel.tsx | taskId, workers, currentUserId | «Комментарии» tab of the task bottom sheet: feed (RPC `get_task_feed`, React Query `['task-feed', taskId]`), optimistic submit, broadcast on `task-comments-<taskId>`. First-load state — local `CommentSkeleton` (3 placeholder cards: 32px avatar + bubble, pulse bars `rgba(255,255,255,0.08)`/`0.05`), geometry matches a real comment card (leading-5/leading-4). |
 
 **Exports** (`index.ts`): `FlowBoard`, `PersonCard`, `UserAvatar`, `CognitiveWeightIndicator`, `PriorityBadge`, `OnboardingModal`, `SprintCompressedInfo`, `TaskViewEdit`
 **Types**: `FlowBoardProps`, `SprintInfo`, `SignalData`, `TaskStatusData`, `WorkerCardData`, `AgentCardData`, `TaskViewEditProps`
@@ -170,6 +171,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | AuthLoader | AuthLoader.tsx | children | Auth loading wrapper |
 | | GlobalLoader | GlobalLoader.tsx | ready | Global loading overlay wrapper (fade-out, z-[9999], aria-live). Renders `OnitaskLoader` inside. |
 | | OnitaskLoader | OnitaskLoader.tsx | — | Branded splash loader: notched card, traveling amber border glow, logo mark, animated dots. Uses CSS module + design token (--color-signal-yellow for stroke). |
+| | OrbitLoader | OrbitLoader.tsx | size (default 40), label, className | Compact in-app loading indicator («orbit»: notched core + glowing amber dot on a rotating track). All geometry is % of `--orbit-size`, so any size keeps proportions (9/5/2px @40px). CSS module; amber = `var(--color-signal-yellow, #f59e0b)`. Replaces text «Загрузка...» while a page/section loads (15 places). |
 
 ---
 
@@ -187,4 +189,4 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ---
 
-*Last updated: 2026-08-06*
+*Last updated: 2026-09-15*

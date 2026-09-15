@@ -7,6 +7,7 @@ import { ColleagueSelectSheet, type ColleagueItem } from '@/components/desk-crea
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /**
  * Create Board page — renders the desk/create design from Figma.
@@ -218,7 +219,7 @@ export default function CreateBoardPage() {
         className="flex items-center justify-center h-full min-h-dvh"
         style={{ backgroundColor: '#0A0A0A' }}
       >
-        <p style={{ color: '#8B8B8B' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

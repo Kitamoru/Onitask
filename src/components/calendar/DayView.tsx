@@ -10,6 +10,7 @@
 import React, { useMemo } from 'react';
 import type { CalendarEvent } from '@/types/calendar';
 import { formatTimeShort } from '@/lib/calendar';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 interface DayViewProps {
   selectedDate: Date;
@@ -77,7 +78,7 @@ export function DayView({
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
-            <span className="text-body-sm" style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}>Загрузка...</span>
+            <OrbitLoader size={32} />
           </div>
         ) : (
           hours.map((hour) => {

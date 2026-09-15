@@ -10,6 +10,7 @@ import { BOARD_COUNTS_QUERY_KEY } from "@/lib/api/boardCounts";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
 import type { RiskPulseData, BoardCardData } from "@/components/board";
+import { OrbitLoader } from "@/components/shared/OrbitLoader";
 
 /** Сброс скролла при переходе на страницу */
 function useScrollReset() {
@@ -85,7 +86,7 @@ export default function BoardsPage() {
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]" style={bgStyle}>
-        <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }

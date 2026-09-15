@@ -1,5 +1,47 @@
 # Active Context
 # Active Context
+## Единый индикатор загрузки (OrbitLoader) + скелетон комментариев (2026-09-15) ✅
+
+**Задача:** убрать текстовые «Загрузка...» из загрузочных состояний страниц — единый
+брендовый индикатор; лента комментариев получает скелетон вместо текста.
+
+**Сделано:**
+- **Новый `src/components/shared/OrbitLoader.tsx` + `OrbitLoader.module.css`** («орбита»):
+  ядро-нотч в центре + светящаяся амбер-точка на вращающемся треке (1.7s). Вся геометрия —
+  проценты от `--orbit-size` (9/5/2px @40px), поэтому любой `size` масштабируется без
+  «съезжания» точки. Токена `--amber` в проекте нет → `var(--color-signal-yellow, #f59e0b)`;
+  `role="status" aria-label="Загрузка"` (не `aria-hidden` — текст не должен пропадать из
+  a11y-дерева); без `color-mix()` (iOS WKWebView в Telegram); `prefers-reduced-motion` учтён.
+- **15 замен** текстовых лоадеров → `<OrbitLoader />` (size=32 в компактных секциях) в 11 файлах:
+  `app/page.tsx` (loading + fallback), `app/board/create`, `app/board/[slug]`, `app/boards`,
+  `app/calendar` (loading + Suspense fallback), `app/flowboard`, `app/settings`
+  (loading + Suspense fallback), `components/flowboard/FlowBoard`, `components/stream/StreamView`,
+  `components/calendar/{CalendarView,DayView,ListView}`. Обёртки
+  `flex items-center justify-center` и фоны не тронуты — layout не меняется.
+- **`TaskCommentsPanel.tsx`**: локальный `CommentSkeleton` (3 карточки — по образцу локального
+  `StatSkeleton` в BoardCard): аватар 32px + bubble реальной карточки
+  (`border-white/10 bg-white/[0.04] px-3 py-2`), пульс-бары `rgba(255,255,255,0.08)/0.05`
+  (техника как у скелетона ключей на `/settings/mcp`), метрики строк — как у текста
+  (h-5/h-4), поэтому высота совпадает с настоящими карточками.
+- **Не тронуты:** инлайновые подписи upload («Загрузка...» / «Загрузка файлов 3/5…»,
+  кнопка «Показать более старые»), текст сплэша `OnitaskLoader`, `supabase/**`,
+  `app/api/**`, `lib/**`, `types/**`.
+
+**Валидация:** `npm run type-check` ✅ 0 ошибок; `next build` — «Compiled successfully» +
+«Checking validity of types» ✅ (валит только pre-existing `/api/bot/webhook`:
+«Invalid supabaseUrl» на Collecting page data — env, как в FILE-12/13);
+`npm run test` — 42 passed / 4 failed (все 4 — pre-existing `tests/api/init.test.ts`
+без `TELEGRAM_BOT_TOKEN`); `npm run lint` не запускается вообще —
+pre-existing `@rushstack/eslint-patch × ESLint 9.39` (см. `next.config.ts`).
+**Ручной QA (остаётся):** `npm run dev` по всем 8 роутам + шторка задачи → «Комментарии».
+
+**Доки:** `docs/design/component-map.md` — строки `OrbitLoader` (shared/) и
+`TaskCommentsPanel` (flowboard/), Last updated → 2026-09-15.
+
+retry_count: 0.
+
+---
+
 ## Whoami Security & Wake Channel Fix (2026-09-14) ✅
 
 **Проблема 1 (безопасность):** `GET /api/agent/whoami` возвращал `supabase_url` и `supabase_anon_key`. Агенту они не нужны (работает через MCP). Любой с anon key + URL может дёрнуть Supabase REST напрямую.

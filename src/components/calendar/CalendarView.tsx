@@ -11,6 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { DayPicker, type DayPickerProps } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import type { CalendarEvent } from '@/types/calendar';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // ═══════════════════════════════════════════════════════
 // Types
@@ -589,12 +590,7 @@ export function CalendarView({
           "
           style={{ minHeight: '300px' }}
         >
-          <span
-            className="text-body-md"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            Загрузка событий...
-          </span>
+          <OrbitLoader size={32} />
         </div>
       ) : (
         /* DayPicker with custom styling */

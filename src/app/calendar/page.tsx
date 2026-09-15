@@ -6,6 +6,7 @@ import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/a
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import type { CalendarEvent, CalendarConnection, CalendarProvider } from '@/types/calendar';
+import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -234,7 +235,7 @@ function CalendarContent() {
   if (authLoading || (!workspaceId && !state.tasks.items.length)) {
     return (
       <div className="flex items-center justify-center h-full min-h-dvh" style={bgStyle}>
-        <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+        <OrbitLoader />
       </div>
     );
   }
@@ -561,7 +562,7 @@ export default function CalendarPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center h-full min-h-dvh">
-          <p style={{ color: 'var(--color-text-muted)' }}>Загрузка...</p>
+          <OrbitLoader />
         </div>
       }
     >
