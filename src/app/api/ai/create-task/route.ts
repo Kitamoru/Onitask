@@ -164,10 +164,10 @@ export async function POST(request: NextRequest) {
     );
 
     // 5. Parse with fallback chain (F04-12): ND → Groq → deterministic
-    const { parsed, provider_used, chain } = await parseWithFallback(prompt);
+    const { parsed, provider_used, chain, attempts_ms } = await parseWithFallback(prompt);
 
     console.log(
-      `[F-04][F04-12] provider_used: ${provider_used}, attempts_ms: ${chain.attempts_ms}, chain:`,
+      `[F-04][F04-12] provider_used: ${provider_used}, attempts_ms: ${attempts_ms}, chain:`,
       chain.map((s) => `${s.provider}:${s.status}`).join(' → '),
     );
 
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
         // F04-12: fallback chain audit
         provider_used,
         fallback_chain: chain.map((s) => ({ provider: s.provider, status: s.status })),
-        attempts_ms: chain.attempts_ms,
+        attempts_ms,
       },
     });
 
