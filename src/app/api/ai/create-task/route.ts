@@ -35,15 +35,17 @@ import { createServerClient } from '../../../../../lib/supabase';
 
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-import { chatCompletion } from '../../../../lib/ai/neuralDeepHub';
 import { buildParsePrompt } from '../../../../lib/ai/prompts';
 import {
-  validateParseResponse,
   parseF04Config,
   determineEnrichmentStrategy,
-  type ParseResponseV2,
   type EnrichmentStrategy,
 } from '../../../../lib/ai/types';
+import {
+  parseWithFallback,
+  type ProviderUsed,
+} from '../../../../lib/ai/parseWithFallback';
+import type { ParseResponseV2 } from '../../../../lib/ai/types';
 import type { Database } from '../../../../../types/supabase';
 import { getWorkspaceContextCache } from '../../../../lib/ai/workspaceContextCache';
 
@@ -161,22 +163,15 @@ export async function POST(request: NextRequest) {
       workers ?? []
     );
 
-    // 5. Call NDH / Groq with JSON mode
-    const raw = await chatCompletion({ prompt });
+    // 5. Parse with fallback chain (F04-12): ND → Groq → deterministic
+    const { parsed, provider_used, chain } = await parseWithFallback(prompt);
 
-    console.log('[F-04] Raw NDH response:', raw?.slice(0, 500));
+    console.log(
+      `[F-04][F04-12] provider_used: ${provider_used}, attempts_ms: ${chain.attempts_ms}, chain:`,
+      chain.map((s) => `${s.provider}:${s.status}`).join(' → '),
+    );
 
-    // 6. Validate with Zod
-    let parsed: ParseResponseV2;
-    try {
-      parsed = validateParseResponse(JSON.parse(raw));
-    } catch (err) {
-      console.error('[F-04] Parse response validation failed:', err);
-      console.error('[F-04] Raw response snippet:', raw?.slice(0, 200));
-      parsed = validateParseResponse(null);
-    }
-
-    // 7. Gatekeeper → enrichment strategy
+    // 6. Gatekeeper → enrichment strategy
     const strategy: EnrichmentStrategy = determineEnrichmentStrategy(parsed, config);
 
     // 8. Assignee matching
@@ -268,7 +263,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 12. task_events
+    // 12. task_events (parse_rewrite) с метриками fallback-цепочки (F04-12)
     await supabase.from('task_events').insert({
       workspace_id: workspaceId,
       task_id: taskId,
@@ -282,6 +277,10 @@ export async function POST(request: NextRequest) {
         complexity: parsed.complexity,
         enrichment_strategy: strategy,
         used_rewritten: !!parsed.rewritten_title?.trim(),
+        // F04-12: fallback chain audit
+        provider_used,
+        fallback_chain: chain.map((s) => ({ provider: s.provider, status: s.status })),
+        attempts_ms: chain.attempts_ms,
       },
     });
 
