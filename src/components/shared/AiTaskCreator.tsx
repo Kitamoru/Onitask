@@ -21,12 +21,15 @@
 import React, { useState, useCallback } from 'react';
 import { BottomMenu } from './BottomMenu';
 import { TaskCreatorSheet } from '@/components/ai/TaskCreatorSheet';
+import { useQueryClient } from '@tanstack/react-query';
+import { BOARD_COUNTS_QUERY_KEY } from '@/lib/api/boardCounts';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 
 export function AiTaskCreator() {
   const { initData } = useTelegramAuth();
   const { loadBoardsData, state } = useData();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
   const handleCenterClick = useCallback(() => {
@@ -41,11 +44,13 @@ export function AiTaskCreator() {
     async () => {
       try {
         await loadBoardsData(state.activeWorkspaceId ?? undefined, { partial: true });
+        // BOARD-AGG: новая задача меняет счётчик «В очереди» на «Столе»
+        void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
       } catch (err) {
         console.error('[AiTaskCreator] Failed to refresh after task creation:', err);
       }
     },
-    [loadBoardsData, state.activeWorkspaceId],
+    [loadBoardsData, state.activeWorkspaceId, queryClient],
   );
 
   return (

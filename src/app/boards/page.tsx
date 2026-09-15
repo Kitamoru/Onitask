@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
+import { useBoardCounts } from "@/hooks/useBoardCounts";
+import { BOARD_COUNTS_QUERY_KEY } from "@/lib/api/boardCounts";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
 import type { RiskPulseData, BoardCardData } from "@/components/board";
@@ -16,78 +19,65 @@ function useScrollReset() {
 }
 
 /**
- * Boards Overview Page — "Стол" (Desk)
+ * Boards Overview Page — «Стол» (Desk)
+ *
+ * BOARD-AGG: карточки и RiskPulse — серверные агрегаты через useBoardCounts
+ * (React Query, queryKey ['board-counts']). Страница рендерится мгновенно:
+ *  - workspaces уже в DataContext (authData);
+ *  - агрегаты из кэша RQ (prefetch после первого лоада), фоновый refresh
+ *    при stale/визите — без скелетона (placeholderData: previous);
+ *  - если агрегатов нет вообще (холодный старт) — блюр-заглушки на месте
+ *    цифр, фулскрин-лоадера больше нет.
  *
  * Active workspace:
  * - Single source of truth: DataContext.activeWorkspaceId
  * - Первый клик по карточке → setActiveWorkspace (сделать активной)
  * - Второй клик по уже выбранной → переход на /board/[slug]
- *
- * Board cards (stats) обновляются full load'ом:
- * - при первом заходе / force-refresh после удаления
- * - если tasks обновились позже boards (работа на FlowBoard)
- * - если данные старше 30s
  */
 export default function BoardsPage() {
   useScrollReset();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
-  const { state, setActiveWorkspace, loadBoardsData, dataError } = useData();
+  const { state, setActiveWorkspace, loadBoardsData } = useData();
+  const countsQuery = useBoardCounts(!authLoading && !authError);
+  const counts = countsQuery.data;
 
-  const [forceRefresh, setForceRefresh] = useState(false);
-
-  // Флаг «нужен refresh» после удаления доски и т.п.
+  // Флаг «нужен refresh» после удаления доски и т.п.: full load обновляет
+  // workspaces в DataContext, invalidate — агрегаты ['board-counts'].
+  const needDataRefreshRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const timestamp = sessionStorage.getItem("boards-needs-refresh");
-    if (timestamp) {
-      setForceRefresh(true);
+    if (sessionStorage.getItem("boards-needs-refresh")) {
+      needDataRefreshRef.current = true;
       sessionStorage.removeItem("boards-needs-refresh");
     }
   }, []);
 
-  const refreshBoards = useCallback(() => {
-    loadBoardsData(state.activeWorkspaceId ?? undefined);
-  }, [loadBoardsData, state.activeWorkspaceId]);
-
-  // Один эффект загрузки: force / stale / tasks новее boards
   useEffect(() => {
     if (authLoading) return;
-
-    const boardsUpdated = state.boards.lastUpdated;
-    const tasksUpdated = state.tasks.lastUpdated;
-
-    const needsForce = forceRefresh;
-    const neverLoaded = !boardsUpdated;
-    const isStale = boardsUpdated != null && Date.now() - boardsUpdated >= 30_000;
-    // После работы на FlowBoard tasks обновляются (realtime / partial),
-    // cards — только full load. Если tasks свежее boards — перезагружаем.
-    const tasksNewerThanBoards =
-      boardsUpdated != null &&
-      tasksUpdated != null &&
-      tasksUpdated > boardsUpdated;
-
-    if (!needsForce && !neverLoaded && !isStale && !tasksNewerThanBoards) {
-      return;
-    }
-
-    refreshBoards();
-    if (needsForce) setForceRefresh(false);
-  }, [
-    authLoading,
-    forceRefresh,
-    refreshBoards,
-    state.boards.lastUpdated,
-    state.tasks.lastUpdated,
-  ]);
+    if (!needDataRefreshRef.current) return;
+    needDataRefreshRef.current = false;
+    void loadBoardsData(state.activeWorkspaceId ?? undefined);
+    void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
+  }, [authLoading, loadBoardsData, queryClient, state.activeWorkspaceId]);
 
   const workspaces = state.workspaces.items;
-  const riskData: RiskPulseData = state.boards.riskData ?? {
-    people: 0,
-    processes: 0,
-    escalations: 0,
-  };
-  const boardCards = state.boards.cards;
+  const statsLoading = countsQuery.isPending && !counts;
+
+  const zeroStats = { inQueue: 0, inWork: 0, onReview: 0, done: 0 };
+  const boardCards = workspaces.map((ws) => ({
+    id: ws.id,
+    name: ws.name,
+    slug: ws.slug,
+    memberCount: counts?.members[ws.id]?.humans ?? 0,
+    agentCount: counts?.members[ws.id]?.agents ?? 0,
+    stats: counts?.counts[ws.id] ?? zeroStats,
+    sprint: counts?.sprintsByWorkspace[ws.id],
+  }));
+
+  const riskData: RiskPulseData =
+    counts?.riskData ?? { people: 0, processes: 0, escalations: 0 };
 
   // ── Auth loading ────────────────────────────────────────────────────────
   const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
@@ -113,28 +103,21 @@ export default function BoardsPage() {
     );
   }
 
-  // ── Data error (full load failed) ───────────────────────────────────────
-  if (dataError && !state.boards.lastUpdated) {
+  // ── Counts error (нет кэша и fetch упал) ────────────────────────────────
+  if (countsQuery.isError && !counts) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 min-h-[var(--tg-viewport-stable-height,100dvh)] p-4" style={bgStyle}>
         <p style={{ color: "#EF4444", fontFamily: "system-ui", textAlign: "center" }}>
-          Не удалось загрузить доски.
-          {dataError === "timeout_loading_boards_data"
-            ? " Превышено время ожидания."
-            : null}
+          Не удалось загрузить данные досок.
         </p>
-        <Button corner="action" variant="outline" className="h-10" onClick={refreshBoards}>
+        <Button
+          corner="action"
+          variant="outline"
+          className="h-10"
+          onClick={() => void countsQuery.refetch()}
+        >
           Повторить
         </Button>
-      </div>
-    );
-  }
-
-  // ── Skeleton: boards ещё не загружались ─────────────────────────────────
-  if (!state.boards.lastUpdated) {
-    return (
-      <div className="flex items-center justify-center min-h-[var(--tg-viewport-stable-height,100dvh)]" style={bgStyle}>
-        <p style={{ color: "#8B8B8B" }}>Загрузка...</p>
       </div>
     );
   }
@@ -208,7 +191,7 @@ export default function BoardsPage() {
         </p>
 
         <div className="mt-6 flex flex-col gap-5">
-          <RiskPulse data={riskData} />
+          <RiskPulse data={riskData} loading={statsLoading} />
 
           {/* Empty state */}
           {boardCards.length === 0 ? (
@@ -239,6 +222,7 @@ export default function BoardsPage() {
                   key={card.id}
                   data={card as BoardCardData}
                   isSelected={activeWorkspaceId === card.id}
+                  statsLoading={statsLoading}
                   onSelect={() => void setActiveWorkspace(card.id)}
                   onClick={() => handleCardClick(card)}
                 />

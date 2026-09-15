@@ -14,6 +14,8 @@ import type {
   TaskSubmissionLink,
 } from '@/types/flowboard';
 import { uploadTaskAttachments, submitTask } from '@/lib/api/flow';
+import { useQueryClient } from '@tanstack/react-query';
+import { BOARD_COUNTS_QUERY_KEY } from '@/lib/api/boardCounts';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
@@ -46,6 +48,11 @@ function FlowBoardPageContent() {
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
   const { state, dispatch, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+  // BOARD-AGG: мутации задач (move/submit/review/delete) → агрегаты «Стола» протухают
+  const queryClient = useQueryClient();
+  const invalidateBoardCounts = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
+  }, [queryClient]);
 
   // Toggle between flowboard and stream views
   const toggleView = useCallback(() => {
@@ -342,6 +349,7 @@ function FlowBoardPageContent() {
         // Sync server-confirmed state (fresh version, moved_to_column_at, etc.)
         if (result.task) {
           dispatch({ type: 'PATCH_TASK', payload: result.task });
+          invalidateBoardCounts();
         }
         // Version mismatch (INV-09): server applied last-write-wins, but another
         // client changed the task concurrently — refresh to reconcile local state.
@@ -357,7 +365,7 @@ function FlowBoardPageContent() {
         }
       }
     },
-    [state.activeWorkspaceId, state.tasks.items, tgInitData, dispatch, refreshMetrics],
+    [state.activeWorkspaceId, state.tasks.items, tgInitData, dispatch, refreshMetrics, invalidateBoardCounts],
   );
 
   // SUBMIT-01: финальный шаг сдачи — файлы по одному (прогресс uploadCount/uploadTotal),
@@ -399,6 +407,7 @@ function FlowBoardPageContent() {
         // 3. Синк подтверждённого состояния
         if (res.task?.id) {
           dispatch({ type: 'PATCH_TASK', payload: res.task });
+          invalidateBoardCounts();
         }
         setResultStep(null);
         void refreshMetrics({ force: true });
@@ -573,17 +582,20 @@ function FlowBoardPageContent() {
           initialTab={openTaskTab}
           onSave={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
+            invalidateBoardCounts();
             setSelectedTask(null);
           }}
           onDelete={(taskId) => {
             // Optimistic: remove from state immediately so UI updates instantly
             dispatch({ type: 'REMOVE_TASK', payload: taskId });
+            invalidateBoardCounts();
             setSelectedTask(null);
           }}
           onMoveTask={handleMoveTask}
           onReviewResolved={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             // review решение закрывает карточку — задача уже сменила колонку.
+            invalidateBoardCounts();
             setSelectedTask(null);
           }}
           currentUserId={authData?.worker?.id}

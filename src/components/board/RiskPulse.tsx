@@ -1,6 +1,7 @@
 "use client";
 
 import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
+import { AnimatedNumber } from "@/components/board/AnimatedNumber";
 
 /**
  * RiskPulse component — displays aggregated risk metrics across all boards.
@@ -21,6 +22,8 @@ export interface RiskPulseData {
 
 export interface RiskPulseProps {
   data: RiskPulseData;
+  /** BOARD-AGG: агрегаты не пришли — блюр-заглушки вместо цифр. */
+  loading?: boolean;
 }
 
 const pulseCards = [
@@ -29,7 +32,7 @@ const pulseCards = [
   { label: "Эскалации", key: "escalations" as const },
 ];
 
-export function RiskPulse({ data }: RiskPulseProps) {
+export function RiskPulse({ data, loading }: RiskPulseProps) {
   return (
     <div className="flex flex-col w-full gap-4">
       {/* Summary label */}
@@ -69,17 +72,26 @@ export function RiskPulse({ data }: RiskPulseProps) {
             >
               {label}
             </span>
-            <span
-              style={{
-                fontFamily: "Inter Display, system-ui, sans-serif",
-                fontSize: "16px",
-                lineHeight: "20px",
-                fontWeight: 500,
-                color: data[key] > 1 && key === "processes" ? "#EF4444" : "#FAFAFA",
-              }}
-            >
-              {data[key]}
-            </span>
+            {loading ? (
+              <span
+                aria-hidden
+                className="inline-block h-5 w-6 animate-pulse blur-[2px]"
+                style={{ background: "var(--color-surface-strong, rgba(255,255,255,0.12))" }}
+              />
+            ) : (
+              <span
+                className="tabular-nums"
+                style={{
+                  fontFamily: "Inter Display, system-ui, sans-serif",
+                  fontSize: "16px",
+                  lineHeight: "20px",
+                  fontWeight: 500,
+                  color: data[key] > 1 && key === "processes" ? "#EF4444" : "#FAFAFA",
+                }}
+              >
+                <AnimatedNumber value={data[key]} />
+              </span>
+            )}
           </NotchedPanel>
         ))}
       </div>

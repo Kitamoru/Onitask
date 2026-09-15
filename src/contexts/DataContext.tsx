@@ -9,11 +9,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Database } from '../../types/supabase';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { buildFullId } from '@/lib/realtime/tasks';
+import { BOARD_COUNTS_QUERY_KEY, fetchBoardCounts } from '@/lib/api/boardCounts';
 
 /**
  * Defensive helper: гарантирует наличие full_id/workspace_prefix в TaskEntity.
@@ -118,33 +120,8 @@ interface DataStore {
   };
   /** UUID of the user's currently selected workspace/board */
   activeWorkspaceId: string | null;
-  boards: {
-    riskData: {
-      people: number;
-      processes: number;
-      escalations: number;
-    } | null;
-    cards: Array<{
-      id: string;
-      name: string;
-      slug: string;
-      memberCount: number;
-      agentCount: number;
-      stats: {
-        inQueue: number;
-        inWork: number;
-        onReview: number;
-        done: number;
-      };
-      sprint?: {
-        name: string;
-        topic: string;
-        daysElapsed: number;
-        totalDays: number;
-      };
-    }>;
-    lastUpdated: number | null;
-  };
+  // boards удалён (BOARD-AGG): агрегаты «Стола» переехали в React Query
+  // (useBoardCounts) — сервер считает counts/riskData/members/sprints.
   /** Whether the very first load from server has completed */
   _firstLoadDone: boolean;
 }
@@ -159,7 +136,6 @@ type Action =
   | { type: 'REMOVE_WORKSPACE'; payload: string }
   | { type: 'SET_WORKERS'; payload: Worker[] }
   | { type: 'SET_ACTIVE_WORKSPACE'; payload: string | null }
-  | { type: 'SET_BOARDS'; payload: Omit<DataStore['boards'], 'lastUpdated'> }
   | { type: 'SET_FIRST_LOAD_DONE'; payload: true }
   | { type: 'CLEAR_ALL'; payload: null };
 
@@ -169,7 +145,6 @@ const initialState: DataStore = {
   workspaces: { items: [], lastUpdated: null },
   workers: { items: [], lastUpdated: null },
   activeWorkspaceId: null,
-  boards: { riskData: null, cards: [], lastUpdated: null },
   _firstLoadDone: false,
 };
 
@@ -267,11 +242,6 @@ function dataReducer(state: DataStore, action: Action): DataStore {
           items: state.workspaces.items.filter((w) => w.id !== action.payload),
           lastUpdated: Date.now(),
         },
-        boards: {
-          ...state.boards,
-          cards: state.boards.cards.filter((c) => c.id !== action.payload),
-          lastUpdated: Date.now(),
-        },
       };
     case 'SET_WORKERS':
       return {
@@ -280,24 +250,8 @@ function dataReducer(state: DataStore, action: Action): DataStore {
       };
     case 'SET_ACTIVE_WORKSPACE':
       return { ...state, activeWorkspaceId: action.payload };
-    case 'SET_BOARDS': {
-      // Не затираем sprint у карточки, если новый payload его не принёс
-      const prevById = new Map(state.boards.cards.map((c) => [c.id, c]));
-      const cards = action.payload.cards.map((card) => {
-        if (card.sprint != null) return card;
-        const prev = prevById.get(card.id);
-        if (prev?.sprint != null) return { ...card, sprint: prev.sprint };
-        return card;
-      });
-      return {
-        ...state,
-        boards: {
-          ...action.payload,
-          cards,
-          lastUpdated: Date.now(),
-        },
-      };
-    }
+    // SET_BOARDS удалён (BOARD-AGG): карточки досок теперь серверные агрегаты
+    // через React Query (queryKey ['board-counts'], см. hooks/useBoardCounts).
     case 'SET_FIRST_LOAD_DONE':
       return { ...state, _firstLoadDone: true };
     case 'CLEAR_ALL':
@@ -338,6 +292,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const [dataError, setDataError] = useState<string | null>(null);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
+
+  const queryClient = useQueryClient();
+  const lastCountsInvalidateRef = useRef(0);
+  // BOARD-AGG: realtime-события задач → помечаем агрегаты «Стола» протухшими
+  // (троттл 3s — invalidate дешёвый, но штормить refetch при bulk-insert не нужно).
+  const invalidateCountsThrottled = useCallback(() => {
+    const now = Date.now();
+    if (now - lastCountsInvalidateRef.current < 3000) return;
+    lastCountsInvalidateRef.current = now;
+    void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
+  }, [queryClient]);
+
+  // BOARD-AGG: prefetch агрегатов «Стола» сразу после первого лоада — первый
+  // переход на /boards рисуется мгновенно из кэша (блюр-заглушки не показываются).
+  useEffect(() => {
+    if (!state._firstLoadDone || !initDataRef.current) return;
+    const initData = initDataRef.current;
+    void queryClient.prefetchQuery({
+      queryKey: BOARD_COUNTS_QUERY_KEY,
+      queryFn: () => fetchBoardCounts(initData),
+    });
+  }, [state._firstLoadDone, queryClient]);
 
   const loadBoardsData = useCallback(
     async (workspaceId?: string, options?: { partial?: boolean }) => {
@@ -383,7 +359,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           workspaces: wsData,
           tasks,
           metrics,
-          sprintsByWorkspace,
         } = json.data;
 
         const tasksList = tasks ?? [];
@@ -418,68 +393,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: 'SET_METRICS', payload: metrics });
         }
 
-        // Board cards / riskData — только на full load
-        if (!isPartial) {
-          const allWorkspaceWorkers = allWorkersData ?? [];
-          const sprintMap: Record<
-            string,
-            { name: string; topic: string; daysElapsed: number; totalDays: number }
-          > = sprintsByWorkspace ?? {};
-
-          const peopleSet = new Set<string>();
-          let processCount = 0;
-          let escalationCount = 0;
-
-          tasksList.forEach((task: any) => {
-            if (task.assigned_to) peopleSet.add(task.assigned_to);
-            if (task.column === 'in_progress') processCount++;
-            if (task.escalation_reason) escalationCount++;
-          });
-
-          const cards = (wsData ?? []).map((ws: any) => {
-            const wsTasks = tasksList.filter((t: any) => t.workspace_id === ws.id);
-            const wsAllWorkers = allWorkspaceWorkers.filter(
-              (w: any) => w.workspace_id === ws.id,
-            );
-
-            const sp = sprintMap[ws.id];
-            const cardSprint = sp
-              ? {
-                  name: sp.name,
-                  topic: sp.topic,
-                  daysElapsed: sp.daysElapsed,
-                  totalDays: sp.totalDays,
-                }
-              : undefined;
-
-            return {
-              id: ws.id,
-              name: ws.name,
-              slug: ws.slug,
-              memberCount: wsAllWorkers.filter((w: any) => w.type === 'human').length,
-              agentCount: wsAllWorkers.filter((w: any) => w.type === 'agent').length,
-              stats: {
-                inQueue: wsTasks.filter((t: any) => t.column === 'backlog').length,
-                inWork: wsTasks.filter((t: any) => t.column === 'in_progress').length,
-                onReview: wsTasks.filter((t: any) => t.column === 'review').length,
-                done: wsTasks.filter((t: any) => t.column === 'done').length,
-              },
-              sprint: cardSprint,
-            };
-          });
-
-          dispatch({
-            type: 'SET_BOARDS',
-            payload: {
-              riskData: {
-                people: peopleSet.size,
-                processes: processCount,
-                escalations: escalationCount,
-              },
-              cards,
-            },
-          });
-        }
+        // BOARD-AGG: board cards / riskData больше не считаются здесь —
+        // агрегаты «Стола» живут в React Query (useBoardCounts).
 
         dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
         setDataError(null);
@@ -646,6 +561,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
         const taskEntity = toTaskEntity(raw as any, prefix);
         dispatch({ type: 'PATCH_TASK', payload: taskEntity });
+        invalidateCountsThrottled();
       } else if (payload.eventType === 'DELETE') {
         const oldTask = payload.old as TasksRow | null;
         if (!oldTask?.id) return;
@@ -653,6 +569,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         dispatch({ type: 'REMOVE_TASK', payload: oldTask.id });
+        invalidateCountsThrottled();
       }
     };
 
@@ -677,7 +594,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         console.warn('[DataContext] Failed to remove realtime channel:', err);
       }
     };
-  }, [state.activeWorkspaceId]);
+  }, [state.activeWorkspaceId, invalidateCountsThrottled]);
 
   return (
     <DataContext.Provider

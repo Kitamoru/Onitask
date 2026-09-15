@@ -1,6 +1,7 @@
 "use client";
 
 import { NotchedPanel } from "@/components/ui/desk-ui/NotchedPanel";
+import { AnimatedNumber } from "@/components/board/AnimatedNumber";
 
 /**
  * BoardCard component — displays a single board/workspace card.
@@ -48,6 +49,23 @@ export interface BoardCardProps {
   isActive?: boolean;
   isSelected?: boolean;
   onSelect?: (id: string) => void;
+  /**
+   * BOARD-AGG: агрегаты ещё не пришли (холодный старт, prefetch не успел).
+   * Вместо цифр — блюр-заглушки той же геометрии (без layout shift);
+   * карточка (имя, slug) рендерится как обычно.
+   */
+  statsLoading?: boolean;
+}
+
+/** Блюр-заглушка вместо цифры — pulse + blur, фиксированный размер. */
+function StatSkeleton({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block animate-pulse blur-[2px] ${className ?? ""}`}
+      style={{ background: "var(--color-surface-strong, rgba(255,255,255,0.12))" }}
+    />
+  );
 }
 
 // Склонение существительных по числу для русского языка
@@ -69,7 +87,7 @@ function getDeclinedCount(
 const statLabels: (keyof BoardStats)[] = ["inQueue", "inWork", "onReview", "done"];
 const statLabelsRu = ["В очереди", "В работе", "На проверке", "Сделано"];
 
-export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: BoardCardProps) {
+export function BoardCard({ data, onClick, isActive, isSelected, onSelect, statsLoading }: BoardCardProps) {
   const handleClick = () => {
     if (onSelect) {
       onSelect(data.id);
@@ -156,7 +174,13 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
             >
               <span>@{data.slug}</span>
               <span>•</span>
-              <span>{getDeclinedCount(data.memberCount, ['участник', 'участника', 'участников'])} + {getDeclinedCount(data.agentCount, ['агент', 'агента', 'агентов'])}</span>
+              {statsLoading ? (
+                <StatSkeleton className="h-[14px] w-24" />
+              ) : (
+                <span>
+                  {getDeclinedCount(data.memberCount, ['участник', 'участника', 'участников'])} + {getDeclinedCount(data.agentCount, ['агент', 'агента', 'агентов'])}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -174,17 +198,22 @@ export function BoardCard({ data, onClick, isActive, isSelected, onSelect }: Boa
               fill="var(--color-surface)"
               contentClassName="flex flex-col items-center gap-1 py-2"
             >
-              <span
-                style={{
-                  fontFamily: "Inter Display, system-ui, sans-serif",
-                  fontSize: "16px",
-                  lineHeight: "20px",
-                  fontWeight: 600,
-                  color: "#FAFAFA",
-                }}
-              >
-                {data.stats[key]}
-              </span>
+              {statsLoading ? (
+                <StatSkeleton className="h-5 w-6" />
+              ) : (
+                <span
+                  className="tabular-nums"
+                  style={{
+                    fontFamily: "Inter Display, system-ui, sans-serif",
+                    fontSize: "16px",
+                    lineHeight: "20px",
+                    fontWeight: 600,
+                    color: "#FAFAFA",
+                  }}
+                >
+                  <AnimatedNumber value={data.stats[key]} />
+                </span>
+              )}
               <span
                 style={{
                   fontFamily: "Inter Display, system-ui, sans-serif",
