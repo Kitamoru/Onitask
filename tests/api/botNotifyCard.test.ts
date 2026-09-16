@@ -93,6 +93,27 @@ describe('bot-notify card: регрессии контекстов', () => {
   });
 });
 
+describe('bot-notify card: 🔍 Проверяющий (087)', () => {
+  it('reviewerName есть → строка «🔍 Проверяющий» присутствует', () => {
+    const res = buildTaskNotifyCard(makeCard({ reviewerName: 'Анна' }), 'done');
+    expect(res.text).toContain('🔍 Проверяющий: @Анна');
+    // порядок: после Постановщика
+    expect(res.text.indexOf('✍️ Постановщик:')).toBeLessThan(
+      res.text.indexOf('🔍 Проверяющий:')
+    );
+  });
+
+  it('reviewerName = null → «🔍 Проверяющий: —» (единообразно с Постановщиком)', () => {
+    const res = buildTaskNotifyCard(makeCard({ reviewerName: null }), 'done');
+    expect(res.text).toContain('🔍 Проверяющий: —');
+  });
+
+  it('reviewerName не передана (undefined, старые caller-ы) → строки нет', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'done');
+    expect(res.text).not.toContain('Проверяющий');
+  });
+});
+
 describe('bot-notify card: deep-link', () => {
   it('open-button ведёт в мини-апп на задачу', () => {
     const res = buildTaskNotifyCard(makeCard(), 'done');

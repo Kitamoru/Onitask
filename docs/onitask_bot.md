@@ -1055,6 +1055,8 @@ type TaskCardData = {
   fullId: string; title: string; column: string; isInbox: boolean; isBlocked: boolean;
   priority: 'high' | 'medium' | 'low' | null; dueDate: string | null;
   assigneeName: string | null; workspaceHandle: string; clarityScore: number | null;
+  assignedByName?: string | null;  // Постановщик (058) — undefined = скрыть строку, null = «—»
+  reviewerName?: string | null;    // Проверяющий (087) — единообразно с Постановщиком: undefined = скрыть, null = «—»
 };
 
 async function getTaskCardData(taskId: string): Promise<TaskCardData> {
@@ -1150,8 +1152,10 @@ function buildTaskCard(card: TaskCardData, context: 'created' | 'duplicate' | 'l
 📋 ALPHA-45
 Настроить CI для frontend        ← визуально в рамке blockquote
 📍 В работе · alpha
-👤 Vadim · 🔴 Высокий приоритет
-📅 До 2 июня
+👤 Исполнитель: @vadim
+✍️ Постановщик: @kitamoru
+🔍 Проверяющий: @anna            ← «—», если tasks.reviewer_id не задан
+🔴 Высокий приоритет · 2 июня
 [Открыть в приложении]
 ```
 
@@ -1162,7 +1166,8 @@ function buildTaskCard(card: TaskCardData, context: 'created' | 'duplicate' | 'l
 📋 ALPHA-48
 Разобраться с проблемой          ← визуально в рамке blockquote
 📍 Inbox · alpha
-👤 Не назначено
+👤 Исполнитель: —
+✍️ Постановщик: @kitamoru
 ⚠️ Формулировка неточная — уточни в приложении
 [✏️ Уточнить ALPHA-48 →]
 ```

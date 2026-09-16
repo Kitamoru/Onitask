@@ -1,5 +1,39 @@
 # Active Context
 # Active Context
+## 🔍 Проверяющий в карточках бота + починка «Постановщик» в created-шаблонах (2026-09-16) ✅
+
+**Задача:** в карточках задач бота под «Исполнитель»/«Постановщик» добавить «🔍 Проверяющий»
+(при наличии `tasks.reviewer_id`, INV-02). Попутно найден баг: в created-шаблонах
+(webhook route F-04 и fallback) «✍️ Постановщик» не приходил — cardData собирался вручную
+без `assignedByName`.
+
+**Сделано:**
+- **Миграция 087** (`087_reviewer_name_in_task_card.sql`, применена в БД): RPC
+  `get_task_card_data` (033+058) — ключ `'reviewerName'` (workers.display_name по
+  tasks.reviewer_id) + LEFT JOIN rv. `get_task_card_data_by_full_id` (057) делегирует —
+  обновился автоматически.
+- **Рендеры:** `lib/bot.ts renderTaskCardBody` и `supabase/functions/bot-notify/card.ts` —
+  `TaskCardData.reviewerName?: string | null`, строка `🔍 Проверяющий: @name` после
+  Постановщика, только при наличии (undefined/null/'' → строка скрыта; отличается от
+  Постановщика, который при `null` показывает «—»).
+- **Данные:** bot-notify `buildTaskCardData` — reviewer_id в select + resolveWorkerDisplayName;
+  webhook route.ts F-04 и fallback — `assignedByName` (created_by → workers.display_name)
+  И `reviewerName` (helper `resolveWorkerNamesByIds`, batch-запрос `workers(id, display_name)`).
+- **Унификация legacy lookup:** `src/lib/bot/commands.ts handleTaskLookupWithReaction` —
+  вместо расходящегося legacy `buildTaskCardHTML` теперь RPC `get_task_card_data` +
+  `buildTaskCard(card,'lookup')` (единый шаблон §6.2d, с кнопкой Mini App).
+- **Доки:** onitask_bot.md §6.2d (TaskCardData + примеры вывода с Постановщиком/Проверяющим).
+
+**Валидация:** type-check 0; vitest: botNotifyCard (11) + новый tests/lib/botTaskCard.test.ts (5)
+— 16 passed; полный прогон 71 passed / 4 pre-existing fail (`init.test.ts`, env-зависимые,
+падали и до изменений — проверено через stash). SQL-проверка: BLTV-13 → reviewerName=null;
+в транзакции с reviewer_id → reviewerName='truebulat' (ROLLBACK, данные не тронуты).
+
+**Контракт строки Проверяющего (доработка, единообразно с Постановщиком):** строка
+рендерится, если поле передано (`reviewerName !== undefined`); `null`/`''` → «🔍 Проверяющий: —»;
+не передана (старые caller-ы) → строка скрыта. Все актуальные источники (RPC 087, bot-notify,
+webhook route) передают поле всегда → в карточках строка присутствует всегда, «—» без проверяющего.
+
 ## Approve-контур: авто-комментарий + done_approved в боте (2026-09-16) ✅
 
 **Задача:** при согласовании задачи — комментарий в ленте (циановый бордер) и бот-уведомление

@@ -11,9 +11,10 @@ import {
   sendRichMessage,
   sendChatAction,
   setMessageReaction,
-  buildTaskCardHTML,
+  buildTaskCard,
   escapeHtml,
 } from '../../../lib/bot';
+import type { TaskCardData } from '../../../lib/bot';
 import { handleTextTask, handleVoiceTask } from './taskHandler';
 import type { Message } from '../../../types/telegram';
 
@@ -153,13 +154,14 @@ async function handleTaskLookupWithReaction(
       return;
     }
 
-    const { data: task, error: taskErr } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('id', taskId)
-      .maybeSingle();
+    // §6.2d: единый шаблон карточки (как в /call webhook и taskHandler) —
+    // RPC отдаёт description, assignedByName и reviewerName (087).
+    const { data: cardData, error: cardErr } = await supabase.rpc(
+      'get_task_card_data',
+      { p_task_id: taskId }
+    );
 
-    if (taskErr || !task) {
+    if (cardErr || !cardData) {
       await sendRichMessage(BOT_TOKEN!, {
         chat_id: chatId,
         message_thread_id: threadId,
@@ -169,22 +171,12 @@ async function handleTaskLookupWithReaction(
       return;
     }
 
-    const html = buildTaskCardHTML({
-      full_id: fullId,
-      title: task.title || '',
-      description: task.description as string | undefined,
-      column: task.column as string | undefined,
-      priority: task.priority as string | undefined,
-      assignee_name: (task as any).assignee_name as string | undefined,
-      deadline: task.deadline
-        ? new Date(task.deadline).toLocaleDateString('ru-RU')
-        : undefined,
-    });
-
+    const taskCard = buildTaskCard(cardData as TaskCardData, 'lookup');
     await sendRichMessage(BOT_TOKEN!, {
       chat_id: chatId,
       message_thread_id: threadId,
-      rich_message: { html: html.slice(0, MAX_MESSAGE_LENGTH) },
+      rich_message: { html: taskCard.text },
+      reply_markup: taskCard.replyMarkup,
     });
     await setMessageReaction(BOT_TOKEN!, chatId, messageId, '✅').catch(() => {});
   } catch (err) {

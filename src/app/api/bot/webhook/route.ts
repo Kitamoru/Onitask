@@ -1671,9 +1671,15 @@ async function executeDraftInWorkspaceByChat(
 
   const { data: taskWithNumber } = await supabase
     .from('tasks')
-    .select('task_number')
+    .select('task_number, created_by, reviewer_id')
     .eq('id', task.id)
     .maybeSingle();
+
+  // Постановщик (created_by) и Проверяющий (reviewer_id) — display_name воркеров
+  const namesById = await resolveWorkerNamesByIds([
+    taskWithNumber?.created_by as string | null | undefined,
+    taskWithNumber?.reviewer_id as string | null | undefined,
+  ]);
 
   const fullId = `${wsWithPrefix?.task_prefix || '?'}-${taskWithNumber?.task_number || '?'}`;
 
@@ -1688,6 +1694,12 @@ async function executeDraftInWorkspaceByChat(
     priority: task.priority as 'high' | 'medium' | 'low' | null,
     dueDate: task.deadline ?? aiResult.parse?.deadline ?? null,
     assigneeName: null,
+    assignedByName: taskWithNumber?.created_by
+      ? namesById.get(taskWithNumber.created_by) ?? null
+      : null,
+    reviewerName: taskWithNumber?.reviewer_id
+      ? namesById.get(taskWithNumber.reviewer_id) ?? null
+      : null,
     workspaceHandle: wsWithPrefix?.name || wsWithPrefix?.slug || '',
     clarityScore: aiResult.parse?.clarity_score ?? null,
   };
@@ -1723,6 +1735,27 @@ async function executeDraftInWorkspaceByChat(
   }
 }
 
+/**
+ * Resolve worker display names for card fields (assignedByName / reviewerName).
+ * Returns a Map keyed by worker id (missing ids are absent from the map).
+ */
+async function resolveWorkerNamesByIds(
+  ids: Array<string | null | undefined>
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (unique.length === 0) return new Map();
+  const { data } = await supabase
+    .from('workers')
+    .select('id, display_name')
+    .in('id', unique);
+  return new Map(
+    (data ?? []).map((w: { id: string; display_name: string }) => [
+      w.id,
+      w.display_name,
+    ])
+  );
+}
+
 async function createTaskFallback(
   token: string,
   chatId: number,
@@ -1731,15 +1764,17 @@ async function createTaskFallback(
   draftRow: any
 ): Promise<void> {
   let createdBy: string | null = null;
+  let createdByName: string | null = null;
   if (draftRow.user_id) {
     const { data: worker } = await supabase
       .from('workers')
-      .select('id')
+      .select('id, display_name')
       .eq('source_id', draftRow.user_id)
       .eq('workspace_id', workspaceId)
       .eq('is_active', true)
       .maybeSingle();
     createdBy = worker?.id ?? null;
+    createdByName = worker?.display_name ?? null;
   }
 
   const { data: task, error: taskError } = await supabase
@@ -1755,7 +1790,7 @@ async function createTaskFallback(
       priority: 'medium',
       version: 0,
     })
-    .select('id, title, description, column, priority, version')
+    .select('id, title, description, column, priority, version, reviewer_id')
     .single();
 
   if (taskError || !task) {
@@ -1780,6 +1815,9 @@ async function createTaskFallback(
 
   const fullId = `${wsForFallback?.task_prefix || '?'}-${taskWithNumber2?.task_number || '?'}`;
 
+  // Проверяющий (reviewer_id) — display_name воркера (обычно null у свежей задачи)
+  const reviewerNames = await resolveWorkerNamesByIds([task.reviewer_id]);
+
   const cardData: TaskCardData = {
     fullId,
     title: task.title,
@@ -1790,6 +1828,10 @@ async function createTaskFallback(
     priority: task.priority as 'high' | 'medium' | 'low' | null,
     dueDate: null,
     assigneeName: null,
+    assignedByName: createdByName,
+    reviewerName: task.reviewer_id
+      ? reviewerNames.get(task.reviewer_id) ?? null
+      : null,
     workspaceHandle: wsForFallback?.name || wsForFallback?.slug || '',
     clarityScore: null,
   };

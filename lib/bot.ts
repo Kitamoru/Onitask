@@ -425,6 +425,8 @@ export type TaskCardData = {
   assigneeName: string | null;
   /** Постановщик (display_name / telegram username). Optional — omit to hide line. */
   assignedByName?: string | null;
+  /** Проверяющий (display_name). Optional — omit to hide line; null → «—» (как у Постановщика). */
+  reviewerName?: string | null;
   workspaceHandle: string;
   clarityScore: number | null;
 };
@@ -474,6 +476,7 @@ function formatPersonMention(name: string | null | undefined): string {
  * 📍 Status · board
  * 👤 Исполнитель: @name
  * ✍️ Постановщик: @name   (if assignedByName is defined)
+ * 🔍 Проверяющий: @name   (if reviewerName is defined; null → «—»)
  * 🟡 Priority · deadline
  */
 export function renderTaskCardBody(card: TaskCardData): string {
@@ -497,6 +500,10 @@ export function renderTaskCardBody(card: TaskCardData): string {
   // ✍️ Creator — only when field is present (undefined = hide, null = show "—")
   if (card.assignedByName !== undefined) {
     lines.push(`✍️ Постановщик: ${formatPersonMention(card.assignedByName)}`);
+  }
+  // 🔍 Reviewer — only when field is present (undefined = hide, null = show "—")
+  if (card.reviewerName !== undefined) {
+    lines.push(`🔍 Проверяющий: ${formatPersonMention(card.reviewerName)}`);
   }
   // Priority · deadline (one line)
   const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;

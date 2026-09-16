@@ -470,7 +470,7 @@ async function buildTaskCardData(
     const { data: task } = await supabase
       .from('tasks')
       .select(
-        'id, title, description, column, priority, deadline, metadata, task_number, created_by, assigned_to, is_blocked, is_inbox'
+        'id, title, description, column, priority, deadline, metadata, task_number, created_by, assigned_to, reviewer_id, is_blocked, is_inbox'
       )
       .eq('id', taskId)
       .maybeSingle();
@@ -498,6 +498,9 @@ async function buildTaskCardData(
     const assigneeName =
       opts.assigneeNameFallback ??
       (await resolveWorkerDisplayName(task?.assigned_to as string | null));
+    const reviewerName = await resolveWorkerDisplayName(
+      task?.reviewer_id as string | null
+    );
 
     return {
       fullId,
@@ -515,6 +518,7 @@ async function buildTaskCardData(
         null,
       assigneeName,
       assignedByName,
+      reviewerName,
       workspaceHandle: ws?.name || ws?.slug || '',
       clarityScore,
     };
@@ -531,6 +535,7 @@ async function buildTaskCardData(
     dueDate: (job.payload.deadline as string) || null,
     assigneeName: opts.assigneeNameFallback ?? null,
     assignedByName: null,
+    reviewerName: null,
     workspaceHandle: ws?.name || ws?.slug || '',
     clarityScore: null,
   };

@@ -23,6 +23,8 @@ export type TaskCardData = {
   dueDate: string | null;
   assigneeName: string | null;
   assignedByName: string | null;
+  /** Проверяющий (display_name). Optional — omit to hide line; null → «—» (как у Постановщика). */
+  reviewerName?: string | null;
   workspaceHandle: string;
   clarityScore: number | null;
 };
@@ -107,6 +109,10 @@ export function renderTaskCardBody(
   lines.push(`📍 ${status} · ${escapeHtml(card.workspaceHandle || '—')}`);
   lines.push(`👤 Исполнитель: ${formatPersonMention(card.assigneeName)}`);
   lines.push(`✍️ Постановщик: ${formatPersonMention(card.assignedByName)}`);
+  // 🔍 Reviewer — only when field is present (undefined = hide, null = show "—")
+  if (card.reviewerName !== undefined) {
+    lines.push(`🔍 Проверяющий: ${formatPersonMention(card.reviewerName)}`);
+  }
 
   const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;
   const due = formatDueDate(card.dueDate);
