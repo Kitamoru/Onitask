@@ -38,6 +38,16 @@ pre-existing `@rushstack/eslint-patch × ESLint 9.39` (см. `next.config.ts`).
 **Доки:** `docs/design/component-map.md` — строки `OrbitLoader` (shared/) и
 `TaskCommentsPanel` (flowboard/), Last updated → 2026-09-15.
 
+**Follow-up (ДС, 2026-09-15):** дизайнер — во вкладке «Комментарии» был **двойной
+горизонтальный паддинг**: шит (`TaskViewEdit` → `px-4`, он же `bs-container 24/16/32`
+в Figma) + собственный `px-4` панели на ленте и composer'е → 32px вместо 16px.
+Правильное значение внутри контейнера комментариев — **0**: сняты `px-4` у ленты
+(`min-h-0 flex-1 overflow-y-auto py-3`) и composer'а (`border-t border-white/10 py-3`);
+вертикальные `py-3` не тронуты. Подтверждено макетом: кадр ленты `322:27995`
+и строка composer'а `322:28018` имеют padding 0. Контракт («паддинг даёт
+контейнер, внутри панели 0») зафиксирован в JSDoc `TaskCommentsPanel`.
+Карточка и `CommentSkeleton` ужимаются автоматически — они внутри ленты.
+
 retry_count: 0.
 
 ---

@@ -17,6 +17,12 @@
  * cache is the single source of truth (optimistic submit + broadcast go
  * through queryClient.setQueryData, useState only for the composer).
  *
+ * Layout (ДС): горизонтальный паддинг даёт контейнер — TaskViewEdit оборачивает
+ * шит в `px-4` (он же `bs-container 24/16/32` в Figma). Внутри панели
+ * комментариев доп. паддинга нет (0): лента-кадр `322:27995` и строка
+ * composer'а `322:28018` в макете имеют padding 0, иначе карточка и скелетон
+ * получают двойной отступ (32px вместо 16px).
+ *
  * Submit flow: optimistic append (pending row) → POST → replace with the
  * server row; the server broadcast may arrive first — dedup by item_id.
  *
@@ -324,8 +330,9 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Feed */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      {/* Feed — горизонтальный паддинг даёт сам шит (TaskViewEdit: px-4),
+          внутри панели комментариев он должен быть 0 (ДС, Figma 322:27995) */}
+      <div className="min-h-0 flex-1 overflow-y-auto py-3">
         {loading ? (
           <CommentSkeleton />
         ) : loadError && items.length === 0 ? (
@@ -421,8 +428,8 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
         )}
       </div>
 
-      {/* Composer */}
-      <div className="border-t border-white/10 px-4 py-3">
+      {/* Composer — тот же принцип: 0 (Figma 322:28018), шит уже даёт px-4 */}
+      <div className="border-t border-white/10 py-3">
         {sendError && <div className="mb-2 text-[12px] text-red-400">{sendError}</div>}
         <div className="flex items-end gap-2">
           <div className="min-w-0 flex-1">
