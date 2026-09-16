@@ -1,5 +1,33 @@
 # Active Context
 # Active Context
+## Имя человека в ленте комментариев: telegram_user_* → display_name (2026-09-16) ✅
+
+**Баг:** в ленте «Комментарии» (RPC `get_task_feed`) агентские события от webhook
+(tool='bot_command') показывались с псевдо-именем автора —
+«telegram_user_425693173 review_requested_fix» вместо «kitamoru review_requested_fix».
+Не понятно другим пользователям, кто совершил действие.
+
+**Причина:** ветка «в» `get_task_feed` (миграция 076) возвращала `a.agent_name` как есть,
+хотя webhook (`route.ts:1384`, `:1529`) уже сохранял реального человека-воркера в
+`metadata.actor_worker_id`.
+
+**Фикс (миграция 088, `088_task_feed_actor_display_name.sql`, применена):**
+`CREATE OR REPLACE FUNCTION get_task_feed` — ветка «в»:
+`LEFT JOIN workers w ON w.id::text = a.metadata->>'actor_worker_id'` (сравнение текстом,
+без cast — безопасно для мусорных metadata),
+`author_name = COALESCE(w.display_name, a.agent_name)`.
+Чинит и исторические события (окно retention agent_events = 7 дней), и все будущие точки
+записи без изменения webhook-кода. Реальные агенты (без actor_worker_id) — фолбэк на
+agent_name, поведение не изменилось. Бонус: `SET search_path = ''` на функцию (advisor
+function_search_path_mutable для get_task_feed закрыт; тело schema-квалифицировано).
+Псевдо-имя в БД сохранено (легитимный аудит, решение миграции 052).
+
+**Валидация:** RPC на живой задаче → `kind='agent', author_name='kitamoru',
+body='review_requested_fix'` (было telegram_user_425693173); fallback-проверка agent-событий
+(ops_terminal/ops_nack → 'Drift') ✅; type-check ✅. Не тронуто: author_type остаётся
+'agent' (фиолетовый ◆-стиль в UI) — если нужно human-оформление review-действий,
+отдельное расширение миграции (резолв w.type в author_type).
+
 ## 🔍 Проверяющий в карточках бота + починка «Постановщик» в created-шаблонах (2026-09-16) ✅
 
 **Задача:** в карточках задач бота под «Исполнитель»/«Постановщик» добавить «🔍 Проверяющий»
