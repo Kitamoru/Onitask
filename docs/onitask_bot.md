@@ -284,6 +284,21 @@ function extractRawInput(msg: TelegramMessage): { text: string; sourceAuthor?: T
 - A-7: payload содержит `workspace_id`, Edge Function выполняет tenant-изоляции через FK-джойны
 - Скип для агентов (`workers.type='agent'`) — у агентов нет Telegram
 
+**Завершение задачи (086):** переход в `done` триггером `trg_task_done_notify`
+(048/086) ставит `alert_type='task_done'` с `via_review` (прошла ли задача review)
+и `reason` (`ops_terminal_summary` ИЛИ текст последней `task_submissions` — паттерн 083).
+`bot-notify` различает два контекста:
+
+| Контекст | Условие | Получатели | Заголовок |
+|---|---|---|---|
+| `done` | обычный move в done | постановщик (fallback owners/admins) | ✅ Задача `ONI-42` выполнена |
+| `done_approved` | `via_review = true` | постановщик **+ исполнитель** (`completed_by`) | ✅ Результат задачи `ONI-42` согласован + «Задача перенесена в Сделано.» |
+
+В обоих случаях, если есть `reason`, карточка содержит строку «Результат: <текст>».
+Review-контур: `review_action(approve)` (086) пишет в `task_comments` авто-комментарий
+«Результат задачи ONI-42 согласован. Задача перенесена в Сделано.» (`source='review'`) —
+в TWA-ленте такие комментарии получают циановый бордер (акцент колонки review).
+
 ### 5.5 Daily Standup (авто-дайджест)
 
 Каждое утро в `standup_config.time_utc` бот пишет в привязанный чат:

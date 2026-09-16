@@ -1,5 +1,35 @@
 # Active Context
 # Active Context
+## Approve-контур: авто-комментарий + done_approved в боте (2026-09-16) ✅
+
+**Задача:** при согласовании задачи — комментарий в ленте (циановый бордер) и бот-уведомление
+постановщику И исполнителю с подписью «Результат:» вместо «Что сделано:».
+
+**Сделано:**
+- **Миграция 086** (`086_approve_comment_and_done_notify_reason.sql`, применена в БД):
+  `review_action(approve)` после move в done пишет авто-комментарий
+  «Результат задачи <full_id> согласован. Задача перенесена в Сделано.» (`source='review'`);
+  `notify_task_done` — + `via_review` (OLD.column='review') и `reason`
+  (COALESCE ops_terminal_summary, последняя task_submissions — паттерн 083, закрывает
+  пустой «Результат:» для human-сдач).
+- **Лента:** `isReviewDecision` вынесен в `src/lib/reviewDecision.ts` (+ unit-тесты в
+  `tests/lib/reviewDecision.test.ts`); `TaskCommentsPanel` красит bubble `source='review'`
+  циановым 1px бордером `var(--color-signal-cyan)` (токен акцента колонки review).
+- **bot-notify:** `NotifyContext += 'done_approved'`; заголовок
+  «✅ Результат задачи ONI-XX согласован» + строка «Задача перенесена в Сделано.»;
+  подпись «Что сделано:» → «Результат:» (везде); `resolveTaskRecipients` — опция
+  `alsoAssignee` (постановщик + исполнитель для done_approved); reason из payload до
+  фолбэка agent_events. Карточный рендер вынесен в `bot-notify/card.ts` (+ тесты
+  `tests/api/botNotifyCard.test.ts`).
+- **Доки:** onitask_bot.md §5.4.1 (таблица done/done_approved), component-map.md, activeContext.
+
+**Валидация:** type-check 0; тесты 64 passed / 4 pre-existing fail (`init.test.ts`, нет
+TELEGRAM_BOT_TOKEN); SQL-проверка в БД: approve-ветка, via_review, reason, constraint — на месте.
+Build валит только pre-existing `/api/bot/webhook` (Invalid supabaseUrl).
+
+**Отложено:** лейбл «Готово» vs «Сделано» в STATUS_LABELS (единообразие — отдельное решение);
+RPC-комментарии не броадкастятся в Realtime (появляются после refetch — существующее поведение).
+
 ## Единый индикатор загрузки (OrbitLoader) + скелетон комментариев (2026-09-15) ✅
 
 **Задача:** убрать текстовые «Загрузка...» из загрузочных состояний страниц — единый

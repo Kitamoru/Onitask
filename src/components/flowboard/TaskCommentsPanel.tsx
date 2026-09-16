@@ -36,6 +36,7 @@ import { getClient } from '@/lib/supabase/client';
 import { getTaskFeedPage, createComment } from '@/lib/api/comments';
 import { formatFeedTime } from '@/lib/date';
 import { TextArea } from '@/components/ui/desk-ui';
+import { isReviewDecision } from '@/lib/reviewDecision';
 import type { CommentsPage, FeedPageCursor, TaskFeedItem } from '@/types/comments';
 
 /** Column keys → ru labels (match TaskForm / board column names) */
@@ -394,6 +395,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
 
                 {/* ── Comment bubble (Figma 322-27840) ── */}
                 const isPending = !!item.payload?.pending;
+                const isReview = isReviewDecision(item);
                 const isOwn =
                   currentUserId != null &&
                   item.author_id === currentUserId &&
@@ -406,7 +408,12 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
                     <FeedAvatar item={item} avatarUrl={avatarFor(item)} />
                     <div
                       className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2"
-                      style={isPending ? { opacity: 0.5 } : undefined}
+                      style={{
+                        ...(isPending ? { opacity: 0.5 } : null),
+                        ...(isReview
+                          ? { borderColor: 'var(--color-signal-cyan)' }
+                          : null),
+                      }}
                     >
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="truncate text-[14px] font-medium leading-5 text-text">

@@ -6,11 +6,23 @@
 // Cards: full_id in headers, blockquote body, inline open button always
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  buildTaskNotifyCard,
+  escapeHtml,
+  miniAppDeepLink,
+  taskCommentsDeepLink,
+  taskDeepLink,
+  CARD_CONFIG,
+  type NotifyContext,
+  type TaskCardData,
+} from './card.ts';
+
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const BOT_USERNAME = Deno.env.get('TELEGRAM_BOT_USERNAME') ?? 'onitaskbot';
+CARD_CONFIG.botUsername = BOT_USERNAME;
 const MINI_APP_SHORT_NAME = 'onitask';
 
 /**
@@ -218,6 +230,9 @@ async function processTaskDoneNotification(job: {
   const recipients = await resolveTaskRecipients(job, {
     preferReviewer: false,
     preferCreator: true,
+    // 086: done_approved уходит и исполнителю (completed_by = assigned_to),
+    // не только постановщику.
+    alsoAssignee: job.payload.completed_by as string | undefined,
   });
   if (!recipients.length) {
     console.error(
@@ -226,12 +241,17 @@ async function processTaskDoneNotification(job: {
     return;
   }
 
-  const reason = await fetchLastMoveReason(
-    job.workspace_id,
-    job.payload.task_id as string | undefined
-  );
+  // 086: reason из payload (паттерн 083) — иначе фолбэк agent_events.
+  const reason =
+    (job.payload.reason as string | undefined) ||
+    (await fetchLastMoveReason(
+      job.workspace_id,
+      job.payload.task_id as string | undefined
+    ));
+  const context: NotifyContext =
+    job.payload.via_review === true ? 'done_approved' : 'done';
   const card = await buildTaskCardData(job, {});
-  const taskCard = buildTaskNotifyCard(card, 'done', { reason });
+  const taskCard = buildTaskNotifyCard(card, context, { reason });
 
   for (const telegramId of recipients) {
     const messageId = await sendTelegramMessage(
@@ -415,249 +435,6 @@ async function sendEscalationFallbackDMs(job: {
   }
 }
 
-// ============================================================================
-// Unified task card (assignment template as base)
-// ============================================================================
-
-type TaskCardData = {
-  fullId: string;
-  title: string;
-  description?: string | null;
-  column: string;
-  isInbox: boolean;
-  isBlocked: boolean;
-  priority: 'high' | 'medium' | 'low' | 'critical' | null;
-  dueDate: string | null;
-  assigneeName: string | null;
-  assignedByName: string | null;
-  workspaceHandle: string;
-  clarityScore: number | null;
-};
-
-type NotifyContext =
-  | 'assigned'
-  | 'done'
-  | 'review'
-  | 'escalation'
-  | 'escalation_resolved'
-  | 'deadline'
-  | 'unblocked'
-  | 'cascade'
-  | 'handoff';
-
-const STATUS_LABELS: Record<string, string> = {
-  in_progress: 'В работе',
-  review: 'На проверке',
-  done: 'Готово',
-  backlog: 'Бэклог',
-};
-
-const PRIORITY_LABELS: Record<string, string> = {
-  high: '🔴 Высокий приоритет',
-  medium: '🟡 Средний приоритет',
-  low: '🟢 Низкий приоритет',
-  critical: '🔴 Критический приоритет',
-};
-
-const LOW_CLARITY_THRESHOLD = 0.55;
-
-function formatDueDate(dueDate: string | null): string | null {
-  if (!dueDate) return null;
-  try {
-    return new Intl.DateTimeFormat('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-    }).format(new Date(dueDate));
-  } catch {
-    return dueDate;
-  }
-}
-
-function truncateForTelegram(str: string, limit: number): string {
-  return str.length > limit ? str.slice(0, limit) + '…' : str;
-}
-
-function isLowClarity(card: TaskCardData): boolean {
-  return card.clarityScore != null && card.clarityScore < LOW_CLARITY_THRESHOLD;
-}
-
-/** display_name → @username (Telegram auto-links) */
-function formatPersonMention(name: string | null): string {
-  if (!name) return '—';
-  const clean = name.replace(/^@/, '').trim();
-  if (!clean) return '—';
-  return `@${escapeHtml(clean)}`;
-}
-
-function renderTaskCardBody(
-  card: TaskCardData,
-  options?: { extraLines?: string[] }
-): string {
-  const extraLines = options?.extraLines ?? [];
-  const status = card.isInbox
-    ? 'Inbox'
-    : STATUS_LABELS[card.column] ?? card.column;
-  const title = escapeHtml(
-    truncateForTelegram(card.title || 'Без названия', 120)
-  );
-  const description = card.description?.trim()
-    ? escapeHtml(card.description.trim())
-    : null;
-
-  const lines: string[] = [];
-  lines.push(`📋 <b>${title}</b>`);
-  if (description) {
-    lines.push(`<blockquote>${description}</blockquote>`);
-  }
-  lines.push('');
-  lines.push(`📍 ${status} · ${escapeHtml(card.workspaceHandle || '—')}`);
-  lines.push(`👤 Исполнитель: ${formatPersonMention(card.assigneeName)}`);
-  lines.push(`✍️ Постановщик: ${formatPersonMention(card.assignedByName)}`);
-
-  const priority = card.priority ? PRIORITY_LABELS[card.priority] : null;
-  const due = formatDueDate(card.dueDate);
-  if (priority && due) {
-    lines.push(`${priority} · ${due}`);
-  } else if (priority) {
-    lines.push(priority);
-  } else if (due) {
-    lines.push(`📅 ${due}`);
-  }
-
-  if (card.isBlocked) {
-    lines.push('⛔ Заблокировано');
-  }
-  if (isLowClarity(card)) {
-    lines.push('⚠️ Формулировка неточная — уточни в приложении');
-  }
-
-  for (const extra of extraLines) {
-    if (extra) lines.push(extra);
-  }
-
-  return lines.join('\n');
-}
-
-function buildHeader(context: NotifyContext, fullId: string): string {
-  const id = escapeHtml(fullId);
-  switch (context) {
-    case 'assigned':
-      return `📝 Задача <b>${id}</b> назначена на тебя`;
-    case 'done':
-      return `✅ Задача <b>${id}</b> выполнена`;
-    case 'review':
-      return `🔎 Задача <b>${id}</b> ждет вашей проверки`;
-    case 'escalation':
-      return `🆘 Эскалация · <b>${id}</b>`;
-    case 'escalation_resolved':
-      return `✅ Эскалация <b>${id}</b> снята`;
-    case 'deadline':
-      return `📅 Дедлайн скоро · <b>${id}</b>`;
-    case 'unblocked':
-      return `🔓 Задача <b>${id}</b> разблокирована`;
-    case 'cascade':
-      return `🔗 Цепочка разблокирована · <b>${id}</b>`;
-    case 'handoff':
-      return `🤝 Задача <b>${id}</b> передана`;
-    default:
-      return `📋 Задача <b>${id}</b>`;
-  }
-}
-
-function buildOpenButton(card: TaskCardData): { text: string; url: string } {
-  if (isLowClarity(card)) {
-    return {
-      text: `✏️ Уточнить ${card.fullId} →`,
-      url: taskDeepLink(card.fullId),
-    };
-  }
-  return {
-    text: 'Открыть в приложении',
-    url: taskDeepLink(card.fullId),
-  };
-}
-
-/**
- * Unified card. Always full_id in header; always open button.
- * Review adds approve/fix callback rows (task UUID only in callback_data).
- */
-function buildTaskNotifyCard(
-  card: TaskCardData,
-  context: NotifyContext,
-  extras?: {
-    reason?: string;
-    hoursLeft?: number;
-    taskId?: string;
-    suggestedAction?: string;
-  }
-): {
-  text: string;
-  replyMarkup: {
-    inline_keyboard: Array<
-      Array<{ text: string; url?: string; callback_data?: string }>
-    >;
-  };
-} {
-  const extraLines: string[] = [];
-
-  if (context === 'escalation' && extras?.reason) {
-    extraLines.push('');
-    extraLines.push(`Причина: ${escapeHtml(extras.reason)}`);
-    if (extras.suggestedAction) {
-      extraLines.push(`Предлагаю: ${escapeHtml(extras.suggestedAction)}`);
-    }
-  } else if (extras?.reason) {
-    extraLines.push('');
-    extraLines.push(`Что сделано: ${escapeHtml(extras.reason)}`);
-  }
-
-  if (context === 'deadline' && extras?.hoursLeft != null) {
-    extraLines.push('');
-    extraLines.push(`Осталось ~${extras.hoursLeft}ч`);
-  }
-  if (context === 'escalation_resolved') {
-    extraLines.push('');
-    extraLines.push('Агент может продолжить работу.');
-  }
-  if (context === 'review') {
-    extraLines.push('');
-    extraLines.push('Подтвердите результат или верните на доработку.');
-  }
-
-  const header = buildHeader(context, card.fullId);
-  const body = renderTaskCardBody(card, { extraLines });
-  const text = `${header}\n\n${body}`.slice(0, 4096);
-
-  const openBtn = buildOpenButton(card);
-  let rows: Array<
-    Array<{ text: string; url?: string; callback_data?: string }>
-  >;
-
-  if (context === 'review' && extras?.taskId) {
-    rows = [
-      [
-        {
-          text: 'Согласовать',
-          callback_data: `ra:approve:${extras.taskId}`,
-        },
-      ],
-      [
-        {
-          text: '🔧 Вернуть на доработку',
-          callback_data: `ra:fix:${extras.taskId}`,
-        },
-      ],
-      [openBtn],
-    ];
-  } else {
-    rows = [[openBtn]];
-  }
-
-  return {
-    text,
-    replyMarkup: { inline_keyboard: rows },
-  };
-}
 
 // ============================================================================
 // Data loaders
@@ -802,7 +579,12 @@ async function fetchLastMoveReason(
  */
 async function resolveTaskRecipients(
   job: { workspace_id: string; payload: Record<string, unknown> },
-  opts: { preferReviewer: boolean; preferCreator: boolean }
+  opts: {
+    preferReviewer: boolean;
+    preferCreator: boolean;
+    /** 086: доп. получатель — исполнитель задачи (workers.id). */
+    alsoAssignee?: string | undefined;
+  }
 ): Promise<number[]> {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const profileIds: string[] = [];
@@ -836,6 +618,11 @@ async function resolveTaskRecipients(
       createdBy = task?.created_by as string | undefined;
     }
     await pushWorkerProfile(createdBy);
+  }
+
+  // 086: исполнитель — дополнительный получатель (не вместо, а вместе с creator).
+  if (opts.alsoAssignee) {
+    await pushWorkerProfile(opts.alsoAssignee);
   }
 
   if (profileIds.length === 0) {
@@ -916,27 +703,6 @@ async function updateJobStatus(jobId: string, status: string): Promise<void> {
 // Helpers
 // ============================================================================
 
-function escapeHtml(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function miniAppDeepLink(startParam?: string): string {
-  const base = `https://t.me/${BOT_USERNAME}/${MINI_APP_SHORT_NAME}`;
-  return startParam ? `${base}?startapp=${startParam}` : base;
-}
-
-function taskDeepLink(fullId: string): string {
-  return miniAppDeepLink(`task_${fullId}`);
-}
-
-/** FILE-01/03: deep-link сразу на вкладку «Комментарии» задачи */
-function taskCommentsDeepLink(fullId: string): string {
-  return miniAppDeepLink(`task_${fullId}_comments`);
-}
 
 // ============================================================================
 // Исходящие файлы агента (FILE-01/03)

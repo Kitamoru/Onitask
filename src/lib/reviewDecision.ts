@@ -26,3 +26,16 @@ export function canCurrentUserReview(
   if (!task.reviewer_id && !!task.created_by && task.created_by === currentUserId) return true;
   return false;
 }
+
+/**
+ * Ревью-решение в ленте комментариев (083 fix / 086 approve):
+ * авто-комментарий, записанный review_action с source='review'.
+ * Лента красит такие карточки циановым бордером (акцент колонки review).
+ * Писатели сегодня: review_action(fix) — причина возврата (083),
+ * review_action(approve) — «результат согласован» (086).
+ */
+export function isReviewDecision(
+  item: { kind: string; payload?: { source?: unknown } | null } | null | undefined,
+): boolean {
+  return item?.kind === 'comment' && String(item.payload?.source ?? '') === 'review';
+}
