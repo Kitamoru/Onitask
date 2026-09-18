@@ -309,9 +309,14 @@ export function BottomSheet({
       }}
       aria-hidden={!open}
     >
-      {/* Backdrop */}
+            {/* Backdrop (Frosted Glass) */}
       <div
-        className="absolute inset-0 bg-black/80"
+        className={
+          'absolute inset-0 transition-opacity duration-300 ease-out ' +
+          'bg-black/40 ' +
+          'backdrop-blur-[12px] saturate-150 ' +
+          'supports-[backdrop-filter]:bg-black/30'
+        }
         onClick={preventSwipe ? undefined : requestClose}
         aria-hidden="true"
       />
