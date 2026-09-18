@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { getClient } from '@/lib/supabase/client';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /**
@@ -274,36 +273,27 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get('workspace_id') ?? '';
   const router = useRouter();
-  const supabase = getClient();
 
   const [username, setUsername] = useState('@kitamoru');
   const [telegramPhotoUrl, setTelegramPhotoUrl] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
 
+  // PERF-08: Supabase Auth в проекте не используется — аутентификация идёт через
+  // Telegram initData → /api/init (INV-16), сессии Supabase нет, поэтому
+  // supabase.auth.getUser() всегда возвращал null, но тянул GoTrue-клиент в бандл
+  // страницы и держал экран под OrbitLoader. Данные для шапки берём из Telegram
+  // initData — локально, без сети.
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          const displayUsername = user.user_metadata?.username
-            ? '@' + user.user_metadata.username
-            : user.email?.split('@')[0] || '@kitamoru';
-          setUsername(displayUsername);
-
-          if (user.user_metadata?.telegram_photo_url) {
-            setTelegramPhotoUrl(user.user_metadata.telegram_photo_url);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load user:', err);
-      } finally {
-        setLoading(false);
+    const tgUser = (
+      window as unknown as {
+        Telegram?: { WebApp?: { initDataUnsafe?: { user?: { username?: string; photo_url?: string } } } };
       }
-    }
-    loadUser();
-  }, [supabase]);
+    ).Telegram?.WebApp?.initDataUnsafe?.user;
+
+    if (tgUser?.username) setUsername('@' + tgUser.username);
+    if (tgUser?.photo_url) setTelegramPhotoUrl(tgUser.photo_url);
+    setLoading(false);
+  }, []);
 
   const handleMcpClick = () => {
     router.push('/settings/mcp');

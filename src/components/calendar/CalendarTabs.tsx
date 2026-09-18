@@ -45,7 +45,7 @@ export function CalendarTabs({ activeMode, onModeChange }: CalendarTabsProps) {
             padding: '0 12px',
               fontSize: '13px',
               fontWeight: isActive ? '600' : '500',
-              fontFamily: "'Inter Display', system-ui, sans-serif",
+              fontFamily: "var(--font-family-display, system-ui, sans-serif)",
               lineHeight: '16px',
               backgroundColor: isActive
                 ? 'var(--tg-theme-button-color, var(--color-accent-amber))'

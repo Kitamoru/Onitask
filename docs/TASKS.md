@@ -731,6 +731,62 @@ format is deliberately compact so that agents can load the file quickly.
       Живое обновление открытой шторки (агент приложил файл → появился у клиента).
       Требует security-review: publication/RLS канала, scoping по workspace.
 
+## Stage · Performance (TWA boot) — PERF-01…PERF-14
+
+> Источник: аудит boot-цепочки TWA (Vercel `iad1` vs Supabase `eu-west-1`, 5×
+> `POST /api/init`, блокирующий `@import` Google Fonts, `beforeInteractive` SDK,
+> искусственная задержка лоадера). Пакет P0 (PERF-01…PERF-08) выполнен 2026-09-18;
+> P1 (PERF-09…PERF-14) — после снятия замеров «до/после».
+
+- [x] PERF-01 Self-hosted Inter вместо блокирующего Google Fonts `@import` #perf !high
+      `@fontsource-variable/inter/opsz.css` в layout; `--font-family-base/display` →
+      'Inter Variable' (ось opsz даёт Display-пропорции как в Figma); Geist Sans убран
+      (не использовался, а его woff2 preload'ились на критическом пути); 5 литералов
+      'Inter'/'Inter Display' → CSS-переменные. Устранён тихий фолбэк 'Inter Display' →
+      system-ui (семейство ниоткуда не загружалось).
+- [x] PERF-02 Регион функций `iad1` → `dub1` (eu-west-1 = регион Supabase) #perf !high
+      `vercel.json` → `regions`. Снимает ~6 последовательных RTT буст-цепочки
+      (`/api/init` 3 + `/api/workspaces/my-data` 3) и ~40–60 ms с каждого вызова API
+      для RU-аудитории. Плата: +30–40 ms к Groq (US) — приемлемо.
+- [x] PERF-03 Telegram SDK: `beforeInteractive` → `afterInteractive` + preconnect #perf !high
+      Плюс явное ожидание готовности SDK (`waitForTelegramWebApp`) вместо синхронного
+      чтения `window.Telegram` на mount → убран ложный экран `not_in_twa` при задержке CDN.
+- [x] PERF-04 Singleton server-side Supabase-клиента (module scope) #perf !med
+      `createServerClient()` создавал клиент на каждый вызов, т.е. на каждый запрос.
+- [x] PERF-05 Dedupe `/api/init`: 5 параллельных POST → 1 общий промис #perf !high
+      `fetchInitOnce()` на уровне модуля (5 инстансов хука: page, AuthLoader,
+      AiTaskCreator, DataProvider, TelegramProvider); `refresh()` форсирует запрос.
+- [x] PERF-06 Временный замер boot-фаз `?perf=1` / `startapp=perf` #perf !low
+      `src/lib/perf/timings.ts` + `/api/debug/timings` (только console.info в логах Vercel).
+      ⚠️ Удалить после снятия метрик «до/после».
+- [x] PERF-07 Минимальная задержка лоадера 400ms → 120ms #perf !med
+      Вместе с fade 300ms в GlobalLoader давало до 0.7s «мёртвой» паузы после прихода данных.
+- [x] PERF-08 Гигиена бандла и мёртвого кода #perf !low
+      `optimizePackageImports` (+ @tabler/icons-react, date-fns, @tanstack/react-query);
+      удалён мёртвый `supabase.auth.getUser()` в /settings (тянул GoTrue в бандл и держал
+      экран под OrbitLoader); убран дублирующий `<meta viewport>`; удалён no-op
+      `src/middleware.ts` (давал edge-инвокей на каждую навигацию).
+- [ ] PERF-09 `get_boot_data` RPC: 3 последовательных RTT → 1 #perf !med
+      Миграция 089: один `jsonb` (profile/workers/workspaces/tasks/sprints),
+      `SECURITY DEFINER` + `REVOKE EXECUTE FROM PUBLIC` + `SET search_path=''` (как в 088).
+      INV-16 не меняется: find-or-create остаётся только в `/api/init`.
+- [ ] PERF-10 Подписанная HttpOnly-cookie `oni_sess` → fast-path без запроса `profiles` #perf !med
+      Снимает 1 RTT с каждого вызова API; при отсутствии/истечении cookie — прежняя
+      ветка проверки initData (нулевой риск для UX).
+- [ ] PERF-11 Warm start: `localStorage` + TTL (SWR) вместо sessionStorage-only #perf !med
+      Повторный запуск Mini App рисует борд мгновенно, лоадер — только на холодном старте.
+      Ключ кэша — telegram user id (показываем лишь при наличии initData).
+- [ ] PERF-12 Лоадер без `filter: blur(35px)` / `blur(25px)` #perf !low
+      Дорогие композиты в WebView ровно в момент парсинга JS — заменить на статичный градиент.
+- [ ] PERF-13 Cron `ops-publisher-tick` 10s → 30/60s #db !low
+      129 235 вызовов × 4.28 ms = 553 s CPU за окно замера; на Free/Micro делит CPU с API.
+- [ ] PERF-14 Включить Fluid compute в проекте Vercel (dashboard) #perf !med
+      Даёт bytecode-оптимизацию и pre-warming на прод-деплоях → меньше cold start без Edge.
+      На Hobby память фиксирована (2 GB / 1 vCPU) и не конфигурируется.
+
+---
+
+
 ---
 
 *onitask · Декомпозиция по задачам · компакт-версия · 12 июля 2026 · обновлено 4 августа 2026 (аудит Stage 1-4 + Stage 5+)*

@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "installCommand": "npm install",
-  "regions": ["iad1"],
+  "regions": ["dub1"],
   "outputDirectory": ".next",
   "headers": [
     {

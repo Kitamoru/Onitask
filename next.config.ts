@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
       '@supabase/ssr',
       '@supabase/supabase-js',
       'lucide-react',
+      '@tabler/icons-react',
+      'date-fns',
+      '@tanstack/react-query',
     ],
   },
   // ESLint is broken in this repo: @rushstack/eslint-patch is incompatible

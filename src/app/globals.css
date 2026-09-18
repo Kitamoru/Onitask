@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+/* PERF-01: блокирующий сторонний @import Google Fonts удалён.
+   Inter подключается self-hosted (same-origin, immutable-кэш) через
+   `@fontsource-variable/inter/opsz.css` в src/app/layout.tsx. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -112,9 +114,13 @@
   --radius-card: 0.5rem;
   --radius-flowboard-section: 0.25rem;
 
-  /* Typography */
-  --font-family-base: 'Inter', system-ui, sans-serif;
-  --font-family-display: 'Inter Display', system-ui, sans-serif;
+  /* Typography (PERF-01)
+     'Inter Variable' — self-hosted variable-шрифт с осью opsz. Благодаря
+     font-optical-sizing: auto браузер сам применяет оптический размер
+     Inter Display на крупных кеглях — визуально как в макете Figma.
+     Раньше 'Inter Display' вообще не загружался и падал в system-ui. */
+  --font-family-base: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --font-family-display: 'Inter Variable', 'Inter Display', system-ui, sans-serif;
 
   --text-heading-sm: clamp(0.875rem, 1vw, 0.875rem);
   --text-heading-sm-line: 1.125;
@@ -232,6 +238,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-family-base), Arial, Helvetica, sans-serif;
+  font-optical-sizing: auto; /* PERF-01: Inter opsz → Display-пропорции на крупных кеглях */
   overscroll-behavior-y: contain;
   min-height: 100dvh;
 }

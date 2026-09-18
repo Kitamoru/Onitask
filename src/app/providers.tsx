@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { markPerf } from '@/lib/perf/timings';
+
+// PERF-06: t0 — начало исполнения клиентского бандла. Точка отсчёта для замера
+// boot-фаз (см. src/lib/perf/timings.ts). Без флага ?perf=1 — no-op.
+markPerf('t0');
 
 /**
  * React Query provider (attachments, comments, future server-state).

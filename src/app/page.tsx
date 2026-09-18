@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getPreferredView } from '@/lib/viewPreference';
+import { markPerf } from '@/lib/perf/timings';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
@@ -41,9 +42,11 @@ export default function HomePage() {
 
     if (data?.is_new_user === true) {
       hasNavigatedRef.current = true;
+      markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       router.replace('/board/create');
     } else if (data?.is_new_user === false) {
       hasNavigatedRef.current = true;
+      markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       const preferred = getPreferredView();
       router.replace(preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard');
     }
@@ -88,7 +91,7 @@ export default function HomePage() {
           <p
             style={{
               color: '#EF4444',
-              fontFamily: "'Inter Display', system-ui, sans-serif",
+              fontFamily: "var(--font-family-display, system-ui, sans-serif)",
               fontSize: '16px',
               lineHeight: '24px',
               fontWeight: '500',
@@ -101,7 +104,7 @@ export default function HomePage() {
             <button
               onClick={() => window.location.reload()}
               style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
+                fontFamily: "var(--font-family-base, system-ui, sans-serif)",
                 fontSize: '14px',
                 padding: '8px 16px',
                 borderRadius: '8px',

@@ -1,5 +1,9 @@
 import type { Viewport, Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+// PERF-01: self-hosted Inter (variable, оси wght+opsz) вместо блокирующего
+// стороннего @import Google Fonts. Файлы отдаются с того же origin → immutable-кэш
+// и никакого внешнего CSS на критическом пути первого рендера.
+import "@fontsource-variable/inter/opsz.css";
 import "./globals.css";
 import Script from "next/script";
 import { AiTaskCreator } from "@/components/shared/AiTaskCreator";
@@ -10,11 +14,9 @@ import { DataProvider } from "@/contexts/DataContext";
 import { TelegramDeepLinkRouter } from "./TelegramDeepLinkRouter";
 import { QueryProviders } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
+// PERF-01: Geist Sans убран. UI-шрифт — Inter (--font-family-base), класс
+// font-sans/font-geist-sans в разметке не используется, значит preload этих
+// woff2 только тратил критический путь. Geist Mono оставлен (font-mono в UI).
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -44,18 +46,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistMono.variable} h-full antialiased`}
       // Add tg-webapp class when running inside Telegram for CSS targeting
       suppressHydrationWarning
     >
       <head>
-        {/* Safe area viewport meta — required for env(safe-area-inset-*) on production */}
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        {/* PERF-03: без preconnect браузер платит DNS+TLS до telegram.org
+            синхронно на пути загрузки SDK. Viewport задан через
+            `export const viewport` выше — дублирующий <meta> убран. */}
+        <link rel="preconnect" href="https://telegram.org" crossOrigin="anonymous" />
       </head>
-      {/* Telegram WebApp SDK — loads before interactive to ensure window.Telegram.WebApp exists */}
+      {/* PERF-03: SDK грузится afterInteractive — не блокирует рендер и гидратацию.
+          Готовность SDK/initData теперь ожидается явно (waitForInitData в
+          useTelegramAuth), поэтому гонки «SDK ещё не загрузился, а хук уже читает
+          window.Telegram» больше нет (она давала ложный экран not_in_twa). */}
       <Script
         src="https://telegram.org/js/telegram-web-app.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
       />
         <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
           <QueryProviders>

@@ -75,11 +75,14 @@ const config: Config = {
         "ring-accent-amber": "var(--color-accent-amber, #ff9900)",
       },
       fontFamily: {
-        base: ["Inter", "system-ui", "sans-serif"],
-        display: ["Inter Display", "system-ui", "sans-serif"],
-        inter: ["Inter", "system-ui", "sans-serif"],
-        "inter-display": ["Inter Display", "system-ui", "sans-serif"],
-        sans: ["var(--font-geist-sans)", "Inter", "system-ui", "sans-serif"],
+        // PERF-01: self-hosted Inter Variable (ось opsz). 'Inter Display' как
+        // отдельное web-семейство ниоткуда не загружалось и молча падало в
+        // system-ui; Display-пропорции теперь даёт ось opsz + font-optical-sizing.
+        base: ["Inter Variable", "Inter", "system-ui", "sans-serif"],
+        display: ["Inter Variable", "Inter Display", "system-ui", "sans-serif"],
+        inter: ["Inter Variable", "Inter", "system-ui", "sans-serif"],
+        "inter-display": ["Inter Variable", "Inter Display", "system-ui", "sans-serif"],
+        sans: ["Inter Variable", "Inter", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "monospace"],
       },
       fontSize: {

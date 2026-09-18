@@ -247,7 +247,7 @@ export default function BoardDetailPage() {
           <button
             onClick={() => window.location.reload()}
             style={{
-              fontFamily: "'Inter', system-ui, sans-serif",
+              fontFamily: "var(--font-family-base, system-ui, sans-serif)",
               fontSize: '14px',
               padding: '8px 16px',
               borderRadius: '8px',

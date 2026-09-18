@@ -1,5 +1,56 @@
 # Active Context
 # Active Context
+## PERF: холодный старт TWA — пакет P0 (2026-09-18) ✅ (нужна проверка на preview)
+
+**Диагноз.** Долгая загрузка складывалась из четырёх независимых причин:
+1. **Критический путь рендера:** блокирующий сторонний `@import url(fonts.googleapis.com…)`
+   в layout-CSS (45KB raw / 10KB gz, на каждой странице — подтверждено замером собранного
+   CSS, байт 21) + `telegram-web-app.js` со `strategy="beforeInteractive"` → «белый экран».
+2. **5 параллельных `POST /api/init`** на холодном старте: `useTelegramAuth()` вызывают 5
+   компонентов (page, AuthLoader, AiTaskCreator, DataProvider, TelegramProvider), у каждого
+   свой state и свой `useEffect`; кэш в sessionStorage не дедуплицирует in-flight запросы.
+3. **Регионы:** Vercel `iad1` (Washington) против Supabase `eu-west-1` (Ireland) → ~6
+   последовательных RTT в буст-цепочке (~0.55–0.65 s) + RTT на каждый вызов API.
+4. **Искусственная пауза:** `LOADER_MIN_DISPLAY_MS = 400` + fade 300ms → до 0.7 s после
+   того, как данные уже пришли.
+
+**Сделано (PERF-01…PERF-08; ветка `perf/p0-critical-path`):** self-hosted Inter Variable
+через `@fontsource-variable/inter/opsz.css` (ось opsz = Display-пропорции как в Figma;
+`'Inter Display'` как web-семейство вообще не загружалось и падало в system-ui — устранено)
++ убран Geist Sans (не использовался, preload на критическом пути); `regions: ["dub1"]`;
+SDK `afterInteractive` + preconnect + `waitForTelegramWebApp()` (гонка `not_in_twa`
+устранена); dedupe `/api/init` через module-level `fetchInitOnce()`; singleton
+Supabase-клиента (module scope); лоадер 120ms; `optimizePackageImports`; удалён мёртвый
+`supabase.auth.getUser()` в /settings и no-op `src/middleware.ts`.
+
+**Замеры (PERF-06):** включается только при `?perf=1` в URL или `startapp=perf` в deep-link
+(`t.me/<bot>/app?startapp=perf`) → один beacon в `/api/debug/timings` → `console.info`
+в логах Vercel. Точки: `t0 → init:data-ready → init:done → route:flowboard → data:done →
+ui:ready`. После снятия «до/после» — удалить PERF-06 (файл, роут, вызовы).
+
+**Валидация на момент коммита:** `npm run type-check` — 0 ошибок; `npm run test` —
+74 passed / 4 failed (`tests/api/init.test.ts` — **pre-existing**: тест мокает
+`@/lib/telegramAuth`, а роут импортирует `src/lib/telegram/validate`, поэтому проверки идут
+против реального валидатора и `data.error` не совпадает); `npm run lint` — pre-existing
+поломка ESLint-патча (см. комментарий в `next.config.ts`); **локальный `next build` не
+проходится из-за плейсхолдеров в `.env.local`** (`Invalid supabaseUrl` на module-scope
+клиенте `/api/bot/webhook`) → сборку проверяем на Vercel preview. Webpack-компиляция при
+этом проходит успешно.
+
+**Решение по `export const runtime/dynamic` (P0-7):** роуты начинаются с `'use server'`,
+а в таком файле Next разрешает экспортировать только async-функции → константы ломают
+сборку. Для POST-ручек Node-runtime и no-cache и так дефолт, поэтому константы не
+добавляем — вместо смены конвенции `'use server'` во всех ~30 роутах ради нулевого эффекта.
+
+**Отложено в P1:** PERF-09 RPC `get_boot_data` (миграция 089), PERF-10 подписанная
+cookie-сессия, PERF-11 localStorage SWR, PERF-12 лоадер без blur, PERF-13 cron 10s→60s,
+PERF-14 Fluid compute. Edge runtime для boot-ручек осознанно **не** берём: нужна переписка
+`validate.ts` на WebCrypto, а Edge исполняется у пользователя, а не у БД (наш кейс — «у БД»),
+и это против рекомендации самой Next (Node для рендера, Edge для middleware).
+
+---
+
+
 ## Имя человека в ленте комментариев: telegram_user_* → display_name (2026-09-16) ✅
 
 **Баг:** в ленте «Комментарии» (RPC `get_task_feed`) агентские события от webhook

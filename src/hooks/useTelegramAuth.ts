@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { InitResponse } from '../../types/api';
+import { markPerf } from '@/lib/perf/timings';
 
 // ── Telegram Web App extended types ────────────────────────────────────────
 
@@ -112,7 +113,92 @@ function dataEqual(a: InitResponse | null, b: InitResponse | null): boolean {
 const EMPTY_USER = Object.freeze({});
 const EMPTY_UNSAFE: NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe'] = Object.freeze({});
 
-// ── Combined hook ─────────────────────────────────────────────────────────
+// ── Boot helpers (shared across hook instances) ─────────────────────────────
+//
+// PERF-05: useTelegramAuth() вызывают 5 независимых компонентов (page,
+// AuthLoader, AiTaskCreator, DataProvider, TelegramProvider) — каждый со своим
+// state и своим useEffect. До фикса это давало 5 параллельных POST /api/init
+// на холодном старте. Теперь все инстансы ждут ОДИН общий промис.
+
+const NOT_IN_TWA = 'not_in_twa';
+const SDK_WAIT_MS = 1500;
+const SDK_POLL_MS = 50;
+
+type InitOutcome = { ok: true; data: InitResponse } | { ok: false; error: string };
+
+/**
+ * PERF-03: ожидание загрузки Telegram SDK.
+ *
+ * Раньше telegram-web-app.js грузился `beforeInteractive`, а хук читал
+ * `window.Telegram` синхронно на mount → при малейшей задержке CDN пользователь
+ * получал ложный экран «Откройте приложение через Telegram WebApp».
+ * Теперь скрипт не блокирует рендер (afterInteractive), а готовность SDK
+ * ожидается явно: SDK парсит initData из hash при своём исполнении, поэтому
+ * появление window.Telegram.WebApp равносильно готовности initData.
+ */
+async function waitForTelegramWebApp(
+  timeoutMs: number = SDK_WAIT_MS,
+): Promise<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null> {
+  if (typeof window === 'undefined') return null;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const tg = (window as unknown as TelegramWebAppExtended).Telegram?.WebApp;
+    if (tg) return tg;
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, SDK_POLL_MS));
+  }
+}
+
+let initInFlight: Promise<InitOutcome> | null = null;
+
+async function requestInit(): Promise<InitOutcome> {
+  markPerf('init:start');
+
+  const tg = await waitForTelegramWebApp();
+  if (!tg) return { ok: false, error: 'sdk_unavailable' };
+
+  const initData = tg.initData;
+  if (!initData) return { ok: false, error: NOT_IN_TWA };
+
+  markPerf('init:data-ready');
+
+  try {
+    const startParam = tg.initDataUnsafe?.start_param || '';
+
+    const res = await fetch('/api/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData, start_param: startParam }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ error: res.statusText }));
+      const errorMsg = errData.error || errData.message || 'init_failed';
+      // Prefix with HTTP status code for client-side error differentiation (fixes #7)
+      throw new Error(`${res.status}:${errorMsg}`);
+    }
+
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.error || 'init_failed');
+    }
+
+    const data = json.data as InitResponse;
+    saveToStorage(data);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'init_error' };
+  }
+}
+
+/** Общий in-flight промис; `force` — новый запрос (refresh после onboarding). */
+function fetchInitOnce(force = false): Promise<InitOutcome> {
+  if (force) initInFlight = null;
+  if (!initInFlight) initInFlight = requestInit();
+  return initInFlight;
+}
+
+// ── Combined hook ────────────────────────────────────────────────────────
 
 export interface UseTelegramAuthReturn {
   // --- From useTelegram ---
@@ -178,8 +264,8 @@ export interface UseTelegramAuthReturn {
   data: InitResponse | null;
   /** Whether the Telegram WebApp environment is available */
   isTWA: boolean;
-  /** Refresh auth data (re-call /api/init) */
-  refresh: () => void;
+  /** Refresh auth data (force re-call /api/init) */
+  refresh: () => Promise<void>;
 }
 
 export function useTelegramAuth(): UseTelegramAuthReturn {
@@ -192,6 +278,7 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
   const [initData, setInitData] = useState('');
   const [initDataUnsafe, setInitDataUnsafe] = useState<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['initDataUnsafe']>(EMPTY_UNSAFE);
 
+  const [sdkReady, setSdkReady] = useState(false);
   const tgRef = useRef<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null>(null);
   const tgInitRanRef = useRef(false);
   const authInitRanRef = useRef(false);
@@ -224,56 +311,31 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
     return false;
   }, []);
 
-  const performInit = useCallback(async () => {
-    const globalWindow = typeof window !== 'undefined' ? (window as any) : null;
-    const telegramWebApp = globalWindow?.Telegram?.WebApp;
-    const hasInitData = !!telegramWebApp?.initData;
+  const performInit = useCallback(async (options?: { force?: boolean }) => {
+    setIsLoading(true);
 
-    setIsTWA(!!hasInitData);
+    // PERF-05: все инстансы хука ждут общий промис (fetchInitOnce) вместо
+    // собственного POST /api/init — на холодном старте было 5 параллельных
+    // запросов и 5 независимых состояний загрузки.
+    const outcome = await fetchInitOnce(options?.force);
 
-    if (!hasInitData) {
-      setError('not_in_twa');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const startParam = telegramWebApp.initDataUnsafe?.start_param || '';
-
-      const res = await fetch('/api/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          initData: telegramWebApp.initData,
-          start_param: startParam,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: res.statusText }));
-        const errorMsg = errData.error || errData.message || 'init_failed';
-        // Prefix with HTTP status code for client-side error differentiation (fixes #7)
-        throw new Error(`${res.status}:${errorMsg}`);
-      }
-
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.error || 'init_failed');
-      }
-
-      const initResponse = json.data as InitResponse;
-      saveToStorage(initResponse);
-      dataRef.current = initResponse;
-      setData(initResponse);
+    if (outcome.ok) {
+      dataRef.current = outcome.data;
+      setData(outcome.data);
       setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'init_error';
-      setError(message);
+      setIsTWA(true);
+    } else {
+      setError(outcome.error);
       setData(null);
-    } finally {
-      setIsLoading(false);
+      setIsTWA(outcome.error !== NOT_IN_TWA);
     }
+
+    markPerf('init:done');
+    setIsLoading(false);
   }, []);
+
+  /** refresh() после onboarding обязан сходить в сеть заново (force). */
+  const refreshAuth = useCallback(() => performInit({ force: true }), [performInit]);
 
   // Run auth init once on mount: try cache first, then network if needed
   useEffect(() => {
@@ -286,15 +348,31 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
     }
   }, [performInit, initFromCache]);
 
+  // PERF-03: telegram-web-app.js грузится afterInteractive (не блокирует рендер),
+  // поэтому появление SDK отслеживается отдельным эффектом. Раньше window.Telegram
+  // читался синхронно на mount: при задержке CDN isAvailable навсегда оставался
+  // false, а init падал в ложный экран «Откройте приложение через Telegram WebApp».
+  useEffect(() => {
+    if (sdkReady) return;
+    let cancelled = false;
+
+    void waitForTelegramWebApp().then((tg) => {
+      if (!cancelled && tg) setSdkReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sdkReady]);
+
   // ── Telegram Web App initialization ───────────────────────────────────
 
   useEffect(() => {
+    if (!sdkReady) return; // SDK ещё не загрузился
     if (tgInitRanRef.current) return;
     tgInitRanRef.current = true;
 
-    const globalWindow = typeof window !== 'undefined' ? (window as unknown as TelegramWebAppExtended) : null;
-    const telegramObj = globalWindow?.Telegram;
-    const tg = telegramObj?.WebApp ?? null;
+    const tg = (window as unknown as TelegramWebAppExtended).Telegram?.WebApp ?? null;
 
     if (!tg) {
       setIsAvailable(false);
@@ -405,7 +483,7 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
         tgRef.current.offEvent('fullscreenFailed', handleFullscreenFailed);
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sdkReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Callbacks ─────────────────────────────────────────────────────────
 
@@ -509,8 +587,8 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
     error,
     data: stableData,
     isTWA,
-    refresh: performInit,
+    refresh: refreshAuth,
   }), [ready, expand, requestFullscreen, exitFullscreen, close, isExpanded, viewportHeight,
     viewportStableHeight, isFullscreen, mainButton, backButton, initData, initDataUnsafe,
-    triggerHaptic, onEvent, offEvent, isAvailable, isLoading, error, stableData, isTWA, performInit]);
+    triggerHaptic, onEvent, offEvent, isAvailable, isLoading, error, stableData, isTWA, refreshAuth]);
 }
