@@ -252,9 +252,24 @@ body {
    Custom Utilities
    ============================================================================ */
 
+/* BottomSheet backdrop blur animation — плавное появление frosted glass */
+@keyframes backdrop-fade-in {
+  0% {
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+  100% {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
 @layer utilities {
   .h-tg-screen {
     height: var(--tg-viewport-stable-height, 100dvh);
+  }
+  .animate-backdrop-fade-in {
+    animation: backdrop-fade-in 300ms ease-out forwards;
   }
 }
 

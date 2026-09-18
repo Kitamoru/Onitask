@@ -309,20 +309,20 @@ export function BottomSheet({
       }}
       aria-hidden={!open}
     >
-                  {/* Backdrop (Frosted Glass) */}
+                        {/* Backdrop (Frosted Glass) */}
       {/*
-        Плавный fade blur — backdrop-filter/opacity/saturate анимируются
-        вместе с opacity контейнера-обёртки (которая имеет transition-opacity
-        duration-300). Раньше backdrop-blur "встает" резко — теперь он
-        плавно zатухает на 300ms ease-out, синхронно с закрытием панели.
+        Плавный fade blur — backdrop-filter анимируется через CSS keyframes
+        (backdrop-fade-in: 0px → 12px за 300ms ease-out), синхронно с opacity
+        контейнера. Это устраняет проблему, когда blur "встает" резко после
+        закрытия анимации скольжения панели.
       */}
       <div
         className={
-                    'absolute inset-0 ' +
-          'backdrop-blur-[12px] saturate-150 ' +
-          'supports-[backdrop-filter]:bg-black/30 ' +
+          'absolute inset-0 ' +
           'bg-black/40 ' +
-          'transition-[backdrop-filter,opacity,saturate] duration-300 ease-out will-change-[backdrop-filter]'
+          'saturate-150 ' +
+          'supports-[backdrop-filter]:bg-black/30 ' +
+          'motion-safe:animate-backdrop-fade-in will-change-[backdrop-filter]'
         }
         onClick={preventSwipe ? undefined : requestClose}
         aria-hidden="true"
