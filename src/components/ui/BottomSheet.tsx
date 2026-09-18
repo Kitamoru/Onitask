@@ -331,13 +331,12 @@ export function BottomSheet({
             position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
-            // Потолок высоты шторки: резерв сверху 160px (подбирается эмпирически
-            // под шапку Telegram на iPhone: 64/96 — мало, 192 — много), минус высота
-            // клавиатуры: панель едет вверх на --kb-ride, потолок опускается
-            // на столько же → верх шторки никогда не пересекает шапку.
-            // Контент компенсируется внутренним скроллом (overflow-y: auto).
+            // Потолок высоты шторки: резерв сверху 142px (временно, для проверки
+            // раскладки), минус высота клавиатуры: панель едет вверх на --kb-ride,
+            // потолок опускается на столько же → верх шторки никогда не
+            // пересекает шапку. Контент компенсируется внутренним скроллом.
             // Без клавиатуры --kb-ride = 0px.
-            maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - max(160px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
+            maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - max(142px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
             // Композитный контекст уровня панели: анимации (drag + клавиатура)
