@@ -1007,7 +1007,15 @@ export function TaskViewEdit({
 
   return (
     <>
-      <BottomSheet open={open} onClose={onClose}>
+      <BottomSheet
+        open={open}
+        onClose={onClose}
+        // Keyboard ride: фокус в полях (название/описание/комментарии) —
+        // клавиатура «выталкивает» панель (visualViewport → translate),
+        // потолок опускается синхронно, контент скроллится внутри.
+        respectKeyboard
+        keyboardRide
+      >
         <div
           className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
           aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}
