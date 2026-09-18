@@ -63,8 +63,8 @@ export function SprintCreateSheet({
 
   return (
     <>
-      <BottomSheet open={open} onClose={onClose}>
-        <div className="flex flex-col gap-5 px-4 pb-6 pt-6">
+      <BottomSheet open={open} onClose={onClose} respectKeyboard keyboardRide>
+        <div className="flex flex-col gap-5 px-4 pb-6 pt-2">
           <h2 className="text-[19px] font-medium text-text">
             Создание спринта
           </h2>
