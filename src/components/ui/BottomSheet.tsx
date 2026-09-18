@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useKeyboardOffset } from '@/hooks/useKeyboardOffset';
-import { useDeferredInputFocus } from '@/hooks/useDeferredInputFocus';
+import { useKeyboardRide } from '@/hooks/useKeyboardRide';
 
 /** Pull past this distance (or 15% of height, whichever is smaller) to dismiss */
 const CLOSE_SWIPE_THRESHOLD = 120;
@@ -51,7 +50,7 @@ export function BottomSheet({
     overlay,
   keepMounted = true,
   respectKeyboard = false,
-  deferInputFocus = false,
+  keyboardRide = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -63,32 +62,25 @@ export function BottomSheet({
   overlay?: ReactNode;
   keepMounted?: boolean;
   /**
-   * When true, the sheet panel rides the on-screen keyboard by reading the
-   * live `--kb-offset` CSS variable. Needed for bottom-anchored sheets whose
-   * content sits near the keyboard (e.g. the AI task creator CTA), so the panel
-   * lowers together with the keyboard-dismiss animation instead of hanging.
+   * When true, the sheet panel keeps clear of the on-screen keyboard. Needed
+   * for bottom-anchored sheets whose content sits near the keyboard (e.g. the
+   * AI task creator CTA). Вместе с keyboardRide панель покадрово опускается
+   * вместе с клавиатурой при blur (фикс «зависания» с вспышкой CTA).
    */
   respectKeyboard?: boolean;
   /**
-   * Keyboard-aware focus: тап по инпуту внутри шторки перехватывается
-   * (preventDefault на нативный фокус), контент плавно поднимается под
-   * предсказанную клавиатуру и только после анимации (~280ms) вызывается
-   * input.focus() — нативная клавиатура «въезжает» в уже готовый layout,
-   * без прыжков шторки. Пары с respectKeyboard (панель поднимается над
-   * клавиатурой через --kb-offset). См. hooks/useDeferredInputFocus.ts.
+   * Keyboard ride (iPhone): focus нативный и мгновенный; анимация клавиатуры
+   * стримится через visualViewport → панель ПОКАДРОВО выталкивается вверх
+   * чистым transform (translateY), без layout-пересчётов и без двухфазной
+   * хореографии. Требует respectKeyboard. См. hooks/useKeyboardRide.ts.
    */
-  deferInputFocus?: boolean;
+  keyboardRide?: boolean;
 }) {
-  // Side-effect only: updates `--kb-offset` on <html> per visualViewport frame
-  // (no React re-render), so CSS can lift the panel with the keyboard.
-  useKeyboardOffset();
   const sheetRef = useRef<HTMLDivElement>(null);
-  // Отложенный focus() для инпутов внутри шторки (см. проп deferInputFocus).
-  useDeferredInputFocus(sheetRef, {
-    enabled: open && deferInputFocus,
-    // Панель поднимается над клавиатурой только при respectKeyboard —
-    // от этого зависит, вычитать ли kb-offset при расчёте видимости инпута.
-    lifted: respectKeyboard,
+  // Мгновенный scroll инпута в видимую зону при focus + контроль видимости
+  // покадрово во время анимации клавиатуры (см. проп keyboardRide).
+  useKeyboardRide(sheetRef, {
+    enabled: open && keyboardRide && respectKeyboard,
   });
   const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
@@ -262,6 +254,15 @@ export function BottomSheet({
     };
   }, [open]);
 
+  // Закрытие шторки при открытой клавиатуре: снимаем фокус, чтобы клавиатура
+  // начала уходить синхронно с панелью (ride вниз по кадрам visualViewport),
+  // иначе инпут остался бы в фокусе и клавиатура висела бы над закрытой шторкой.
+  useEffect(() => {
+    if (open || !keyboardRide) return;
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
+  }, [open, keyboardRide]);
+
   if (typeof window === 'undefined') return null;
 
   // При keepMounted=false полностью размонтируем, когда закрыто
@@ -278,10 +279,10 @@ export function BottomSheet({
         // сжимает layout viewport, fixed bottom-0 прилипает к её верхнему краю)
         // и висит поверх backdrop/панели шторки.
         zIndex: stacked ? 9999 : 60,
-        // Lift the panel together with the keyboard-dismiss animation so it
-        // doesn't 'hang' while BottomMenu slides down (flash of the amber CTA
-        // near the sheet's bottom edge). Reads the live --kb-offset var.
-        paddingBottom: respectKeyboard ? 'var(--kb-offset, 0px)' : undefined,
+        // Ride панели над клавиатурой — ЧИСТЫЙ transform на самой панели
+        // (translateY + --kb-offset, см. стиль панели ниже). Никаких
+        // padding/max-height: они форсили layout на каждый кадр анимации
+        // клавиатуры (просадка FPS на iPhone) и рвали непрерывность езды.
       }}
       aria-hidden={!open}
     >
@@ -307,9 +308,6 @@ export function BottomSheet({
             position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
-            maxHeight: respectKeyboard
-              ? `calc(var(--tg-viewport-stable-height,100dvh) - max(16px,var(--tg-content-safe-top,0px)) - 64px - var(--kb-offset, 0px))`
-              : undefined,
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
             // Композитный контекст уровня панели: анимации (drag + клавиатура)
@@ -322,9 +320,17 @@ export function BottomSheet({
             // - open → 0px (fully visible)
             // - closed → 100% (off-screen below)
             // - during drag → overridden by applyDrag() via the same variable
-            transform: 'translateY(var(--sheet-y, 0px))',
+            // - keyboard ride → --kb-ride (пишется покадрово хуком
+            //   useKeyboardRide из visualViewport; чистый transform = ноль
+            //   layout-пересчётов в кадре, движение неотличимо от «толчка»
+            //   клавиатуры: одно непрерывное движение вверх и вниз).
+            transform: 'translateY(calc(var(--sheet-y, 0px) - var(--kb-ride, 0px)))',
             transitionProperty: 'transform',
-            transitionDuration: isDragging ? '0ms' : '300ms',
+            // Во время drag (isDragging) и ride клавиатуры (--ride-dur: 0ms,
+            // ставится хуком покадрово) transition отключён — иначе каждый
+            // кадр перезапускал бы 300ms-переход и давал бы лаг/«резину».
+            // Вне этих фаз переменная не задана → работает 300ms open/close.
+            transitionDuration: isDragging ? '0ms' : 'var(--ride-dur, 300ms)',
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',
