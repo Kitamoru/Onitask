@@ -1117,6 +1117,33 @@ await supabase.from('task_events').insert({
 });
 ```
 
+### 3.6a Two-phase creation — draft без записи в БД (TWA)
+
+Задача рождается только по явному подтверждению пользователя. «Отмена» в TWA —
+отсутствие мутации, а НЕ компенсирующий DELETE. До подтверждения в БД нет ни
+одной строки (ни tasks, ни enrichment_queue, ни task_events) → Realtime не
+рассылает INSERT, карточка не мелькает в колонке, зомби-задачи невозможны,
+`task_number` не сгорает.
+
+| Фаза | Endpoint | Побочные эффекты |
+|---|---|---|
+| 1. Draft | `POST /api/ai/parse-task` `{ init_data, input, workspace_id? }` | НЕТ (ответ: `{ parse, strategy, showCorrectionSheet }`) |
+| 2. Preview | локальный стейт TaskPreviewSheet | НЕТ |
+| 3a. Confirm | `POST /api/ai/create-task` `{ ..., parsed }` | INSERT tasks + enrichment_queue/task_enrichments + task_events |
+| 3b. Cancel | закрытие шторки | НЕТ |
+
+Commit-фаза (`parsed` присутствует): БЕЗ model call — сервер перечитывает
+settings/workers, повторно валидирует `parsed` через `parseResponseSchema`
+(Zod, сервер не доверяет клиенту), перезапускает Gatekeeper и assignee-match
+(команда могла измениться между draft и confirm). В `task_events.payload`
+добавляется `parse_phase: 'user_confirmed_draft'`; provider-метрики F04-12
+остаются `null` (parse был в draft-фазе).
+
+Legacy-режим (`parsed` отсутствует — bot / MCP / старые клиенты): parse +
+INSERT за один вызов, контракт не менялся. Общая логика шагов 3–9 вынесена в
+`src/lib/ai/parseAndPrepare.ts` (prepareTaskDraft / loadDraftContext /
+matchAssignee / finalizeTitles).
+
 ### 3.7 UX split: TWA vs Bot
 
 **TWA — условие показа Correction Sheet:**

@@ -6,11 +6,13 @@
  * Renders the BottomMenu with a center button that opens the F-04 AI task
  * creation overlay (TaskCreatorSheet) on every page.
  *
- * Flow:
+ * Flow (two-phase creation — задача рождается только по подтверждению):
  *   Center button → TaskCreatorSheet (text/voice input + waveform) →
- *   /api/ai/create-task (parse + INSERT tasks + enrichment_queue/task_enrichments
- *   + task_events) → TaskPreviewSheet (show parsed result for review) →
- *   PATCH edited fields → refresh FlowBoard data.
+ *   /api/ai/parse-task (только распознавание, БЕЗ записей в БД) →
+ *   TaskPreviewSheet (review/edit parsed draft) →
+ *   [Confirm] /api/ai/create-task { parsed } (INSERT tasks + enrichment_queue/
+ *   task_enrichments + task_events) → refresh FlowBoard data.
+ *   [Cancel] — просто закрытие: в БД ничего не было, DELETE не нужен.
  *
  * Active workspace is passed from DataContext as default workspace_id.
  *

@@ -1309,3 +1309,12 @@ R7 requeue, R8 human_override, G6 reason в уведомлении).
 - Перевыпуск продакшн-ключей агентов (Drift/Cline ревокнуты миграцией 061).
 - Lint окружение сломано (rushstack eslint-patch vs ESLint, pre-existing, не блокирует type-check).
 
+---
+
+## 2026-09-18 — TWA task-create: two-phase draft (без INSERT)
+
+**адача:** тмена в TWA создавала задачу в « очереди», а потом удаляла → flash на доске + зомби при падении клиента.
+**ешение:** двухфазное создание — черновик = POST /api/ai/parse-task (только распознавание, Ь записей в ), подтверждение = POST /api/ai/create-task { parsed } (opt-in; bot/MCP unaffected).
+**Files:** src/lib/ai/parseAndPrepare.ts (new), src/app/api/ai/parse-task/route.ts (new), src/app/api/ai/create-task/route.ts (refactor), src/components/ai/TaskCreatorSheet.tsx (draft→preview→commit; убран DELETE-on-cancel), docs/onitask_ai_.md §3.6a.
+**Bug caught by tests (fix):** parseF04Config skip_max_complexity = undefined в дефолтной ветке → Gatekeeper never skip. Fix в src/lib/ai/types.ts.
+**Tests:** 21 новых (3 файла) ✅ all pass, type-check clean. init.test.ts падает pre-existing (TELEGRAM_BOT_TOKEN missing in env) — не мои правки.

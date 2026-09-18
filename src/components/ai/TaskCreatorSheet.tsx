@@ -19,12 +19,19 @@ interface TaskCreatorSheetProps {
   workspaceId?: string | null;
 }
 
-interface CreateTaskResponse {
-  task: { id: string };
+/** Фаза 1: /api/ai/parse-task — только распознавание, без записи в БД */
+interface ParseDraftResponse {
   parse: ParseResponseV2;
+  strategy: string;
+  showCorrectionSheet: boolean;
 }
 
-interface CreateTaskError {
+/** Фаза 2: /api/ai/create-task с подтверждённым parsed */
+interface CommitTaskResponse {
+  task: { id: string };
+}
+
+interface ApiError {
   error: string;
 }
 
@@ -56,7 +63,6 @@ export function TaskCreatorSheet({
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewParse, setPreviewParse] = useState<ParseResponseV2 | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -100,7 +106,6 @@ export function TaskCreatorSheet({
       setInput('');
       setError(null);
       setLoading(false);
-      setPreviewTaskId(null);
       setPreviewParse(null);
       setPreviewOpen(false);
       setWaveformBars(new Array(BAR_COUNT).fill(3));
@@ -238,30 +243,30 @@ export function TaskCreatorSheet({
     setError(null);
     let previewOpened = false;
     try {
-      const res = await fetch('/api/ai/create-task', {
+      // Фаза 1 (draft): только распознавание. Задача ещё НЕ создана,
+      // в БД ничего не пишется — отменить можно без всяких компенсаций.
+      const res = await fetch('/api/ai/parse-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           init_data: initData,
           input: text.trim(),
           workspace_id: workspaceId,
-          priority: 'medium',
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error((json as CreateTaskError).error || 'Ошибка AI-создания задачи');
+      if (!res.ok) throw new Error((json as ApiError).error || 'Ошибка AI-распознавания задачи');
 
-            const result = json as CreateTaskResponse;
+      const result = json as ParseDraftResponse;
       await Promise.all([
         Promise.resolve(),
         new Promise((r) => setTimeout(r, 400)),
       ]);
-      setPreviewTaskId(result.task.id);
       setPreviewParse(result.parse);
       setPreviewOpen(true);
       previewOpened = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка AI-создания задачи');
+      setError(err instanceof Error ? err.message : 'Ошибка AI-распознавания задачи');
     } finally {
       submittingRef.current = false;
       if (previewOpened) {
@@ -290,10 +295,11 @@ export function TaskCreatorSheet({
     }
   }, [loading]);
 
-  const handlePreviewConfirm = () => {
+  const handlePreviewConfirm = (taskId: string) => {
     setPreviewOpen(false);
+    setPreviewParse(null);
     setInput('');
-    if (previewTaskId) onTaskCreated(previewTaskId);
+    onTaskCreated(taskId);
   };
 
   const hasContent = input.trim().length > 0;
@@ -619,25 +625,16 @@ export function TaskCreatorSheet({
       {/* Task Preview Sheet */}
       <TaskPreviewSheet
         open={previewOpen}
-        taskId={previewTaskId ?? ''}
         parse={previewParse}
         initData={initData}
+        workspaceId={workspaceId}
+        rawInput={input}
         onConfirm={handlePreviewConfirm}
         onClose={handleClose}
-        onCancel={async () => {
+        onCancel={() => {
+          // Two-phase: задача ещё НЕ создана — отменять нечего,
+          // никаких DELETE и никаких следов на доске.
           setPreviewOpen(false);
-          if (previewTaskId) {
-            try {
-              await fetch(`/api/tasks/${previewTaskId}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ init_data: initData }),
-              });
-            } catch {
-              // DELETE failed — silently ignore; user returns to form anyway
-            }
-          }
-          setPreviewTaskId(null);
           setPreviewParse(null);
         }}
       />
@@ -649,15 +646,18 @@ export function TaskCreatorSheet({
 
 interface TaskPreviewSheetProps {
   open: boolean;
-  taskId: string;
   parse: ParseResponseV2 | null;
   initData: string;
-  onConfirm: () => void;
+  workspaceId?: string | null;
+  /** Оригинальный текст пользователя (raw_input для задачи) */
+  rawInput: string;
+  /** Вызывается после успешного commit (задача создана в БД) с taskId */
+  onConfirm: (taskId: string) => void;
   onCancel: () => void;
   onClose?: () => void;
 }
 
-function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, onClose }: TaskPreviewSheetProps) {
+function TaskPreviewSheet({ open, parse, initData, workspaceId, rawInput, onConfirm, onCancel, onClose }: TaskPreviewSheetProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -698,24 +698,24 @@ function TaskPreviewSheet({ open, taskId, parse, initData, onConfirm, onCancel, 
     setError(null);
     try {
       const safePriority = draft.priority && draft.priority.trim() !== '' ? draft.priority : 'medium';
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
+      // Фаза 2 (commit): задача создаётся ТОЛЬКО здесь — с подтверждённым
+      // пользователем черновиком. До этого момента в БД ничего не записано.
+      const res = await fetch('/api/ai/create-task', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           init_data: initData,
-          title: trimmedTitle,
-          description: draft.rewritten_description,
-          priority: safePriority,
-          deadline: draft.deadline,
-          tags: draft.tags,
+          input: rawInput,
+          workspace_id: workspaceId,
+          parsed: { ...draft, title: trimmedTitle, priority: safePriority },
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
-      onConfirm();
+      if (!res.ok) throw new Error(data.error || 'Ошибка создания задачи');
+      onConfirm((data as CommitTaskResponse).task.id);
       onClose?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения');
+      setError(err instanceof Error ? err.message : 'Ошибка создания задачи');
     } finally {
       setSaving(false);
     }

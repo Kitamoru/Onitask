@@ -66,7 +66,7 @@ export function parseF04Config(raw: unknown): F04Config {
   return {
     skip_min_clarity: Math.min(1, Math.max(0, cfg.skip_min_clarity ?? DEFAULT_F04_CONFIG.skip_min_clarity)),
     skip_max_complexity: [1, 2, 3].includes(cfg.skip_max_complexity ?? 1)
-      ? (cfg.skip_max_complexity as 1 | 2 | 3)
+      ? ((cfg.skip_max_complexity ?? 1) as 1 | 2 | 3)
       : 1,
     correction_sheet_clarity_threshold: Math.min(1, Math.max(0, cfg.correction_sheet_clarity_threshold ?? DEFAULT_F04_CONFIG.correction_sheet_clarity_threshold)),
     low_clarity_tag_threshold: Math.min(1, Math.max(0, cfg.low_clarity_tag_threshold ?? DEFAULT_F04_CONFIG.low_clarity_tag_threshold)),

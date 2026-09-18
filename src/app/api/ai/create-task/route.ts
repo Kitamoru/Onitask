@@ -2,15 +2,23 @@
  * F-04 AI — Create Task endpoint (F04-07).
  *
  * POST /api/ai/create-task
- * Body: { init_data, input, workspace_id?, source?, profile_id? }
+ * Body: { init_data, input, workspace_id?, source?, profile_id?, parsed? }
  *
- * Полный F-04 Route Handler по контракту onitask_ai_.md §3.6:
+ * Полный F-04 Route Handler по контракту onitask_ai_.md §3.6.
+ * Два режима (two-phase creation, §4.1):
+ *
+ * 1) Commit-фаза TWA: `parsed` присутствует — черновик уже распознан и
+ *    подтверждён пользователем в /api/ai/parse-task. Здесь БЕЗ model call:
+ *    Zod-валидация → Gatekeeper → assignee-match → INSERT.
+ * 2) Legacy inline (bot / MCP / старые клиенты): `parsed` отсутствует —
+ *    parse + INSERT за один вызов, как раньше.
+ *
  * 1. Auth (initData или service-role Bearer)
  * 2. Resolve workspace_id via workers.source_id = profileId
  * 3. Load workspace settings (f04_config, workspace_context, data_sharing_level)
  * 4. Load team workers
- * 5. Build parse prompt (prompts.ts)
- * 6. Call Groq / NDH with JSON mode
+ * 5. Build parse prompt (prompts.ts) — только legacy-режим
+ * 6. Call Groq / NDH with JSON mode — только legacy-режим
  * 7. Validate with Zod (types.ts) — fallback to safe defaults
  * 8. Run Gatekeeper → enrichment strategy (types.ts)
  * 9. Assignee matching: display_name → worker ID
@@ -23,7 +31,7 @@
  *
  * Based on: onitask_ai_.md §3.6, TASKS.md F04-07
  * Security: onitask_security_.md §1.1 (JSON mode + Zod), INV-05 (workspace_id)
- * A-1: Vercel Hot Path (< 2s), A-6: single model call
+ * A-1: Vercel Hot Path (< 2s), A-6: single model call (legacy-режим)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -35,19 +43,24 @@ import { createServerClient } from '../../../../../lib/supabase';
 
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-import { buildParsePrompt } from '../../../../lib/ai/prompts';
 import {
-  parseF04Config,
   determineEnrichmentStrategy,
+  parseResponseSchema,
   type EnrichmentStrategy,
+  type ParseResponseV2,
+  type F04Config,
 } from '../../../../lib/ai/types';
-import {
-  parseWithFallback,
-  type ProviderUsed,
+import type {
+  ProviderUsed,
+  FallbackStep,
 } from '../../../../lib/ai/parseWithFallback';
-import type { ParseResponseV2 } from '../../../../lib/ai/types';
 import type { Database } from '../../../../../types/supabase';
-import { getWorkspaceContextCache } from '../../../../lib/ai/workspaceContextCache';
+import {
+  prepareTaskDraft,
+  loadDraftContext,
+  matchAssignee,
+  finalizeTitles,
+} from '../../../../lib/ai/parseAndPrepare';
 
 type TasksInsert = Database['public']['Tables']['tasks']['Insert'];
 
@@ -60,6 +73,11 @@ interface CreateTaskBody {
   source?: string;
   /** Profile UUID of the acting user (required for bot/service calls to set created_by) */
   profile_id?: string;
+  /**
+   * Two-phase creation: подтверждённый пользователем черновик (TWA preview).
+   * Присутствует → commit-фаза без model call. Отсутствует → legacy inline.
+   */
+  parsed?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -122,70 +140,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Рабочее пространство не найдено' }, { status: 404 });
     }
 
-    // 3. Load workspace settings
-    // maybeSingle() -> a missing settings row yields NULL (not an error), so
-    // absence falls through to parseF04Config(null) defaults instead of
-    // hard-failing task creation. (Migration 078 makes missing rows impossible
-    // anyway; this guard protects against transient drift / reorgs.)
-    const { data: settings, error: settingsError } = await supabase
-      .from('workspace_settings')
-      .select('f04_config, workspace_context, data_sharing_level')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
+    // ── Parse phase (шаги 3–9) ──
+    // Two-phase creation: `parsed` присутствует = фаза подтверждения (TWA
+    // preview). Черновик уже распознан в /api/ai/parse-task; здесь БЕЗ
+    // model call: Zod → Gatekeeper → assignee-match на подтверждённых данных.
+    // Без `parsed` (bot / MCP / legacy) — полный inline-путь: parse + insert
+    // за один вызов, поведение не менялось.
+    const isConfirmedCommit = body.parsed !== undefined && body.parsed !== null;
 
-    if (settingsError) {
-      return NextResponse.json({ error: 'Не удалось загрузить настройки' }, { status: 500 });
-    }
+    let parsed: ParseResponseV2;
+    let strategy: EnrichmentStrategy;
+    let providerUsed: ProviderUsed | null;
+    let chain: FallbackStep[];
+    let attemptsMs: number;
+    let config: F04Config;
+    let workers: { id: string; display_name: string }[];
 
-    const config = parseF04Config(settings?.f04_config);
+    if (isConfirmedCommit) {
+      const ctx = await loadDraftContext(supabase, workspaceId);
+      if ('error' in ctx) {
+        return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+      }
 
-    // 3a. workspace_context_cache
-    const cacheResult = await getWorkspaceContextCache(workspaceId);
+      // Сервер не доверяет клиенту: подтверждённый parse проходит Zod заново.
+      const zod = parseResponseSchema.safeParse(body.parsed);
+      if (!zod.success) {
+        return NextResponse.json(
+          { error: 'Некорректные данные черновика задачи' },
+          { status: 400 },
+        );
+      }
+      parsed = zod.data;
+      config = ctx.config;
+      workers = ctx.workers;
+      strategy = determineEnrichmentStrategy(parsed, config);
+      // Метрики provider недоступны (parse был в draft-фазе) —
+      // аудит помечается parse_phase='user_confirmed_draft' в task_events.
+      providerUsed = null;
+      chain = [];
+      attemptsMs = 0;
+    } else {
+      const result = await prepareTaskDraft(supabase, workspaceId, input.trim());
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      parsed = result.draft.parsed;
+      strategy = result.draft.strategy;
+      providerUsed = result.draft.provider_used;
+      chain = result.draft.chain;
+      attemptsMs = result.draft.attempts_ms;
+      config = result.draft.config;
+      workers = result.draft.workers;
 
-    // 3b. Load team workers
-    const { data: workers, error: workersError } = await supabase
-      .from('workers')
-      .select('id, display_name')
-      .eq('workspace_id', workspaceId);
-
-    if (workersError) {
-      return NextResponse.json({ error: 'Не удалось загрузить команду' }, { status: 500 });
-    }
-
-    // 4. Build prompt
-    const prompt = buildParsePrompt(
-      input,
-      {
-        workspace_context: settings?.workspace_context ?? null,
-        workspace_context_cache: cacheResult?.workspace_context_cache ?? null,
-        data_sharing_level: settings?.data_sharing_level ?? 'standard',
-      },
-      workers ?? []
-    );
-
-    // 5. Parse with fallback chain (F04-12): ND → Groq → deterministic
-    const { parsed, provider_used, chain, attempts_ms } = await parseWithFallback(prompt);
-
-    console.log(
-      `[F-04][F04-12] provider_used: ${provider_used}, attempts_ms: ${attempts_ms}, chain:`,
-      chain.map((s) => `${s.provider}:${s.status}`).join(' → '),
-    );
-
-    // 6. Gatekeeper → enrichment strategy
-    const strategy: EnrichmentStrategy = determineEnrichmentStrategy(parsed, config);
-
-    // 8. Assignee matching
-    let assignedTo: string | null = null;
-    if (parsed.assignee) {
-      const matched = (workers ?? []).find(
-        (w) => w.display_name.toLowerCase() === parsed.assignee?.toLowerCase()
+      console.log(
+        `[F-04][F04-12] provider_used: ${providerUsed}, attempts_ms: ${attemptsMs}, chain:`,
+        chain.map((s) => `${s.provider}:${s.status}`).join(' → '),
       );
-      assignedTo = matched?.id ?? null;
     }
+
+    // 8. Assignee matching (в commit-фазе — повторно: команда могла измениться
+    // между draft и подтверждением)
+    const assignedTo = matchAssignee(workers, parsed);
 
     // 9. Title / description finalization
-    const finalTitle = parsed.rewritten_title?.trim() || parsed.title;
-    const finalDescription = parsed.rewritten_description?.trim() || '';
+    const { finalTitle, finalDescription } = finalizeTitles(parsed);
 
     // Валидация: title обязателен (CHECK constraint tasks_title_check)
     if (!finalTitle || !finalTitle.trim()) {
@@ -263,7 +281,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 12. task_events (parse_rewrite) с метриками fallback-цепочки (F04-12)
+    // 12. task_events (parse_rewrite) с метриками fallback-цепочки (F04-12).
+    // Двухфазный путь: provider-метрики остались в draft-фазе —
+    // помечаем parse_phase='user_confirmed_draft' для аудита.
     await supabase.from('task_events').insert({
       workspace_id: workspaceId,
       task_id: taskId,
@@ -277,10 +297,11 @@ export async function POST(request: NextRequest) {
         complexity: parsed.complexity,
         enrichment_strategy: strategy,
         used_rewritten: !!parsed.rewritten_title?.trim(),
-        // F04-12: fallback chain audit
-        provider_used,
+        // F04-12: fallback chain audit (null в two-phase commit)
+        provider_used: providerUsed,
         fallback_chain: chain.map((s) => ({ provider: s.provider, status: s.status })),
-        attempts_ms,
+        attempts_ms: attemptsMs > 0 ? attemptsMs : null,
+        ...(isConfirmedCommit ? { parse_phase: 'user_confirmed_draft' } : {}),
       },
     });
 
