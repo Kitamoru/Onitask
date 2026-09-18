@@ -19,6 +19,20 @@ const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 let bodyScrollLockCount = 0;
 
 /**
+ * Синхронно убирает клавиатуру ДО закрытия шторки. iOS-особенность: когда
+ * фокусированный элемент удаляется из DOM / уходит с экрана, WKWebView НЕ
+ * закрывает клавиатуру — поэтому снимаем фокус и дёргаем официальный
+ * Telegram.WebApp.hideKeyboard() (надёжно независимо от состояния фокуса).
+ */
+const dismissKeyboard = () => {
+  const ae = document.activeElement as HTMLElement | null;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
+  (
+    window as unknown as { Telegram?: { WebApp?: { hideKeyboard?: () => void } } }
+  ).Telegram?.WebApp?.hideKeyboard?.();
+};
+
+/**
  * BottomSheet — slide-up panel with backdrop overlay.
  * Uses a portal to render at the document body level.
  * Animates in/out with CSS transitions.
@@ -93,6 +107,13 @@ export function BottomSheet({
   const startedInHandleZone = useRef(false);
   // Только для переключения CSS-transition (один ре-рендер на начало/конец жеста)
   const [isDragging, setIsDragging] = useState(false);
+
+  // Единая точка закрытия: сначала клавиатура (синхронно, до DOM-мутаций),
+  // затем колбэк родителя. Покрывает все внутренние пути: backdrop, drag, Escape.
+  const requestClose = useCallback(() => {
+    dismissKeyboard();
+    onClose();
+  }, [onClose]);
 
   // Apply the drag offset to the `--sheet-y` CSS variable directly on the DOM
   // inside rAF — no React re-render per touchmove, keeps the sheet smooth even
@@ -202,7 +223,7 @@ export function BottomSheet({
 
       const threshold = Math.min(CLOSE_SWIPE_THRESHOLD, el.offsetHeight * 0.15);
       if (wasDragging && (offset >= threshold || velocity > FLING_VELOCITY)) {
-        onClose();
+        requestClose();
       }
     };
 
@@ -226,17 +247,17 @@ export function BottomSheet({
         rafRef.current = null;
       }
     };
-  }, [open, onClose, preventSwipe, applyDrag]);
+  }, [open, requestClose, preventSwipe, applyDrag]);
 
   // Escape
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  }, [open, requestClose]);
 
   // Prevent body scroll when sheet is open.
   // Ref-count: вложенные (stacked) шторки не снимают лок с body, пока открыт
@@ -254,14 +275,16 @@ export function BottomSheet({
     };
   }, [open]);
 
-  // Закрытие шторки при открытой клавиатуре: снимаем фокус, чтобы клавиатура
-  // начала уходить синхронно с панелью (ride вниз по кадрам visualViewport),
-  // иначе инпут остался бы в фокусе и клавиатура висела бы над закрытой шторкой.
+  // Страховка для внешних закрытий (родитель сам флипает open): убираем
+  // клавиатуру, если внутренние пути (requestClose) не отработали.
+  // Только на переходе open→closed: на маунте закрытой шторки (например,
+  // stacked-календарь при открытом родителе) клавиатуру трогать НЕЛЬЗЯ —
+  // иначе hideKeyboard закроет её у соседней открытой шторки.
+  const wasOpenRef = useRef(open);
   useEffect(() => {
-    if (open || !keyboardRide) return;
-    const ae = document.activeElement as HTMLElement | null;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
-  }, [open, keyboardRide]);
+    if (!open && wasOpenRef.current) dismissKeyboard();
+    wasOpenRef.current = open;
+  }, [open]);
 
   if (typeof window === 'undefined') return null;
 
@@ -289,7 +312,7 @@ export function BottomSheet({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80"
-        onClick={preventSwipe ? undefined : onClose}
+        onClick={preventSwipe ? undefined : requestClose}
         aria-hidden="true"
       />
 
@@ -298,7 +321,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
-        className={`relative w-full max-h-[calc(var(--tg-viewport-stable-height,100dvh)-max(16px,var(--tg-content-safe-top,0px))-64px)] overflow-y-auto overscroll-contain ${
+        className={`relative w-full overflow-y-auto overscroll-contain ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
       style={
@@ -308,6 +331,12 @@ export function BottomSheet({
             position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
+            // Потолок высоты шторки (та же формула резерва, что у всех страниц:
+            // max(64px, safe-top)) минус высота клавиатуры: панель едет вверх на
+            // --kb-ride, потолок опускается на столько же → верх шторки никогда
+            // не заезжает под шапку Telegram. Контент компенсируется внутренним
+            // скроллом (overflow-y: auto). Без клавиатуры --kb-ride = 0px.
+            maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - max(64px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
             // Композитный контекст уровня панели: анимации (drag + клавиатура)
@@ -316,21 +345,16 @@ export function BottomSheet({
             // Нативный инерционный скролл контента внутри шторки, в т.ч.
             // при открытой клавиатуре (legacy iOS WebKit).
             WebkitOverflowScrolling: 'touch',
-            // Single source of truth for vertical position:
-            // - open → 0px (fully visible)
-            // - closed → 100% (off-screen below)
-            // - during drag → overridden by applyDrag() via the same variable
-            // - keyboard ride → --kb-ride (пишется покадрово хуком
-            //   useKeyboardRide из visualViewport; чистый transform = ноль
-            //   layout-пересчётов в кадре, движение неотличимо от «толчка»
-            //   клавиатуры: одно непрерывное движение вверх и вниз).
-            transform: 'translateY(calc(var(--sheet-y, 0px) - var(--kb-ride, 0px)))',
-            transitionProperty: 'transform',
-            // Во время drag (isDragging) и ride клавиатуры (--ride-dur: 0ms,
-            // ставится хуком покадрово) transition отключён — иначе каждый
-            // кадр перезапускал бы 300ms-переход и давал бы лаг/«резину».
-            // Вне этих фаз переменная не задана → работает 300ms open/close.
-            transitionDuration: isDragging ? '0ms' : 'var(--ride-dur, 300ms)',
+            // Два НЕЗАВИСИМЫХ канала вертикального движения:
+            // - transform: translateY(--sheet-y) — open/close/drag, transition 300ms;
+            // - translate: --kb-ride — ride клавиатуры, свой transition (--ride-dur).
+            // Разделение обязательно: ride клавиатуры не должен обрывать
+            // анимацию открытия/закрытия (иначе — «проявление с рывком»).
+            // Индивиду transform-свойства поддерживаются iOS 14.5+.
+            transform: 'translateY(var(--sheet-y, 0px))',
+            translate: '0px calc(-1 * var(--kb-ride, 0px))',
+            transitionProperty: 'transform, translate',
+            transitionDuration: isDragging ? '0ms, var(--ride-dur, 280ms)' : '300ms, var(--ride-dur, 280ms)',
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',

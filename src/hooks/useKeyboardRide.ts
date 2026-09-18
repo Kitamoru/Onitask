@@ -5,6 +5,10 @@ import { computeKeyboardOffset } from './useKeyboardOffset';
 
 /** Отступ между нижним краем инпута и верхом клавиатуры (ТЗ: 12–16px) */
 const FOCUS_MARGIN_PX = 14;
+/** Длительность ride-перехода, когда клиент отдаёт высоту клавиатуры скачком */
+const RIDE_TRANSITION_MS = 280;
+/** vv-события чаще этого порога считаются покадровым стримом (прямая запись) */
+const STREAM_THRESHOLD_MS = 50;
 
 /**
  * useKeyboardRide — модель «клавиатура выдавливает шторку» (iPhone-first).
@@ -29,9 +33,9 @@ const FOCUS_MARGIN_PX = 14;
  *    сдвиг scrollTop в момент старта анимации.
  *
  * Переменные на панели:
- *  - `--kb-ride`: px подъёма панели (translateY(-kb-ride));
- *  - `--ride-dur`: '0ms' пока клавиатура анимируется (kb > 0), снимается при
- *    kb == 0 → возвращается штатный 300ms transition для open/close/drag.
+ *  - `--kb-ride`: px подъёма панели (translate: 0 -kb-ride);
+ *  - `--ride-dur`: длительность ride-перехода — 0ms при покадровом стриме
+ *    vv-событий, 280ms при скачкообразном репорте (адаптивно, см. applyRide).
  */
 export function useKeyboardRide(
   /** Панель шторки (она же скроллящийся контейнер, overflow-y: auto) */
@@ -45,11 +49,28 @@ export function useKeyboardRide(
 
     /** Инпут в фокусе — пока клавиатура едет, следим за его видимостью */
     let activeTarget: HTMLElement | null = null;
+    /** Время предыдущего vv-события — для определения темпа обновлений */
+    let lastEventAt = 0;
 
+    /**
+     * Адаптивный ride: панели нужен разный режим в зависимости от того, КАК
+     * клиент репортит высоту клавиатуры.
+     *  - Покадровый стрим (Δ < 50ms): пишем --kb-ride напрямую с --ride-dur: 0ms —
+     *    панель повторяет каждый кадр клавиатуры идеально синхронно.
+     *  - Скачок (Telegram iOS часто отдаёт одно событие в конце анимации):
+     *    --ride-dur: 280ms ease-out — панель красиво выезжает вверх transition-ом,
+     *    а не телепортируется («с рывка»).
+     */
     const applyRide = () => {
+      const now = performance.now();
+      const delta = lastEventAt ? now - lastEventAt : Infinity;
+      lastEventAt = now;
       const kb = computeKeyboardOffset();
       panel.style.setProperty('--kb-ride', `${kb}px`);
-      panel.style.setProperty('--ride-dur', kb > 0 ? '0ms' : '');
+      panel.style.setProperty(
+        '--ride-dur',
+        delta < STREAM_THRESHOLD_MS ? '0ms' : `${RIDE_TRANSITION_MS}ms`,
+      );
     };
 
     /**
