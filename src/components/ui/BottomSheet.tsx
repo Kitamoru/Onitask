@@ -318,11 +318,11 @@ export function BottomSheet({
       */}
       <div
         className={
-          'absolute inset-0 ' +
+                    'absolute inset-0 ' +
           'backdrop-blur-[12px] saturate-150 ' +
           'supports-[backdrop-filter]:bg-black/30 ' +
           'bg-black/40 ' +
-          'transition-[backdrop-filter,opacity,saturate] duration-300 ease-out'
+          'transition-[backdrop-filter,opacity,saturate] duration-300 ease-out will-change-[backdrop-filter]'
         }
         onClick={preventSwipe ? undefined : requestClose}
         aria-hidden="true"
