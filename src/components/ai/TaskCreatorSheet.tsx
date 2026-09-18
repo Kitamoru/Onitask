@@ -359,6 +359,9 @@ export function TaskCreatorSheet({
         onClose={handleClose}
         preventSwipe={loading}
         respectKeyboard
+        // Keyboard-aware фокус: тап по textarea → плавный подъём контента под
+        // клавиатуру → focus() только после анимации (без прыжков шторки).
+        deferInputFocus
         overlay={loading ? <ProgressContent /> : null}
       >
         <div

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useKeyboardOffset } from '@/hooks/useKeyboardOffset';
+import { useDeferredInputFocus } from '@/hooks/useDeferredInputFocus';
 
 /** Pull past this distance (or 15% of height, whichever is smaller) to dismiss */
 const CLOSE_SWIPE_THRESHOLD = 120;
@@ -50,6 +51,7 @@ export function BottomSheet({
     overlay,
   keepMounted = true,
   respectKeyboard = false,
+  deferInputFocus = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,11 +69,27 @@ export function BottomSheet({
    * lowers together with the keyboard-dismiss animation instead of hanging.
    */
   respectKeyboard?: boolean;
+  /**
+   * Keyboard-aware focus: тап по инпуту внутри шторки перехватывается
+   * (preventDefault на нативный фокус), контент плавно поднимается под
+   * предсказанную клавиатуру и только после анимации (~280ms) вызывается
+   * input.focus() — нативная клавиатура «въезжает» в уже готовый layout,
+   * без прыжков шторки. Пары с respectKeyboard (панель поднимается над
+   * клавиатурой через --kb-offset). См. hooks/useDeferredInputFocus.ts.
+   */
+  deferInputFocus?: boolean;
 }) {
   // Side-effect only: updates `--kb-offset` on <html> per visualViewport frame
   // (no React re-render), so CSS can lift the panel with the keyboard.
   useKeyboardOffset();
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Отложенный focus() для инпутов внутри шторки (см. проп deferInputFocus).
+  useDeferredInputFocus(sheetRef, {
+    enabled: open && deferInputFocus,
+    // Панель поднимается над клавиатурой только при respectKeyboard —
+    // от этого зависит, вычитать ли kb-offset при расчёте видимости инпута.
+    lifted: respectKeyboard,
+  });
   const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
   const draggingRef = useRef(false);
@@ -255,7 +273,11 @@ export function BottomSheet({
         open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}
       style={{
-        zIndex: stacked ? 9999 : 50,
+        // 60 > BottomMenu (z-50): любая открытая шторка обязана перекрывать меню.
+        // Иначе на Android WebView меню «всплывает» над клавиатурой (resize-режим
+        // сжимает layout viewport, fixed bottom-0 прилипает к её верхнему краю)
+        // и висит поверх backdrop/панели шторки.
+        zIndex: stacked ? 9999 : 60,
         // Lift the panel together with the keyboard-dismiss animation so it
         // doesn't 'hang' while BottomMenu slides down (flash of the amber CTA
         // near the sheet's bottom edge). Reads the live --kb-offset var.
@@ -290,6 +312,12 @@ export function BottomSheet({
               : undefined,
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
+            // Композитный контекст уровня панели: анимации (drag + клавиатура)
+            // не промотируются под соседние слои WebView (стабильные 60fps).
+            isolation: 'isolate',
+            // Нативный инерционный скролл контента внутри шторки, в т.ч.
+            // при открытой клавиатуре (legacy iOS WebKit).
+            WebkitOverflowScrolling: 'touch',
             // Single source of truth for vertical position:
             // - open → 0px (fully visible)
             // - closed → 100% (off-screen below)
