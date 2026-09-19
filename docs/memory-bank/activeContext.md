@@ -81,6 +81,25 @@ Runtime-проверка после деплоя (тап по карточке �
   тесты карточки 15/15, включая 3 новых на формат дней.
 
 retry_count: 0. Блокеров нет.
+# Active Context
+## Сверка TASKS.md ↔ код: Stage 8/9/10 (2026-09-19) ✅
+
+**Зачем.** В `docs/TASKS.md` Stage 8/9/10 стояли незакрытыми целиком (27 пунктов), хотя часть уже реализована — приоритизация по файлу врала.
+
+**Сделано (правился только `docs/TASKS.md`, код не трогался).** К каждому пункту добавлена пометка `**Сверка 2026-09-19:**` с доказательством из кода (27 пометок: Stage 8 — 9, Stage 9 — 8, Stage 10 — 10). Закрыто 6 пунктов: RISK-07 (Invite FAB), BOT-01 (webhook + secret-token), BOT-03 (`/task` текст+голос, двухфазный ответ), BOT-07 (`/start ws_CODE`), BOT-08 (freemium), BOT-10 (`bot-notify`).
+
+**Осталось открытым по факту:**
+- RISK-01 — частично (сигналы есть в `page.tsx:132–158`, tappable drill-down нет); RISK-02/06/09 — реализации нет; RISK-03/04/05 — частично (скор из `attention_risk_pulse` в клиенте не читается, velocity считается из `spPerDay`).
+- AGENT-01 — частично (карточки агентов без ◆/цвета throughput/queue depth); AGENT-02/03/04/05/07/09 — нет реализации. **AGENT-03 Operator Queue — единственный MVP-блок Stage 8/9:** вьюха `pending_escalations` готова (`001_init.sql:1448`), UI и экшена «Разрешить» нет.
+- BOT: нет `/inbox`, `/flow`, `/standup` и inline-режима; `/task ALPHA-123` покрыт `/call`; `/resolve` отдаёт только карточку (`needs_human` не сбрасывается).
+
+**Расхождения формулировок задач с кодом:** BOT-01 — secret-token вместо HMAC-подписи; BOT-03 — dedup по `dedup_key` (§6.2a), не по `message_id`; RISK-07 — фактическая ссылка `https://t.me/onitaskbot/onitask?startapp=<code>` (deep link в TWA), а не `?start=ws_CODE`.
+
+**Найдено вне Stage 8/9/10, но не правил:** DB-20 фактически закрыт (`009_calendar_events.sql` + `025_calendar_reminder_triggers.sql` — все три триггера, включая `trg_validate_calendar_times`); F03-11 — файла `EnrichmentBadge.tsx` нет.
+
+**Статус файла:** 61 → 55 открытых пунктов, 119 закрытых; CRLF сохранён (819/819 строк).
+
+**Next:** решить судьбу AGENT-03 (MVP) vs закрытие перф-долга (PERF-06) — см. приоритизацию в чате 2026-09-19.
 
 ---
 

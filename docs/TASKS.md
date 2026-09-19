@@ -356,20 +356,29 @@ format is deliberately compact so that agents can load the file quickly.
 > dev_setup §3: Risk Pulse, карточки участников, velocity SQL, Invite FAB. DoD: Risk Pulse актуален, SP/день корректен, Invite FAB генерирует ссылку.
 
 - [ ] RISK-01 Risk Pulse — три сигнала (Люди/Процессы/Эскалации) + tappable drill-down #ui !high @blocked_by:DB-13
+      **Сверка 2026-09-19:** частично — три сигнала реализованы (`src/app/flowboard/page.tsx:132–158`, рендер `SignalCard`, `FlowBoard.tsx:386`), tappable drill-down отсутствует.
       flow_.md §19.
 - [ ] RISK-02 Предупреждение «уведомления выключены» при отсутствии Telegram-чата #ui !low @blocked_by:RISK-01
+      **Сверка 2026-09-19:** не реализовано — `workspace_telegram_chats` в `src/` не используется.
 - [ ] RISK-03 Worker Load (человек collapsed/expanded, badge «⚠ Риск N» из `attention_risk_pulse`) #ui !high @blocked_by:DB-13
+      **Сверка 2026-09-19:** частично — карточки участников и бейдж «Перегружен» есть (`FlowBoard.tsx:557–663`, PersonCard), скор из `attention_risk_pulse` в клиенте не читается.
       flow_.md §20.
 - [ ] RISK-04 Worker Sheet — участник (Сейчас/Метрики, pre-flight scoring при назначении) #ui !high @blocked_by:RISK-03
+      **Сверка 2026-09-19:** частично — `WorkerSheet.tsx` есть (табы «Статус»/«Доступы», velocity/forecast из `spPerDay`), pre-flight scoring при назначении отсутствует.
       flow_.md §21.
 - [ ] RISK-05 Velocity SQL интеграция в блок «Метрики» #db !med @blocked_by:RISK-04
+      **Сверка 2026-09-19:** velocity считается на клиенте (`WorkerSheet.tsx:151`), вьюха `velocity_drop` не используется.
       team_tab §4.1 (справочник).
 - [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 2000 симв) #ui !med @blocked_by:WS-03
+      **Сверка 2026-09-19:** не реализовано — `workspace_context` пишет только Edge Function `rebuild-workspace-context`, в `src/` не используется.
       flow_.md §23, Master §6.4. Лимит 2000 символов (не 800 — исправлено по flow_.md §23).
-- [ ] RISK-07 Invite FAB + реферальная ссылка (`t.me/onitask_bot?start=ws_CODE`) #ui !med @blocked_by:DB-15
+- [x] RISK-07 Invite FAB + реферальная ссылка (`t.me/onitask_bot?start=ws_CODE`) #ui !med @blocked_by:DB-15
+      **Сверка 2026-09-19:** реализовано — `InviteModal.tsx` + FAB (`src/app/flowboard/page.tsx:534,548`), ссылка из `GET/POST /api/workspaces/[id]/invite`. Фактический формат — `https://t.me/onitaskbot/onitask?startapp=<code>` (deep link в TWA), а не `?start=ws_CODE`.
 - [ ] RISK-08 Workspace Manager (вкладка «Доски»): карточки workspace, глобальные алерты, переключение #ui !med @blocked_by:WS-01
+      **Сверка 2026-09-19:** частично — карточки досок и RiskPulse-агрегат есть (`src/app/boards/page.tsx`, `useBoardCounts`); отдельного списка глобальных алертов нет, источник агрегатов — `useBoardCounts`, а не Edge Function `/api/workspaces/summary`.
       flow_.md §23. Источник: `/api/workspaces/summary` (Edge Function, cache 60–300с).
 - [ ] RISK-09 Risk Pulse «Процессы»: добавить `orphan_blockers` и `handoff_chain` в формулу (v3.6.0) #ui !med @blocked_by:RISK-01,DB-14
+      **Сверка 2026-09-19:** не реализовано — вьюхи `orphan_blockers`/`handoff_chain` в UI не используются.
       flow_.md §19 (v3.6.0). Drill-down по трём группам: ревью-блок / stuck / orphan.
 
 ---
@@ -379,19 +388,27 @@ format is deliberately compact so that agents can load the file quickly.
 > dev_setup §3: Agent cards, Escalation queue, `escalate_task`, метрики агента. DoD: оператор видит очередь эскалаций, `needs_human=true` отображается корректно.
 
 - [ ] AGENT-01 Agent Card collapsed (◆ + цвет throughput + queue depth) #ui !high @blocked_by:RISK-03
+      **Сверка 2026-09-19:** частично — секция агентов и карточки рендерятся (`FlowBoard.tsx:1014–1022`, `PersonCard` c `type="agent"`, данные `page.tsx:207–226`): имя, роль, SP/д, задачи; ◆-маркер, цвет throughput и queue depth отсутствуют.
       flow_.md §20.
 - [ ] AGENT-02 Agent Card expanded (Interpretation hint, «Флоу · 7 дней») #ui !high @blocked_by:AGENT-01
+      **Сверка 2026-09-19:** не реализовано — карточка агента открывает тот же `WorkerSheet` (табы «Статус»/«Доступы»), блока «Флоу · 7 дней» и Interpretation hint нет.
 - [ ] AGENT-03 Operator Queue (`pending_escalations`, [Разрешить]/[Открыть задачу→]) #ui !high @blocked_by:DB-13,MCP-04
+      **Сверка 2026-09-19:** не реализовано — вьюха готова (`supabase/migrations/001_init.sql:1448`), в `src/` единственное упоминание — тип `pending_escalations` (`src/types/flowboard.ts:219`); UI и экшена «Разрешить» нет.
       flow_.md §21, team_tab §2.7 (SQL-справочник).
 - [ ] AGENT-04 Task Sheet, вкладка «Блокировки» (`get_task_subgraph`, orphan block detection, `POST /api/tasks/:id/relations`) #ui !high @blocked_by:MCP-06
+      **Сверка 2026-09-19:** не реализовано — `get_task_subgraph` вызывается только на сервере (`lib/shared/mcpAuth.ts:434`, `supabase/functions/enrich-task`), роута `src/app/api/tasks/[id]/relations` нет.
       flow_.md §22.
 - [ ] AGENT-05 Cascade Unblock toast (Realtime `cascade_unblock`) #ui !med @blocked_by:INV-13
+      **Сверка 2026-09-19:** не реализовано — `cascade_unblock` встречается только в комментарии типа (`src/types/flowboard.ts:355`).
 - [ ] AGENT-06 Pill «🔄 Цепочка ×N» для `handoff_chain` (Phase 1.1 — можно отложить за MVP) #ui !low @blocked_by:AGENT-01
+      **Сверка 2026-09-19:** не реализовано (Phase 1.1, по описанию отложено).
 - [ ] AGENT-07 Task Sheet, вкладка «Детали» (`ai_hint`, описание, метаданные, кнопка «→ следующая колонка») #ui !high @blocked_by:AGENT-04
+      **Сверка 2026-09-19:** частично — `ai_hint` приходит в типах (`src/types/flowboard.ts:259`) и в `DataContext.tsx:53`, но в `TaskViewEdit.tsx` не отображается; кнопки «→ следующая колонка» нет.
       flow_.md §22.
 - [x] AGENT-08 Task Sheet, вкладка «Комментарии» (фид: `task_comments` + `task_column_history` + `agent_events` через RPC `get_task_feed`; composer → POST `/api/tasks/:id/comments`; live через broadcast `task-comments-<task_id>`; ADR-2026-09-06, миг. 076) #ui !med
       flow_.md §22, Master §6.10.
 - [ ] AGENT-09 Route Handler `POST /api/tasks/:id/relations` (создание связей task_relations через UI) #db !med @blocked_by:INV-13
+      **Сверка 2026-09-19:** не реализовано — `src/app/api/tasks/[id]/` содержит только `attachments`, `comments`, `review`, `submissions`, `submit`.
       flow_.md §22, dev_setup §2.2. Ошибки: самоссылка, дубль связи.
 
 ---
@@ -400,24 +417,34 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: `/api/bot/*`, webhook, F-04 адаптер, workspace resolution, команды, deep links. DoD: голосовое → задача, `/flow` актуален, deep link открывает нужную задачу.
 
-- [ ] BOT-01 `POST /api/bot/webhook` + HMAC-подпись (SEC-03) #bot !high @blocked_by:INV-10
+- [x] BOT-01 `POST /api/bot/webhook` + HMAC-подпись (SEC-03) #bot !high @blocked_by:INV-10
+      **Сверка 2026-09-19:** реализовано — `src/app/api/bot/webhook/route.ts`, проверка `X-Telegram-Bot-Api-Secret-Token` (`route.ts:1901–1907`, `verifyTelegramWebhookSecret`); фактически secret-token, а не HMAC-подпись.
       bot_.md §6.1, product_vision SEC-03. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
       Зависимость исправлена: `INV-10` (workspace_telegram_chats) вместо ошибочной `DB-11`.
 - [ ] BOT-02 Workspace resolution (6 приоритетов, last-used SQL) #bot !high @blocked_by:BOT-01
+      **Сверка 2026-09-19:** частично — `src/lib/bot/workspaceResolver.ts` реализует 4 приоритета (explicit @workspace, linked chat bindings, единственный workspace, несколько → inline-кнопки); приоритеты с last-used (`profiles.last_active_workspace_id`) в коде не найдены.
       bot_.md §3. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
-- [ ] BOT-03 `/task` текст+голос, двухфазный ответ (typing+placeholder → editMessageText), duplicate guard (`message_id`) #bot !high @blocked_by:BOT-02,F04-03
+- [x] BOT-03 `/task` текст+голос, двухфазный ответ (typing+placeholder → editMessageText), duplicate guard (`message_id`) #bot !high @blocked_by:BOT-02,F04-03
+      **Сверка 2026-09-19:** реализовано — `src/lib/bot/taskHandler.ts` (`handleTextTask`/`handleVoiceTask`: transcribe → parse → dedup → create → карточка подтверждения, `ephemeralMsgId` + edit); duplicate guard через `dedup_key` (§6.2a), а не `message_id`.
       bot_.md §5.1, §6.2. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
 - [ ] BOT-04 `@onitask` инлайн-вызов #bot !med @blocked_by:BOT-03
+      **Сверка 2026-09-19:** не реализовано — обработчика `inline_query` в `src/` нет (совпадения только в типах telegramsjs).
 - [ ] BOT-05 `/inbox`, `/flow`, `/task ALPHA-123` #bot !med @blocked_by:BOT-02
+      **Сверка 2026-09-19:** частично — `/task ALPHA-123` покрыт командой `/call` (+алиасы `/run`, `/run-task`, `commands.ts:79`), работают `/task`, `/backlog`, `/help`, `/start`; `/inbox` и `/flow` отсутствуют (`COMMANDS_REQUIRING_WORKSPACE = ['task','backlog']`).
       bot_.md §5.3, §5.7.
 - [ ] BOT-06 `/resolve ALPHA-123` (`needs_human=false` + `skip_alert_triggers` + INSERT `enrichment_queue`) #bot !med @blocked_by:BOT-05
+      **Сверка 2026-09-19:** не реализовано — `handleResolveTask` (`src/app/api/bot/webhook/route.ts:1856`) только отдаёт карточку задачи: `needs_human` не сбрасывается, INSERT в `enrichment_queue` отсутствует.
       bot_.md §5.8.
-- [ ] BOT-07 Онбординг через invite (`/start ws_CODE`) #bot !high @blocked_by:DB-15
+- [x] BOT-07 Онбординг через invite (`/start ws_CODE`) #bot !high @blocked_by:DB-15
+      **Сверка 2026-09-19:** реализовано — `src/lib/bot/onboarding.ts` (`/start ws_CODE`, срез префикса `ws_`, регистрация воркера).
       bot_.md §5.9.
-- [ ] BOT-08 Freemium boundary (тариф-гейты, таблица §4) #bot !med @blocked_by:BOT-03
+- [x] BOT-08 Freemium boundary (тариф-гейты, таблица §4) #bot !med @blocked_by:BOT-03
+      **Сверка 2026-09-19:** реализовано — `src/lib/bot/freemium.ts` (`checkFreemiumBoundary`, `PLAN_COMMANDS`, gate-сообщение), вызов из `taskHandler.ts`.
 - [ ] BOT-09 Daily Standup (`/standup` ручной вызов + `escapeHtml` санитизация + блок 📥 inbox >24ч) #bot !med @blocked_by:BOT-05
+      **Сверка 2026-09-19:** не реализовано — команды `/standup` нет (`src/lib/bot/commands.ts`).
       bot_.md §5.6. Блок 📥: `is_inbox=true AND created_at < NOW() - INTERVAL '24 hours'`, макс. 3 задачи с deep link.
-- [ ] BOT-10 Bot Notify Worker (Edge Function `bot-notify`, DB Webhook + hourly cron fallback, retry/backoff при 429) #bot !high @blocked_by:DB-16,DB-14
+- [x] BOT-10 Bot Notify Worker (Edge Function `bot-notify`, DB Webhook + hourly cron fallback, retry/backoff при 429) #bot !high @blocked_by:DB-16,DB-14
+      **Сверка 2026-09-19:** реализовано — `supabase/functions/bot-notify` (auth через vault-secret RPC `get_bot_notify_cron_secret`, consumer `telegram_message_queue` с `retry_count`/`max_retries`, отправка sendMessage/sendDocument).
       bot_.md §6.5.
 - [x] BOT-11 Сигналы светофора → TG-уведомления (миг. 090, cron `deadline-notify-tick` 09:00 МСК) #bot #db !med
       Дедуп `task_deadline_notifications` (amber once / red daily / overdue once);
