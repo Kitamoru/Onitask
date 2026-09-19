@@ -399,8 +399,14 @@ export function BottomSheet({
           } as React.CSSProperties
         }
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-2 pb-2" style={{ touchAction: 'none' }}>
+        {/* Drag handle — липкий непрозрачный chrome панели.
+            Скроллится панель, поэтому полоска ручки закреплена сверху: при
+            скролле контент уходит ПОД неё, а не просвечивает над sticky-шапкой
+            контента (шапки липнут на `top: SHEET_CHROME_HEIGHT_PX`). */}
+        <div
+          className="sticky top-0 z-20 flex justify-center bg-[var(--color-surface)] pb-2 pt-2"
+          style={{ touchAction: 'none' }}
+        >
           <div className="w-10 h-1 rounded-full bg-text-muted/40" />
         </div>
 
