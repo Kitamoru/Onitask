@@ -27,7 +27,11 @@ import {
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle, Download } from 'lucide-react';
-import { SHEET_CONTENT_MAX_HEIGHT, BottomSheet } from '@/components/ui/BottomSheet';
+import {
+  SHEET_CHROME_HEIGHT_PX,
+  SHEET_CONTENT_MAX_HEIGHT,
+  BottomSheet,
+} from '@/components/ui/BottomSheet';
 import {
   TextArea,
   Button,
@@ -1028,11 +1032,14 @@ export function TaskViewEdit({
             ...(tab === 'comments' && task?.id ? { height: SHEET_CONTENT_MAX_HEIGHT } : null),
           }}
         >
-          {/* Segments — статичная шапка: sticky внутри скроллящейся панели,
-              непрозрачный фон (standard surface), чтобы контент проходил под ней */}
+          {/* Segments — статичная шапка: sticky внутри скроллящейся панели, на
+              своём стартовом месте (top = chrome drag handle), непрозрачный
+              standard surface, чтобы контент проходил под ней. pb-6 + -mb-6:
+              воздух gap-6 контейнера становится частью шапки (отступ под
+              Segments) и не «съезжает» при скролле. */}
           <div
-            className="sticky top-0 z-10 -mx-4 px-4"
-            style={{ backgroundColor: 'var(--color-surface)' }}
+            className="sticky z-10 -mx-4 -mb-6 bg-[var(--color-surface)] px-4 pb-6"
+            style={{ top: SHEET_CHROME_HEIGHT_PX }}
           >
             <Segments
               value={tab}
@@ -1046,7 +1053,11 @@ export function TaskViewEdit({
           </div>
 
           {tab === 'comments' && task?.id && (
-            <div className="flex min-h-0 flex-1">
+            /* flex-col: панель комментариев обязана растянуться на всю ширину
+               шторки. В строке (flex-row) единственный ребёнок получает ширину
+               по контенту (shrink-to-fit) → лента и composer прижимались
+               к левому краю. */
+            <div className="flex min-h-0 flex-1 flex-col">
               <TaskCommentsPanel
                 taskId={task.id}
                 workers={workers.map((w) => ({

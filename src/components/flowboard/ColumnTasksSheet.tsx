@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
-import { BottomSheet } from '@/components/ui/BottomSheet';
+import { SHEET_CHROME_HEIGHT_PX, BottomSheet } from '@/components/ui/BottomSheet';
 import type { TaskEntity } from '@/types/flowboard';
 
 // Lazy-load SwipeableTaskCard to avoid SSR serialization issues with useRef
@@ -190,11 +190,14 @@ export function ColumnTasksSheet({
     <BottomSheet open={open} onClose={onClose}>
       <div className="flex flex-col gap-4 px-4 pb-6" role="region" aria-label={`Задачи: ${title}`}>
         {/* Header — Figma 240:27500: colored shape + title.
-            Sticky: скроллится панель шторки, поэтому шапка закреплена сверху
-            (непрозрачный standard surface, чтобы карточки проходили под ней). */}
+            Sticky: скроллится панель шторки, поэтому шапка закреплена на своём
+            стартовом месте — top = высота chrome (drag handle), иначе сразу
+            после начала скролла она «прыгает» к самой кромке шторки.
+            pb-4 + -mb-4: воздух gap-4 контейнера уезжает внутрь шапки →
+            карточки уходят под неё, а не подлезают к тайтлу. */}
         <div
-          className="sticky top-0 z-10 flex w-full items-center gap-2"
-          style={{ backgroundColor: 'var(--color-surface)' }}
+          className="sticky z-10 -mb-4 flex w-full items-center gap-2 bg-[var(--color-surface)] pb-4"
+          style={{ top: SHEET_CHROME_HEIGHT_PX }}
         >
           <div
             className="shrink-0"

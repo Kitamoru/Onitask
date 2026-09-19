@@ -15,8 +15,14 @@ const FLING_VELOCITY = 0.5;
 /** Telegram-style easing for the settle/return animation (matches SwipeableTaskCard) */
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
-/** Высота «хрома» панели над контентом: drag handle = pt-2 + h-1 + pb-2 */
-const SHEET_CHROME_HEIGHT_PX = 20;
+/**
+ * Высота «хрома» панели над контентом: drag handle = pt-2 + h-1 + pb-2 = 20px.
+ * Единственный источник правды для «закреплённой» зоны поверх контента:
+ * от неё считается потолок контентной высоты (SHEET_CONTENT_MAX_HEIGHT) и
+ * верхний офсет sticky-шапок внутри панели (`top: SHEET_CHROME_HEIGHT_PX`) —
+ * так шапка липнет на своём стартовом месте, а не к самой кромке шторки.
+ */
+export const SHEET_CHROME_HEIGHT_PX = 20;
 
 /**
  * Потолок высоты контентной зоны шторки: потолок панели (`--sheet-max-h`)

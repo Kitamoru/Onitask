@@ -1348,3 +1348,48 @@ docs/design/component-map.md (строка BottomSheet).
 TELEGRAM_BOT_TOKEN в env). `npm run lint` не запускается: rushstack eslint-patch
 vs ESLint 9 — pre-existing поломка окружения. Компонентных тестов на эти
 компоненты в репозитории нет.
+---
+
+## 2026-09-19 — Шторки: доводка sticky-шапок (фикс после 72a3e00)
+
+**Проблемы после 72a3e00 (reported, TWA):**
+1. Заголовок списка колонки (`ColumnTasksSheet`) «прижимался к верхней части
+   боттом-шита» при старте скролла вместо неподвижности на стартовом месте.
+2. То же для Segments «Общее/Комментарии» в карточке задачи (`TaskViewEdit`).
+3. Вкладка «Комментарии»: лента и composer (input + кнопка) прижаты к левому
+   краю — сломалась ширина.
+
+**Корень:**
+- `sticky top-0`: скролл-контейнер — сама панель BottomSheet, а её первый
+  ребёнок — drag handle (20px chrome). `top-0` = кромка панели → шапка
+  «прыгала» на 20px вверх (поверх ручки), а не оставалась на стартовом месте.
+- Обёртка панели комментариев была `flex` (строка): у единственного ребёнка
+  ширина по контенту (shrink-to-fit) → панель ужалась по самой длинной реплике
+  и встала к левому краю (внутри сжались и TextArea, и кнопка отправки).
+
+**Фикс (вариант B — сам BottomSheet не трогаем):**
+- `BottomSheet`: `SHEET_CHROME_HEIGHT_PX = 20` экспортирован (single source of
+  truth для chrome; от него же считается `SHEET_CONTENT_MAX_HEIGHT`).
+- Sticky-шапки липнут на `top: SHEET_CHROME_HEIGHT_PX` (= стартовое место) с
+  непрозрачным `bg-[var(--color-surface)]`; воздух контейнерного gap уезжает
+  внутрь шапки (`pb-4 -mb-4` в ColumnTasksSheet под `gap-4`, `pb-6 -mb-6` в
+  TaskViewEdit под `gap-6`) → контент уходит под шапку, не подлезая к тайтлу.
+- `TaskViewEdit`: обёртка панели комментариев → `flex min-h-0 flex-1 flex-col`
+  (растягивание во всю ширину шторки). Высоты `SHEET_CONTENT_MAX_HEIGHT` не
+  менялись: суммарно панель остаётся `maxH − 20` → composer на нижней кромке,
+  внешнего скролла нет.
+
+**Files:** src/components/ui/BottomSheet.tsx, src/components/flowboard/ColumnTasksSheet.tsx,
+src/components/flowboard/TaskViewEdit.tsx, docs/design/component-map.md.
+
+**Валидация:** `npm run type-check` — clean. `npx vitest run` — 95 passed /
+4 failed (tests/api/init.test.ts — pre-existing, TELEGRAM_BOT_TOKEN в env).
+`npx prettier --check` и `npm run lint` в этом окружении не работают
+(pre-existing: `prettier-plugin-tailwindcss` отсутствует в devDependencies;
+rushstack eslint-patch vs ESLint 9). Компонентных тестов на эти компоненты нет.
+
+**Открытый нюанс (сознательно не трогали):** полоска 0…20px над закреплённой
+шапкой — drag handle остаётся в потоке контента и при скролле уезжает вверх
+(штатное поведение всех шторок). Вариант «sticky handle» отклонён: при
+проскролленной шторке жест по ручке не закрывает её (drag разрешён только при
+`scrollTop = 0`) → «мёртвая» аффорданс-зона.
