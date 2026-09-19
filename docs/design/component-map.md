@@ -138,7 +138,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | BottomSheet | BottomSheet.tsx | open, onClose, children | Slide-up panel with backdrop overlay (portal-based) |
+| | BottomSheet | BottomSheet.tsx | open, onClose, children | Slide-up panel with backdrop overlay (portal-based). Panel is the single scroll container (keyboardRide relies on `panel.scrollTop`) and publishes its height ceiling as `--sheet-max-h`; content that must fill exactly the available height (e.g. the task sheet's «Комментарии» tab) uses the exported `SHEET_CONTENT_MAX_HEIGHT` (= `--sheet-max-h` minus the 20px drag-handle chrome) — sticky headers inside the panel keep their position while content scrolls under them |
 | | DateRangeField | DateRangeField.tsx | startDate, endDate, onOpen, placeholder | Date range display field |
 | | DateRangeSheet | DateRangeSheet.tsx | open, onClose, startDate, endDate, onConfirm | BottomSheet with react-day-picker for date range selection |
 | | SingleDateField | SingleDateField.tsx | date, onOpen, placeholder, disabled | Single date display field for task deadline |

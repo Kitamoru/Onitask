@@ -1318,3 +1318,33 @@ R7 requeue, R8 human_override, G6 reason в уведомлении).
 **Files:** src/lib/ai/parseAndPrepare.ts (new), src/app/api/ai/parse-task/route.ts (new), src/app/api/ai/create-task/route.ts (refactor), src/components/ai/TaskCreatorSheet.tsx (draft→preview→commit; убран DELETE-on-cancel), docs/onitask_ai_.md §3.6a.
 **Bug caught by tests (fix):** parseF04Config skip_max_complexity = undefined в дефолтной ветке → Gatekeeper never skip. Fix в src/lib/ai/types.ts.
 **Tests:** 21 новых (3 файла) ✅ all pass, type-check clean. init.test.ts падает pre-existing (TELEGRAM_BOT_TOKEN missing in env) — не мои правки.
+---
+
+## 2026-09-19 — Шторки: закреплённые шапки и высота вкладки «Комментарии»
+
+**Проблема:** единый скролл-контейнер шторки — сама панель BottomSheet
+(`overflow-y-auto`), поэтому Segments-шапка карточки задачи и заголовок списка
+колонки уезжали вверх вместе с контентом; вкладка «Комментарии» имела
+произвольную высоту `h-[60vh]`, из-за чего composer не был прижат к нижней
+кромке шторки.
+
+**Решение (без вложенного скролла — иначе ломается keyboardRide):**
+- `BottomSheet` публикует потолок панели как `--sheet-max-h` (та же формула,
+  что в `maxHeight`; без дублирования) и экспортирует
+  `SHEET_CONTENT_MAX_HEIGHT` = `--sheet-max-h` − 20px chrome (drag handle).
+- `TaskViewEdit`: Segments обёрнут в sticky-шапку (`top-0`, непрозрачный
+  `var(--color-surface)`), вкладка «Комментарии» получает `height:
+  SHEET_CONTENT_MAX_HEIGHT` → лента (`h-full`, собственный `overflow-y-auto`)
+  растягивается, composer (`shrink-0`) стоит статично снизу.
+- `ColumnTasksSheet`: заголовок колонки — sticky-шапка с непрозрачным фоном.
+- `TaskCommentsPanel`: composer получил `shrink-0` + фон surface.
+
+**Files:** src/components/ui/BottomSheet.tsx, src/components/flowboard/TaskViewEdit.tsx,
+src/components/flowboard/TaskCommentsPanel.tsx, src/components/flowboard/ColumnTasksSheet.tsx,
+docs/design/component-map.md (строка BottomSheet).
+
+**Валидация:** `npm run type-check` — clean. `npx vitest run` — 95 passed /
+4 failed (tests/api/init.test.ts, падает и на чистом дереве — pre-existing,
+TELEGRAM_BOT_TOKEN в env). `npm run lint` не запускается: rushstack eslint-patch
+vs ESLint 9 — pre-existing поломка окружения. Компонентных тестов на эти
+компоненты в репозитории нет.

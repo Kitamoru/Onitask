@@ -435,8 +435,12 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
         )}
       </div>
 
-      {/* Composer — тот же принцип: 0 (Figma 322:28018), шит уже даёт px-4 */}
-      <div className="border-t border-white/10 py-3">
+      {/* Composer — тот же принцип: 0 (Figma 322:28018), шит уже даёт px-4.
+          shrink-0: composer — статичный низ панели, растягивается только лента. */}
+      <div
+        className="shrink-0 border-t border-white/10 py-3"
+        style={{ backgroundColor: 'var(--color-surface)' }}
+      >
         {sendError && <div className="mb-2 text-[12px] text-red-400">{sendError}</div>}
         <div className="flex items-end gap-2">
           <div className="min-w-0 flex-1">

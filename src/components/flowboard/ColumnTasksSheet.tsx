@@ -189,8 +189,13 @@ export function ColumnTasksSheet({
   return (
     <BottomSheet open={open} onClose={onClose}>
       <div className="flex flex-col gap-4 px-4 pb-6" role="region" aria-label={`Задачи: ${title}`}>
-        {/* Header — Figma 240:27500: colored shape + title */}
-        <div className="flex w-full items-center gap-2">
+        {/* Header — Figma 240:27500: colored shape + title.
+            Sticky: скроллится панель шторки, поэтому шапка закреплена сверху
+            (непрозрачный standard surface, чтобы карточки проходили под ней). */}
+        <div
+          className="sticky top-0 z-10 flex w-full items-center gap-2"
+          style={{ backgroundColor: 'var(--color-surface)' }}
+        >
           <div
             className="shrink-0"
             style={{

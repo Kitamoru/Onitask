@@ -27,7 +27,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle, Download } from 'lucide-react';
-import { BottomSheet } from '@/components/ui/BottomSheet';
+import { SHEET_CONTENT_MAX_HEIGHT, BottomSheet } from '@/components/ui/BottomSheet';
 import {
   TextArea,
   Button,
@@ -1019,19 +1019,34 @@ export function TaskViewEdit({
         <div
           className={`flex flex-col gap-6 px-4 pb-6 ${className}`}
           aria-label={isView ? 'Просмотр задачи' : 'Редактирование задачи'}
+          style={{
+            // Вкладка «Комментарии» — чат: контент занимает ровно доступную
+            // высоту шторки, поэтому лента (h-full) растягивается, а composer
+            // прижат к нижней кромке (вместо прежних произвольных h-[60vh]).
+            // Вкладка «Общее» высоту не задаёт — панель шторки скроллится как
+            // раньше, а Segments-шапка липнет сверху.
+            ...(tab === 'comments' && task?.id ? { height: SHEET_CONTENT_MAX_HEIGHT } : null),
+          }}
         >
-          <Segments
-            value={tab}
-            onChange={(v) => setTab(v)}
-            disabled={isEdit}
-            options={[
-              { value: 'general', label: 'Общее' },
-              { value: 'comments', label: 'Комментарии' },
-            ]}
-          />
+          {/* Segments — статичная шапка: sticky внутри скроллящейся панели,
+              непрозрачный фон (standard surface), чтобы контент проходил под ней */}
+          <div
+            className="sticky top-0 z-10 -mx-4 px-4"
+            style={{ backgroundColor: 'var(--color-surface)' }}
+          >
+            <Segments
+              value={tab}
+              onChange={(v) => setTab(v)}
+              disabled={isEdit}
+              options={[
+                { value: 'general', label: 'Общее' },
+                { value: 'comments', label: 'Комментарии' },
+              ]}
+            />
+          </div>
 
           {tab === 'comments' && task?.id && (
-            <div className="h-[60vh] min-h-0">
+            <div className="flex min-h-0 flex-1">
               <TaskCommentsPanel
                 taskId={task.id}
                 workers={workers.map((w) => ({

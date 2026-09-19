@@ -15,6 +15,18 @@ const FLING_VELOCITY = 0.5;
 /** Telegram-style easing for the settle/return animation (matches SwipeableTaskCard) */
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
+/** Высота «хрома» панели над контентом: drag handle = pt-2 + h-1 + pb-2 */
+const SHEET_CHROME_HEIGHT_PX = 20;
+
+/**
+ * Потолок высоты контентной зоны шторки: потолок панели (`--sheet-max-h`)
+ * минус chrome (drag handle). Нужен контенту, который должен занять ровно
+ * доступную высоту — например, вкладка «Комментарии» в TaskViewEdit
+ * (фиксированная высота → composer прижат к нижней кромке шторки).
+ * Панель отдаёт сам потолок как `--sheet-max-h`, поэтому формула не дублируется.
+ */
+export const SHEET_CONTENT_MAX_HEIGHT = `calc(var(--sheet-max-h, 100dvh) - ${SHEET_CHROME_HEIGHT_PX}px)`;
+
 /** Ref-count открытых BottomSheet для блокировки скролла body (см. useEffect ниже) */
 let bodyScrollLockCount = 0;
 
@@ -348,7 +360,12 @@ export function BottomSheet({
             // потолок опускается на столько же → верх шторки никогда не
             // пересекает шапку. Контент компенсируется внутренним скроллом.
             // Без клавиатуры --kb-ride = 0px.
-            maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - max(142px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
+            // --sheet-max-h — тот же потолок, опубликованный для контента
+            // (см. SHEET_CONTENT_MAX_HEIGHT): вложенные зоны считают от него
+            // свою высоту/потолок, не дублируя формулу и не «отставая» от
+            // клавиатуры (--kb-ride меняется покадрово).
+            '--sheet-max-h': 'calc(var(--tg-viewport-stable-height, 100dvh) - max(142px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
+            maxHeight: 'var(--sheet-max-h)',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
             // Композитный контекст уровня панели: анимации (drag + клавиатура)
