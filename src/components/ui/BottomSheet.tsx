@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useKeyboardRide } from '@/hooks/useKeyboardRide';
 
 /** Pull past this distance (or 15% of height, whichever is smaller) to dismiss */
 const CLOSE_SWIPE_THRESHOLD = 120;
@@ -62,9 +61,12 @@ const dismissKeyboard = () => {
  *   60fps tracking. React state (`open`) is the single source of truth for the
  *   resting position: `--sheet-y: 0px` when open, `100%` when closed.
  * - A fast fling dismisses the sheet; a slow pull dismisses past the threshold.
- * - Reserves space at the top of the viewport so the sheet's content clears
- *   Telegram's top controls via `--tg-content-safe-top` (stable-height based,
- *   так что при открытии клавиатуры панель не рефлоушится).
+ * - Keyboard: live `tg.viewportHeight` is written to `--sheet-viewport-height`
+ *   (direct DOM write, no re-render) and the panel's max-height reads it
+ *   WITHOUT any height transition — the sheet re-fits the moment Telegram
+ *   reports the new visible area, so it doesn't jump while the keyboard
+ *   slides in/out. Focused inputs are scrolled into view by the browser
+ *   itself (native scroll-into-view over the live max-height).
  *
  * @param overlay - Optional React node rendered inside the sheet panel,
  *                  centered absolutely over the content (e.g. a loading spinner).
@@ -81,8 +83,6 @@ export function BottomSheet({
   preventSwipe = false,
     overlay,
   keepMounted = true,
-  respectKeyboard = false,
-  keyboardRide = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -93,27 +93,52 @@ export function BottomSheet({
     /** Optional overlay rendered absolutely centered over the sheet content */
   overlay?: ReactNode;
   keepMounted?: boolean;
-  /**
-   * When true, the sheet panel keeps clear of the on-screen keyboard. Needed
-   * for bottom-anchored sheets whose content sits near the keyboard (e.g. the
-   * AI task creator CTA). Вместе с keyboardRide панель покадрово опускается
-   * вместе с клавиатурой при blur (фикс «зависания» с вспышкой CTA).
-   */
-  respectKeyboard?: boolean;
-  /**
-   * Keyboard ride (iPhone): focus нативный и мгновенный; анимация клавиатуры
-   * стримится через visualViewport → панель ПОКАДРОВО выталкивается вверх
-   * чистым transform (translateY), без layout-пересчётов и без двухфазной
-   * хореографии. Требует respectKeyboard. См. hooks/useKeyboardRide.ts.
-   */
-  keyboardRide?: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  // Мгновенный scroll инпута в видимую зону при focus + контроль видимости
-  // покадрово во время анимации клавиатуры (см. проп keyboardRide).
-  useKeyboardRide(sheetRef, {
-    enabled: open && keyboardRide && respectKeyboard,
-  });
+  // --- Живая высота видимой области Telegram → CSS-переменная напрямую в DOM ---
+  // window.Telegram.WebApp.viewportHeight — единственный источник, которому
+  // здесь можно доверять: событие viewportChanged прилетает раньше рамки
+  // WebView и раньше visualViewport, и сразу с финальным значением (в обе
+  // стороны). Пишем через ref.style.setProperty, а не setState — лишний
+  // цикл рендера тут только добавляет задержку. maxHeight панели ссылается
+  // на эту переменную БЕЗ transition — анимировать высоту нельзя: событие
+  // приходит, когда клавиатура уже прошла часть пути, и любой transition в
+  // итоге либо отстаёт, либо продолжает ехать после того, как клавиатура
+  // встала. При правильном max-height сфокусированное поле докручивает сам
+  // браузер (нативный scroll-into-view) — ручной ensureVisible не нужен.
+  useEffect(() => {
+    const tg = (
+      window as unknown as {
+        Telegram?: {
+          WebApp?: {
+            viewportHeight: number;
+            onEvent?: (name: string, cb: () => void) => void;
+            offEvent?: (name: string, cb: () => void) => void;
+          };
+        };
+      }
+    )?.Telegram?.WebApp;
+    const el = sheetRef.current;
+    if (!tg || !el) return;
+
+    const applyHeight = () => {
+      el.style.setProperty('--sheet-viewport-height', `${tg.viewportHeight}px`);
+    };
+    applyHeight();
+    tg.onEvent?.('viewportChanged', applyHeight);
+    return () => tg.offEvent?.('viewportChanged', applyHeight);
+    // Зависимость от open: (1) Telegram-мост может загрузиться позже первого
+    // маунта шторки — пересматриваем подписку при каждом открытии; (2) высота
+    // обновляется по факту, если клавиатура изменилась, пока шторка была закрыта.
+  }, [open]);
+
+  // --- Начальный фокус (a11y): модальный оверлей должен получать фокус ---
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => sheetRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
   const dragStartX = useRef<number | null>(null);
   const dragStartY = useRef<number | null>(null);
   const draggingRef = useRef(false);
@@ -267,7 +292,11 @@ export function BottomSheet({
     };
   }, [open, requestClose, preventSwipe, applyDrag]);
 
-  // Escape
+  // Escape + страховка от «ложного» hardware-back.
+  // Внимание: реальный hardware/gesture back внутри Telegram сюда НЕ
+  // долетает — это отдельный Telegram.WebApp.BackButton с событием
+  // back_button_pressed, а не keydown. Escape тут работает только для
+  // десктоп-превью в обычном браузере.
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -277,18 +306,46 @@ export function BottomSheet({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [open, requestClose]);
 
-  // Prevent body scroll when sheet is open.
+  // Блокировка скролла body (iOS/Android WebView-safe) + страховка.
   // Ref-count: вложенные (stacked) шторки не снимают лок с body, пока открыт
   // родитель — иначе закрытие дочерней даёт «дыхание» фона (страница снова
-  // скроллится под ещё открытой шторкой).
+  // скроллится под ещё открытой шторкой). position:fixed вместо
+  // overflow:hidden — последний не удерживает тач-скролл в iOS Safari/WebView
+  // до конца. scrollY сохраняем только на первом локе (0→1): при вложенных
+  // шторках body уже зафиксирован и window.scrollY === 0.
   useEffect(() => {
     if (!open) return;
     bodyScrollLockCount += 1;
-    document.body.style.overflow = 'hidden';
+    let savedScrollY: number | null = null;
+    if (bodyScrollLockCount === 1) {
+      savedScrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${savedScrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+    }
+
+    // iOS иногда всё равно прокручивает сам документ, чтобы «показать»
+    // сфокусированное поле — с фиксированным body это лишнее и создаёт
+    // рассинхрон, откатываем на месте.
+    const handleWindowScroll = () => {
+      if (window.scrollY) window.scrollTo(0, 0);
+    };
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+
     return () => {
       bodyScrollLockCount = Math.max(bodyScrollLockCount - 1, 0);
+      window.removeEventListener('scroll', handleWindowScroll);
       if (bodyScrollLockCount === 0) {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.width = '';
         document.body.style.overflow = '';
+        if (savedScrollY !== null) window.scrollTo(0, savedScrollY);
       }
     };
   }, [open]);
@@ -320,10 +377,10 @@ export function BottomSheet({
         // сжимает layout viewport, fixed bottom-0 прилипает к её верхнему краю)
         // и висит поверх backdrop/панели шторки.
         zIndex: stacked ? 9999 : 60,
-        // Ride панели над клавиатурой — ЧИСТЫЙ transform на самой панели
-        // (translateY + --kb-offset, см. стиль панели ниже). Никаких
-        // padding/max-height: они форсили layout на каждый кадр анимации
-        // клавиатуры (просадка FPS на iPhone) и рвали непрерывность езды.
+        // Высота шторки учитывает клавиатуру через --sheet-viewport-height
+        // (см. useEffect выше): клавиатура сжимает живой viewportHeight →
+        // max-height панели сразу становится итоговым, без ride-канала и
+        // без покадровых transform-обновлений.
       }}
       aria-hidden={!open}
     >
@@ -351,6 +408,7 @@ export function BottomSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal={open}
+        tabIndex={-1}
         className={`relative w-full overflow-y-auto overscroll-contain ${
           isDragging ? '' : 'transition-transform duration-300'
         }`}
@@ -361,16 +419,19 @@ export function BottomSheet({
             position: overlay ? 'relative' : undefined,
             zIndex: stacked ? 10000 : 10,
             backgroundColor: 'var(--color-surface)',
-            // Потолок высоты шторки: резерв сверху 142px (временно, для проверки
-            // раскладки), минус высота клавиатуры: панель едет вверх на --kb-ride,
-            // потолок опускается на столько же → верх шторки никогда не
-            // пересекает шапку. Контент компенсируется внутренним скроллом.
-            // Без клавиатуры --kb-ride = 0px.
+            // Потолок высоты шторки: живая высота видимой области
+            // (--sheet-viewport-height = tg.viewportHeight, уже с учётом
+            // клавиатуры — вычитать высоту клавиатуры отдельно не нужно)
+            // минус резерв сверху, чтобы верх шторки не пересекал шапку
+            // Telegram; 24px — минимум, пока content-safe-top не готов.
+            // min(85vh, …) нужен на iOS: там vh считается от layout-viewport
+            // и не сжимается вместе с клавиатурой — живая переменная снимает
+            // это в обе стороны.
             // --sheet-max-h — тот же потолок, опубликованный для контента
             // (см. SHEET_CONTENT_MAX_HEIGHT): вложенные зоны считают от него
-            // свою высоту/потолок, не дублируя формулу и не «отставая» от
-            // клавиатуры (--kb-ride меняется покадрово).
-            '--sheet-max-h': 'calc(var(--tg-viewport-stable-height, 100dvh) - max(142px, var(--tg-content-safe-top, 0px)) - var(--kb-ride, 0px))',
+            // свою высоту/потолок, не дублируя формулу и не отставая от
+            // клавиатуры (высота обновляется мгновенно по viewportChanged).
+            '--sheet-max-h': 'min(85vh, calc(var(--sheet-viewport-height, 100vh) - max(var(--tg-content-safe-top, 0px), 24px)))',
             maxHeight: 'var(--sheet-max-h)',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
@@ -380,16 +441,13 @@ export function BottomSheet({
             // Нативный инерционный скролл контента внутри шторки, в т.ч.
             // при открытой клавиатуре (legacy iOS WebKit).
             WebkitOverflowScrolling: 'touch',
-            // Два НЕЗАВИСИМЫХ канала вертикального движения:
-            // - transform: translateY(--sheet-y) — open/close/drag, transition 300ms;
-            // - translate: --kb-ride — ride клавиатуры, свой transition (--ride-dur).
-            // Разделение обязательно: ride клавиатуры не должен обрывать
-            // анимацию открытия/закрытия (иначе — «проявление с рывком»).
-            // Индивиду transform-свойства поддерживаются iOS 14.5+.
+            // Высота БЕЗ transition (меняется мгновенно по viewportChanged,
+            // см. комментарий у useEffect с --sheet-viewport-height).
+            // Анимируется только transform (open/close/drag) — ride-канала
+            // больше нет: max-height уже учитывает клавиатуру.
             transform: 'translateY(var(--sheet-y, 0px))',
-            translate: '0px calc(-1 * var(--kb-ride, 0px))',
-            transitionProperty: 'transform, translate',
-            transitionDuration: isDragging ? '0ms, var(--ride-dur, 280ms)' : '300ms, var(--ride-dur, 280ms)',
+            transitionProperty: 'transform',
+            transitionDuration: isDragging ? '0ms' : '300ms',
             transitionTimingFunction: SETTLE_EASING,
             // Resting position driven by React state (low frequency)
             '--sheet-y': open ? '0px' : '100%',

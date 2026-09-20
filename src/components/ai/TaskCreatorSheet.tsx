@@ -364,11 +364,6 @@ export function TaskCreatorSheet({
         open={open}
         onClose={handleClose}
         preventSwipe={loading}
-        respectKeyboard
-        // Keyboard ride: focus мгновенный, клавиатура покадрово «выталкивает»
-        // панель вверх чистым transform (visualViewport) — одно непрерывное
-        // движение, без прыжков шторки и без layout-пересчётов в кадре.
-        keyboardRide
         overlay={loading ? <ProgressContent /> : null}
       >
         <div
