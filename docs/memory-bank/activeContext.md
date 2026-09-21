@@ -1,5 +1,42 @@
 # Active Context
 # Active Context
+## BOT-11: сигналы светофора → TG-уведомления (2026-09-21) ✅
+
+**Сделано:**
+- **Аудит светофора:** UI (`TrafficLightCard`, create + settings BoardViewEdit) и хранение
+  (`workspace_settings.deadline_signals`, миг. 007/017/018) — были готовы; уведомления —
+  нет (рендер `deadline_approaching` в bot-notify был, эмиттера не существовало);
+  выключение светофора не сохранялось (PUT обновлял только непустой массив, BoardViewEdit
+  отправлял фиктивный `[{value:3},{value:1}]`, POST навязывал дефолт 3/1).
+- **Миграция 090** (применена): таблица `task_deadline_notifications` (частичные
+  уникальные индексы: amber once / red per-day / overdue once, RLS service-only) +
+  `deadline_notify_tick()` (SECURITY DEFINER; зоны: overdue < 0, red ≤ urgentDays,
+  amber ≤ warningDays; days_left в МСК; дефолты 3/1 при отсутствии level;
+  NULL signals → workspace пропущен). Emit: `enrichment_queue alert_type=deadline_approaching`
+  с `task_id, full_id, hours_left, level, created_by, assigned_to`.
+- **Cron `deadline-notify-tick`** `0 6 * * *` UTC = 09:00 МСК, jobid 31, зарегистрирован
+  вручную (роль миграций без прав на cron.job).
+- **bot-notify (деплой через CLI, verify_jwt off):** обработчик `processDeadlineNotification`
+  — `resolveTaskRecipients({preferCreator:true, alsoAssignee: assigned_to})` → DM постановщик +
+  исполнитель; контекст `deadline_overdue` при `level='overdue'` ИЛИ `hours_left < 0`
+  (дедлайн сегодня утром до тика); reply-маппинг в `bot_task_messages` (FILE-02).
+- **Фикс off:** `PUT /api/workspaces` — `[]` → `deadline_signals = NULL`;
+  `BoardViewEdit` — отправляет `[]`; `POST` — `null` вместо `defaultDeadlineSignals`
+  (удалён). `hasSignals` на `/board/[slug]` уже трактовал NULL как off.
+- **Валидация:** type-check 0 ошибок; тесты 95 passed / 4 failed — pre-existing
+  `tests/api/init.test.ts` (документировано в activeContext 2026-09-18);
+  e2e: `deadline_notify_tick()` дважды → 6/0/0 (дедуп работает); синтетический
+  job deadline_approaching → done + DM доставлен (`bot_task_messages` chat 425693173).
+  ⚠️ Первый тик эмитнул 6 уведомлений до деплоя нового bot-notify — старая версия
+  разово отправила их broadcast'ом в чаты (не в DM). Разовый эффект, не баг.
+
+**Отложено:** подключить пороги светофора к `UrgencyBadge`/`lib/urgency.ts`
+(хардкод 24ч/48ч; записано в TASKS.md BOT-11 отложенно).
+
+retry_count: 0. Блокеров нет.
+
+---
+
 ## PERF: холодный старт TWA — пакет P0 (2026-09-18) ✅ (нужна проверка на preview)
 
 **Диагноз.** Долгая загрузка складывалась из четырёх независимых причин:

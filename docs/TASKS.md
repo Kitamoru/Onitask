@@ -414,6 +414,14 @@ format is deliberately compact so that agents can load the file quickly.
       bot_.md §5.6. Блок 📥: `is_inbox=true AND created_at < NOW() - INTERVAL '24 hours'`, макс. 3 задачи с deep link.
 - [ ] BOT-10 Bot Notify Worker (Edge Function `bot-notify`, DB Webhook + hourly cron fallback, retry/backoff при 429) #bot !high @blocked_by:DB-16,DB-14
       bot_.md §6.5.
+- [x] BOT-11 Сигналы светофора → TG-уведомления (миг. 090, cron `deadline-notify-tick` 09:00 МСК) #bot #db !med
+      Дедуп `task_deadline_notifications` (amber once / red daily / overdue once);
+      тик `deadline_notify_tick()` → `enrichment_queue alert_type=deadline_approaching`;
+      bot-notify: DM постановщик + исполнитель (`resolveTaskRecipients` + alsoAssignee),
+      контекст `deadline_overdue` для `hours_left < 0`.
+      Фикс выключения светофора: `PUT/POST /api/workspaces` — пустой массив/undefined → NULL
+      (раньше off не сохранялся, POST навязывал дефолт 3/1).
+      Отложено: подключить пороги светофора к `UrgencyBadge`/`lib/urgency.ts` (сейчас хардкод 24ч/48ч).
 
 ---
 

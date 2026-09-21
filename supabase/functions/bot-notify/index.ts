@@ -124,6 +124,8 @@ async function processJob(job: {
       await processTaskStartedNotification(job);
     } else if (alertType === 'task_review') {
       await processTaskReviewNotification(job);
+    } else if (alertType === 'deadline_approaching') {
+      await processDeadlineNotification(job);
     } else if (
       alertType === 'task_assignment' ||
       alertType === 'member_added'
@@ -215,6 +217,59 @@ async function processPersonalNotification(
         [{ text: 'Открыть доску', url: miniAppDeepLink() }],
       ],
     });
+  }
+}
+
+// ============================================================================
+// deadline_approaching — DM постановщику + исполнителю (миг. 090, светофор).
+// Дедуп на стороне эмиттера (task_deadline_notifications), здесь — доставка.
+// ============================================================================
+
+async function processDeadlineNotification(job: {
+  id: string;
+  workspace_id: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const recipients = await resolveTaskRecipients(job, {
+    preferReviewer: false,
+    preferCreator: true,
+    // Постановщик + исполнитель (аналог done_approved, миг. 086)
+    alsoAssignee: job.payload.assigned_to as string | undefined,
+  });
+  if (!recipients.length) {
+    console.error(
+      `[bot-notify] Job ${job.id}: no recipient telegram_id for deadline_approaching (created_by=${job.payload.created_by ?? 'none'}, assigned_to=${job.payload.assigned_to ?? 'none'})`
+    );
+    return;
+  }
+
+  const card = await buildTaskCardData(job, {});
+  // overdue: явный level ИЛИ дедлайн уже прошёл (hours_left < 0 — тик 09:00,
+  // а дедлайн был сегодня утром) → заголовок «Дедлайн пропущен», не «скоро».
+  const hoursLeft = job.payload.hours_left as number | undefined;
+  const overdue =
+    (job.payload.level as string) === 'overdue' || (hoursLeft ?? 0) < 0;
+  const taskCard = buildTaskNotifyCard(
+    card,
+    overdue ? 'deadline_overdue' : 'deadline',
+    { hoursLeft }
+  );
+
+  for (const telegramId of recipients) {
+    const messageId = await sendTelegramMessage(
+      telegramId,
+      taskCard.text,
+      taskCard.replyMarkup
+    );
+    // FILE-02: reply-маппинг message_id → task_id
+    if (messageId) {
+      await rememberBotTaskMessage({
+        taskId: job.payload.task_id as string,
+        workspaceId: job.workspace_id,
+        chatId: telegramId,
+        messageId,
+      });
+    }
   }
 }
 

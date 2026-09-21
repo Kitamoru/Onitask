@@ -282,7 +282,7 @@ export function BoardViewEdit({
                 { value: warningDays, label: `${warningDays} ${labelDays(warningDays)}` },
                 { value: urgentDays, label: `${urgentDays} ${labelDays(urgentDays)}` },
               ]
-            : [{ value: 3, label: '3 дня' }, { value: 1, label: '1 день' }],
+            : [],
           story_points_config: {
             enabled: spCostEnabled,
             sprint_enabled: spSprintEnabled,

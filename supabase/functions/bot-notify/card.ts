@@ -37,6 +37,7 @@ export type NotifyContext =
   | 'escalation'
   | 'escalation_resolved'
   | 'deadline'
+  | 'deadline_overdue'
   | 'unblocked'
   | 'cascade'
   | 'handoff';
@@ -155,6 +156,8 @@ export function buildHeader(context: NotifyContext, fullId: string): string {
       return `✅ Эскалация <b>${id}</b> снята`;
     case 'deadline':
       return `📅 Дедлайн скоро · <b>${id}</b>`;
+    case 'deadline_overdue':
+      return `🔴 Дедлайн пропущен · <b>${id}</b>`;
     case 'unblocked':
       return `🔓 Задача <b>${id}</b> разблокирована`;
     case 'cascade':
@@ -213,9 +216,15 @@ export function buildTaskNotifyCard(
     extraLines.push(`Результат: ${escapeHtml(extras.reason)}`);
   }
 
-  if (context === 'deadline' && extras?.hoursLeft != null) {
+  if (
+    (context === 'deadline' || context === 'deadline_overdue') &&
+    extras?.hoursLeft != null
+  ) {
+    const h = extras.hoursLeft;
     extraLines.push('');
-    extraLines.push(`Осталось ~${extras.hoursLeft}ч`);
+    extraLines.push(
+      h >= 0 ? `Осталось ~${h}ч` : `Просрочено на ~${Math.abs(h)}ч`
+    );
   }
   if (context === 'escalation_resolved') {
     extraLines.push('');

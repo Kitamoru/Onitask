@@ -192,13 +192,18 @@ export async function PUT(req: NextRequest) {
     }
 
     // 4c. Update workspace_settings.deadline_signals if provided
-    //     Always include `level` field (amber/red) per migration 007 spec
-    if (deadline_signals && deadline_signals.length > 0) {
+    //     Always include `level` field (amber/red) per migration 007 spec.
+    //     Пустой массив = светофор выключен → NULL (deadline_notify_tick
+    //     пропускает workspace с NULL). Фикс: раньше off не сохранялся.
+    if (deadline_signals !== undefined) {
       await ensureSettings();
-      const signalsWithLevel = deadline_signals.map((s, idx) => ({
-        ...s,
-        level: (s as any).level || (idx === 0 ? 'amber' : 'red'),
-      }));
+      const signalsWithLevel =
+        deadline_signals.length > 0
+          ? deadline_signals.map((s, idx) => ({
+              ...s,
+              level: (s as any).level || (idx === 0 ? 'amber' : 'red'),
+            }))
+          : null;
       const { error: signalsError } = await anySupabase
         .from('workspace_settings')
         .update({ deadline_signals: signalsWithLevel })
@@ -646,10 +651,6 @@ export async function POST(req: NextRequest) {
 
       // 5. Create workspace_settings with form-provided configuration
       const spConfig = story_points_config || { enabled: false };
-      const defaultDeadlineSignals = [
-        { value: 3, label: '3 дня', level: 'amber' as const },
-        { value: 1, label: '1 день', level: 'red' as const },
-      ];
 
       // Upsert (not insert): the init_workspace_settings() trigger (migration
       // 078) may have already created the row with defaults during the
@@ -669,7 +670,7 @@ export async function POST(req: NextRequest) {
           workspace_context: workspace_context ?? null,
           deadline_signals: deadline_signals && deadline_signals.length > 0
             ? deadline_signals.map((s, idx) => ({ ...s, level: (s as any).level || (idx === 0 ? 'amber' : 'red') }))
-            : defaultDeadlineSignals,
+            : null,
           velocity_window_days: 14,
           flow_config: {},
           realtime_subscription_level: 'own_tasks',
