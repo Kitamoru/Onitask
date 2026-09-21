@@ -210,6 +210,11 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] FLOW-10 Stream — персональная лента (Фокус/В работе/На проверке/Надо сделать/Черновики) #ui !med ✅
       Реализовано: `src/components/stream/StreamView.tsx` + интеграция в `src/app/flowboard/page.tsx` (view=stream).
       Группировка задач по колонкам с groupByColumn, отображение статусов.
+- [x] STREAM-01 Персональный фильтр задач в Stream (assigned/created/reviewer/handoff) #ui !med ✅
+      Лента показывает только свои задачи: `assigned_to`, `created_by`, `reviewer_id`, `handoff_to` = текущий
+      пользователь (owner/admin без исключений — «все задачи» во flowboard). Реализовано: `src/lib/streamFilter.ts`
+      (`filterTasksForUser`) + `useMemo` в `flowboard/page.tsx`, StreamView получает отфильтрованный `streamTasks`.
+      Тесты: `tests/lib/streamFilter.test.ts` (11). Boot-фаза без userId — без фильтра.
 - [x] FLOW-11 `SprintCloseWizard.tsx` + переход `sprint.status→completed` #ui !med @blocked_by:FLOW-05
       product_vision US-06 (AC-06-1…3). Триггер `trg_context_invalidate_sprints` (Master §6.16) реагирует на событие.
       Реализовано в текущем уровне готовности: DELETE /api/sprints/[id] (complete), PATCH /api/sprints/[id]/activate.
