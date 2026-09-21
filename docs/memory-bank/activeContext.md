@@ -30,8 +30,19 @@
   ⚠️ Первый тик эмитнул 6 уведомлений до деплоя нового bot-notify — старая версия
   разово отправила их broadcast'ом в чаты (не в DM). Разовый эффект, не баг.
 
-**Отложено:** подключить пороги светофора к `UrgencyBadge`/`lib/urgency.ts`
-(хардкод 24ч/48ч; записано в TASKS.md BOT-11 отложенно).
+**Отложено → доделано (2026-09-21):** пороги светофора подключены к UI и формат бота.
+- `src/lib/urgency.ts` переписан: `getUrgencyLevel` / `thresholdsFromSignals` /
+  `pluralDaysRu` — зоны идентичны `deadline_notify_tick` (миг. 090), дефолты 3/1.
+- `UrgencyBadge` — новый проп `thresholds` (дефолт — миграция 007); red ≤ urgentDays,
+  amber ≤ warningDays (раньше хардкод 24ч/48ч); подписи «Критично: Nд»/«Срок: Nд»
+  вместо часов за пределами суток.
+- `StreamView` — новые пропсы `workspaceId`/`initData`, лениво грузит
+  `POST /api/workspaces/[id]/settings` и передаёт пороги во все `TaskCard`;
+  при ошибке — тихий фолбэк на дефолты. `flowboard/page.tsx` прокидывает пропсы.
+- bot-notify `card.ts`: `formatRemaining` — ≥24ч → дни с плюрализацией
+  («Просрочено на ~10 дней» вместо «~240ч»), <24ч — часы. Задеплоено (CLI).
+- Валидация: type-check 0; тесты 98 passed / 4 failed (pre-existing init.test.ts);
+  тесты карточки 15/15, включая 3 новых на формат дней.
 
 retry_count: 0. Блокеров нет.
 

@@ -517,6 +517,8 @@ function FlowBoardPageContent() {
           onMoveTask={handleMoveTask}
           onTaskTap={handleTaskTap}
           onToggleView={toggleView}
+          workspaceId={state.activeWorkspaceId}
+          initData={tgInitData}
         />
       ) : (
         <FlowBoard

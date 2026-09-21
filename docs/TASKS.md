@@ -421,7 +421,11 @@ format is deliberately compact so that agents can load the file quickly.
       контекст `deadline_overdue` для `hours_left < 0`.
       Фикс выключения светофора: `PUT/POST /api/workspaces` — пустой массив/undefined → NULL
       (раньше off не сохранялся, POST навязывал дефолт 3/1).
-      Отложено: подключить пороги светофора к `UrgencyBadge`/`lib/urgency.ts` (сейчас хардкод 24ч/48ч).
+      Отложено → сделано: пороги светофора подключены к `UrgencyBadge` (пропс `thresholds`,
+      дефолт 3/1) через `src/lib/urgency.ts` (`getUrgencyLevel`, `thresholdsFromSignals`,
+      зоны = зонам `deadline_notify_tick`); StreamView лениво тянет настройки доски.
+      В bot-notify `hours_left` ≥ 24ч рендерится в днях с плюрализацией
+      («Просрочено на ~10 дней» вместо «~240ч»).
 
 ---
 

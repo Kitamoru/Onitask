@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { IconChevronDown } from '@tabler/icons-react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
@@ -8,6 +8,11 @@ import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
 import type { TaskEntity } from '@/types/flowboard';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
+import {
+  DEFAULT_DEADLINE_THRESHOLDS,
+  thresholdsFromSignals,
+  type DeadlineThresholds,
+} from '@/lib/urgency';
 
 // ─── Avatar placeholder helper ────────────────────────────────────────────────
 // Square avatar: gray border, dark bg, first letter of worker display name
@@ -101,6 +106,10 @@ export interface StreamViewProps {
   onTaskTap?: (taskId: string) => void;
   /** Toggle between flowboard and stream views */
   onToggleView?: () => void;
+  /** Активный workspace — для ленивой загрузки порогов светофора (BOT-11). */
+  workspaceId?: string | null;
+  /** Telegram initData — auth для запроса настроек. */
+  initData?: string | null;
 }
 
 // ─── Column grouping helpers ─────────────────────────────────────────────────
@@ -158,7 +167,16 @@ function LayoutListIcon() {
  *   4. svetofor-accent-light SVG decoration (bottom)
  *   5. ref-bg-shape-inner SVG decoration (bottom)
  */
-export function TaskCard({ task, onClick }: { task: TaskEntity; onClick?: () => void }) {
+export function TaskCard({
+  task,
+  onClick,
+  thresholds = DEFAULT_DEADLINE_THRESHOLDS,
+}: {
+  task: TaskEntity;
+  onClick?: () => void;
+  /** Пороги светофора из настроек доски (BOT-11); дефолт — миграция 007. */
+  thresholds?: DeadlineThresholds;
+}) {
   const priorityColor =
     task.priority === 'critical' || task.priority === 'high'
       ? 'red'
@@ -299,8 +317,10 @@ export function TaskCard({ task, onClick }: { task: TaskEntity; onClick?: () => 
           </span>
         ))}
 
-        {/* Urgency badge */}
-        {task.deadline && <UrgencyBadge deadline={task.deadline} size="sm" />}
+        {/* Urgency badge — зоны из настроек доски (светофор) */}
+        {task.deadline && (
+          <UrgencyBadge deadline={task.deadline} size="sm" thresholds={thresholds} />
+        )}
       </div>
 
       {/* 3. footer — avatars left, deadline right (space-between) */}
@@ -432,8 +452,41 @@ export function StreamView({
   onMoveTask,
   onTaskTap,
   onToggleView,
+  workspaceId,
+  initData,
 }: StreamViewProps) {
   const grouped = useMemo(() => groupByColumn(tasks), [tasks]);
+
+  // Пороги светофора (BOT-11): лениво тянем настройки доски; до загрузки —
+  // дефолты миграции 007 (3/1). Ошибка загрузки → тихо остаёмся на дефолтах.
+  const [thresholds, setThresholds] = useState<DeadlineThresholds>(
+    DEFAULT_DEADLINE_THRESHOLDS,
+  );
+
+  useEffect(() => {
+    if (!workspaceId || !initData) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled || !json?.success) return;
+        setThresholds(
+          thresholdsFromSignals(json.data?.workspace_settings?.deadline_signals),
+        );
+      } catch {
+        // Тихий фолбэк на дефолтные пороги — бейдж не критичен для UX
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, initData]);
 
   const inProgressTasks = useMemo(() => grouped.get('in_progress') ?? [], [grouped]);
   const reviewTasks = useMemo(() => grouped.get('review') ?? [], [grouped]);
@@ -603,7 +656,7 @@ export function StreamView({
         accentColor={COLUMN_ACCENTS.in_progress}
       >
         {inProgressTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} />
         ))}
       </AccordionSection>
 
@@ -615,7 +668,7 @@ export function StreamView({
         accentColor={COLUMN_ACCENTS.backlog}
       >
         {backlogTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} />
         ))}
       </AccordionSection>
 
@@ -627,7 +680,7 @@ export function StreamView({
         accentColor={COLUMN_ACCENTS.review}
       >
         {reviewTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} />
         ))}
       </AccordionSection>
 
@@ -639,7 +692,7 @@ export function StreamView({
         accentColor={COLUMN_ACCENTS.done}
       >
         {doneTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} />
         ))}
       </AccordionSection>
 

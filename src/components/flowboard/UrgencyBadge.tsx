@@ -1,46 +1,55 @@
 'use client';
 
+import {
+  DEFAULT_DEADLINE_THRESHOLDS,
+  getUrgencyLevel,
+  type DeadlineThresholds,
+} from '@/lib/urgency';
+
 /**
  * UrgencyBadge — traffic light indicator based on deadline proximity (FLOW-07).
  *
- * Colors:
- *   - red: deadline passed or within 24 hours
- *   - amber: deadline within 48 hours
- *   - green: deadline further away or no deadline
+ * Zones are driven by the workspace «сигналы светофора» thresholds
+ * (workspace_settings.deadline_signals, миг. 007; defaults 3/1):
+ *   - red:   deadline passed or within urgentDays
+ *   - amber: deadline within warningDays
+ *   - green: deadline further away
  *
- * Based on: product_vision US-04, TASKS.md Stage 4 FLOW-07
+ * Based on: product_vision US-04, TASKS.md Stage 4 FLOW-07, BOT-11 (пороги).
  */
 
 interface UrgencyBadgeProps {
   deadline: string | null;
   size?: 'sm' | 'md' | 'lg';
+  /** Пороги светофора из настроек доски; по умолчанию — дефолты миграции 007. */
+  thresholds?: DeadlineThresholds;
 }
 
-export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
+export function UrgencyBadge({
+  deadline,
+  size = 'sm',
+  thresholds = DEFAULT_DEADLINE_THRESHOLDS,
+}: UrgencyBadgeProps) {
   if (!deadline) return null;
 
-  const now = new Date();
   const dl = new Date(deadline);
-  const diffMs = dl.getTime() - now.getTime();
+  const diffMs = dl.getTime() - Date.now();
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  let color: 'red' | 'amber' | 'green';
-  let label: string;
+  const color = getUrgencyLevel(deadline, thresholds);
+  if (!color) return null;
 
+  let label: string;
   if (diffMs <= 0) {
-    color = 'red';
     const diffDays = Math.abs(diffHours) / 24;
     label = diffDays >= 1 ? `Просрочено на ${Math.floor(diffDays)}д` : 'Просрочено';
-  } else if (diffHours <= 24) {
-    color = 'red';
-    label = `Критично: ${Math.floor(diffHours)}ч`;
-  } else if (diffHours <= 48) {
-    color = 'amber';
-    label = `Срок: ${Math.floor(diffHours)}ч`;
+  } else if (color === 'red') {
+    label =
+      diffHours < 24 ? `Критично: ${Math.floor(diffHours)}ч` : `Критично: ${Math.floor(diffHours / 24)}д`;
+  } else if (color === 'amber') {
+    label = `Срок: ${Math.floor(diffHours / 24)}д`;
   } else {
-    color = 'green';
-    const diffDays = diffHours / 24;
-    label = `Через ${Math.ceil(diffDays)}д`;
+    label = `Через ${Math.ceil(diffHours / 24)}д`;
   }
 
   const sizeMap = {
@@ -100,17 +109,12 @@ export function UrgencyBadge({ deadline, size = 'sm' }: UrgencyBadgeProps) {
 }
 
 /**
- * getUrgencyColor — utility to compute urgency color from a deadline string.
+ * getUrgencyColor — utility to compute urgency color from a deadline string
+ * using the workspace traffic-light thresholds (defaults 3/1).
  */
-export function getUrgencyColor(deadline: string | null): 'red' | 'amber' | 'green' | null {
-  if (!deadline) return null;
-
-  const now = new Date();
-  const dl = new Date(deadline);
-  const diffMs = dl.getTime() - now.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-
-  if (diffMs <= 0 || diffHours <= 24) return 'red';
-  if (diffHours <= 48) return 'amber';
-  return 'green';
+export function getUrgencyColor(
+  deadline: string | null,
+  thresholds: DeadlineThresholds = DEFAULT_DEADLINE_THRESHOLDS,
+): 'red' | 'amber' | 'green' | null {
+  return getUrgencyLevel(deadline, thresholds);
 }

@@ -59,6 +59,34 @@ describe('bot-notify card: done vs done_approved (086)', () => {
   });
 });
 
+describe('bot-notify card: deadline форматирование (BOT-11)', () => {
+  it('overdue ≥ 24ч — дни с плюрализацией, не часы', () => {
+    const res = buildTaskNotifyCard(
+      makeCard({ column: 'in_progress' }),
+      'deadline_overdue',
+      { hoursLeft: -240 },
+    );
+    expect(res.text).toContain('🔴 Дедлайн пропущен · <b>ONI-42</b>');
+    expect(res.text).toContain('Просрочено на ~10 дней');
+    expect(res.text).not.toContain('240');
+  });
+
+  it('< 24ч — часы', () => {
+    const res = buildTaskNotifyCard(makeCard({ column: 'in_progress' }), 'deadline', {
+      hoursLeft: 5,
+    });
+    expect(res.text).toContain('📅 Дедлайн скоро · <b>ONI-42</b>');
+    expect(res.text).toContain('Осталось ~5ч');
+  });
+
+  it('24–48ч — «~2 дня» (плюрализация дня/дня/дней)', () => {
+    const res = buildTaskNotifyCard(makeCard({ column: 'in_progress' }), 'deadline', {
+      hoursLeft: 48,
+    });
+    expect(res.text).toContain('Осталось ~2 дня');
+  });
+});
+
 describe('bot-notify card: регрессии контекстов', () => {
   it('review: клавиатура согласовать/вернуть + подсказка', () => {
     const res = buildTaskNotifyCard(

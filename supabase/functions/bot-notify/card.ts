@@ -78,6 +78,28 @@ function isLowClarity(card: TaskCardData): boolean {
   return card.clarityScore != null && card.clarityScore < LOW_CLARITY_THRESHOLD;
 }
 
+/**
+ * Человекочитаемый остаток/просрочка дедлайна (BOT-11):
+ * ≥ 24 часов → дни с русской плюрализацией («~10 дней»), иначе часы («~5ч»).
+ */
+export function formatRemaining(hours: number): string {
+  const abs = Math.abs(hours);
+  if (abs >= 24) {
+    const days = Math.round(abs / 24);
+    return `~${days} ${pluralDaysRu(days)}`;
+  }
+  return `~${abs}ч`;
+}
+
+/** Русская плюрализация: 1 день / 2–4 дня / 5+ дней. */
+export function pluralDaysRu(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'дня';
+  return 'дней';
+}
+
 /** display_name → @username (Telegram auto-links) */
 function formatPersonMention(name: string | null): string {
   if (!name) return '—';
@@ -223,7 +245,7 @@ export function buildTaskNotifyCard(
     const h = extras.hoursLeft;
     extraLines.push('');
     extraLines.push(
-      h >= 0 ? `Осталось ~${h}ч` : `Просрочено на ~${Math.abs(h)}ч`
+      h >= 0 ? `Осталось ${formatRemaining(h)}` : `Просрочено на ${formatRemaining(h)}`
     );
   }
   if (context === 'escalation_resolved') {
