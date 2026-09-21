@@ -20,6 +20,7 @@ import { BOARD_COUNTS_QUERY_KEY } from '@/lib/api/boardCounts';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
+import { filterTasksForUser } from '@/lib/streamFilter';
 import { formatWorkerRole } from '@/lib/roles';
 
 // Сброс скролла при переходе на страницу
@@ -95,6 +96,15 @@ function FlowBoardPageContent() {
 
   const metrics = state.metrics.data;
   const tasks = state.tasks.items;
+
+  // STREAM-01: персональный фильтр — stream показывает только задачи, созданные
+  // пользователем, назначенные ему, на проверке у него (reviewer) или переданные
+  // ему (handoff). FlowBoard по-прежнему получает весь список доски.
+  const currentUserId = authData?.worker?.id;
+  const streamTasks = useMemo(
+    () => filterTasksForUser(tasks, currentUserId),
+    [tasks, currentUserId],
+  );
 
   // Open task from Telegram deep link: ?open_task=TASK-42
   // After data loads, find the task by full_id and open TaskViewEdit sheet, then clean URL.
@@ -507,7 +517,7 @@ function FlowBoardPageContent() {
       {isStreamView ? (
         <StreamView
           key={state.activeWorkspaceId || 'default'}
-          tasks={tasks}
+          tasks={streamTasks}
           currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
           cognitiveWeight={0}
           loadStatus="Свободен"
