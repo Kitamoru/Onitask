@@ -422,16 +422,18 @@ export function BottomSheet({
             // Потолок высоты шторки: живая высота видимой области
             // (--sheet-viewport-height = tg.viewportHeight, уже с учётом
             // клавиатуры — вычитать высоту клавиатуры отдельно не нужно)
-            // минус резерв сверху, чтобы верх шторки не пересекал шапку
-            // Telegram; 24px — минимум, пока content-safe-top не готов.
-            // min(85vh, …) нужен на iOS: там vh считается от layout-viewport
-            // и не сжимается вместе с клавиатурой — живая переменная снимает
-            // это в обе стороны.
+            // минус резерв сверху 142px, чтобы верх шторки никогда не
+            // пересекал шапку Telegram даже при открытой клавиатуре
+            // (без него при сжатии viewportHeight верх улетает под шапку);
+            // content-safe-top участвует через max() на случай, когда он
+            // больше. min(85vh, …) нужен на iOS: там vh считается от
+            // layout-viewport и не сжимается вместе с клавиатурой — живая
+            // переменная снимает это в обе стороны.
             // --sheet-max-h — тот же потолок, опубликованный для контента
             // (см. SHEET_CONTENT_MAX_HEIGHT): вложенные зоны считают от него
             // свою высоту/потолок, не дублируя формулу и не отставая от
             // клавиатуры (высота обновляется мгновенно по viewportChanged).
-            '--sheet-max-h': 'min(85vh, calc(var(--sheet-viewport-height, 100vh) - max(var(--tg-content-safe-top, 0px), 24px)))',
+            '--sheet-max-h': 'min(85vh, calc(var(--sheet-viewport-height, 100vh) - max(142px, var(--tg-content-safe-top, 0px))))',
             maxHeight: 'var(--sheet-max-h)',
             clipPath: 'polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%, 0 16px)',
             willChange: 'transform',
