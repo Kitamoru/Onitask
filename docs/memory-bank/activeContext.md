@@ -1499,3 +1499,31 @@ sticky-шапки липнут на `top: SHEET_CHROME_HEIGHT_PX`, а сама �
   SSG error in /api/bot/webhook, env, unrelated); tests 109 passed / 4 pre-existing
   init.test.ts failures (unrelated). Zero new failures.
 - Files: src/components/shared/TelegramThemeProvider.tsx, src/app/globals.css, src/app/layout.tsx
+
+---
+
+## THEME-02: слой --tg-theme-* удалён — design-токены = единственный источник цветов
+- Симптом (регресс поверх THEME-01): переключение Telegram в светлую тему снова красило
+  app bg + BottomMenu в белый. Root cause: SDK (telegram-web-app.js) пишет --tg-theme-*
+  как inline-стили на documentElement и ПЕРЕЗАПИСЫВАЕТ их на каждый themeChanged —
+  побеждая и :root-дефолты globals.css, и mount-time hardening провайдера
+  (last-writer-wins). Холодный старт в светлой теме тоже был уязвим (SDK грузится
+  afterInteractive после эффекта провайдера).
+- Решение (omnidesign, dark-only): слой индирекции убран полностью, по построению.
+  118 замен `var(--tg-theme-X, FALLBACK)` → `FALLBACK` (12 уникальных паттернов,
+  codemod с балансировкой скобок): tailwind.config.ts (7 токенов → прямые --color-*),
+  globals.css (.tg-webapp body, rdp-классы, удалён :root-блок из 11 --tg-theme-*),
+  inline styles в ~20 файлах (boards / calendar×7 / settings / mcp / flowboard /
+  stream / board/[slug]). Провайдер: удалён мёртвый hardening-блок; setHeaderColor/
+  setBackgroundColor теперь ре-применяются в handleThemeChanged (native chrome —
+  API, не CSS; часть клиентов сбрасывает его при смене темы).
+- Валидация: grep-гейт `var(--tg-theme` в src/ + tailwind.config = 0 (осталось 3
+  упоминания в комментариях-истории); type-check — clean; vitest 109 passed / 4
+  pre-existing init.test.ts (env); lint — pre-existing crash @rushstack/eslint-patch
+  × ESLint 9.39 (не запускался и до); build — pre-existing Invalid supabaseUrl на
+  /api/bot/webhook (env), остальное компилируется. Runtime: SDK физически не может
+  повлиять на цвета — переменных больше нет. Проверка переключения темы в TWA —
+  визуально, за владельцем.
+- Files: tailwind.config.ts, src/app/globals.css,
+  src/components/shared/TelegramThemeProvider.tsx, 13 файлов страниц/компонентов
+  (массовая замена), эта запись.

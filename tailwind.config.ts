@@ -16,30 +16,30 @@ const config: Config = {
       },
       colors: {
         // Base background colors (used directly via CSS variables)
-        "primary-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
+        "primary-dark": "var(--color-bg-primary-dark, #0A0A0A)",
         "bg": "var(--color-bg, #0a0a0a)",
-        "bg-dark": "var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))",
-        surface: "var(--tg-theme-secondary-bg-color, var(--tg-theme-section-bg-color, var(--color-surface, #101010)))",
+        "bg-dark": "var(--color-bg-primary-dark, #0A0A0A)",
+        surface: "var(--color-surface, #101010)",
         "surface-hover": "var(--color-bg-surface-hover, #2A2A2A)",
         "bg-light": "var(--color-bg-light, #FAFAFA)",
 
         // Text
-        "text-primary": "var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))",
-        text: "var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))",
-        "text-muted": "var(--tg-theme-hint-color, var(--color-text-muted, #8B8B8B))",
-        "text-faint": "var(--tg-theme-hint-color, var(--color-text-muted, #8B8B8B))",
-        "text-secondary": "var(--tg-theme-section-header-text-color, var(--color-text-secondary, #808080))",
-        "text-subtle": "var(--tg-theme-subtitle-text-color, var(--color-text-muted, #8B8B8B))",
+        "text-primary": "var(--color-text-primary, #FAFAFA)",
+        text: "var(--color-text-primary, #FAFAFA)",
+        "text-muted": "var(--color-text-muted, #8B8B8B)",
+        "text-faint": "var(--color-text-muted, #8B8B8B)",
+        "text-secondary": "var(--color-text-secondary, #808080)",
+        "text-subtle": "var(--color-text-muted, #8B8B8B)",
 
         // Accent
         "accent-amber": "var(--color-accent-amber, #ff9900)",
-        accent: "var(--tg-theme-button-color, var(--color-accent-amber, #ff9900))",
+        accent: "var(--color-accent-amber, #ff9900)",
         "accent-amber-subtle": "var(--color-accent-amber-subtle, rgba(255, 153, 0, 0.1))",
         "accent-ink": "#0A0A0A",
-        "accent-button-text": "var(--tg-theme-button-text-color, var(--color-text-white, #FFFFFF))",
+        "accent-button-text": "var(--color-text-white, #FFFFFF)",
 
         // Error
-        error: "var(--tg-theme-destructive-text-color, var(--color-error, #EF4444))",
+        error: "var(--color-error, #EF4444)",
 
         // Signal colors
         "signal-yellow": "var(--color-signal-yellow, #F59E0B)",

@@ -81,7 +81,7 @@ export default function BoardsPage() {
     counts?.riskData ?? { people: 0, processes: 0, escalations: 0 };
 
   // ── Auth loading ────────────────────────────────────────────────────────
-  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+  const bgStyle = { background: 'var(--color-bg-primary-dark, #0A0A0A)' };
 
   if (authLoading) {
     return (
@@ -144,7 +144,7 @@ export default function BoardsPage() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
-        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
+        background: 'var(--color-bg-primary-dark, #0A0A0A)',
         paddingTop: "max(64px, var(--tg-content-safe-top, 0px))",
         paddingBottom: "calc(var(--size-bottom-menu-height) + 16px)",
       }}

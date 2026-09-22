@@ -16,12 +16,14 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
  * Must wrap the app tree (used in layout.tsx) so all child components
  * can access the current Telegram theme values.
  *
- * OMNIDESIGN: Onitask is dark-only by design (Figma-spec §13 note 10:
- * "Тёмная тема — единственная. Нет светлой темы"). We deliberately do NOT
- * copy tg.themeParams into CSS variables — forwarding only a subset of tokens
- * broke the layout under Telegram's light theme (light bg/text + invisible
- * white borders + dark surface blocks). All --tg-theme-* vars already default
- * to the dark design tokens in :root, so nothing is overridden here.
+ * OMNIDESIGN (THEME-02): Onitask is dark-only by design (Figma-spec §13 note 10:
+ * "Тёмная тема — единственная. Нет светлой темы"). The --tg-theme-* CSS
+ * indirection layer has been REMOVED — the Telegram SDK writes those variables
+ * as inline styles on <html> and re-applies them on every themeChanged event,
+ * which flipped the whole app to Telegram's light palette. Components now read
+ * the dark --color-* design tokens directly, so theme switching cannot affect
+ * the layout. Only viewport/safe-area integration and native chrome colors
+ * remain here.
  */
 
 interface TelegramThemeContextValue {
@@ -76,7 +78,7 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
     const htmlEl = document.documentElement;
 
     // Omnidesign: keep the context locked to the dark design tokens. We do NOT
-    // read tg.themeParams here so the layout never switches to a light palette.
+    // read tg.themeParams here — all colors come from the dark --color-* tokens.
     const value: TelegramThemeContextValue = {
       isAvailable: true,
       bgColor: DEFAULT_CONTEXT.bgColor,
@@ -114,9 +116,15 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
     contextValueRef.current = value;
     setContextValue(value);
 
-    // Subscribe to theme changes — omnidesign: intentionally a no-op for colors.
-    // The layout must stay dark regardless of Telegram's light/dark theme.
+    // Subscribe to theme changes — omnidesign: colors are intentionally
+    // unaffected (dark-only design tokens; no --tg-theme-* vars exist anymore).
+    // Some Telegram clients reset the native chrome to the theme color on
+    // themeChanged, so re-assert dark header/background to avoid a light strip
+    // above the webview.
     const handleThemeChanged = () => {
+      tg.setHeaderColor?.('#0a0a0a');
+      tg.setBackgroundColor?.('#0a0a0a');
+
       const newValue: TelegramThemeContextValue = {
         isAvailable: true,
         bgColor: DEFAULT_CONTEXT.bgColor,

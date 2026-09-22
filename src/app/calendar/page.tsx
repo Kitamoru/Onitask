@@ -229,7 +229,7 @@ function CalendarContent() {
     }
   }
 
-  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+  const bgStyle = { background: 'var(--color-bg-primary-dark, #0A0A0A)' };
 
   // Loading state while auth or workspace is loading
   if (authLoading || (!workspaceId && !state.tasks.items.length)) {
@@ -420,7 +420,7 @@ function CalendarContent() {
             style={{
               maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - 16px)',
               overflowY: 'auto',
-              background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
+              background: 'var(--color-bg-primary-dark, #0A0A0A)',
             }}
           >
             {/* Header */}

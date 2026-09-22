@@ -227,7 +227,7 @@ export default function BoardDetailPage() {
     loadData();
   }, [authLoading, authError, authData, slug, router]);
 
-  const bgStyle = { background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' };
+  const bgStyle = { background: 'var(--color-bg-primary-dark, #0A0A0A)' };
 
   if (authLoading || loading) {
     return (

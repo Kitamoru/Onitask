@@ -70,13 +70,13 @@ export function ListView({
         <span className="text-4xl mb-3">📋</span>
         <p
           className="text-body-sm font-medium"
-          style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+          style={{ color: 'var(--color-text-primary)' }}
         >
           Нет предстоящих событий
         </p>
         <p
           className="text-body-xs mt-1"
-          style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+          style={{ color: 'var(--color-text-muted)' }}
         >
           События появятся здесь после синхронизации
         </p>
@@ -98,14 +98,14 @@ export function ListView({
                 border-b
               "
               style={{
-                backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-dark))',
-                borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                backgroundColor: 'var(--color-bg-dark)',
+                borderColor: 'var(--color-border-default)',
               }}
             >
               <span
                 className="text-body-sm font-semibold"
                 style={{
-                  color: 'var(--tg-theme-text-color, var(--color-text-primary))',
+                  color: 'var(--color-text-primary)',
                 }}
               >
                 {formatDateGroupLabel(groupDate)}
@@ -113,7 +113,7 @@ export function ListView({
               <span
                 className="text-body-xs ml-2"
                 style={{
-                  color: 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                  color: 'var(--color-text-muted)',
                 }}
               >
                 {groupEvents.length} {getEventCountWord(groupEvents.length)}
@@ -133,7 +133,7 @@ export function ListView({
                     hover:bg-surface-hover
                   "
                   style={{
-                    backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+                    backgroundColor: 'var(--color-bg-surface)',
                     borderLeft: `3px solid ${getProviderColor(event.provider)}`,
                   }}
                 >
@@ -143,7 +143,7 @@ export function ListView({
                       <span
                         className="text-body-sm font-semibold"
                         style={{
-                          color: 'var(--tg-theme-text-color, var(--color-text-primary))',
+                          color: 'var(--color-text-primary)',
                         }}
                       >
                         {formatTimeShort(event.start_at)}
@@ -151,7 +151,7 @@ export function ListView({
                       <span
                         className="text-body-xs"
                         style={{
-                          color: 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                          color: 'var(--color-text-muted)',
                         }}
                       >
                         → {formatTimeShort(event.end_at)}
@@ -163,7 +163,7 @@ export function ListView({
                       <p
                         className="text-body-sm font-medium truncate"
                         style={{
-                          color: 'var(--tg-theme-text-color, var(--color-text-primary))',
+                          color: 'var(--color-text-primary)',
                         }}
                       >
                         {event.title}
@@ -172,7 +172,7 @@ export function ListView({
                         <p
                           className="text-body-xs truncate mt-0.5"
                           style={{
-                            color: 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                            color: 'var(--color-text-muted)',
                           }}
                         >
                           {event.description}

@@ -135,7 +135,7 @@ function GrayRow({ label, value, trailingIcon = 'chevron', onClick }: GrayRowPro
           style={{
             fontSize: '16px',
             lineHeight: '20px',
-            color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+            color: 'var(--color-text-primary, #FAFAFA)',
           }}
         >
           {value}
@@ -189,7 +189,7 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
           style={{
             fontSize: '14px',
             lineHeight: '18px',
-            color: 'var(--tg-theme-text-color, var(--color-text-primary, #FAFAFA))',
+            color: 'var(--color-text-primary, #FAFAFA)',
           }}
         >
           {label}
@@ -323,7 +323,7 @@ function SettingsContent() {
       <div
         className="min-h-[var(--tg-viewport-stable-height,100dvh)] flex items-center justify-center"
         style={{
-          background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
+          background: 'var(--color-bg-primary-dark, #0A0A0A)',
           paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         }}
       >
@@ -336,7 +336,7 @@ function SettingsContent() {
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
       style={{
-        background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))',
+        background: 'var(--color-bg-primary-dark, #0A0A0A)',
         paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
         paddingBottom: 'calc(var(--size-bottom-menu-height, 96px) + 16px)',
       }}
@@ -394,7 +394,7 @@ function SettingsContent() {
         {/* ═══ BOTTOM FILLER ═══ */}
         <div
           className="w-full"
-          style={{ height: '64px', background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' }}
+          style={{ height: '64px', background: 'var(--color-bg-primary-dark, #0A0A0A)' }}
         />
       </div>
     </main>
@@ -410,7 +410,7 @@ export default function SettingsPage() {
       fallback={
         <div
           className="flex items-center justify-center min-h-dvh"
-          style={{ background: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark, #0A0A0A))' }}
+          style={{ background: 'var(--color-bg-primary-dark, #0A0A0A)' }}
         >
           <OrbitLoader />
         </div>

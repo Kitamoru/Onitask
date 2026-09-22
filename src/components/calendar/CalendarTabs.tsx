@@ -27,8 +27,8 @@ export function CalendarTabs({ activeMode, onModeChange }: CalendarTabsProps) {
       className="flex items-center px-3 py-2"
       style={{
         gap: '6px',
-        borderBottom: '1px solid var(--tg-theme-border-color, var(--color-border-default))',
-        backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-dark))',
+        borderBottom: '1px solid var(--color-border-default)',
+        backgroundColor: 'var(--color-bg-dark)',
       }}
     >
       {TABS.map((tab) => {
@@ -48,13 +48,13 @@ export function CalendarTabs({ activeMode, onModeChange }: CalendarTabsProps) {
               fontFamily: "var(--font-family-display, system-ui, sans-serif)",
               lineHeight: '16px',
               backgroundColor: isActive
-                ? 'var(--tg-theme-button-color, var(--color-accent-amber))'
-                : 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+                ? 'var(--color-accent-amber)'
+                : 'var(--color-bg-surface)',
               color: isActive
-                ? 'var(--tg-theme-button-text-color, var(--color-text-white))'
-                : 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                ? 'var(--color-text-white)'
+                : 'var(--color-text-muted)',
               border: !isActive
-                ? '1px solid var(--tg-theme-border-color, var(--color-border-white-subtle))'
+                ? '1px solid var(--color-border-white-subtle)'
                 : 'none',
             }}
             aria-pressed={isActive}

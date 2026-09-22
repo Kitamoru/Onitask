@@ -893,7 +893,7 @@ export function FlowBoard({
         h-full
       "
       style={{
-        backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
+        backgroundColor: 'var(--color-bg-primary-dark)',
         maxWidth: '100%',
         margin: '0 auto',
         gap: 'var(--spacing-6)',
@@ -1064,7 +1064,7 @@ export function FlowBoard({
        {/* Bottom spacer — accounts for safe area + breathing room */}
        <div
          className="h-16 xs:h-20 w-full shrink-0"
-         style={{ backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))' }}
+         style={{ backgroundColor: 'var(--color-bg-primary-dark)' }}
          aria-hidden="true"
        />
     </div>

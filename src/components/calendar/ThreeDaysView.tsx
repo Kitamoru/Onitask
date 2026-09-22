@@ -88,8 +88,8 @@ export function ThreeDaysView({
       <div
         className="flex border-b"
         style={{
-          backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-dark))',
-          borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+          backgroundColor: 'var(--color-bg-dark)',
+          borderColor: 'var(--color-border-default)',
         }}
       >
         {/* Spacer for time column */}
@@ -97,11 +97,11 @@ export function ThreeDaysView({
         {/* Day 1 header */}
         <div
           className="flex items-center justify-center gap-1 px-1 flex-1 border-l"
-          style={{ height: '36px', borderColor: 'var(--tg-theme-border-color, var(--color-border-default))' }}
+          style={{ height: '36px', borderColor: 'var(--color-border-default)' }}
         >
           <span
             className="text-[11px] font-medium leading-none shrink-0"
-            style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+            style={{ color: 'var(--color-text-muted)' }}
           >
             {day1Weekday}
           </span>
@@ -109,7 +109,7 @@ export function ThreeDaysView({
             className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold leading-none shrink-0"
             style={{
               backgroundColor: 'rgba(245, 158, 11, 0.15)',
-              color: 'var(--tg-theme-link-color, var(--color-accent-amber))',
+              color: 'var(--color-accent-amber)',
             }}
           >
             {day1Num}
@@ -118,11 +118,11 @@ export function ThreeDaysView({
         {/* Day 2 header */}
         <div
           className="flex items-center justify-center gap-1 px-1 flex-1 border-l"
-          style={{ height: '36px', borderColor: 'var(--tg-theme-border-color, var(--color-border-default))' }}
+          style={{ height: '36px', borderColor: 'var(--color-border-default)' }}
         >
           <span
             className="text-[11px] font-medium leading-none shrink-0"
-            style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+            style={{ color: 'var(--color-text-muted)' }}
           >
             {day2Weekday}
           </span>
@@ -130,7 +130,7 @@ export function ThreeDaysView({
             className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold leading-none shrink-0"
             style={{
               backgroundColor: 'rgba(245, 158, 11, 0.15)',
-              color: 'var(--tg-theme-link-color, var(--color-accent-amber))',
+              color: 'var(--color-accent-amber)',
             }}
           >
             {day2Num}
@@ -153,10 +153,10 @@ export function ThreeDaysView({
                 className="flex items-start justify-end pr-1"
                 style={{
                   height: '3rem',
-                  borderBottom: '1px solid var(--tg-theme-border-color, var(--color-border-default))',
+                  borderBottom: '1px solid var(--color-border-default)',
                   color: isNow
-                    ? 'var(--tg-theme-link-color, var(--color-accent-amber))'
-                    : 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                    ? 'var(--color-accent-amber)'
+                    : 'var(--color-text-muted)',
                   fontWeight: isNow ? '600' : '400',
                 }}
               >
@@ -177,7 +177,7 @@ export function ThreeDaysView({
             <div
               className="flex-1 border-l min-w-0"
               style={{
-                borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                borderColor: 'var(--color-border-default)',
                 backgroundColor: isSelected1 ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
               }}
             >
@@ -190,7 +190,7 @@ export function ThreeDaysView({
                     key={`d1-${hour}`}
                     className="flex border-b transition-colors duration-fast"
                     style={{
-                      borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                      borderColor: 'var(--color-border-default)',
                       backgroundColor: isNow ? 'rgba(245, 158, 11, 0.06)' : 'transparent',
                       minHeight: hourEvents.length > 0 ? 'auto' : '3rem',
                       height: '3rem',
@@ -200,7 +200,7 @@ export function ThreeDaysView({
                       {hourEvents.length === 0 && (
                         <span
                           className="text-body-xs italic opacity-30"
-                          style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                          style={{ color: 'var(--color-text-muted)' }}
                         >
                           свободно
                         </span>
@@ -214,28 +214,28 @@ export function ThreeDaysView({
                           }}
                           className="w-full text-left rounded-md px-2.5 py-1.5 transition-all duration-fast active:scale-[0.98] hover:bg-surface-hover"
                           style={{
-                            backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+                            backgroundColor: 'var(--color-bg-surface)',
                             borderLeft: `3px solid ${getProviderColor(event.provider)}`,
                           }}
                         >
                           <div className="flex items-center gap-1.5">
                             <span
                               className="text-body-xs font-medium truncate"
-                              style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                              style={{ color: 'var(--color-text-primary)' }}
                             >
                               {formatTimeShort(event.start_at)} – {formatTimeShort(event.end_at)}
                             </span>
                           </div>
                           <p
                             className="text-body-sm font-medium mt-0.5 truncate"
-                            style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                            style={{ color: 'var(--color-text-primary)' }}
                           >
                             {event.title}
                           </p>
                           {event.description && (
                             <p
                               className="text-body-xs truncate mt-0.5"
-                              style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                              style={{ color: 'var(--color-text-muted)' }}
                             >
                               {event.description}
                             </p>
@@ -261,7 +261,7 @@ export function ThreeDaysView({
             <div
               className="flex-1 border-l min-w-0"
               style={{
-                borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                borderColor: 'var(--color-border-default)',
                 backgroundColor: isSelected2 ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
               }}
             >
@@ -274,7 +274,7 @@ export function ThreeDaysView({
                     key={`d2-${hour}`}
                     className="flex border-b transition-colors duration-fast"
                     style={{
-                      borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                      borderColor: 'var(--color-border-default)',
                       backgroundColor: isNow ? 'rgba(245, 158, 11, 0.06)' : 'transparent',
                       minHeight: hourEvents.length > 0 ? 'auto' : '3rem',
                       height: '3rem',
@@ -284,7 +284,7 @@ export function ThreeDaysView({
                       {hourEvents.length === 0 && (
                         <span
                           className="text-body-xs italic opacity-30"
-                          style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                          style={{ color: 'var(--color-text-muted)' }}
                         >
                           свободно
                         </span>
@@ -298,28 +298,28 @@ export function ThreeDaysView({
                           }}
                           className="w-full text-left rounded-md px-2.5 py-1.5 transition-all duration-fast active:scale-[0.98] hover:bg-surface-hover"
                           style={{
-                            backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+                            backgroundColor: 'var(--color-bg-surface)',
                             borderLeft: `3px solid ${getProviderColor(event.provider)}`,
                           }}
                         >
                           <div className="flex items-center gap-1.5">
                             <span
                               className="text-body-xs font-medium truncate"
-                              style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                              style={{ color: 'var(--color-text-primary)' }}
                             >
                               {formatTimeShort(event.start_at)} – {formatTimeShort(event.end_at)}
                             </span>
                           </div>
                           <p
                             className="text-body-sm font-medium mt-0.5 truncate"
-                            style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                            style={{ color: 'var(--color-text-primary)' }}
                           >
                             {event.title}
                           </p>
                           {event.description && (
                             <p
                               className="text-body-xs truncate mt-0.5"
-                              style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                              style={{ color: 'var(--color-text-muted)' }}
                             >
                               {event.description}
                             </p>

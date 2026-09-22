@@ -51,8 +51,8 @@ export function DayView({
       <div
         className="flex items-center gap-2 px-3 py-3 sticky top-0 z-10 border-b"
         style={{
-          backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-dark))',
-          borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+          backgroundColor: 'var(--color-bg-dark)',
+          borderColor: 'var(--color-border-default)',
         }}
       >
         {onBack && (
@@ -62,13 +62,13 @@ export function DayView({
             aria-label="Назад к месяцу"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 12L6 8l4-4" stroke="var(--tg-theme-text-color, var(--color-text-primary))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 12L6 8l4-4" stroke="var(--color-text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         )}
         <h2
           className="text-body-sm font-semibold capitalize"
-          style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+          style={{ color: 'var(--color-text-primary)' }}
         >
           {dateLabel}
         </h2>
@@ -89,7 +89,7 @@ export function DayView({
                 key={hour}
                 className="flex border-b transition-colors duration-fast"
                 style={{
-                  borderColor: 'var(--tg-theme-border-color, var(--color-border-default))',
+                  borderColor: 'var(--color-border-default)',
                   backgroundColor: isNow ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
                   minHeight: hourEvents.length > 0 ? 'auto' : '3rem',
                 }}
@@ -98,7 +98,7 @@ export function DayView({
                 <div
                   className="w-14 shrink-0 text-right pr-2 pt-2 text-body-xs"
                   style={{
-                    color: isNow ? 'var(--tg-theme-link-color, var(--color-accent-amber))' : 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                    color: isNow ? 'var(--color-accent-amber)' : 'var(--color-text-muted)',
                     fontWeight: isNow ? 'var(--font-weight-semibold)' : 'var(--font-weight-regular)',
                   }}
                 >
@@ -108,7 +108,7 @@ export function DayView({
                 {/* Events column */}
                 <div className="flex-1 py-1 pr-2 space-y-1">
                   {hourEvents.length === 0 && (
-                    <span className="text-body-xs italic opacity-40" style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}>свободно</span>
+                    <span className="text-body-xs italic opacity-40" style={{ color: 'var(--color-text-muted)' }}>свободно</span>
                   )}
                   {hourEvents.map((event: CalendarEvent) => (
                     <button
@@ -116,18 +116,18 @@ export function DayView({
                       onClick={() => onEventClick?.(event)}
                       className="w-full text-left rounded-md px-2.5 py-1.5 transition-all duration-fast active:scale-[0.98] hover:bg-surface-hover"
                       style={{
-                        backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+                        backgroundColor: 'var(--color-bg-surface)',
                         borderLeft: `3px solid ${getProviderColor(event.provider)}`,
                       }}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span className="text-body-xs font-medium truncate" style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}>
+                        <span className="text-body-xs font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                           {formatTimeShort(event.start_at)} – {formatTimeShort(event.end_at)}
                         </span>
                       </div>
-                      <p className="text-body-sm font-medium mt-0.5 truncate" style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}>{event.title}</p>
+                      <p className="text-body-sm font-medium mt-0.5 truncate" style={{ color: 'var(--color-text-primary)' }}>{event.title}</p>
                       {event.description && (
-                        <p className="text-body-xs truncate mt-0.5" style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}>{event.description}</p>
+                        <p className="text-body-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{event.description}</p>
                       )}
                     </button>
                   ))}

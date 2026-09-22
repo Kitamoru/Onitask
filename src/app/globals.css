@@ -188,23 +188,15 @@
   --transition-normal: 200ms ease-in-out;
 
   /* ============================================================================
-     Telegram Web App Theme Integration
-     Переопределяются Telegram SDK при запуске внутри TWA
+     App palette (omnidesign, THEME-02)
+     Dark-only by design (Figma-spec §13 note 10: «Тёмная тема — единственная»).
+     The --tg-theme-* indirection layer was removed: the Telegram SDK writes
+     these variables as inline styles on <html> and re-applies them on every
+     themeChanged, which flipped the app to the light palette. Components now
+     consume --color-* design tokens directly — stable colors by construction.
      ============================================================================ */
-  /* Omnidesign: dark-only by design — see color-scheme: dark above */
   --background: #0a0a0a;
   --foreground: #ededed;
-  --tg-theme-bg-color: var(--color-bg-primary-dark);
-  --tg-theme-text-color: var(--color-text-primary);
-  --tg-theme-hint-color: var(--color-text-muted);
-  --tg-theme-link-color: var(--color-accent-amber);
-  --tg-theme-button-color: var(--color-accent-amber);
-  --tg-theme-button-text-color: var(--color-text-white);
-  --tg-theme-secondary-bg-color: var(--color-bg-surface);
-  --tg-theme-section-bg-color: var(--color-bg-surface);
-  --tg-theme-section-header-text-color: var(--color-text-secondary);
-  --tg-theme-subtitle-text-color: var(--color-text-muted);
-  --tg-theme-destructive-text-color: var(--color-error);
 }
 
 /* ============================================================================
@@ -243,8 +235,8 @@ body {
 }
 
 .tg-webapp body {
-  background: var(--tg-theme-bg-color, var(--color-bg-primary-dark));
-  color: var(--tg-theme-text-color, var(--color-text-primary));
+  background: var(--color-bg-primary-dark);
+  color: var(--color-text-primary);
 }
 
 /* ============================================================================
@@ -389,8 +381,8 @@ body {
 }
 
 .rdp-button.rdp-day[rds-selected='true'] {
-  background-color: var(--tg-theme-button-color, var(--color-accent-amber));
-  color: var(--tg-theme-button-text-color, var(--color-text-white));
+  background-color: var(--color-accent-amber);
+  color: var(--color-text-white);
 }
 
 .rdp-button.rdp-today:not([rds-selected='true']) {
@@ -401,10 +393,10 @@ body {
   font-family: var(--font-family-display);
   font-size: var(--text-heading-md);
   font-weight: var(--font-weight-medium);
-  color: var(--tg-theme-text-color, var(--color-text-primary));
+  color: var(--color-text-primary);
 }
 
 .rdp-weekday {
   font-size: var(--text-body-xs);
-  color: var(--tg-theme-hint-color, var(--color-text-muted));
+  color: var(--color-text-muted);
 }

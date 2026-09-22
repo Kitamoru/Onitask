@@ -257,7 +257,7 @@ function EventDetailPanel({
          style={{
            maxHeight: `calc(var(--tg-viewport-stable-height, 100dvh) - ${tgBottomOffset + 16}px)`,
            overflowY: 'auto',
-           backgroundColor: 'var(--tg-theme-bg-color, var(--color-bg-primary-dark))',
+           backgroundColor: 'var(--color-bg-primary-dark)',
          }}
        >
          {/* Header */}
@@ -273,7 +273,7 @@ function EventDetailPanel({
              className="
                truncate text-heading-sm font-semibold
              "
-             style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+             style={{ color: 'var(--color-text-primary)' }}
            >
              {event.title}
            </h2>
@@ -306,7 +306,7 @@ function EventDetailPanel({
             <ProviderBadge provider={event.provider} />
              <span
                className="text-body-sm"
-               style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+               style={{ color: 'var(--color-text-muted)' }}
              >
                {event.provider === 'yandex' ? 'Yandex Календарь' : 'Outlook'}
              </span>
@@ -321,19 +321,19 @@ function EventDetailPanel({
              "
              style={{ 
                borderColor: 'var(--color-border-white-subtle)',
-               backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))',
+               backgroundColor: 'var(--color-bg-surface)',
              }}
            >
             <div className="flex items-center justify-between">
                <span
                  className="text-body-sm"
-                 style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                 style={{ color: 'var(--color-text-muted)' }}
                >
                  Начало
                </span>
                <span
                  className="text-body-sm font-medium"
-                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                 style={{ color: 'var(--color-text-primary)' }}
                >
                 {new Date(event.start_at).toLocaleString('ru-RU')}
               </span>
@@ -341,13 +341,13 @@ function EventDetailPanel({
             <div className="flex items-center justify-between">
                <span
                  className="text-body-sm"
-                 style={{ color: 'var(--tg-theme-hint-color, var(--color-text-muted))' }}
+                 style={{ color: 'var(--color-text-muted)' }}
                >
                  Окончание
                </span>
                <span
                  className="text-body-sm font-medium"
-                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                 style={{ color: 'var(--color-text-primary)' }}
                >
                 {new Date(event.end_at).toLocaleString('ru-RU')}
               </span>
@@ -361,11 +361,11 @@ function EventDetailPanel({
                  rounded-md px-3 py-2
                  bg-surface
                "
-               style={{ backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))' }}
+               style={{ backgroundColor: 'var(--color-bg-surface)' }}
              >
                <span
                  className="text-body-sm"
-                 style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+                 style={{ color: 'var(--color-text-primary)' }}
                >
                 {event.description}
               </span>
@@ -379,11 +379,11 @@ function EventDetailPanel({
                rounded-md px-3 py-2
                bg-surface
              "
-             style={{ backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--color-bg-surface))' }}
+             style={{ backgroundColor: 'var(--color-bg-surface)' }}
            >
              <span
                className="text-body-sm"
-               style={{ color: 'var(--tg-theme-text-color, var(--color-text-primary))' }}
+               style={{ color: 'var(--color-text-primary)' }}
              >
                Напоминание
              </span>
@@ -400,7 +400,7 @@ function EventDetailPanel({
                  "
                  style={{
                    fontSize: 'var(--text-body-sm)',
-                   color: 'var(--tg-theme-button-color, var(--color-accent-amber))',
+                   color: 'var(--color-accent-amber)',
                  }}
                >
                 {event.reminder_minutes_before === null
@@ -421,7 +421,7 @@ function EventDetailPanel({
                      active:scale-95
                    "
                    style={{ 
-                     color: 'var(--tg-theme-text-color, var(--color-text-primary))',
+                     color: 'var(--color-text-primary)',
                      borderColor: 'var(--color-border-default)',
                      backgroundColor: 'var(--color-bg-surface-hover)',
                    }}
@@ -462,7 +462,7 @@ function EventDetailPanel({
                    "
                    style={{
                      fontSize: 'var(--text-body-sm)',
-                     color: 'var(--tg-theme-hint-color, var(--color-text-muted))',
+                     color: 'var(--color-text-muted)',
                    }}
                 >
                   Отмена
