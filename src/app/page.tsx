@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getPreferredView } from '@/lib/viewPreference';
 import { markPerf } from '@/lib/perf/timings';
+import { flowboardQueryFromStartParam } from '@/lib/telegramSdk';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
@@ -29,7 +30,7 @@ const PAGE_TOP_PADDING = 'max(64px, var(--tg-content-safe-top, 0px))';
 export default function HomePage() {
   useScrollReset();
   const router = useRouter();
-  const { isLoading, error, data } = useTelegramAuth();
+  const { isLoading, error, data, startParam } = useTelegramAuth();
 
   // Guard: once redirected, NEVER redirect again.
   // Fixes board creation issue where refresh() flips is_new_user to false
@@ -48,7 +49,14 @@ export default function HomePage() {
       hasNavigatedRef.current = true;
       markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       const preferred = getPreferredView();
-      router.replace(preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard');
+      // Deep link «Открыть в приложении»: если start_param указывает на задачу,
+      // пробрасываем open_task в редирект — иначе гонка «редирект корневой
+      // страницы vs TelegramDeepLinkRouter» затирала параметр, и задача не
+      // открывалась (пользователь попадал просто на flowboard).
+      const deepLinkQuery = flowboardQueryFromStartParam(startParam ?? '');
+      const preferredTarget = preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard';
+      const target = deepLinkQuery ?? preferredTarget;
+      router.replace(target);
     }
     // If error or no data, stay on this page and show error below
   }, [isLoading, data?.is_new_user, router]);

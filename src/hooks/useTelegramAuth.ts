@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { InitResponse } from '../../types/api';
 import { markPerf } from '@/lib/perf/timings';
+import { waitForTelegramWebApp } from '@/lib/telegramSdk';
 
 // ── Telegram Web App extended types ────────────────────────────────────────
 
@@ -121,33 +122,12 @@ const EMPTY_UNSAFE: NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']['i
 // на холодном старте. Теперь все инстансы ждут ОДИН общий промис.
 
 const NOT_IN_TWA = 'not_in_twa';
-const SDK_WAIT_MS = 1500;
-const SDK_POLL_MS = 50;
 
 type InitOutcome = { ok: true; data: InitResponse } | { ok: false; error: string };
 
-/**
- * PERF-03: ожидание загрузки Telegram SDK.
- *
- * Раньше telegram-web-app.js грузился `beforeInteractive`, а хук читал
- * `window.Telegram` синхронно на mount → при малейшей задержке CDN пользователь
- * получал ложный экран «Откройте приложение через Telegram WebApp».
- * Теперь скрипт не блокирует рендер (afterInteractive), а готовность SDK
- * ожидается явно: SDK парсит initData из hash при своём исполнении, поэтому
- * появление window.Telegram.WebApp равносильно готовности initData.
- */
-async function waitForTelegramWebApp(
-  timeoutMs: number = SDK_WAIT_MS,
-): Promise<NonNullable<NonNullable<TelegramWebAppExtended['Telegram']>['WebApp']> | null> {
-  if (typeof window === 'undefined') return null;
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const tg = (window as unknown as TelegramWebAppExtended).Telegram?.WebApp;
-    if (tg) return tg;
-    if (Date.now() >= deadline) return null;
-    await new Promise((resolve) => setTimeout(resolve, SDK_POLL_MS));
-  }
-}
+// PERF-03: ожидание загрузки Telegram SDK (waitForTelegramWebApp) вынесено в
+// src/lib/telegramSdk.ts — оно нужно и здесь, и в TelegramDeepLinkRouter
+// (deep links «Открыть в приложении» грузятся тем же afterInteractive SDK).
 
 let initInFlight: Promise<InitOutcome> | null = null;
 

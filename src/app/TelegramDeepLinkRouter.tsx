@@ -2,14 +2,15 @@
 
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { flowboardQueryFromStartParam, waitForTelegramWebApp } from '@/lib/telegramSdk';
 
 /**
  * Handles deep links from Telegram Bot (t.me/bot/app?startapp=task_TASK-42).
- * Mount ONCE at the root level — after telegram-web-app.js has loaded.
+ * Mount ONCE at the root level.
  *
  * Flow:
- *   1. Read tg.initDataUnsafe.start_param
- *   2. Parse task full_id (e.g. "TASK-42")
+ *   1. Wait for Telegram SDK (PERF-03: it loads afterInteractive)
+ *   2. Read tg.initDataUnsafe.start_param
  *   3. Navigate to /flowboard?open_task=TASK-42
  *
  * The flowboard page will read ?open_task and open TaskViewEdit sheet.
@@ -22,24 +23,31 @@ export function TelegramDeepLinkRouter() {
     if (handled.current) return;
     handled.current = true;
 
-    const tg = (window as any).Telegram?.WebApp;
+    let cancelled = false;
 
-    if (!tg) {
-      console.warn('[TG-DL] Telegram.WebApp unavailable at mount time');
-      return;
-    }
+    void waitForTelegramWebApp().then((tg) => {
+      if (cancelled) return;
+      if (!tg) {
+        console.warn('[TG-DL] Telegram.WebApp unavailable (SDK wait timed out)');
+        return;
+      }
 
-    tg.ready();
+      tg.ready();
 
-    const startParam = tg.initDataUnsafe?.start_param;
+      const startParam = tg.initDataUnsafe?.start_param;
 
-    if (!startParam) {
-      console.info('[TG-DL] No start_param — normal launch, not a deep link');
-      return;
-    }
+      if (!startParam) {
+        console.info('[TG-DL] No start_param — normal launch, not a deep link');
+        return;
+      }
 
-    console.info('[TG-DL] start_param detected:', startParam);
-    void routeByStartParam(startParam, router);
+      console.info('[TG-DL] start_param detected:', startParam);
+      void routeByStartParam(startParam, router);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return null;
@@ -51,37 +59,13 @@ async function routeByStartParam(
 ) {
   console.info('[TG-DL] Processing start_param:', startParam);
 
-  // Match task deep links: "task_BOOP-39" → открыть задачу
-  // and "task_BOOP-39_comments" → открыть сразу вкладку «Комментарии» (FILE-03)
-  const taskMatch = startParam.match(/^task_([A-Za-z]+-\d+)$/);
-  const taskCommentsMatch = startParam.match(/^task_([A-Za-z]+-\d+)_comments$/);
-  const fullId = taskMatch?.[1] ?? taskCommentsMatch?.[1];
-  if (taskMatch || taskCommentsMatch) {
-    console.info(
-      '[TG-DL] Task deep link detected, fullId:',
-      fullId,
-      'comments:',
-      Boolean(taskCommentsMatch)
-    );
-
+  const query = flowboardQueryFromStartParam(startParam);
+  if (query) {
+    console.info('[TG-DL] Navigating to:', query);
     // Use setTimeout to avoid race condition with initial page load / Suspense.
     // Delay increased to ensure Next.js routing is fully stable.
     setTimeout(() => {
-      const targetFullId = fullId ?? '';
-      const query = taskCommentsMatch
-        ? `/flowboard?open_task=${encodeURIComponent(targetFullId)}&tab=comments`
-        : `/flowboard?open_task=${encodeURIComponent(targetFullId)}`;
-      console.info('[TG-DL] Navigating to:', query);
       router.replace(query, { scroll: false });
-    }, 500);
-    return;
-  }
-
-  // Future: flow deep links (§6.2d)
-  const flowMatch = startParam.match(/^flow_([a-z0-9-]+)$/);
-  if (flowMatch) {
-    setTimeout(() => {
-      router.replace(`/workspace/${flowMatch[1]}`, { scroll: false });
     }, 500);
     return;
   }

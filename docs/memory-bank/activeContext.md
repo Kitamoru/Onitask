@@ -1,5 +1,41 @@
 # Active Context
-# Active Context
+
+## FIX: deep link «Открыть в приложении» сломан PERF-03 (2026-09-22) ✅
+
+**Симптом:** тап по кнопке карточки задачи в Telegram открывал просто flowboard,
+задача из сообщения не открывалась.
+
+**Причина (найдена, подтверждена git-историей):** коммит `e2fdd90` (PERF-01..08)
+перевёл telegram-web-app.js на `afterInteractive`. `TelegramDeepLinkRouter`
+читал `window.Telegram` синхронно на mount → SDK ещё не загружен → ранний
+`return` с warning → `start_param` никогда не читался, deep link молча умирал.
+Вторая гонка: редирект корневой `page.tsx` на `/flowboard` (теперь тоже позже,
+после async `/api/init`) затирал бы `open_task` даже при сработавшем роутере.
+
+**Фикс:**
+- **`src/lib/telegramSdk.ts` (новый):** `waitForTelegramWebApp()` (перенос из
+  useTelegramAuth, PERF-03) + `parseTaskStartParam()` + `flowboardQueryFromStartParam()`
+  (парсинг `task_<full_id>[_comments]` вынесен из роутера).
+- **`TelegramDeepLinkRouter.tsx`:** effect теперь async — ждёт SDK (поллинг,
+  таймаут 1500ms) перед чтением `start_param`; cleanup-флаг от размонтирования.
+- **`useTelegramAuth.ts`:** локальная копия `waitForTelegramWebApp` удалена,
+  импорт из `src/lib/telegramSdk` (поведение идентично, константы те же).
+- **`page.tsx`:** при редиректе на flowboard, если `start_param` — task deep link,
+  редирект идёт сразу на `/flowboard?open_task=<fullId>` (+`&tab=comments`) —
+  порядок «редирект vs роутер» больше не влияет на исход (оба ведут в одну точку).
+- **`tests/lib/telegramSdk.test.ts` (новый):** 14 тестов (парсинг, query, wait).
+
+**Валидация:** type-check 0 ошибок; тесты 123 passed / 4 failed — те же pre-existing
+`tests/api/init.test.ts` (нет TELEGRAM_BOT_TOKEN в env, задокументировано 2026-09-18).
+Runtime-проверка после деплоя (тап по карточке из TG-чата) — как обычно для TWA,
+локальный smoke невозможен.
+
+**Урок:** при переносе SDK на ленивую загрузку все точки синхронного чтения
+`window.Telegram` должны мигрировать на `waitForTelegramWebApp()` — grep по
+`window.Telegram` в mount-эффектах как часть PR-чеклиста PERF-изменений.
+
+---
+
 ## BOT-11: сигналы светофора → TG-уведомления (2026-09-21) ✅
 
 **Сделано:**
