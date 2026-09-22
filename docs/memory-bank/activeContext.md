@@ -104,7 +104,7 @@ INV-04 (терминал только через ops), INV-09 (CAS по version)
   `lib/shared/agentConnectors.ts`, клиент `src/lib/api/agents.ts`.
 - UI: `AgentConnectorSheet` (Name/URL/API Key) вместо редиректа на `/settings/mcp`;
   после создания `ops_ensure_worker` → агент в секции «Агенты» и как исполнитель.
-- `090_agent_runtime.sql` — `agent_runs` (идемпотентность по `execution_id`, `next_poll_at`,
+- `091_agent_runtime.sql` — `agent_runs` (идемпотентность по `execution_id`, `next_poll_at`,
   `usage`, `request_digest`), push-триггер `trg_agent_dispatch_push`, cron `agent-runtime-sweep`,
   выборки `agent_runtime_pending` / `agent_runs_due`, маркеры `agent_run_*` в `agent_events`.
 - Edge Function `agent-runtime` v3 (`index.ts` + `provider.ts`): lease → снимок задачи →
@@ -114,7 +114,7 @@ INV-04 (терминал только через ops), INV-09 (CAS по version)
 gateway JWT принимал, но наша проверка падала — vault `service_role_key` (legacy JWT) ≠ env
 `SUPABASE_SERVICE_ROLE_KEY` (новый формат). Вторая попытка с выделенным hex-секретом дала
 `UNAUTHORIZED_INVALID_JWT_FORMAT`: `verify_jwt=true` требует именно JWT. Итог —
-`091_agent_runtime_secret.sql` (секрет в Vault + RPC только для service_role) и
+`092_agent_runtime_secret.sql` (секрет в Vault + RPC только для service_role) и
 `verify_jwt=false` у функции (своя timing-safe авторизация; вызовы делает только БД).
 
 **Валидация.** `npm run type-check` — чисто; `vitest` — 128 passed / 4 failed (pre-existing

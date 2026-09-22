@@ -1,5 +1,5 @@
 -- ============================================================================
--- 091_agent_runtime_secret.sql
+-- 092_agent_runtime_secret.sql
 -- Stage 15 / DS-06: выделенный Bearer-секрет для вызова Edge Function agent-runtime.
 --
 -- Почему не vault.service_role_key (паттерн 041): smoke-тест поймал 401 на обоих

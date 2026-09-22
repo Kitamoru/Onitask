@@ -853,14 +853,14 @@ format is deliberately compact so that agents can load the file quickly.
       агент появляется в секции «Агенты» и выбирается исполнителем (проверено: `WorkerSelectSheet`
       рендерит AI-бейдж, назначение кладёт pending в `dispatch_outbox`).
 - [x] DS-04 `agent_runs` + push-триггер `trg_agent_dispatch_push` + cron `agent-runtime-sweep` (30 с) #db !high
-      Миграция `090_agent_runtime.sql`. Push срабатывает только для агентов с активным
+      Миграция `091_agent_runtime.sql`. Push срабатывает только для агентов с активным
       коннектором — pull-рантаймы (MCP/CLI) работают как раньше. Осиротевшие прогоны
       закрываются `handleDueRun` (fail-loud: nack → requeue/escalate).
 - [x] DS-05 Edge Function `agent-runtime` (lease → контекст → вызов → terminal → ack) #ai !high
       `index.ts` + `provider.ts` (однофайловая конвенция проекта + `@ts-nocheck`).
       Провайдер: OpenAI-совместимый вызов, строгий JSON-контракт результата, обёртка
       untrusted-данных тегами с UUID, маппинг ошибок (401 → escalate, остальное → requeue).
-- [x] DS-06 Выделенный секрет рантайма `get_agent_runtime_secret` (миграция `091_agent_runtime_secret.sql`) #db !high
+- [x] DS-06 Выделенный секрет рантайма `get_agent_runtime_secret` (миграция `092_agent_runtime_secret.sql`) #db !high
       Найдено smoke-тестом: vault `service_role_key` ≠ env функции → 401 и на push, и на cron.
       Теперь push/cron подписываются своим 256-битным секретом, у функции `verify_jwt=false`
       (своя timing-safe авторизация; вызовы делает только БД). Проверено: valid → 200,
