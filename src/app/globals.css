@@ -16,6 +16,11 @@
    ============================================================================ */
 
 :root {
+  /* Omnidesign: Onitask is dark-only by design (Figma-spec §13 note 10).
+     Lock native browser controls (scrollbars, inputs, etc.) to dark so the
+     layout stays identical regardless of Telegram's light/dark theme. */
+  color-scheme: dark;
+
   /* Backgrounds */
   --color-bg-primary-dark: #0A0A0A;
   --color-bg-dark: #101010;
@@ -186,8 +191,9 @@
      Telegram Web App Theme Integration
      Переопределяются Telegram SDK при запуске внутри TWA
      ============================================================================ */
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Omnidesign: dark-only by design — see color-scheme: dark above */
+  --background: #0a0a0a;
+  --foreground: #ededed;
   --tg-theme-bg-color: var(--color-bg-primary-dark);
   --tg-theme-text-color: var(--color-text-primary);
   --tg-theme-hint-color: var(--color-text-muted);
@@ -199,13 +205,6 @@
   --tg-theme-section-header-text-color: var(--color-text-secondary);
   --tg-theme-subtitle-text-color: var(--color-text-muted);
   --tg-theme-destructive-text-color: var(--color-error);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 /* ============================================================================

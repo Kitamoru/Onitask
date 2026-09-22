@@ -28,6 +28,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  // Omnidesign: Onitask is dark-only by design; lock native browser controls
+  // (scrollbars, inputs) to dark regardless of Telegram's light/dark theme.
+  colorScheme: 'dark',
 };
 
 export const metadata: Metadata = {
@@ -64,25 +67,25 @@ export default function RootLayout({
         src="https://telegram.org/js/telegram-web-app.js"
         strategy="afterInteractive"
       />
-        <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
-          <QueryProviders>
+      <body className="flex flex-col bg-primary-dark text-text-primary min-h-dvh">
+        <QueryProviders>
           <TelegramProvider>
             <TelegramThemeProvider>
               <DataProvider>
                 {/* Deep link router — монтируется СРАЗУ, не ждёт авторизацию.
                     Должен быть ВНУТРИ провайдеров (Telegram, Data), но ВНЕ AuthLoader. */}
                 <TelegramDeepLinkRouter />
-                
+
                 <AuthLoader>
                   {children}
                 </AuthLoader>
-                
+
                 <AiTaskCreator />
               </DataProvider>
             </TelegramThemeProvider>
           </TelegramProvider>
-          </QueryProviders>
-        </body>
+        </QueryProviders>
+      </body>
     </html>
   );
 }

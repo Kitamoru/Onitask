@@ -15,6 +15,13 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
  *
  * Must wrap the app tree (used in layout.tsx) so all child components
  * can access the current Telegram theme values.
+ *
+ * OMNIDESIGN: Onitask is dark-only by design (Figma-spec §13 note 10:
+ * "Тёмная тема — единственная. Нет светлой темы"). We deliberately do NOT
+ * copy tg.themeParams into CSS variables — forwarding only a subset of tokens
+ * broke the layout under Telegram's light theme (light bg/text + invisible
+ * white borders + dark surface blocks). All --tg-theme-* vars already default
+ * to the dark design tokens in :root, so nothing is overridden here.
  */
 
 interface TelegramThemeContextValue {
@@ -60,28 +67,23 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
     tg.expand();
     tg.disableVerticalSwipes?.();
 
-    // Match Telegram's own chrome to the card background
+    // Match Telegram's own chrome (header + background above the webview) to
+    // the dark design — omnidesign, so it stays dark regardless of theme.
     tg.setHeaderColor?.('#0a0a0a');
     tg.setBackgroundColor?.('#0a0a0a');
 
     const root = document.documentElement.style;
     const htmlEl = document.documentElement;
 
-    // Read initial theme params
-    const tp = tg.themeParams || {};
+    // Omnidesign: keep the context locked to the dark design tokens. We do NOT
+    // read tg.themeParams here so the layout never switches to a light palette.
     const value: TelegramThemeContextValue = {
       isAvailable: true,
-      bgColor: tp.bg_color || DEFAULT_CONTEXT.bgColor,
-      textColor: tp.text_color || DEFAULT_CONTEXT.textColor,
-      buttonColor: tp.button_color || DEFAULT_CONTEXT.buttonColor,
-      buttonText: tp.button_text_color || DEFAULT_CONTEXT.buttonText,
+      bgColor: DEFAULT_CONTEXT.bgColor,
+      textColor: DEFAULT_CONTEXT.textColor,
+      buttonColor: DEFAULT_CONTEXT.buttonColor,
+      buttonText: DEFAULT_CONTEXT.buttonText,
     };
-
-    // Apply theme CSS custom properties
-    root.setProperty('--tg-theme-bg-color', value.bgColor);
-    root.setProperty('--tg-theme-text-color', value.textColor);
-    root.setProperty('--tg-theme-button-color', value.buttonColor);
-    root.setProperty('--tg-theme-button-text-color', value.buttonText);
 
     // Add tg-webapp class to html for CSS targeting
     htmlEl.classList.add('tg-webapp');
@@ -112,15 +114,15 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
     contextValueRef.current = value;
     setContextValue(value);
 
-    // Subscribe to theme changes
+    // Subscribe to theme changes — omnidesign: intentionally a no-op for colors.
+    // The layout must stay dark regardless of Telegram's light/dark theme.
     const handleThemeChanged = () => {
-      const newTp = tg.themeParams || {};
       const newValue: TelegramThemeContextValue = {
         isAvailable: true,
-        bgColor: newTp.bg_color || contextValueRef.current.bgColor,
-        textColor: newTp.text_color || contextValueRef.current.textColor,
-        buttonColor: newTp.button_color || contextValueRef.current.buttonColor,
-        buttonText: newTp.button_text_color || contextValueRef.current.buttonText,
+        bgColor: DEFAULT_CONTEXT.bgColor,
+        textColor: DEFAULT_CONTEXT.textColor,
+        buttonColor: DEFAULT_CONTEXT.buttonColor,
+        buttonText: DEFAULT_CONTEXT.buttonText,
       };
 
       // Only update if values actually changed
@@ -132,12 +134,6 @@ export function TelegramThemeProvider({ children }: { children: ReactNode }) {
       ) {
         contextValueRef.current = newValue;
         setContextValue(newValue);
-
-        // Update CSS vars
-        root.setProperty('--tg-theme-bg-color', newValue.bgColor);
-        root.setProperty('--tg-theme-text-color', newValue.textColor);
-        root.setProperty('--tg-theme-button-color', newValue.buttonColor);
-        root.setProperty('--tg-theme-button-text-color', newValue.buttonText);
       }
     };
 
