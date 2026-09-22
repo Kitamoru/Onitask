@@ -1482,3 +1482,20 @@ sticky-шапки липнут на `top: SHEET_CHROME_HEIGHT_PX`, а сама �
 **Валидация:** `npm run type-check` — clean. `npx vitest run` — 95 passed /
 4 failed (pre-existing `tests/api/init.test.ts`). Автотестов на раскладку в
 репозитории нет → визуальная проверка в TWA за владельцем.
+
+---
+
+## THEME-01 omnidesign light-theme break — FIX APPLIED (commit 7df903e)
+- Root cause: TelegramThemeProvider forwarded only 4 of ~20 design tokens from tg.themeParams
+  into --tg-theme-* CSS vars; the rest of the dark-only design system (borders
+  rgba(255,255,255,0.1), surfaces #101010/#202020, gradient borders,
+  inline var(--color-bg-primary-dark) refs) stayed dark => white bg + invisible
+  borders + dark blocks = broken layout on Telegram light theme.
+- Fix (omnidesign, dark-only by design per Figma-spec 13): stop overriding --tg-theme-*
+  from themeParams (keep :root dark defaults, dark Telegram chrome); add
+  color-scheme:dark + dark --background/--foreground on :root; drop the redundant
+  prefers-color-scheme media query; viewport colorScheme:dark in layout.tsx.
+- Validation: type-check clean; build compiled (only pre-existing Invalid supabaseUrl
+  SSG error in /api/bot/webhook, env, unrelated); tests 109 passed / 4 pre-existing
+  init.test.ts failures (unrelated). Zero new failures.
+- Files: src/components/shared/TelegramThemeProvider.tsx, src/app/globals.css, src/app/layout.tsx
