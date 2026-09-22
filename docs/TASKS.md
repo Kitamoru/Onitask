@@ -701,7 +701,8 @@ format is deliberately compact so that agents can load the file quickly.
 | 12 | LTM Pipeline | 4 |
 | 13 | Calendar Integration | 6 |
 | 14 | FILES (артефакты задач + TG) | 8 |
-| **Итого** | | **144** |
+| 15 | Agent Connectors (внешние агенты) | 9 |
+| **Итого** | | **153** |
 
 ---
 
@@ -825,6 +826,53 @@ format is deliberately compact so that agents can load the file quickly.
 - [ ] PERF-13 Cron `ops-publisher-tick` 10s → 30/60s #db !low
       129 235 вызовов × 4.28 ms = 553 s CPU за окно замера; на Free/Micro делит CPU с API.
 - [ ] PERF-14 Включить Fluid compute в проекте Vercel (dashboard) #perf !med
+
+---
+
+## Stage 15 · Agent Connectors — внешние агенты по endpoint + key (2026-09-22)
+
+> Кейс: добавить агента указанием endpoint + названия + API-ключа, чтобы Onitask сам
+> прокинул задачу, проверил исполнение и забрал результат. Реализовано вариантом A —
+> **Onitask-as-Runtime**: серверный цикл `ops_lease → контекст → вызов агента →
+> ops_terminal → ops_ack` (ровно тот же контракт, что у внешнего MCP/CLI-рантайма,
+> поэтому INV-04/INV-09 сохраняются). Топология: pg_net push (мгновенно) +
+> cron-sweeper 30 с (полнота) + reaper `067` (инвариант). Первый коннектор — Drift
+> (`https://drift.neuraldeep.ru/v1`, модель `drift`, sync-ответ ~8.6 с, базовый
+> prompt ~13.5k токенов — учтено в дефолтах лимитов).
+
+- [x] DS-01 `agent_connectors` + Vault-хелперы (set/get/delete секрета) + RLS service-only #db !high
+      Миграция `089_agent_connectors.sql` (применена). Секрет живёт только в Vault
+      (`secret_ref` + `secret_hint`), plaintext в таблице отсутствует (INV-19).
+      Смоук: round-trip секрета, маска `dft_…7890`, удаление секрета вместе с коннектором.
+- [x] DS-02 API `/api/agents` (GET/POST), `/api/agents/[id]` (PATCH/DELETE), `/api/agents/probe` #api !high
+      SSRF-гейт: https-only, без credentials/query, блок приватных адресов (в т.ч. по
+      всем адресам DNS-резолва) и редиректов. POST = probe (0 токенов) → INSERT →
+      Vault → `ops_ensure_worker` (INV-04): «подключения без ключа» и «пустых воркеров» не бывает.
+- [x] DS-03 UI: кнопка «Добавить агента» открывает `AgentConnectorSheet` (Name/URL/API Key) #ui !high
+      Раньше кнопка вела на `/settings/mcp`; теперь это форма коннектора. После создания
+      агент появляется в секции «Агенты» и выбирается исполнителем (проверено: `WorkerSelectSheet`
+      рендерит AI-бейдж, назначение кладёт pending в `dispatch_outbox`).
+- [x] DS-04 `agent_runs` + push-триггер `trg_agent_dispatch_push` + cron `agent-runtime-sweep` (30 с) #db !high
+      Миграция `090_agent_runtime.sql`. Push срабатывает только для агентов с активным
+      коннектором — pull-рантаймы (MCP/CLI) работают как раньше. Осиротевшие прогоны
+      закрываются `handleDueRun` (fail-loud: nack → requeue/escalate).
+- [x] DS-05 Edge Function `agent-runtime` (lease → контекст → вызов → terminal → ack) #ai !high
+      `index.ts` + `provider.ts` (однофайловая конвенция проекта + `@ts-nocheck`).
+      Провайдер: OpenAI-совместимый вызов, строгий JSON-контракт результата, обёртка
+      untrusted-данных тегами с UUID, маппинг ошибок (401 → escalate, остальное → requeue).
+- [x] DS-06 Выделенный секрет рантайма `get_agent_runtime_secret` (миграция `091_agent_runtime_secret.sql`) #db !high
+      Найдено smoke-тестом: vault `service_role_key` ≠ env функции → 401 и на push, и на cron.
+      Теперь push/cron подписываются своим 256-битным секретом, у функции `verify_jwt=false`
+      (своя timing-safe авторизация; вызовы делает только БД). Проверено: valid → 200,
+      мусорный токен → 401, cron → 200.
+- [ ] DS-07 E2E реального прогона: реальный ключ Drift → задача уходит агенту → `review` + Telegram-апрув #test !high
+      Инфраструктурное плечо проверено (push/sweep → 200, пустые выборки → `processed: 0`).
+      Осталось: боевой прогон на реальном ключе (расход ~13.5k prompt-токенов) и проверка
+      возврата `ra:fix` → повторный прогон агентом.
+- [ ] DS-08 Статусы и стоимость в UI: бейдж «Hosted», `usage` из `agent_runs`, лимиты, stop-cran (UC-10) #ui !med
+- [ ] DS-09 MCP-инъекция: read-only ключ коннектора + `mcp_servers` в запросе (INV-18) #ai !med
+      Поле `mcp_allowlist` уже хранится и валидируется; осталось чеканить ключ и
+      подставлять его в запрос к агенту.
       Даёт bytecode-оптимизацию и pre-warming на прод-деплоях → меньше cold start без Edge.
       На Hobby память фиксирована (2 GB / 1 vCPU) и не конфигурируется.
 

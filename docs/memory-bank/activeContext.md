@@ -82,6 +82,52 @@ Runtime-проверка после деплоя (тап по карточке �
 
 retry_count: 0. Блокеров нет.
 # Active Context
+## Stage 15 · Agent Connectors: внешние агенты по endpoint + key (2026-09-22) ✅ (кроме DS-07/08/09)
+
+**Кейс.** Подключить агента парой «endpoint + API-ключ» (пример: Drift —
+`https://drift.neuraldeep.ru/v1`, ключ `dft_…`) и чтобы Onitask сам отправил задачу,
+проверил исполнение и забрал результат. Ранее коннектора не существовало: внешний агент
+обязан был быть pull-рантаймом (MCP/CLI сам зовёт `ops_lease`), а wake-webhook из `061`
+удалён в `072` как нереализованный.
+
+**Решение (вариант A — Onitask-as-Runtime).** Серверный цикл повторяет контракт внешнего
+рантайма: `ops_lease → контекст → вызов агента → ops_terminal → ops_ack`. Инварианты целы:
+INV-04 (терминал только через ops), INV-09 (CAS по version), фенсинг по `execution_id` +
+`runtime_id`. Доставка: pg_net push (мгновенно) + cron-sweeper 30 с (полнота) + reaper `067`
+(инвариант); Realtime остаётся wake для pull-рантаймов и live-UI.
+
+**Сделано (миграции 089/090/091 + 5 новых файлов):**
+- `089_agent_connectors.sql` — реестр подключений, RLS service-only, Vault-хелперы
+  (`agent_connector_set/get/delete_secret`), предикат `agent_connector_active`.
+- API: `/api/agents` (GET/POST), `/api/agents/[id]` (PATCH/DELETE), `/api/agents/probe`;
+  SSRF-гейт `lib/shared/agentEndpoint.ts`, валидаторы и публичная проекция
+  `lib/shared/agentConnectors.ts`, клиент `src/lib/api/agents.ts`.
+- UI: `AgentConnectorSheet` (Name/URL/API Key) вместо редиректа на `/settings/mcp`;
+  после создания `ops_ensure_worker` → агент в секции «Агенты» и как исполнитель.
+- `090_agent_runtime.sql` — `agent_runs` (идемпотентность по `execution_id`, `next_poll_at`,
+  `usage`, `request_digest`), push-триггер `trg_agent_dispatch_push`, cron `agent-runtime-sweep`,
+  выборки `agent_runtime_pending` / `agent_runs_due`, маркеры `agent_run_*` в `agent_events`.
+- Edge Function `agent-runtime` v3 (`index.ts` + `provider.ts`): lease → снимок задачи →
+  прогон → terminal/ack либо nack; `handleDueRun` закрывает осиротевшие прогоны (fail-loud).
+
+**Баг, пойманный smoke-тестом (исправлен).** Первый вызов через `net.http_post` вернул 401:
+gateway JWT принимал, но наша проверка падала — vault `service_role_key` (legacy JWT) ≠ env
+`SUPABASE_SERVICE_ROLE_KEY` (новый формат). Вторая попытка с выделенным hex-секретом дала
+`UNAUTHORIZED_INVALID_JWT_FORMAT`: `verify_jwt=true` требует именно JWT. Итог —
+`091_agent_runtime_secret.sql` (секрет в Vault + RPC только для service_role) и
+`verify_jwt=false` у функции (своя timing-safe авторизация; вызовы делает только БД).
+
+**Валидация.** `npm run type-check` — чисто; `vitest` — 128 passed / 4 failed (pre-existing
+`tests/api/init.test.ts`); 33 новых теста (`tests/lib/agentEndpoint.test.ts`,
+`tests/lib/agentConnectors.test.ts`) зелёные; DB-смоуки: round-trip секрета с маской
+`dft_…7890`, `ops_ensure_worker` идемпотентен (`type=agent`), `agent_connector_active` = false
+для `observer`, push/sweep → 200, мусорный токен → 401, cron → 200 (`net._http_response`).
+
+**Next (DS-07).** Боевой прогон на реальном ключе Drift: задача → агент → `review` +
+Telegram-апрув → проверка `ra:fix` → повторный прогон. Расход ~13.5k prompt-токенов на прогон.
+
+---
+
 ## Сверка TASKS.md ↔ код: Stage 8/9/10 (2026-09-19) ✅
 
 **Зачем.** В `docs/TASKS.md` Stage 8/9/10 стояли незакрытыми целиком (27 пунктов), хотя часть уже реализована — приоритизация по файлу врала.

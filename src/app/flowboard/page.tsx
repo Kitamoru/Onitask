@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet, AgentConnectorSheet } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import type {
@@ -67,6 +67,9 @@ function FlowBoardPageContent() {
     }
   }, [isStreamView, router]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  // Stage 15: «Добавить агента» открывает форму коннектора (endpoint + key),
+  // а не страницу MCP-ключей — см. AgentConnectorSheet.
+  const [showAgentSheet, setShowAgentSheet] = useState(false);
   const [columnSheet, setColumnSheet] = useState<{ open: boolean; column: string | null; label: string; accentColor: string }>({
     open: false,
     column: null,
@@ -544,7 +547,7 @@ function FlowBoardPageContent() {
           loading={isSwitchingWorkspace}
           error={dataError}
           onAddWorker={() => setShowInviteModal(true)}
-          onAddAgent={() => router.push('/settings/mcp')}
+          onAddAgent={() => setShowAgentSheet(true)}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
           isNewUser={isNewUser}
           onBoardCreate={handleBoardCreate}
@@ -566,6 +569,18 @@ function FlowBoardPageContent() {
         }}
         workspaceId={state.activeWorkspaceId}
         initData={tgInitData}
+      />
+
+      {/* Stage 15: добавление внешнего агента (endpoint + API Key) */}
+      <AgentConnectorSheet
+        open={showAgentSheet}
+        onClose={() => setShowAgentSheet(false)}
+        workspaceId={state.activeWorkspaceId ?? null}
+        onCreated={() => {
+          // Коннектор + воркер созданы → обновляем борду, чтобы агент появился
+          // в секции «Агенты» и стал доступен как исполнитель.
+          handleBoardCreate();
+        }}
       />
 
       {/* Onboarding modal for new users */}

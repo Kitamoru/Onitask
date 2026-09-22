@@ -4,6 +4,8 @@ export { OnboardingModal } from './OnboardingModal';
 export { InviteModal } from './InviteModal';
 export { ColumnTasksSheet } from './ColumnTasksSheet';
 export { TaskViewEdit } from './TaskViewEdit';
+export { AgentConnectorSheet } from './AgentConnectorSheet';
+export type { AgentConnectorSheetProps } from './AgentConnectorSheet';
 export { MoveTaskSheet } from './MoveTaskSheet';
 export type { MoveTaskSheetProps } from './MoveTaskSheet';
 export { ResultStepSheet } from './ResultStepSheet';
