@@ -20,6 +20,7 @@ import {
   buildTaskCard,
   setMessageReaction,
   setBotCommands,
+  buildCommandReplyKeyboard,
   miniAppDeepLink,
   TaskCardData,
 } from '../../../../../lib/bot';
@@ -300,6 +301,16 @@ async function dispatchUpdate(update: any): Promise<void> {
         chat_id: chatId,
         text: '⚠️ Ошибка при обработке /start.\n\n' + HELP_TEXT,
       }).catch(() => {});
+    }
+
+    if (chatType === 'private') {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text: 'Команды быстрого доступа:',
+        reply_markup: buildCommandReplyKeyboard(),
+      }).catch((err) => {
+        console.warn('[Bot Webhook] Failed to send command keyboard:', err);
+      });
     }
     return;
   }

@@ -6,6 +6,7 @@ import type {
   BotAPIResponse,
   InlineKeyboardMarkup,
   InlineKeyboardButton,
+  ReplyKeyboardMarkup,
   RichMessageOptions,
   DraftParams,
   SendMessageParams,
@@ -230,18 +231,42 @@ export async function answerCallbackQuery(
 // ============================================================================
 // Bot Commands Registration (§6.2d)
 // ============================================================================
+type PrimaryBotCommand = {
+  command: 'task' | 'call' | 'backlog' | 'help';
+  description: string;
+};
+
+const PRIMARY_BOT_COMMANDS: readonly PrimaryBotCommand[] = [
+  { command: 'task', description: 'Создать задачу' },
+  { command: 'call', description: 'Показать задачу' },
+  { command: 'backlog', description: 'Задачи без исполнителя' },
+  { command: 'help', description: 'Справка' },
+] as const;
+
+/**
+ * Build a persistent Reply keyboard for commands that only need one tap.
+ * Reply buttons send plain command text, which the webhook parses normally.
+ */
+export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
+  const buttons = PRIMARY_BOT_COMMANDS.map(({ command }) => ({
+    text: `/${command}`,
+  }));
+
+  return {
+    keyboard: [buttons.slice(0, 2), buttons.slice(2, 4)],
+    resize_keyboard: true,
+    is_persistent: true,
+    one_time_keyboard: false,
+  };
+}
+
 /**
  * Register bot commands in Telegram menu (appears when user types /).
  * Call once per process — not on every webhook message.
  */
 export async function setBotCommands(token: string): Promise<void> {
   await botApiRequest(token, 'setMyCommands', {
-    commands: [
-      { command: 'task', description: 'Создать задачу' },
-      { command: 'call', description: 'Показать задачу' },
-      { command: 'backlog', description: 'Задачи без исполнителя' },
-      { command: 'help', description: 'Справка' },
-    ],
+    commands: PRIMARY_BOT_COMMANDS,
   });
 }
 export async function deleteBotCommands(token: string): Promise<void> {

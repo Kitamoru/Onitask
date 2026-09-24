@@ -1,4 +1,24 @@
 
+## BOT-12: persistent Reply-клавиатура основных команд (2026-09-24) ✅
+
+**Решение:** текущий бот — Next.js webhook, поэтому не вводились `grammy`/`telegraf`
+handlers. `lib/bot.ts` содержит единый список основных команд для `setMyCommands` и
+`buildCommandReplyKeyboard()`. После `/start` в private chat отправляется компактная
+persistent Reply-клавиатура: `/task` `/call` / `/backlog` `/help`. Кнопки отправляют обычный
+текст и проходят через существующий `parseCommand()` pipeline. В группах клавиатура не
+отправляется, чтобы не менять интерфейс участников.
+
+**Валидация:** targeted 1/1 ✅; type-check ✅; полный Vitest 166/166 ✅; `git diff --check` ✅.
+Lint и Prettier не стартуют из-за существующего состояния окружения: `@rushstack/eslint-patch`
+несовместим с ESLint 9.39; `prettier-plugin-tailwindcss` отсутствует в `node_modules`, хотя
+указан в package.json. Пакеты/lockfile не менялись. Нужен ручной Telegram smoke после деплоя
+(`/start`, скрытие клавиатуры, восстановление через кнопку с кружочками).
+Независимое пользовательское изменение `supabase/functions/agent-runtime/provider.ts`
+не трогалось.
+
+---
+
+
 ## FIX: invite links — SDK timeout, cache bypass, transactional redemption (2026-09-24) ✅
 
 **Симптомы:** у новой invite-ссылки коллега видел «Ошибка инициализации. Попробуйте

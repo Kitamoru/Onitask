@@ -458,6 +458,13 @@ format is deliberately compact so that agents can load the file quickly.
       зоны = зонам `deadline_notify_tick`); StreamView лениво тянет настройки доски.
       В bot-notify `hours_left` ≥ 24ч рендерится в днях с плюрализацией
       («Просрочено на ~10 дней» вместо «~240ч»).
+- [x] BOT-12 Persistent Reply-клавиатура для основных команд #bot !low
+      Реализовано в `lib/bot.ts` + `src/app/api/bot/webhook/route.ts`: после `/start`
+      в личном чате отправляется persistent keyboard `/task`, `/call`, `/backlog`, `/help`;
+      кнопки используют существующий command pipeline, групповые чаты не затрагиваются.
+      Валидация: type-check ✅; Vitest 166/166 ✅; targeted 1/1 ✅. Lint/Prettier
+      остаются environment-broken до анализа исходников: `@rushstack/eslint-patch` × ESLint 9.39,
+      отсутствующий локально `prettier-plugin-tailwindcss`.
 
 ---
 
