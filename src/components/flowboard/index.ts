@@ -1,4 +1,5 @@
 export { FlowBoard, PersonCard, UserAvatar, CognitiveWeightIndicator, PriorityBadge } from './FlowBoard';
+export { TaskBlockedBadge } from './TaskBlockedBadge';
 export { WorkerSheet } from './WorkerSheet';
 export { OnboardingModal } from './OnboardingModal';
 export { InviteModal } from './InviteModal';

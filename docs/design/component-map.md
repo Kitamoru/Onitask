@@ -74,6 +74,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ### flowboard/ — Flow Board
 
+**TaskCard blocked state (2026-09-24):** при `tasks.is_blocked=true` общий `TaskCard` первым badge показывает compact amber-бейдж «Заблокирована» (`TaskBlockedBadge.tsx`). Без иконки, без изменения порядка и без дополнительного API-вызова; автоматически виден в `ColumnTasksSheet` и Stream.
+
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
 | | FlowBoard | FlowBoard.tsx | title, currentDate, sprint, signals, taskStatuses, workers, agents, loading, error, onAddWorker, onAddAgent, onRefresh, isNewUser, onBoardCreate | Main flow board. Uses desk-ui `SectionHeader` and `Button`. Manages sprint sheet state internally. |

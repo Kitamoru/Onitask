@@ -4,6 +4,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { IconChevronDown } from '@tabler/icons-react';
 import { NotchedPanel } from '@/components/ui/desk-ui/NotchedPanel';
 import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/FlowBoard';
+import { TaskBlockedBadge } from '@/components/flowboard/TaskBlockedBadge';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
 import type { TaskEntity } from '@/types/flowboard';
@@ -160,7 +161,7 @@ function LayoutListIcon() {
  *
  * Layout:
  *   1. main-info (row, gap 6px): [Title] [cognitive_weight badge] — same line
- *   2. prop-list (row, wrap, gap 4px): [priority badge] [workspace badge] [tags] [urgency badge]
+ *   2. prop-list (row, wrap, gap 4px): [blocked] [priority] [workspace] [tags] [urgency]
  *   3. footer (row, space-between):
  *      - Left: [avatar created_by] → [arrow] → [avatar assigned_to]
  *      - Right: "до ДД ММ • WORKSPACE-NUM"
@@ -275,6 +276,8 @@ export function TaskCard({
 
       {/* 2. prop-list — badges row (wrap, gap 4px) */}
       <div className="flex w-full flex-wrap items-center gap-1">
+        {task.is_blocked && <TaskBlockedBadge />}
+
         {/* Priority badge */}
         <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
 
