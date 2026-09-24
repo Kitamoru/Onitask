@@ -1,3 +1,73 @@
+## FIX: разовый VACUUM FULL pg_net._http_response (2026-09-24) ✅
+
+**Выполнено:** `VACUUM (FULL, VERBOSE, ANALYZE) net._http_response` после проверки пустой
+очереди, отсутствия locks/долгих транзакций и failed responses. Размер уменьшился:
+`145 MB → 1.8 MB` total, `143 MB → 1.7 MB` heap; все 1 440 строк сохранены.
+`pg_net.ttl` оставлен `6 hours`; polling и worker-интервалы не менялись.
+
+**Post-check:** snapshot id=5 — heap 1 785 856 bytes, total 1 884 160 bytes, rows 1440,
+queue 0, failed 0; latest `pg_net` response после операции пришёл в 12:27:42 UTC; все четыре
+cron jobs активны. `VACUUM FULL` больше не повторять по расписанию — только по порогу
+bloat и в maintenance window. Независимое пользовательское изменение
+`supabase/functions/agent-runtime/provider.ts` не трогалось.
+
+---
+
+
+## FIX: pg_net bloat baseline + обычный VACUUM (2026-09-24) ✅
+
+**Выполнено:** `VACUUM (VERBOSE, ANALYZE) net._http_response` через linked CLI в 12:25:35 UTC;
+`pg_stat_user_tables` подтверждает `vacuum_count=1`, `last_analyze` обновлён, `n_dead_tup=0`.
+Физический размер после обычного VACUUM остался около 145 MB — ожидаемо: обычный VACUUM
+не возвращает страницы ОС, только делает space доступным для reuse. После операции очередь
+`pg_net` = 0, failed responses = 0, `pg_net.ttl` намеренно оставлен `6 hours`.
+
+**Следующий шаг:** разовый `VACUUM FULL` только после отдельного maintenance-окна и проверки
+свободного диска; регулярным cron его не делать. Независимое пользовательское изменение
+`supabase/functions/agent-runtime/provider.ts` не трогалось.
+
+---
+
+
+## FIX: второй этап pg_net retention — заблокирован правами (2026-09-24) ⚠️
+
+**Проверено:** `pg_net.ttl` остался `6 hours`. `supabase db query --linked` выполнил
+`ALTER SYSTEM SET pg_net.ttl TO '2 hours'`, но Supabase отклонил изменение:
+`42501 permission denied to set parameter "pg_net.ttl"`. Это ограничение managed-проекта,
+не ошибка миграции. `VACUUM FULL` и ручная очистка `net._http_response` не выполнялись.
+
+**Состояние после попытки:** monitoring snapshot #4 — heap 143 MB, total 145 MB, rows 1440,
+queue 0, failed 0; worker cron jobs активны. Для завершения этапа нужен SQL Editor/Dashboard
+или Supabase Support с ролью, имеющей право менять `pg_net.ttl`; rollback-команда:
+`ALTER SYSTEM RESET pg_net.ttl; SELECT net.worker_restart();`.
+
+**Независимое пользовательское изменение:** `supabase/functions/agent-runtime/provider.ts`
+не трогалось.
+
+---
+
+
+## FIX: мониторинг pg_net без изменения внутренней таблицы (2026-09-24) ✅
+
+**Добавлено:** миграция `096_pg_net_health_monitoring.sql` — service-only таблица
+`public.ops_pg_net_health` со снимками раз в 15 минут через cron `pg-net-health-capture`
+(jobid 34), retention снимков 30 дней и агрегаты heap/total size, response rows, queue,
+content/headers и failed responses. `net._http_response`, `pg_net.ttl`, cron workers и
+polling-интервалы не изменялись.
+
+**Smoke:** snapshot id=1 создан вручную; heap 143 MB, total 145 MB, rows 1440,
+queue 2 на момент снимка (следующая проверка — 0), failed 0. `anon`/`authenticated`
+не имеют SELECT на таблицу и EXECUTE на snapshot-функцию. Advisors показывают ожидаемый
+INFO `RLS enabled no policy` для service-only таблицы.
+
+**Валидация:** type-check ✅; lint — 0 ошибок, 18 существующих warnings; Vitest 174/174 ✅;
+`git diff --check` ✅. `VACUUM FULL` и изменение `pg_net.ttl` оставлены отдельными
+maintenance-шагами. Независимое пользовательское изменение
+`supabase/functions/agent-runtime/provider.ts` не трогалось.
+
+---
+
+
 ## FIX: читаемый выбор исполнителя и проверяющего (2026-09-24) ✅
 
 **Изменено:** `src/components/flowboard/WorkerSelectSheet.tsx` — общий селектор назначения
