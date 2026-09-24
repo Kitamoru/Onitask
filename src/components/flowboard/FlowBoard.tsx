@@ -373,9 +373,9 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
         <rect width="358" height="1" fill="#FFFFFF" fillOpacity="0.2" />
       </svg>
 
-      {/* Stats row: Готово: doneTasks/totalSelected (both numbers gray) */}
+      {/* Stats row: Сделано: doneTasks/totalSelected (both numbers gray) */}
       <div className="relative flex items-center gap-1 mt-2" aria-label="Статистика спринта">
-        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Готово:</span>
+        <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>Сделано:</span>
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{doneTasks}</span>
         <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>/ {totalSelected || '-'}</span>
       </div>
