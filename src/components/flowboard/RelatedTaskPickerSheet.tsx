@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { TextInput } from '@/components/ui/desk-ui';
 import { taskColumnLabel } from '@/lib/taskColumns';
@@ -78,7 +78,7 @@ export function RelatedTaskPickerSheet({
         <TextInput
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={direction === 'blocked_by' ? 'Найти блокера' : 'Найти downstream-задачу'}
+          placeholder={direction === 'blocked_by' ? 'Найти блокер' : 'Найти downstream-задачу'}
           aria-label="Поиск задачи"
           autoFocus
         />
@@ -107,9 +107,9 @@ export function RelatedTaskPickerSheet({
                 <span className="truncate text-[15px] font-medium text-text">{task.title}</span>
                 <span className="text-xs text-text-muted">{taskColumnLabel(task.column)}</span>
               </div>
-              {savingTaskId === task.id
-                ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-text-muted" />
-                : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
+              {savingTaskId === task.id && (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-text-muted" />
+              )}
             </button>
           ))}
         </div>

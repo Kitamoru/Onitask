@@ -1132,6 +1132,7 @@ export function TaskViewEdit({
                   availableTasks={availableTasks}
                   onOpenTask={(taskId) => onOpenTask?.(taskId)}
                   onTaskStateChange={(state) => onTaskStateChange?.(state)}
+                  editable={isEdit}
                 />
               )}
 

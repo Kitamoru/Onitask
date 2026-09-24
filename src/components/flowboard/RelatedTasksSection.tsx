@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button, Card, NotchedPanel, SectionHeader } from '@/components/ui/desk-ui';
 import { createTaskRelation, deleteTaskRelation, getTaskRelations } from '@/lib/api/taskRelations';
 import { taskColumnLabel } from '@/lib/taskColumns';
@@ -15,6 +15,8 @@ export interface RelatedTasksSectionProps {
   availableTasks: TaskEntity[];
   onOpenTask: (taskId: string) => void;
   onTaskStateChange: (state: AffectedTaskState) => void;
+  /** Relations can be added/removed only while the task is being edited. */
+  editable: boolean;
 }
 
 export function RelatedTasksSection({
@@ -22,6 +24,7 @@ export function RelatedTasksSection({
   availableTasks,
   onOpenTask,
   onTaskStateChange,
+  editable,
 }: RelatedTasksSectionProps) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ['task-relations', task.id] as const, [task.id]);
@@ -112,9 +115,8 @@ export function RelatedTasksSection({
                       </span>
                     )}
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
                 </button>
-                {confirmDeleteId === item.relation_id ? (
+                {editable && (confirmDeleteId === item.relation_id ? (
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
@@ -145,7 +147,7 @@ export function RelatedTasksSection({
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
-                )}
+                ))}
               </NotchedPanel>
             );
           })}
@@ -160,7 +162,6 @@ export function RelatedTasksSection({
       <Card notch={8}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="text-[13px] text-text-muted">Только явные зависимости между задачами</p>
             {blockers.length > 0 && (
               <div className="mt-2 flex flex-col gap-1.5">
                 <div className="flex justify-between text-[12px] text-text-secondary">
@@ -202,12 +203,7 @@ export function RelatedTasksSection({
                 </p>
               )}
             </>
-          ) : (
-            <div className="rounded border border-line px-3 py-4 text-center">
-              <p className="text-[14px] font-medium text-text">Задача независима от других</p>
-              <p className="mt-1 text-[12px] text-text-muted">Добавьте обязательную или downstream-задачу.</p>
-            </div>
-          )}
+          ) : null}
 
           {actionError && (
             <div className="rounded border border-[var(--color-priority-red-border)] px-3 py-2 text-[13px] text-[var(--color-priority-red-text)]" role="alert">
@@ -215,13 +211,13 @@ export function RelatedTasksSection({
             </div>
           )}
 
-          {task.column !== 'done' && (
+          {editable && task.column !== 'done' && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button variant="outline" onClick={() => setPickerDirection('blocked_by')} disabled={pendingAction}>
-                <Plus className="h-4 w-4" /> Добавить блокера
+                <Plus className="h-4 w-4" /> Добавить блокер
               </Button>
               <Button variant="outline" onClick={() => setPickerDirection('blocks')} disabled={pendingAction}>
-                <Plus className="h-4 w-4" /> Эта задача блокирует…
+                <Plus className="h-4 w-4" /> Эта задача блокирует
               </Button>
             </div>
           )}
@@ -229,7 +225,7 @@ export function RelatedTasksSection({
       </Card>
 
       <RelatedTaskPickerSheet
-        open={pickerDirection !== null}
+        open={editable && pickerDirection !== null}
         onClose={() => setPickerDirection(null)}
         direction={pickerDirection ?? 'blocked_by'}
         currentTask={task}
