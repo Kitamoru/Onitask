@@ -2,18 +2,23 @@
 // AUTH-03: 401-обработка + интеграционный тест (mock-based)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const mockValidateTelegramInitData = vi.hoisted(() => vi.fn());
+const mockCreateServerClient = vi.hoisted(() => vi.fn());
+vi.hoisted(() => {
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+});
+
 import { POST } from '../../src/app/api/init/route';
 import type { NextRequest } from 'next/server';
 
 // Mock modules
-const mockValidateTelegramInitData = vi.fn();
-const mockCreateServerClient = vi.fn();
 
-vi.mock('@/lib/telegramAuth', () => ({
+vi.mock('../../src/lib/telegram/validate', () => ({
   validateTelegramInitData: (...args: any[]) => mockValidateTelegramInitData(...args),
 }));
 
-vi.mock('@/lib/supabase', () => ({
+vi.mock('../../lib/supabase', () => ({
   createServerClient: (...args: any[]) => mockCreateServerClient(...args),
 }));
 
@@ -21,12 +26,25 @@ vi.mock('@/lib/supabase', () => ({
 function createMockRequest(body: Record<string, unknown>) {
   return {
     json: async () => body,
+    headers: new Headers({ 'content-type': 'application/json' }),
   } as unknown as NextRequest;
+}
+
+function createThenable<T>(value: T) {
+  const chain: Record<string, any> = {};
+  for (const method of ['eq', 'select', 'upsert', 'insert']) {
+    chain[method] = vi.fn(() => chain);
+  }
+  chain.maybeSingle = vi.fn(async () => ({ data: value, error: null }));
+  chain.single = vi.fn(async () => ({ data: value, error: null }));
+  chain.then = (resolve: (value: any) => unknown) => Promise.resolve(resolve(chain));
+  return chain;
 }
 
 describe('POST /api/init', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
   });
 
   // Тест 1: Missing init_data → 400
@@ -87,33 +105,16 @@ describe('POST /api/init', () => {
       },
     });
 
-    // Mock Supabase: profile not found (maybeSingle returns null)
+    const profileQuery = createThenable(null);
+    profileQuery.insert = vi.fn(() => createThenable({
+      id: 'new-user-uuid-here',
+      telegram_id: 987654321,
+      display_name: 'testuser',
+      avatar_url: null,
+    }));
     const mockSupabase = {
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-        })),
-      })),
+      from: vi.fn(() => profileQuery),
     };
-
-    // Mock profile creation
-    const mockInsertResult = {
-      select: vi.fn(() => ({
-        single: vi.fn().mockResolvedValue({
-          data: {
-            id: 'new-user-uuid-here',
-            telegram_id: 987654321,
-            display_name: 'testuser',
-            avatar_url: null,
-          },
-          error: null,
-        }),
-      })),
-    };
-    (mockSupabase.from as any).mockReturnValue({
-      insert: vi.fn().mockReturnValue(mockInsertResult),
-    });
-
     mockCreateServerClient.mockReturnValue(mockSupabase);
 
     const request = createMockRequest({
@@ -125,5 +126,44 @@ describe('POST /api/init', () => {
     expect(data.success).toBe(true);
     expect(data.data.is_new_user).toBe(true);
     expect(data.data.worker.display_name).toBe('testuser');
+  });
+
+  it('returns 500 when invite acceptance RPC fails', async () => {
+    mockValidateTelegramInitData.mockResolvedValue({
+      valid: true,
+      user: {
+        id: '987654321',
+        is_bot: false,
+        first_name: 'Test',
+        username: 'testuser',
+        language_code: 'en',
+      },
+    });
+
+    const profileQuery = createThenable({
+      id: 'profile-uuid',
+      telegram_id: 987654321,
+      display_name: 'testuser',
+      avatar_url: null,
+      last_active_workspace_id: null,
+    });
+    const mockSupabase = {
+      rpc: vi.fn(async () => ({
+        data: null,
+        error: { message: 'invite redemption failed' },
+      })),
+      from: vi.fn(() => profileQuery),
+    };
+    mockCreateServerClient.mockReturnValue(mockSupabase);
+
+    const request = createMockRequest({
+      initData: 'valid',
+      start_param: 'invite-code',
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(500);
+    const data = await response.json();
+    expect(data.error).toBe('invite_acceptance_failed');
   });
 });

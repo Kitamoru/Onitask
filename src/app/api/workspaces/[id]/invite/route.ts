@@ -83,6 +83,21 @@ export async function GET(
     }
 
     const invite = inviteData as { code: string; expires_at: string; used_count: number; max_uses: number };
+
+    if (new Date(invite.expires_at).getTime() <= Date.now()) {
+      return NextResponse.json({
+        success: true,
+        data: { url: null, status: 'expired' },
+      });
+    }
+
+    if (invite.used_count >= invite.max_uses) {
+      return NextResponse.json({
+        success: true,
+        data: { url: null, status: 'exhausted' },
+      });
+    }
+
     const inviteUrl = `https://t.me/onitaskbot/onitask?startapp=${invite.code}`;
 
     return NextResponse.json({
@@ -92,6 +107,7 @@ export async function GET(
         expires_at: invite.expires_at,
         used_count: invite.used_count,
         max_uses: invite.max_uses,
+        status: 'active',
       },
     });
   } catch (err) {

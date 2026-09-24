@@ -91,23 +91,7 @@ export async function POST(req: NextRequest) {
     const telegramUser = validation.user;
     const supabase = createServerClient();
 
-    // 2. If start_param present — call atomic RPC accept_invite_link
-    // This is done BEFORE profile check so existing users can join new workspaces (Scenario 3)
-    let invitedWorkspaceId: string | null = null;
-
-    if (start_param) {
-      const { data: inviteData, error: inviteError } = await supabase.rpc(
-        'accept_invite_link',
-        { p_code: start_param },
-      );
-
-      if (!inviteError && inviteData && inviteData.length > 0) {
-        invitedWorkspaceId = (inviteData[0] as Record<string, unknown>).workspace_id as string;
-      }
-      // If RPC returns 0 rows — link is invalid/expired/exhausted, fallback to standard logic
-    }
-
-    // 3. Find profile by telegram_id (SEC-06: convert to number for bigint column)
+    // 2. Find profile by telegram_id (SEC-06: convert to number for bigint column)
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('id, telegram_id, display_name, avatar_url, last_active_workspace_id')
@@ -122,25 +106,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4a. Profile exists — find their workers + last_active_workspace_id
+    // 3a. Profile exists — find their workers + last_active_workspace_id
     if (profileData) {
       const profile = profileData as ProfileWithActiveBoard & { last_active_workspace_id?: string | null };
       const profileId = profile.id;
       const displayName = profile.display_name;
       const lastActiveWorkspaceId = (profile as any).last_active_workspace_id ?? null;
 
-      // If invited to a new workspace — find-or-create worker (Scenario 3)
-      // Idempotent: if worker already exists (UNIQUE workspace_id+source_id), do nothing
-      if (invitedWorkspaceId) {
-        await supabase
-          .from('workers')
-          .upsert({
-            workspace_id: invitedWorkspaceId,
-            source_id: profileId,
-            type: 'human',
-            role: 'member',
-            display_name: displayName,
-          }, { onConflict: 'workspace_id,source_id', ignoreDuplicates: true });
+      // Redeem an invite atomically. Existing active membership is idempotent;
+      // reactivation or first-time membership consumes exactly one use.
+      if (start_param) {
+        const { data: inviteData, error: inviteError } = await supabase.rpc(
+          'accept_invite_link',
+          {
+            p_code: start_param,
+            p_source_id: profileId,
+            p_display_name: displayName,
+          },
+        );
+
+        if (inviteError) {
+          console.error('init: invite acceptance error', inviteError);
+          return NextResponse.json(
+            { success: false, error: 'invite_acceptance_failed' },
+            { status: 500 },
+          );
+        }
       }
 
       // Get all active workers for this profile (source_id matches profile id as text)
@@ -198,7 +189,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: response });
     }
 
-    // 4b. New user — create profile + optionally worker from invite
+    // 3b. New user — create profile first, then redeem invite transactionally
     const userId = crypto.randomUUID();
 
     // Generate display_name from Telegram data
@@ -235,53 +226,35 @@ export async function POST(req: NextRequest) {
     let role: string | null = null;
     let isNewUserFlag = true;
 
-    // If there's a valid invite link, try to create worker
-    if (invitedWorkspaceId) {
-      const { data: existingWorker } = await supabase
-        .from('workers')
-        .select('workspace_id, role')
-        .eq('source_id', userId)
-        .eq('workspace_id', invitedWorkspaceId)
-        .eq('is_active', true)
-        .maybeSingle();
+    if (start_param) {
+      const { data: inviteData, error: inviteError } = await supabase.rpc(
+        'accept_invite_link',
+        {
+          p_code: start_param,
+          p_source_id: userId,
+          p_display_name: newDisplayName,
+        },
+      );
 
-      if (!existingWorker) {
-        const { data: newWorker, error: workerError } = await supabase
-          .from('workers')
-          .insert({
-            workspace_id: invitedWorkspaceId,
-            source_id: userId,
-            type: 'human',
-            role: 'member',
-            display_name: newDisplayName,
-          })
-          .select('workspace_id, role')
-          .single();
+      if (inviteError) {
+        console.error('init: invite acceptance error', inviteError);
+        return NextResponse.json(
+          { success: false, error: 'invite_acceptance_failed' },
+          { status: 500 },
+        );
+      }
 
-        if (!workerError && newWorker) {
-          workspaceId = invitedWorkspaceId;
-          role = 'member';
-          workspaces = [{
-            id: invitedWorkspaceId,
-            name: '',
-            slug: '',
-            task_prefix: '',
-            role: 'member',
-          }];
-          isNewUserFlag = false;
-        }
-      } else {
-        // Worker already exists (edge case)
-        isNewUserFlag = false;
-        workspaceId = (existingWorker as Record<string, unknown>).workspace_id as string;
-        role = (existingWorker as Record<string, unknown>).role as string;
+      if (inviteData && inviteData.length > 0) {
+        workspaceId = (inviteData[0] as Record<string, unknown>).workspace_id as string;
+        role = 'member';
         workspaces = [{
           id: workspaceId,
           name: '',
           slug: '',
           task_prefix: '',
-          role,
+          role: 'member',
         }];
+        isNewUserFlag = false;
       }
     }
 

@@ -31,6 +31,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<'none' | 'expired' | 'exhausted' | null>(null);
 
   // Load existing active invite link when modal opens
   useEffect(() => {
@@ -38,6 +39,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
 
     setLoading(true);
     setError(null);
+    setInviteStatus(null);
 
     fetch(`/api/workspaces/${workspaceId}/invite?init_data=${encodeURIComponent(initData)}`)
       .then((res) => res.json())
@@ -46,10 +48,12 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
           setInviteUrl(data.data.url);
         } else {
           setInviteUrl(null);
+          setInviteStatus(data.data?.status ?? 'none');
         }
       })
       .catch(() => {
         setInviteUrl(null);
+        setInviteStatus(null);
       })
       .finally(() => setLoading(false));
   }, [open, workspaceId, initData]);
@@ -60,6 +64,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
     setLoading(true);
     setError(null);
     setShared(false);
+    setInviteStatus(null);
 
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/invite`, {
@@ -81,6 +86,7 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
         setInviteUrl(null);
       } else {
         setInviteUrl(data.data.url);
+        setInviteStatus(null);
       }
     } catch {
       setError('Ошибка сети');
@@ -139,6 +145,18 @@ export function InviteModal({ open, onClose, workspaceId, initData }: InviteModa
               aria-label="Ссылка для приглашения"
             />
           </div>
+        )}
+
+        {!inviteUrl && inviteStatus === 'expired' && !loading && (
+          <p className="mb-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Срок действия ссылки истёк. Создайте новую ссылку.
+          </p>
+        )}
+
+        {!inviteUrl && inviteStatus === 'exhausted' && !loading && (
+          <p className="mb-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Ссылка больше не может использоваться: достигнут лимит. Создайте новую ссылку.
+          </p>
         )}
 
         {/* Actions — buttons above, instructions below (like sprint sheet) */}

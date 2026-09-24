@@ -76,12 +76,15 @@ export default function HomePage() {
   // Error state
   if (error) {
     const isNotInTWA = error === 'not_in_twa';
+    const isSdkUnavailable = error === 'sdk_unavailable';
     const is401 = error.startsWith('401:');
     const is500 = error.startsWith('500:');
 
     let message: string;
     if (isNotInTWA) {
       message = 'Откройте приложение через Telegram Web App';
+    } else if (isSdkUnavailable) {
+      message = 'Telegram не успел загрузиться. Проверьте интернет и попробуйте ещё раз.';
     } else if (is401) {
       message = 'Сессия истекла. Откройте приложение заново через Telegram.';
     } else if (is500) {

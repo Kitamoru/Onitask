@@ -14,7 +14,7 @@
  */
 
 /** Сколько ждать появления window.Telegram.WebApp на холодном старте. */
-export const SDK_WAIT_MS = 1500;
+export const SDK_WAIT_MS = 5000;
 /** Интервал поллинга window.Telegram.WebApp. */
 export const SDK_POLL_MS = 50;
 
@@ -41,6 +41,14 @@ export async function waitForTelegramWebApp(
     if (Date.now() >= deadline) return null;
     await new Promise((resolve) => setTimeout(resolve, SDK_POLL_MS));
   }
+}
+
+/** Auth cache is valid only for a normal launch without Telegram start_param. */
+export function shouldUseCachedInit(
+  startParam: string | undefined | null,
+  allowCache: boolean,
+): boolean {
+  return allowCache && !startParam;
 }
 
 /** Результат разбора deep link из start_param. */

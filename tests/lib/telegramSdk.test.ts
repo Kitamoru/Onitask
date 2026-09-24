@@ -5,9 +5,24 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   waitForTelegramWebApp,
+  shouldUseCachedInit,
   parseTaskStartParam,
   flowboardQueryFromStartParam,
 } from '../../src/lib/telegramSdk';
+
+describe('shouldUseCachedInit', () => {
+  it('обычный запуск использует cache', () => {
+    expect(shouldUseCachedInit('', true)).toBe(true);
+  });
+
+  it('invite/deep link всегда обходит cache', () => {
+    expect(shouldUseCachedInit('invite-code', true)).toBe(false);
+  });
+
+  it('force refresh обходит cache', () => {
+    expect(shouldUseCachedInit('', false)).toBe(false);
+  });
+});
 
 describe('parseTaskStartParam', () => {
   it('task_ONI-42 → fullId + вкладка «Общее»', () => {
@@ -94,6 +109,15 @@ describe('waitForTelegramWebApp', () => {
       (globalThis as any).window = { Telegram: { WebApp: tg } };
     }, 80);
     expect(await waitForTelegramWebApp(1000)).toBe(tg);
+  });
+
+  it('медленный CDN SDK (> прежнего таймаута 1.5с) → boot дожидается', async () => {
+    (globalThis as any).window = {};
+    const tg = { ready: () => {}, initData: 'x' };
+    setTimeout(() => {
+      (globalThis as any).window = { Telegram: { WebApp: tg } };
+    }, 1650);
+    expect(await waitForTelegramWebApp()).toBe(tg);
   });
 
   it('таймаут → null (не висим вечно, boot продолжает ошибку sdk_unavailable)', async () => {

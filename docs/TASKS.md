@@ -461,6 +461,13 @@ format is deliberately compact so that agents can load the file quickly.
 
 ---
 
+- [x] WS-06 Invite flow: SDK timeout, cache bypass, transactional redemption, expired/exhausted UI
+      Regression 2026-09-24: `/api/init` waits for afterInteractive Telegram SDK up to 5s; invite
+      `start_param` bypasses sessionStorage; `accept_invite_link(code, source_id, display_name)`
+      atomically creates/reactivates worker and increments `used_count`; expired/exhausted links
+      are not presented as active. Validation: type-check ✅, Vitest 165/165 ✅, DB redemption smoke ✅.
+      `docs/memory-bank/activeContext.md` § FIX: invite links (2026-09-24).
+
 ## Stage 11 · AI Flow Summary
 
 > dev_setup §3: Edge Function `flow-metrics` Cold Path, кэш 5/60с, кнопка «Применить». DoD: инсайты видны Admin/Owner, при ошибке LLM — последние успешные из кэша.

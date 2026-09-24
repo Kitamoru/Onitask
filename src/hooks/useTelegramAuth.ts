@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { InitResponse } from '../../types/api';
 import { markPerf } from '@/lib/perf/timings';
-import { waitForTelegramWebApp } from '@/lib/telegramSdk';
+import { shouldUseCachedInit, waitForTelegramWebApp } from '@/lib/telegramSdk';
 
 // ── Telegram Web App extended types ────────────────────────────────────────
 
@@ -99,16 +99,6 @@ function saveToStorage(data: InitResponse): void {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-function dataEqual(a: InitResponse | null, b: InitResponse | null): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  return (
-    a.worker.id === b.worker.id &&
-    a.worker.display_name === b.worker.display_name &&
-    a.is_new_user === b.is_new_user
-  );
-}
-
 // ── Stable empty defaults for SSR-safe initial render ──────────────────────
 
 const EMPTY_USER = Object.freeze({});
@@ -131,7 +121,7 @@ type InitOutcome = { ok: true; data: InitResponse } | { ok: false; error: string
 
 let initInFlight: Promise<InitOutcome> | null = null;
 
-async function requestInit(): Promise<InitOutcome> {
+async function requestInit(useCache: boolean): Promise<InitOutcome> {
   markPerf('init:start');
 
   const tg = await waitForTelegramWebApp();
@@ -144,6 +134,14 @@ async function requestInit(): Promise<InitOutcome> {
 
   try {
     const startParam = tg.initDataUnsafe?.start_param || '';
+
+    // Auth cache is valid only for a normal launch. A deep link (including
+    // an invite code) must always reach /api/init, even if this Telegram
+    // WebView already has cached auth data.
+    if (shouldUseCachedInit(startParam, useCache)) {
+      const cached = loadFromStorage();
+      if (cached) return { ok: true, data: cached };
+    }
 
     const res = await fetch('/api/init', {
       method: 'POST',
@@ -174,7 +172,14 @@ async function requestInit(): Promise<InitOutcome> {
 /** Общий in-flight промис; `force` — новый запрос (refresh после onboarding). */
 function fetchInitOnce(force = false): Promise<InitOutcome> {
   if (force) initInFlight = null;
-  if (!initInFlight) initInFlight = requestInit();
+  if (!initInFlight) {
+    const pending = requestInit(!force);
+    initInFlight = pending;
+    void pending.then((outcome) => {
+      // Retry / следующий hook instance должен получить новую попытку.
+      if (!outcome.ok && initInFlight === pending) initInFlight = null;
+    });
+  }
   return initInFlight;
 }
 
@@ -279,18 +284,6 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
 
   // ── Telegram Web App initialization ───────────────────────────────────
 
-  const initFromCache = useCallback(() => {
-    const cached = loadFromStorage();
-    if (cached) {
-      dataRef.current = cached;
-      setData(cached);
-      setIsTWA(true);
-      setIsLoading(false);
-      return true;
-    }
-    return false;
-  }, []);
-
   const performInit = useCallback(async (options?: { force?: boolean }) => {
     setIsLoading(true);
 
@@ -317,16 +310,15 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
   /** refresh() после onboarding обязан сходить в сеть заново (force). */
   const refreshAuth = useCallback(() => performInit({ force: true }), [performInit]);
 
-  // Run auth init once on mount: try cache first, then network if needed
+  // Run auth init once on mount: cached normal launches and all deep links
   useEffect(() => {
     if (authInitRanRef.current) return;
     authInitRanRef.current = true;
 
-    const hasCache = initFromCache();
-    if (!hasCache) {
-      performInit();
-    }
-  }, [performInit, initFromCache]);
+    // requestInit сам использует sessionStorage только при запуске без
+    // start_param. Deep link всегда идёт в сеть, чтобы не потерять invite.
+    void performInit();
+  }, [performInit]);
 
   // PERF-03: telegram-web-app.js грузится afterInteractive (не блокирует рендер),
   // поэтому появление SDK отслеживается отдельным эффектом. Раньше window.Telegram

@@ -1,3 +1,44 @@
+
+## FIX: invite links — SDK timeout, cache bypass, transactional redemption (2026-09-24) ✅
+
+**Симптомы:** у новой invite-ссылки коллега видел «Ошибка инициализации. Попробуйте
+перезагрузить»; после недавнего PERF-03 SDK грузится `afterInteractive`, но auth ждал
+только 1.5с. Кроме того, sessionStorage-кэш мог полностью пропустить `/api/init`
+при `start_param`, а worker создавался после уже увеличенного `used_count`.
+
+**Исправлено:**
+- `src/lib/telegramSdk.ts`: ожидание SDK 1.5с → 5с; `shouldUseCachedInit()` —
+  invite/task deep link всегда обходит sessionStorage cache.
+- `src/hooks/useTelegramAuth.ts`: один in-flight init сохраняется, ошибки не
+  кэшируются; cache применяется только при обычном запуске без `start_param`.
+- `src/app/api/init/route.ts`: invite redemption вызывается после profile
+  find-or-create; RPC-ошибка больше не маскируется под успех.
+- Миграции `093_transactional_invite_redemption.sql`, `094_fix_invite_redemption_conflict.sql`,
+  `095_preserve_invite_worker_display_name.sql`: overload
+  `accept_invite_link(code, source_id, display_name)` под `FOR UPDATE` создаёт/
+  re-activate worker (без перезаписи display_name) и увеличивает `used_count` в одной
+  транзакции; retry того же участника идемпотентен. EXECUTE оставлен только `service_role`.
+- `GET /api/workspaces/[id]/invite` больше не показывает expired/exhausted ссылку
+  как действующую; `InviteModal` сообщает причину и предлагает создать новую.
+- `src/app/page.tsx`: `sdk_unavailable` больше не показывается как общая
+  «Ошибка инициализации».
+
+**Логи/БД:** production Supabase-логи за инцидент не содержали `POST /api/init` или
+RPC/DB errors — подтвердило client-side SDK timeout. Свежая ссылка `onit` на момент
+проверки была валидна, `used_count=1`. До фикса в БД также оставались 2 записи
+`is_active=true` с истёкшим `expires_at`; записи физически не удаляются (аудит),
+теперь API исключает их. DB smoke: first redemption создала worker и увеличила
+used_count 0→1; повтор того же source_id оставил 1. Fixtures удалены.
+Supabase security advisors не показывают новых lint по invite RPC.
+
+**Валидация:** type-check 0; полный Vitest 165/165; targeted 23/23. Lint остаётся
+environment-broken (`@rushstack/eslint-patch` × ESLint 9.39). Локальный production
+build не является meaningful validation для TWA без Vercel env, поэтому оставлен
+Vercel deployment smoke после merge. Независимое пользовательское изменение
+`supabase/functions/agent-runtime/provider.ts` не трогалось.
+
+---
+
 # Active Context
 
 ## FIX: deep link «Открыть в приложении» сломан PERF-03 (2026-09-22) ✅
