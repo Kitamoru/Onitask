@@ -116,6 +116,14 @@ const KeyContextSection = memo(function KeyContextSection({
   onDescriptionChange: (v: string) => void;
   onOpenDate: () => void;
 }) {
+  const viewFieldStyle = isView
+    ? {
+        color: 'var(--color-text-primary)',
+        opacity: 1,
+        WebkitTextFillColor: 'var(--color-text-primary)',
+      }
+    : undefined;
+
   return (
     <section>
       <SectionHeader title="Ключевой контекст" />
@@ -128,6 +136,7 @@ const KeyContextSection = memo(function KeyContextSection({
           maxLength={500}
           corner="field"
           className="disabled:text-text"
+          style={viewFieldStyle}
         />
         <TextArea
           value={description}
@@ -137,6 +146,7 @@ const KeyContextSection = memo(function KeyContextSection({
           maxLength={5000}
           corner="field"
           className="disabled:text-text"
+          style={viewFieldStyle}
         />
         <SingleDateField
           date={deadline}
