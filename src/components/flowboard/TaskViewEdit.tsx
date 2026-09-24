@@ -127,6 +127,7 @@ const KeyContextSection = memo(function KeyContextSection({
           disabled={isView}
           maxLength={500}
           corner="field"
+          className="disabled:text-text"
         />
         <TextArea
           value={description}
@@ -135,6 +136,7 @@ const KeyContextSection = memo(function KeyContextSection({
           disabled={isView}
           maxLength={5000}
           corner="field"
+          className="disabled:text-text"
         />
         <SingleDateField
           date={deadline}

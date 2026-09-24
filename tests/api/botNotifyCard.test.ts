@@ -102,6 +102,7 @@ describe('bot-notify card: регрессии контекстов', () => {
       .map((b) => b.callback_data)
       .filter(Boolean);
     expect(callbacks).toContain('ra:approve:uuid-1');
+    expect(res.replyMarkup.inline_keyboard[0][0].text).toBe('✅ Согласовать');
     expect(callbacks).toContain('ra:fix:uuid-1');
   });
 
