@@ -44,6 +44,10 @@ export function WorkerSelectSheet({
     onClose();
   };
 
+  const orderedWorkers = [...workers].sort(
+    (a, b) => Number(a.type === 'agent') - Number(b.type === 'agent')
+  );
+
   return (
     <BottomSheet open={open} onClose={onClose} stacked={stacked}>
       <div className="flex flex-col gap-4 px-4 pb-6">
@@ -51,11 +55,11 @@ export function WorkerSelectSheet({
         <h3 className="text-[17px] font-semibold text-text">{title}</h3>
 
         {/* Workers list */}
-        {workers.length === 0 ? (
+        {orderedWorkers.length === 0 ? (
           <p className="text-sm text-text-secondary">Нет доступных участников</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {workers.map((w) => {
+            {orderedWorkers.map((w) => {
               const roleTitle = w.type === 'agent' ? 'AI-агент' : w.roleTitle?.trim() || null;
 
               return (
