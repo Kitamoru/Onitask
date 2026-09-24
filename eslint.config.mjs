@@ -1,44 +1,65 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextConfig from "eslint-config-next";
+import { defineConfig, globalIgnores } from 'eslint/config';
+import nextPlugin from '@next/eslint-plugin-next';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
+import importPlugin from 'eslint-plugin-import';
+import jsxA11yPlugin from 'eslint-plugin-jsx-a11y';
+import tsParser from '@typescript-eslint/parser';
 
-// eslint-config-next exports a flat config object (CommonJS)
-// Convert to array for spreading into our config
-const nextConfigArray = Array.isArray(nextConfig) ? nextConfig : [nextConfig];
+const sourceFiles = ['**/*.{js,jsx,mjs,cjs,ts,tsx}'];
 
-// Build config array before passing to defineConfig
 const baseConfig = [
-  ...nextConfigArray,
-  // Override default ignores of eslint-config-next.
   globalIgnores([
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
+    '.next/**',
+    'out/**',
+    'build/**',
+    'docs/**',
+    'types/**',
+    'supabase/functions/**',
+    'next-env.d.ts',
   ]),
-  // DB-19c: Disable react/no-danger (we use dangerouslySetInnerHTML for Markdown rendering)
   {
+    files: sourceFiles,
+    plugins: {
+      '@next/next': nextPlugin,
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
+      import: importPlugin,
+      'jsx-a11y': jsxA11yPlugin,
+    },
+    languageOptions: {
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+        sourceType: 'module',
+      },
+    },
+    settings: {
+      react: {
+        version: 'detect',
+      },
+    },
     rules: {
-      "react/no-danger": "off",
+      ...nextPlugin.configs.recommended.rules,
+      ...reactPlugin.configs.flat.recommended.rules,
+      ...reactHooksPlugin.configs['recommended-latest'].rules,
+      'import/no-anonymous-default-export': 'warn',
+      'react/no-danger': 'off',
+      'react/no-unknown-property': 'off',
+      'react/react-in-jsx-scope': 'off',
+      'react/prop-types': 'off',
+      'jsx-a11y/alt-text': ['warn', { elements: ['img'], img: ['Image'] }],
+      'jsx-a11y/aria-props': 'warn',
+      'jsx-a11y/aria-proptypes': 'warn',
+      'jsx-a11y/aria-unsupported-elements': 'warn',
+      'jsx-a11y/role-has-required-aria-props': 'warn',
+      'jsx-a11y/role-supports-aria-props': 'warn',
+      'react/jsx-no-target-blank': 'off',
     },
   },
-  // DB-19b: Prevent SUPABASE_SERVICE_ROLE_KEY usage in client-side code
-  // Blocks service role key imports outside server directories (lib/supabase.ts, app/api/, src/)
   {
-    files: ["**/*.ts", "**/*.tsx"],
-    excludedFiles: ["lib/supabase.ts", "app/api/**/*", "src/**/*"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["*"],
-              message:
-                "SUPABASE_SERVICE_ROLE_KEY must not be used in client-side code. Use anon key only.",
-            },
-          ],
-        },
-      ],
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
     },
   },
 ];

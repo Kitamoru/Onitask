@@ -46,10 +46,10 @@ export function ReviewDecisionBlock({
   onApprove,
   onFix,
 }: ReviewDecisionBlockProps) {
-  if (!task) return null;
-
   const [showReason, setShowReason] = useState(false);
   const [localReason, setLocalReason] = useState('');
+
+  if (!task) return null;
 
     // Кто может решать: назначенный ревьюер, либо creator (если reviewer не назначен),
   // либо owner/admin (форс-мейдж) — вынесено в модель reviewDecision.ts.

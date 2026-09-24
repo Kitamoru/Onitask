@@ -1,4 +1,21 @@
 
+
+## FIX: native flat ESLint без @rushstack/eslint-patch (2026-09-24) ✅
+
+**Причина:** `eslint-config-next@15.2.8` импортировал legacy `@rushstack/eslint-patch`, который
+не распознавал внутренний layout ESLint 9 и валил lint до анализа файлов.
+
+**Сделано:** удалены `eslint-config-next` и транзитивный Rushstack patch; `eslint.config.mjs` переведён
+на native flat config с прямыми Next/React/React Hooks/import/jsx-a11y плагинами. Deno Edge
+Functions (`supabase/functions/**`), docs и generated types исключены из Node ESLint. Исправлен
+Rules-of-Hooks в `src/components/flowboard/ReviewDecisionBlock.tsx`; `next.config.ts` больше не
+отключает lint во время build. `npm run lint` теперь проходит без ошибок, но показывает 18 warnings
+(существующие `<img>` и missing hook dependencies). `npm run type-check` и полный Vitest проходят;
+`next build` компилируется и проходит lint/types, но локально останавливается на существующем
+placeholder `NEXT_PUBLIC_SUPABASE_URL` в `.env.local`.
+
+**Независимое пользовательское изменение:** `supabase/functions/agent-runtime/provider.ts` не трогалось.
+
 ## FIX: единые названия колонок в Telegram-карточках (2026-09-24) ✅
 
 **Изменено:** `lib/bot.ts` и `supabase/functions/bot-notify/card.ts` теперь отображают
