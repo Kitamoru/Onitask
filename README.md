@@ -127,7 +127,9 @@ cp .env.example .env.local
 npx supabase start
 
 # Apply database migrations
-npx supabase db push
+# This project applies production migrations through the Supabase MCP
+# `apply_migration` tool, then verifies them with read-only SQL.
+# `supabase db push` is not the production deployment path for this project.
 
 # Generate TypeScript types from schema
 npx supabase gen types typescript --local > types/database.ts

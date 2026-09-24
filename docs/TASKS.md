@@ -905,8 +905,12 @@ format is deliberately compact so that agents can load the file quickly.
       правила в `attachments.ts` — паритет `lib/shared/attachments.ts`).
       `bot-notify`: карточка эскалации печатает «Последняя попытка»/«Детали»
       (`nack_reason`/`nack_detail` из payload триггера).
-      БД: `098`–`101` (ops_nack/trigger/reaper + CHECK `task_comments.source`,
-      `task_attachments.source`). Валидация: type-check 0, vitest 196 passed.
+      БД: `098`–`103` (ops_nack/trigger/reaper + CHECK `task_comments.source`,
+      `task_attachments.source`, фильтрация stale `nack_*` в escalation alert).
+      Валидация: type-check 0, vitest 196 passed.
+      `supabase/config.toml` фиксирует `verify_jwt=false` для `agent-runtime`
+      и `bot-notify`; production-деплой выполняется через `--use-api
+      --no-verify-jwt` (собственная авторизация функций).
       Задеплоено: agent-runtime v4 / bot-notify v42 (ACTIVE, `--use-api`, `verify_jwt` off,
       boot чистый). Осталось: боевой прогон DS-07 (реальный ключ Drift).
 

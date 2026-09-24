@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# Supabase CLI local state/cache (never part of the repository)
+supabase/.temp/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

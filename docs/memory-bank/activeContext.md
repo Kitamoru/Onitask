@@ -30,14 +30,16 @@
 
 **БД (применено):** `ops_nack` сохраняет `p_detail` в `task_executions.metadata` и в
 `tasks.metadata` (при эскалации); `trigger_escalation_alert` прокидывает
-`nack_reason/nack_detail` в payload `bot_notify`; `ops_reaper_tick` пишет
-`nack_reason='vt_expired'` + человеческий detail; расширены CHECK `task_comments.source`
-(+`system/review/cron`) и `task_attachments.source` (+`hosted_runtime`). Файлы для
-воспроизводимости репозитория: `098_enrich_max_attempts_escalation_detail.sql`,
-`099_enrich_ops_reaper_max_attempts_detail.sql`,
-`100_update_comment_constraint_system_source.sql`,
-`101_allow_hosted_runtime_task_attachment_source.sql` (каждый переигран в транзакции
-с `ROLLBACK` — чисто).
+`nack_reason/nack_detail` в payload `bot_notify`; миграция `103` фильтрует stale
+`nack_*` для escalation reasons, отличных от `max_attempts`; `ops_reaper_tick`
+пишет `nack_reason='vt_expired'` + человеческий detail; расширены CHECK
+`task_comments.source` (+`system/review/cron`) и `task_attachments.source`
+(+`hosted_runtime`). Файлы для воспроизводимости репозитория: `098`–`103`
+(каждая применена; `103` зарегистрирована MCP как `20260924201831`).
+
+**Конфигурация деплоя:** `supabase/config.toml` фиксирует `verify_jwt=false` для
+`agent-runtime` и `bot-notify`; функции используют собственную timing-safe авторизацию.
+Production-команды также сохраняют явный `--use-api --no-verify-jwt`.
 
 **Валидация:** `npm run type-check` — 0 ошибок; `vitest` — 196 passed / 19 файлов
 (новые: 10 тестов attachments, 5 тестов карточки эскалации); esbuild-бандл обеих

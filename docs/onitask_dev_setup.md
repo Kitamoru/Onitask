@@ -356,7 +356,8 @@ npm install
 npx supabase start
 
 # Применить миграции
-npx supabase db push
+# Production: Supabase MCP `apply_migration`, затем read-only SQL-проверка.
+# `supabase db push` не является production-путём этого проекта.
 
 # Регенерировать типы после миграции
 npx supabase gen types typescript --local > types/database.ts

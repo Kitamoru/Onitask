@@ -42,7 +42,9 @@ This file defines the step‑by‑step workflow that the Cline agent follows whe
 
 ### 6. Testing & Verification
 - Run the validation commands specified in the plan (from `.clinerules`):
-  - `supabase db push --dry-run` – schema validation.
+  - Production migrations in this project are applied through the Supabase MCP
+    `apply_migration` tool; verify the result with read-only SQL. Do not use
+    `supabase db push --dry-run` as the production validation path.
   - `npm run type-check` – TypeScript validation.
   - `npm run lint` – linting.
   - `supabase functions serve <function-name>` – Edge Function test.

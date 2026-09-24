@@ -1,0 +1,8 @@
+# Supabase CLI local/function configuration.
+# These functions use their own server-side authentication and are called by
+# the database with a runtime secret, not with a Supabase JWT.
+[functions.agent-runtime]
+verify_jwt = false
+
+[functions.bot-notify]
+verify_jwt = false
