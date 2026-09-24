@@ -86,6 +86,11 @@
   --color-priority-cyan-text: #22D3EE;
   --color-priority-cyan-border: #22D3EE;
 
+  /* Blocked task state — pure red, intentionally distinct from coral priority/danger red */
+  --color-blocked-badge-bg: rgba(255, 0, 0, 0.12);
+  --color-blocked-badge-text: #FF0000;
+  --color-blocked-badge-border: #FF0000;
+
   /* Spacing (4px grid, in rem) */
   --spacing-0: 0;
   --spacing-0\.5: 0.125rem;

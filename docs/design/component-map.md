@@ -74,7 +74,7 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ### flowboard/ — Flow Board
 
-**TaskCard blocked state (2026-09-24):** при `tasks.is_blocked=true` общий `TaskCard` первым badge показывает compact amber-бейдж «Заблокирована» (`TaskBlockedBadge.tsx`). Без иконки, без изменения порядка и без дополнительного API-вызова; автоматически виден в `ColumnTasksSheet` и Stream.
+**TaskCard blocked state (2026-09-24):** при `tasks.is_blocked=true` общий `TaskCard` первым badge показывает compact pure-red бейдж «Заблокирована» (`TaskBlockedBadge.tsx`). Чистый красный `#FF0000` семантически отделён от кораллового приоритета «Высокий» (`#EF4444`) и destructive-красного (`#FF2B3A`). Без иконки, без изменения порядка и без дополнительного API-вызова; автоматически виден в `ColumnTasksSheet` и Stream.
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|

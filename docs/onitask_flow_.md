@@ -241,7 +241,7 @@ SQL-реализация — см. [onitask_sql_anomalies_.md §3](onitask_sql_a
 - Заголовок: «{Название колонки} · N задач»
 - Сортировка: `moved_to_column_at ASC` для `in_progress`/`review`, приоритет для `backlog`, дата для `done`
 - Каждая задача: urgency полоска + ALPHA-N + title + assignee + deadline + SP
-- `is_blocked = true` → compact amber badge «Заблокирована» первым в badge-row `TaskCard` (без иконки и без дополнительного API-запроса)
+- `is_blocked = true` → compact pure-red badge «Заблокирована» первым в badge-row `TaskCard` (без иконки и без дополнительного API-запроса); чистый красный намеренно отличается от кораллового приоритета «Высокий» и destructive-красного
 - Тап на задачу → Task Sheet (§22)
 - «Ещё N задач → загрузить»
 
