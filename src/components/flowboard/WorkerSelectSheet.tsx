@@ -9,7 +9,7 @@
  */
 
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { Button, Card } from '@/components/ui/desk-ui';
+import { Button } from '@/components/ui/desk-ui';
 import type { WorkerCardData } from '@/types/flowboard';
 
 export interface WorkerSelectSheetProps {
@@ -54,48 +54,46 @@ export function WorkerSelectSheet({
         {workers.length === 0 ? (
           <p className="text-sm text-text-secondary">Нет доступных участников</p>
         ) : (
-        <div className="flex flex-col gap-2">
-            {workers.map((w) => (
-              <Button
-                key={w.id}
-                variant="outline"
-                onClick={() => handleSelect(w.id)}
-                className="w-full justify-start"
-              >
-                <div className="flex items-center gap-3">
-                  {/* Avatar */}
-                  <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-secondary"
-                    aria-hidden="true"
-                  >
-                    {w.avatarUrl ? (
-                      <img
-                        src={w.avatarUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-sm font-medium text-text-secondary">
-                        {w.displayName.charAt(0).toUpperCase()}
+          <div className="flex flex-col gap-2">
+            {workers.map((w) => {
+              const roleTitle = w.type === 'agent' ? 'AI-агент' : w.roleTitle?.trim() || null;
+
+              return (
+                <Button
+                  key={w.id}
+                  variant="outline"
+                  onClick={() => handleSelect(w.id)}
+                  className="w-full"
+                  aria-label={`${w.displayName}${roleTitle ? `, ${roleTitle}` : ''}`}
+                >
+                  <div className="flex w-full items-center justify-between gap-3 px-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      {/* Avatar */}
+                      <div
+                        className="bg-bg-secondary flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
+                        aria-hidden="true"
+                      >
+                        {w.avatarUrl ? (
+                          <img src={w.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-sm font-medium text-text-secondary">
+                            {w.displayName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="truncate text-[15px] font-medium text-text">
+                        {w.displayName}
+                      </span>
+                    </div>
+                    {roleTitle && (
+                      <span className="max-w-[45%] shrink-0 truncate text-xs font-normal text-text-secondary">
+                        {roleTitle}
                       </span>
                     )}
                   </div>
-                  {/* Name */}
-                  <span className="truncate text-[15px] font-medium text-text">
-                    {w.displayName}
-                  </span>
-                  {/* AI badge for agents */}
-                  {w.type === 'agent' && (
-                    <span
-                      className="shrink-0 rounded-full bg-bg-secondary px-2 py-0.5 text-[11px] font-semibold text-text-secondary"
-                      aria-label="AI-агент"
-                    >
-                      AI
-                    </span>
-                  )}
-                </div>
-              </Button>
-            ))}
+                </Button>
+              );
+            })}
           </div>
         )}
 

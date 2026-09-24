@@ -1,4 +1,15 @@
+## FIX: читаемый выбор исполнителя и проверяющего (2026-09-24) ✅
 
+**Изменено:** `src/components/flowboard/WorkerSelectSheet.tsx` — общий селектор назначения
+в карточке задачи теперь распределяет содержимое по краям: слева `workers.display_name`,
+справа `workers.role_title`; для агента всегда отображается `AI-агент`. Если у человека
+роль не заполнена, правая часть скрыта. Длинные имена и роли корректно сокращаются.
+
+**Валидация:** Prettier ✅; type-check ✅; Vitest 174/174 ✅; lint — 0 ошибок, 18
+существующих warnings; `git diff --check` ✅. Независимое пользовательское изменение
+`supabase/functions/agent-runtime/provider.ts` не трогалось.
+
+---
 
 ## FIX: native flat ESLint без @rushstack/eslint-patch (2026-09-24) ✅
 
