@@ -445,11 +445,20 @@ async function buildBroadcastCard(job: {
     (job.payload.reason as string) ||
     '';
   const suggestedAction = job.payload.suggested_action as string | undefined;
+  // Корень эскалации из ops_nack (migration: trigger_escalation_alert
+  // прокидывает metadata.nack_reason/nack_detail в payload).
+  const nackReason = job.payload.nack_reason as string | undefined;
+  const nackDetail = job.payload.nack_detail as string | undefined;
   const card = await buildTaskCardData(job, {});
 
   switch (alertType) {
     case 'escalation_alert':
-      return buildTaskNotifyCard(card, 'escalation', { reason, suggestedAction });
+      return buildTaskNotifyCard(card, 'escalation', {
+        reason,
+        suggestedAction,
+        nackReason,
+        nackDetail,
+      });
     case 'escalation_resolved':
       return buildTaskNotifyCard(card, 'escalation_resolved');
     case 'deadline_approaching':

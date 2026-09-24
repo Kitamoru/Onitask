@@ -1,4 +1,81 @@
-## FIX: единый зелёный прогресс спринта + актуальная подпись статуса (2026-09-24) ✅
+## FIX: агент вернул не-JSON-контракт → корень провала доезжает до эскалации (2026-09-24) ✅
+
+**Кейс.** Задача воркспейса Drift (воркер «Дрифт») трижды прогонялась hosted-рантаймом
+и уходила в эскалацию `max_attempts`, но диагноз был нечитаем:
+`agent_runs.error_code='bad_response'`, `response_digest = null`, в карточке Telegram —
+только `Причина: max_attempts`. Первопричина: внешний агент отвечает своим конвертом
+(`{task_id, status, result}`), провайдер жёстко требовал `outcome+summary`, а то, что
+агент реально вернул, никуда не сохранялось.
+
+**Сделано (код):**
+- `agent-runtime/provider.ts` — слой совместимости конвертов: строгий путь
+  (`outcome`+`summary`) в приоритете, иначе разбор `status/state/result_status` по
+  алиасам (`done|completed|success|…`), вложенный `result/output/data`, summary из
+  `summary/description/message/…`; мягкий разбор помечается `coerced: true` (не молчаливый).
+  Диагностика провала: `ProviderFailure.rawPreview` (~400 симв.) + `observedKeys`
+  (верхнеуровневые ключи ответа); `contentToText` понимает массив частей контента.
+- `agent-runtime/attachments.ts` (новый, чистый модуль) — паритет правил
+  `lib/shared/attachments.ts`: whitelist 18 расширений, магия байтов, ≤5 файлов,
+  ≤2 МБ base64 на файл, ≤3 МБ суммарно. Невалидный файл отбрасывается с причиной
+  (прогон не «сжигается» впустую) — 10 юнит-тестов.
+- `agent-runtime/index.ts` — файлы агента из JSON → Storage `task-attachments` +
+  манифест `task_attachments` (`source='hosted_runtime'`, идемпотентность по
+  `UNIQUE(execution_id, filename)`, откат Storage при ошибке вставки манифеста,
+  отброшенные — в `metadata.attachments_rejected/failed` + `agent_events.agent_attachments_dropped`);
+  провал пишет `response_digest {error_code, status, raw_preview, observed_keys}` и
+  `nack_detail = "code: message | keys: … | raw: …"`; успех — `coerced` и число файлов.
+- `bot-notify/card.ts` + `index.ts` — карточка эскалации показывает
+  «Последняя попытка: <nack_reason>» и «Детали: <nack_detail>» (обрезка 300 + HTML-escape),
+  строка не дублируется, если `nack_reason == escalation_reason`.
+
+**БД (применено):** `ops_nack` сохраняет `p_detail` в `task_executions.metadata` и в
+`tasks.metadata` (при эскалации); `trigger_escalation_alert` прокидывает
+`nack_reason/nack_detail` в payload `bot_notify`; `ops_reaper_tick` пишет
+`nack_reason='vt_expired'` + человеческий detail; расширены CHECK `task_comments.source`
+(+`system/review/cron`) и `task_attachments.source` (+`hosted_runtime`). Файлы для
+воспроизводимости репозитория: `098_enrich_max_attempts_escalation_detail.sql`,
+`099_enrich_ops_reaper_max_attempts_detail.sql`,
+`100_update_comment_constraint_system_source.sql`,
+`101_allow_hosted_runtime_task_attachment_source.sql` (каждый переигран в транзакции
+с `ROLLBACK` — чисто).
+
+**Валидация:** `npm run type-check` — 0 ошибок; `vitest` — 196 passed / 19 файлов
+(новые: 10 тестов attachments, 5 тестов карточки эскалации); esbuild-бандл обеих
+функций собирается (`--external:npm:*`, `--external:https://*`).
+
+**Деплой (выполнено):** `npx supabase@2.117.0 functions deploy agent-runtime bot-notify
+--project-ref atarmvtzvlwhkheeabeb --use-api --no-verify-jwt` (`--use-api` — без Docker;
+относительные импорты `provider.ts`/`attachments.ts`/`card.ts` уезжают ассетами функции).
+agent-runtime v3→**4**, bot-notify v41→**42**, обе ACTIVE; `verify_jwt` остался off —
+проверено мусорным Bearer: отвечает наш код (`{"error":"unauthorized"}` /
+`{"error":"Unauthorized"}`), а не шлюзовый `{"code":401,"message":"Missing authorization header"}`.
+`function_logs`: только `booted` (30–56 мс), ошибок резолва модулей нет.
+
+**Осталось:** боевой прогон (DS-07) — увидеть `coerced`/`raw_preview`/`nack_detail`
+в `agent_runs` и файлы агента в карточке.
+
+**Наблюдение (вне скоупа, обе ветки — и MCP, и hosted):**
+`task_attachments.execution_id` — FK `ON DELETE CASCADE` (`confdeltype='c'`), а cron
+`gc_ops_history` (073, `0 4 * * *`) удаляет `task_executions` со статусом closed/expired
+старше 30 дней → манифест уходит каскадом, а бинарник добирает
+`gc_orphan_task_attachments` (081, `10 3 * * *`: объект без строки манифеста старше 1 ч).
+Итог: файлы задачи живут ~30 дней, хотя решение 077 (decisions.md) прямо обещало
+«файлы переживают GC execution» — именно этим аргументом отклонялся вариант A (base64
+в `task_executions`).
+
+Замерено на 2026-09-24: в `task_attachments` 13 строк, из них **9 уже с
+`execution_id IS NULL`** (загрузки людьми без execution), колонка изначально nullable,
+а `idx_task_attachments_execution` сделан частичным (`WHERE execution_id IS NOT NULL`).
+То есть NULL-состояние в проде уже норма, а `UNIQUE(execution_id, filename)` дедуплицирует
+только внутри живого execution — смена FK на `ON DELETE SET NULL` дедуп retry не ломает
+(в отличие от первоначальной оценки). Асимметрия в той же таблице: `submission_id` уже
+`ON DELETE SET NULL`. Правка — одна миграция (DROP/ADD CONSTRAINT, колонку делать
+nullable не нужно). Решение за владельцем: принять 30 дней как осознанный retention
+(и поправить decisions.md) или сделать `102_attachments_survive_execution_gc.sql`.
+
+---
+
+
 
 **Выполнено:** компактная карточка `SprintCompressedInfo` и прогресс внутри
 `SprintViewSheet` используют один semantic green token

@@ -179,3 +179,55 @@ describe('bot-notify card: deep-link', () => {
     }
   });
 });
+
+describe('bot-notify card: корень эскалации (nack_reason/nack_detail)', () => {
+  it('max_attempts: показывает ошибку последней попытки и её детали', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'escalation', {
+      reason: 'max_attempts',
+      nackReason: 'transient_error',
+      nackDetail: 'bad_response: Агент вернул не JSON-контракт | keys: task_id, status',
+    });
+    expect(res.text).toContain('Причина: max_attempts');
+    expect(res.text).toContain('Последняя попытка: transient_error');
+    expect(res.text).toContain('Детали: bad_response: Агент вернул не JSON-контракт');
+    expect(res.text).toContain('keys: task_id, status');
+  });
+
+  it('nack_reason совпадает с escalation_reason → строка не дублируется', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'escalation', {
+      reason: 'unsupported_task',
+      nackReason: 'unsupported_task',
+      nackDetail: 'unauthorized: Ключ агента отклонён',
+    });
+    expect(res.text).toContain('Причина: unsupported_task');
+    expect(res.text).not.toContain('Последняя попытка:');
+    expect(res.text).toContain('Детали: unauthorized: Ключ агента отклонён');
+  });
+
+  it('без nack_* — обратная совместимость (только «Причина:»)', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'escalation', { reason: 'нет доступа' });
+    expect(res.text).toContain('Причина: нет доступа');
+    expect(res.text).not.toContain('Последняя попытка:');
+    expect(res.text).not.toContain('Детали:');
+  });
+
+  it('детали экранируются и обрезаются до 300 символов', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'escalation', {
+      reason: 'max_attempts',
+      nackDetail: `<b>${'x'.repeat(500)}`,
+    });
+    // Обрезка до 300 символов идёт до экранирования: '<b>' + 297 'x' + '…'
+    expect(res.text).toContain(`Детали: &lt;b&gt;${'x'.repeat(297)}…`);
+    expect(res.text).not.toContain('x'.repeat(400));
+  });
+
+  it('не-escalation контексты nack_* игнорируют', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'done', {
+      reason: 'отчёт',
+      nackReason: 'transient_error',
+      nackDetail: 'boom',
+    });
+    expect(res.text).toContain('Результат: отчёт');
+    expect(res.text).not.toContain('Детали:');
+  });
+});

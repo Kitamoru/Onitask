@@ -17,6 +17,13 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runAgent, type RunRequest } from './provider.ts';
+import {
+  base64ToBytes,
+  EXTENSION_MIME,
+  extensionOf,
+  reviewAttachments,
+  type RuntimeAttachmentMeta,
+} from './attachments.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -183,6 +190,108 @@ async function logEvent(
     tool,
     metadata,
   });
+}
+
+/**
+ * Диагноз провала для nack_detail. Класс ошибки + то, что реально ответил
+ * агент: без превью «Агент вернул не JSON-контракт» не диагностируется, а
+ * после 3 попыток корень теряется совсем (metadata.nack_detail).
+ */
+function failureDetail(failure: {
+  code: string;
+  message: string;
+  observedKeys?: string[];
+  rawPreview?: string;
+}): string {
+  const parts = [`${failure.code}: ${failure.message}`];
+  if (failure.observedKeys?.length) parts.push(`keys: ${failure.observedKeys.join(', ')}`);
+  if (failure.rawPreview) parts.push(`raw: ${failure.rawPreview}`);
+  return parts.join(' | ').slice(0, 400);
+}
+
+// ============================================================================
+// Файлы агента (FILE-01/08): base64 из JSON → Storage + манифест
+// ============================================================================
+
+interface AttachmentIngest {
+  /** Манифест для metadata терминала (тот же формат, что у MCP-пути). */
+  manifest: RuntimeAttachmentMeta[];
+  rejected: { filename: string; reason: string }[];
+  failed: { filename: string; reason: string }[];
+}
+
+/**
+ * Кладёт файлы агента туда же, куда и MCP-путь (opsTerminalCore): бинарник →
+ * Storage 'task-attachments' (приватный), манифест → task_attachments.
+ *
+ * Идемпотентность retry — UNIQUE(execution_id, filename): уже загруженные
+ * имена пропускаем. Ошибка на одном файле не роняет прогон: результат уже
+ * получен, причина уходит проверяющему в metadata и в журнал прогона.
+ */
+async function persistRunAttachments(
+  supabase: SupabaseClient,
+  opts: { workspaceId: string; taskId: string; executionId: string; raw: unknown },
+): Promise<AttachmentIngest> {
+  const review = reviewAttachments(opts.raw);
+  if (review.accepted.length === 0) {
+    return { manifest: [], rejected: review.rejected, failed: [] };
+  }
+
+  const { data: existing } = await supabase
+    .from('task_attachments')
+    .select('filename')
+    .eq('execution_id', opts.executionId);
+  const already = new Set(
+    ((existing as { filename: string }[] | null) ?? []).map((row) => row.filename),
+  );
+
+  const manifest: RuntimeAttachmentMeta[] = [];
+  const failed: { filename: string; reason: string }[] = [];
+
+  for (const attachment of review.accepted) {
+    if (already.has(attachment.filename)) continue;
+
+    const ext = extensionOf(attachment.filename);
+    const mime = EXTENSION_MIME[ext] ?? 'application/octet-stream';
+    const bytes = base64ToBytes(attachment.content_base64);
+    const storagePath = `${opts.workspaceId}/${opts.taskId}/${crypto.randomUUID().replace(/-/g, '')}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('task-attachments')
+      .upload(storagePath, bytes, { contentType: mime, upsert: false });
+    if (uploadError) {
+      failed.push({ filename: attachment.filename, reason: uploadError.message });
+      continue;
+    }
+
+    const { error: insertError } = await supabase.from('task_attachments').insert({
+      workspace_id: opts.workspaceId,
+      task_id: opts.taskId,
+      execution_id: opts.executionId,
+      filename: attachment.filename,
+      mime_type: mime,
+      size_bytes: bytes.length,
+      storage_path: storagePath,
+      uploaded_by: null,
+      author_type: 'agent',
+      source: 'hosted_runtime',
+    });
+    if (insertError) {
+      // Откат: не оставляем сироту в Storage без строки манифеста.
+      await supabase.storage.from('task-attachments').remove([storagePath]);
+      failed.push({ filename: attachment.filename, reason: insertError.message });
+      continue;
+    }
+
+    manifest.push({
+      filename: attachment.filename,
+      mime_type: mime,
+      size_bytes: bytes.length,
+      storage_path: storagePath,
+    });
+  }
+
+  return { manifest, rejected: review.rejected, failed };
 }
 
 async function handleJob(
@@ -355,6 +464,23 @@ async function handleJob(
 
   if (outcome.ok) {
     // 7a. Успех: единый терминал контура (INV-04) + receipt.
+    // Файлы агента — ДО терминала: манифест уходит в metadata прогона (как в
+    // MCP-пути opsTerminalCore), bot-notify отправит их вместе с карточкой.
+    const files = await persistRunAttachments(supabase, {
+      workspaceId: job.workspace_id,
+      taskId: task.id,
+      executionId: leaseJob.execution_id,
+      raw: outcome.result.attachments,
+    });
+
+    if (files.rejected.length > 0 || files.failed.length > 0) {
+      await logEvent(supabase, job, 'agent_attachments_dropped', {
+        run_id: runId,
+        rejected: files.rejected,
+        failed: files.failed,
+      });
+    }
+
     const { data: terminalData, error: terminalError } = await supabase.rpc('ops_terminal', {
       p_execution_id: leaseJob.execution_id,
       p_runtime_id: runtimeId,
@@ -368,6 +494,9 @@ async function handleJob(
         run_id: runId,
         model: outcome.usage.model ?? job.model,
         usage: outcome.usage,
+        ...(files.manifest.length > 0 ? { attachments: files.manifest } : {}),
+        ...(files.rejected.length > 0 ? { attachments_rejected: files.rejected } : {}),
+        ...(files.failed.length > 0 ? { attachments_failed: files.failed } : {}),
       },
       p_next_owner: outcome.result.nextOwner,
     });
@@ -411,6 +540,9 @@ async function handleJob(
           summary_length: outcome.result.summary.length,
           raw_length: outcome.rawLength,
           next_owner: outcome.result.nextOwner,
+          // Мягкий разбор конверта не должен быть молчаливым (provider.ts).
+          coerced: outcome.result.coerced,
+          attachments: files.manifest.length,
         },
         finished_at: new Date().toISOString(),
         next_poll_at: null,
@@ -428,13 +560,17 @@ async function handleJob(
   // 7b. Провал. unauthorized — ошибка конфигурации (жжёт попытки впустую) →
   // unsupported_task (эскалация человеку). Остальное — transient_error (requeue).
   const nackReason = outcome.code === 'unauthorized' ? 'unsupported_task' : 'transient_error';
+  // Корень провала (класс + превью ответа) — в nack_detail: он доезжает до
+  // task.metadata и карточки эскалации, иначе после 3 попыток остаётся
+  // безликое «max_attempts».
+  const nackDetail = failureDetail(outcome);
 
   await supabase.rpc('ops_nack', {
     p_execution_id: leaseJob.execution_id,
     p_runtime_id: runtimeId,
     p_receipt: leaseJob.receipt,
     p_reason: nackReason,
-    p_detail: `${outcome.code}: ${outcome.message}`.slice(0, 400),
+    p_detail: nackDetail,
   });
 
   await supabase
@@ -444,6 +580,14 @@ async function handleJob(
       error_code: outcome.code,
       error_text: outcome.message.slice(0, 500),
       usage: outcome.usage ?? null,
+      // Что именно ответил агент: response_digest вместо null — иначе диагноз
+      // провала упирается в «Агент вернул не JSON-контракт» без деталей.
+      response_digest: {
+        error_code: outcome.code,
+        status: outcome.status ?? null,
+        raw_preview: outcome.rawPreview ?? null,
+        observed_keys: outcome.observedKeys ?? null,
+      },
       finished_at: new Date().toISOString(),
       next_poll_at: null,
     })
@@ -453,6 +597,7 @@ async function handleJob(
     run_id: runId,
     code: outcome.code,
     nack: nackReason,
+    detail: nackDetail,
   });
 
   return { outbox_id: job.outbox_id, status: 'failed', error: outcome.code };

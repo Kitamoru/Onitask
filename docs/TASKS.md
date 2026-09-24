@@ -894,6 +894,23 @@ format is deliberately compact so that agents can load the file quickly.
       Даёт bytecode-оптимизацию и pre-warming на прод-деплоях → меньше cold start без Edge.
       На Hobby память фиксирована (2 GB / 1 vCPU) и не конфигурируется.
 
+- [x] DS-10 Хардненинг hosted-рантайма: конверты провайдера + диагностика корня провала #ai !high
+      Кейс: Drift отвечал своим конвертом (`{task_id, status, result}`) → `bad_response` +
+      `response_digest=null` → 3 попытки → эскалация `max_attempts` без деталей.
+      `provider.ts`: слой совместимости конвертов (`status/state/result_status` → outcome,
+      вложенный `result/output/data` → summary, флаг `coerced`) + `rawPreview`/`observedKeys`
+      в `ProviderFailure`. `index.ts`: `nack_detail` = класс + превью ответа,
+      `response_digest` на провале ({error_code, status, raw_preview, observed_keys}),
+      файлы агента → Storage `task-attachments` + `task_attachments` (`source='hosted_runtime'`,
+      правила в `attachments.ts` — паритет `lib/shared/attachments.ts`).
+      `bot-notify`: карточка эскалации печатает «Последняя попытка»/«Детали»
+      (`nack_reason`/`nack_detail` из payload триггера).
+      БД: `098`–`101` (ops_nack/trigger/reaper + CHECK `task_comments.source`,
+      `task_attachments.source`). Валидация: type-check 0, vitest 196 passed.
+      Задеплоено: agent-runtime v4 / bot-notify v42 (ACTIVE, `--use-api`, `verify_jwt` off,
+      boot чистый). Осталось: боевой прогон DS-07 (реальный ключ Drift).
+
+
 ---
 
 

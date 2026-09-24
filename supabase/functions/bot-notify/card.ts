@@ -216,6 +216,10 @@ export function buildTaskNotifyCard(
     hoursLeft?: number;
     taskId?: string;
     suggestedAction?: string;
+    /** ops_nack последней попытки (metadata.nack_reason) — корень эскалации. */
+    nackReason?: string;
+    /** ops_nack detail последней попытки (metadata.nack_detail) — сырой диагноз. */
+    nackDetail?: string;
   }
 ): {
   text: string;
@@ -230,6 +234,14 @@ export function buildTaskNotifyCard(
   if (context === 'escalation' && extras?.reason) {
     extraLines.push('');
     extraLines.push(`Причина: ${escapeHtml(extras.reason)}`);
+    // Корень провала из ops_nack: у эскалации max_attempts без него нет
+    // деталей — только факт исчерпания попыток.
+    if (extras.nackReason && extras.nackReason !== extras.reason) {
+      extraLines.push(`Последняя попытка: ${escapeHtml(extras.nackReason)}`);
+    }
+    if (extras.nackDetail) {
+      extraLines.push(`Детали: ${escapeHtml(truncateForTelegram(extras.nackDetail, 300))}`);
+    }
     if (extras.suggestedAction) {
       extraLines.push(`Предлагаю: ${escapeHtml(extras.suggestedAction)}`);
     }
