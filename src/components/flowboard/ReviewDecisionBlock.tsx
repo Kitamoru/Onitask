@@ -25,6 +25,8 @@ export interface ReviewDecisionBlockProps {
   task: TaskEntity | null;
   /** Текущий пользователь (worker.id) */
   currentUserId?: string;
+  /** Роль текущего пользователя в workspace — нужна для owner/admin force-merge. */
+  currentUserRole?: string | null;
   /** Последняя сдача исполнителя (prefill «Что сделано»/ссылки/файлы) */
   latestSubmission: LatestTaskSubmission | null;
   /** Состояние отправки (approve/fix) */
@@ -40,6 +42,7 @@ const REASON_MAX = 2000;
 export function ReviewDecisionBlock({
   task,
   currentUserId,
+  currentUserRole,
   latestSubmission,
   loading,
   error,
@@ -53,7 +56,7 @@ export function ReviewDecisionBlock({
 
     // Кто может решать: назначенный ревьюер, либо creator (если reviewer не назначен),
   // либо owner/admin (форс-мейдж) — вынесено в модель reviewDecision.ts.
-  const canReview = canCurrentUserReview(task, currentUserId);
+  const canReview = canCurrentUserReview(task, currentUserId, currentUserRole);
 
   // Инфо-строка: задача на проверке, но сейчас не моя.
   if (!canReview) {

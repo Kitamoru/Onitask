@@ -919,6 +919,9 @@ export function TaskViewEdit({
 
   const assigneeWorker = findWorker(assignedTo);
   const reviewerWorker = findWorker(reviewerId);
+  const currentUserRole = currentUserId
+    ? workers.find((worker) => worker.id === currentUserId)?.role ?? null
+    : null;
 
   const availableForAssignee = workers.filter((w) => w.id !== reviewerId);
   const availableForReviewer = workers.filter((w) => w.id !== assignedTo);
@@ -1178,6 +1181,7 @@ export function TaskViewEdit({
             <ReviewDecisionBlock
               task={(task ?? null) as TaskEntity}
               currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
               latestSubmission={latestSubmission}
               loading={reviewLoading}
               error={reviewError}
