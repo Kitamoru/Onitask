@@ -43,10 +43,10 @@ export type NotifyContext =
   | 'handoff';
 
 export const STATUS_LABELS: Record<string, string> = {
+  backlog: 'В очереди',
   in_progress: 'В работе',
   review: 'На проверке',
-  done: 'Готово',
-  backlog: 'Бэклог',
+  done: 'Сделано',
 };
 
 export const PRIORITY_LABELS: Record<string, string> = {

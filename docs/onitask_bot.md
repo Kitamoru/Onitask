@@ -1112,7 +1112,7 @@ if (match) {
 
 ```typescript
 const STATUS_LABELS: Record<string, string> = {
-  in_progress: 'В работе', review: 'На проверке', done: 'Готово', backlog: 'Бэклог',
+  backlog: 'В очереди', in_progress: 'В работе', review: 'На проверке', done: 'Сделано',
 };
 const PRIORITY_LABELS: Record<string, string> = {
   high: '🔴 Высокий приоритет', medium: '🟡 Средний приоритет', low: '🟢 Низкий приоритет',

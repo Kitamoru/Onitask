@@ -26,6 +26,20 @@ const makeCard = (over: Partial<TaskCardData> = {}): TaskCardData => ({
   ...over,
 });
 
+describe('bot-notify card: названия колонок', () => {
+  it.each([
+    ['backlog', 'В очереди'],
+    ['in_progress', 'В работе'],
+    ['review', 'На проверке'],
+    ['done', 'Сделано'],
+  ])('%s отображается как «%s»', (column, label) => {
+    const res = buildTaskNotifyCard(makeCard({ column }), 'assigned');
+    expect(res.text).toContain(`📍 ${label} · acme`);
+    expect(res.text).not.toContain('📍 Бэклог');
+    expect(res.text).not.toContain('📍 Готово');
+  });
+});
+
 describe('bot-notify card: done vs done_approved (086)', () => {
   it('done: заголовок «выполнена», без строки о переносе, без кнопок решения', () => {
     const res = buildTaskNotifyCard(makeCard(), 'done', { reason: 'отчёт агента' });

@@ -1,4 +1,16 @@
 
+## FIX: единые названия колонок в Telegram-карточках (2026-09-24) ✅
+
+**Изменено:** `lib/bot.ts` и `supabase/functions/bot-notify/card.ts` теперь отображают
+`backlog → В очереди`, `in_progress → В работе`, `review → На проверке`, `done → Сделано`.
+Внутренние ключи колонок, БД, триггеры, MCP-контракты и логика перемещения не менялись.
+Обновлена документация `docs/onitask_bot.md`; добавлены регрессионные проверки всех четырёх
+статусов в обоих Telegram-форматтерах.
+
+**Валидация:** targeted 30/30 ✅; полный Vitest 174/174 ✅; type-check ✅; `git diff --check` ✅.
+Lint не запускается из-за существующей несовместимости `@rushstack/eslint-patch` с ESLint 9.39.
+Независимое пользовательское изменение `supabase/functions/agent-runtime/provider.ts` не трогалось.
+
 ## BOT-12: persistent Reply-клавиатура основных команд (2026-09-24) ✅
 
 **Решение:** текущий бот — Next.js webhook, поэтому не вводились `grammy`/`telegraf`

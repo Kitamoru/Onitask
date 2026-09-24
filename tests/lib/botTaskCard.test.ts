@@ -17,6 +17,20 @@ const makeCard = (over: Partial<TaskCardData> = {}): TaskCardData => ({
   ...over,
 });
 
+describe('lib/bot renderTaskCardBody: названия колонок', () => {
+  it.each([
+    ['backlog', 'В очереди'],
+    ['in_progress', 'В работе'],
+    ['review', 'На проверке'],
+    ['done', 'Сделано'],
+  ])('%s отображается как «%s»', (column, label) => {
+    const text = renderTaskCardBody(makeCard({ column }));
+    expect(text).toContain(`📍 ${label} · acme`);
+    expect(text).not.toContain('📍 Бэклог');
+    expect(text).not.toContain('📍 Готово');
+  });
+});
+
 describe('lib/bot renderTaskCardBody: Постановщик', () => {
   it('assignedByName передана → строка «✍️ Постановщик» есть', () => {
     const text = renderTaskCardBody(makeCard({ assignedByName: 'Пётр' }));

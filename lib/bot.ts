@@ -458,10 +458,10 @@ export type TaskCardData = {
 /** AI clarity_score is 0..1 */
 const LOW_CLARITY_THRESHOLD = 0.55;
 const STATUS_LABELS: Record<string, string> = {
+  backlog: 'В очереди',
   in_progress: 'В работе',
   review: 'На проверке',
-  done: 'Готово',
-  backlog: 'Бэклог',
+  done: 'Сделано',
 };
 const PRIORITY_LABELS: Record<string, string> = {
   high: '🔴 Высокий приоритет',
