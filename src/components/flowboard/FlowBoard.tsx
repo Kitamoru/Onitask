@@ -222,10 +222,10 @@ function ProgressBar({ progress }: { progress: number }) {
       <svg viewBox="0 0 334 8" preserveAspectRatio="none" className="w-full h-full" aria-hidden="true">
         <rect y="2" width="334" height="4" rx="1" fill="#8B8B8B" opacity="0.2" />
       </svg>
-      {/* Fill — green #4ADE80 per Figma */}
+      {/* Fill — semantic green, shared with SprintViewSheet */}
       <div
         className="absolute top-0 left-0 h-full"
-        style={{ width: `${progress}%`, backgroundColor: '#4ADE80', borderRadius: 'var(--radius-flowboard-section)' }}
+        style={{ width: `${progress}%`, backgroundColor: 'var(--color-signal-green, #4ADE80)', borderRadius: 'var(--radius-flowboard-section)' }}
       />
     </div>
   );

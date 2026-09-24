@@ -113,7 +113,7 @@ export function SprintViewSheet({
               className="absolute top-0 left-0 h-full transition-all duration-300"
               style={{
                 width: `${progressPercent}%`,
-                backgroundColor: 'var(--color-accent, #0FEE9E)',
+                backgroundColor: 'var(--color-signal-green, #4ADE80)',
                 borderRadius: '4px',
               }}
             />
