@@ -11,6 +11,8 @@ export type { MoveTaskSheetProps } from './MoveTaskSheet';
 export { ResultStepSheet } from './ResultStepSheet';
 export type { ResultStepSheetProps } from './ResultStepSheet';
 export { TaskCommentsPanel } from './TaskCommentsPanel';
+export { RelatedTasksSection } from './RelatedTasksSection';
+export { RelatedTaskPickerSheet } from './RelatedTaskPickerSheet';
 export { SwipeDebugPanel } from './SwipeDebugPanel';
 export type {
   FlowBoardProps,

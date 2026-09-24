@@ -7,7 +7,6 @@ import {
   getSupabaseClient,
   checkTaskCreationRateLimit,
   checkAndDecrementQuota,
-  detectCircularDependency,
   inferComplexity,
   logAgentEvent,
   resolveAgentWorkerId,
@@ -15,7 +14,6 @@ import {
 import {
   invalidParams,
   blockerNotFound,
-  circularDependency,
   workerNotFound,
   internalError,
 } from '../../shared/errors';
@@ -78,15 +76,9 @@ export async function createTask(
 
     if (!blockerTask) throw blockerNotFound();
 
-    // DFS cycle check before INSERT (contract §4.3). For a brand-new task a
-    // cycle is structurally impossible; the self-reachability probe is kept
-    // for contract uniformity with POST /api/tasks/:id/relations.
-    const hasCycle = await detectCircularDependency(
-      workspaceId,
-      params.blocked_by,
-      params.blocked_by
-    );
-    if (hasCycle) throw circularDependency();
+    // A brand-new task has no outgoing edges, so a dependency cycle is
+    // structurally impossible before INSERT. The DB BEFORE trigger performs
+    // the authoritative check for every writer after the row is materialized.
   }
 
   // --- Atomic quota (A-3) ----------------------------------------------------

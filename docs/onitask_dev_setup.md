@@ -94,7 +94,9 @@ app/
     │   └── [id]/
     │       ├── route.ts            # GET / PATCH / DELETE
     │       ├── decompose/route.ts
-    │       └── relations/route.ts  # POST — task_relations (flow_.md §22)
+    │       └── relations/
+    │           ├── route.ts                    # GET / POST — «Связанные задачи»
+    │           └── [relationId]/route.ts       # DELETE — удаление связи
     ├── flow/
     │   └── metrics/route.ts        # GET — делегирует в Edge Function
     ├── ai/

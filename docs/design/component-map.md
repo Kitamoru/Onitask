@@ -128,6 +128,8 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 | | Field | Field.tsx | label, children | Label wrapper for form fields |
 | | StatBox | StatBox.tsx | label, value, valueTone | Stat display block using NotchedPanel |
 | | TasksAccordionRow | TasksAccordionRow.tsx | taskCount, tasks | Accordion for selecting tasks to add to sprint |
+| | RelatedTasksSection | RelatedTasksSection.tsx | task, availableTasks, onOpenTask, onTaskStateChange | Always-visible «Связанные задачи» block in TaskViewEdit. Loads direct `blocks` edges, shows blocker progress/downstream impact, opens related tasks and removes/orphan-repairs edges through task-relations API. |
+| | RelatedTaskPickerSheet | RelatedTaskPickerSheet.tsx | open, direction, currentTask, tasks, excludedTaskIds, onSelect | Stacked task picker; filters by `full_id`/title and excludes current, done, and already-related tasks. |
 | | types | types.ts | — | SprintFormValue, SprintStats type definitions |
 
 **Re-exports** (`index.ts`): `SprintCreateSheet`, `SprintEditSheet`, `SprintViewSheet`, `StatBox`, `Field`, `TasksAccordionRow`, `SprintFormValue`, `SprintStats`

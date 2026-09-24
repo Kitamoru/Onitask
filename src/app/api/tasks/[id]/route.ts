@@ -250,7 +250,7 @@ export async function DELETE(
     await anySupabase
       .from('task_relations')
       .delete()
-      .or(`source_task_id.eq.${taskId},target_task_id.eq.${taskId}`);
+      .or(`from_task_id.eq.${taskId},to_task_id.eq.${taskId}`);
 
     // Clean up task_column_history
     await anySupabase

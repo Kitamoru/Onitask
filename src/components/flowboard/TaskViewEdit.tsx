@@ -26,7 +26,9 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Upload, X, Loader2, CheckCircle2, AlertCircle, Download } from 'lucide-react';
+import {
+  Upload, X, Loader2, CheckCircle2, AlertCircle, Download, ChevronLeft,
+} from 'lucide-react';
 import {
   SHEET_CHROME_HEIGHT_PX,
   SHEET_CONTENT_MAX_HEIGHT,
@@ -64,6 +66,8 @@ import { MoveTaskSheet } from './MoveTaskSheet';
 import { ReviewDecisionBlock } from './ReviewDecisionBlock';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
+import { RelatedTasksSection } from './RelatedTasksSection';
+import type { AffectedTaskState } from '@/types/taskRelations';
 
 /** Максимальное число файлов на задачу (синхронизировано с backend-лимитом) */
 const MAX_ATTACHMENTS = 5;
@@ -89,6 +93,15 @@ export interface TaskViewEditProps {
   onReviewResolved?: (task: TaskEntity) => void;
   /** Current user's worker ID (for highlighting own comments on the right) */
   currentUserId?: string;
+  /** All tasks on the active board — used by the related-task picker. */
+  availableTasks?: TaskEntity[];
+  /** Open an incident task and keep the current task in navigation history. */
+  onOpenTask?: (taskId: string) => void;
+  /** Return from a task opened through the related-task section. */
+  onBack?: () => void;
+  canGoBack?: boolean;
+  /** Sync is_blocked/version after a relation mutation. */
+  onTaskStateChange?: (state: AffectedTaskState) => void;
   /** FILE-03: initial tab for deep-link «Обсудить задачу» → comments */
   initialTab?: 'general' | 'comments';
   /** Custom className */
@@ -269,22 +282,18 @@ const ResponsibilitySection = memo(function ResponsibilitySection({
 
 const ExtraContextSection = memo(function ExtraContextSection({
   checklistEnabled,
-  relatedEnabled,
   linksEnabled,
   links,
   isView,
   onChecklistChange,
-  onRelatedChange,
   onLinksEnabledChange,
   onLinksChange,
 }: {
   checklistEnabled: boolean;
-  relatedEnabled: boolean;
   linksEnabled: boolean;
   links: ExternalLink[];
   isView: boolean;
   onChecklistChange: (v: boolean) => void;
-  onRelatedChange: (v: boolean) => void;
   onLinksEnabledChange: (v: boolean) => void;
   onLinksChange: (links: ExternalLink[]) => void;
 }) {
@@ -299,17 +308,6 @@ const ExtraContextSection = memo(function ExtraContextSection({
               checked={checklistEnabled}
               onChange={onChecklistChange}
               label="Чеклист задачи"
-              disabled={isView}
-            />
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center justify-between">
-            <span className="text-[15px] font-medium text-text">Связанные задачи</span>
-            <ToggleSwitch
-              checked={relatedEnabled}
-              onChange={onRelatedChange}
-              label="Связанные задачи"
               disabled={isView}
             />
           </div>
@@ -548,6 +546,11 @@ export function TaskViewEdit({
      onMoveTask,
   onReviewResolved,
   currentUserId,
+  availableTasks = [],
+  onOpenTask,
+  onBack,
+  canGoBack = false,
+  onTaskStateChange,
   initialTab = 'general',
   className = '',
 }: TaskViewEditProps) {
@@ -567,7 +570,6 @@ export function TaskViewEdit({
     task?.deadline ? new Date(task.deadline) : null,
   );
   const [checklistEnabled, setChecklistEnabled] = useState(false);
-  const [relatedEnabled, setRelatedEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<ExternalLink[]>([]);
 
@@ -662,7 +664,6 @@ export function TaskViewEdit({
   const handleCognitiveWeightChange = useCallback((v: number) => setCognitiveWeight(v), []);
   const handleOpenDate = useCallback(() => setIsDateSheetOpen(true), []);
   const handleChecklistChange = useCallback((v: boolean) => setChecklistEnabled(v), []);
-  const handleRelatedChange = useCallback((v: boolean) => setRelatedEnabled(v), []);
   const handleLinksEnabledChange = useCallback((v: boolean) => setLinksEnabled(v), []);
   const handleLinksChange = useCallback((next: ExternalLink[]) => setLinks(next), []);
 
@@ -821,7 +822,6 @@ export function TaskViewEdit({
       const metadata: Record<string, unknown> = {
         ...(task?.metadata ?? {}),
         checklist: checklistEnabled ? (task?.metadata?.checklist ?? []) : [],
-        related_tasks: relatedEnabled ? (task?.metadata?.related_tasks ?? []) : [],
         external_links: linksEnabled ? links : [],
       };
 
@@ -878,7 +878,6 @@ export function TaskViewEdit({
     cognitiveWeight,
     deadline,
     checklistEnabled,
-    relatedEnabled,
     linksEnabled,
     links,
     isNew,
@@ -1039,6 +1038,16 @@ export function TaskViewEdit({
             ...(tab === 'comments' && task?.id ? { height: SHEET_CONTENT_MAX_HEIGHT } : null),
           }}
         >
+          {canGoBack && onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-3 flex items-center gap-1 self-start text-[13px] font-medium text-text-muted transition-colors hover:text-text"
+              aria-label="Вернуться к предыдущей связанной задаче"
+            >
+              <ChevronLeft className="h-4 w-4" /> Назад
+            </button>
+          )}
           {/* Segments — статичная шапка: sticky внутри скроллящейся панели, на
               своём стартовом месте (top = chrome drag handle), непрозрачный
               standard surface, чтобы контент проходил под ней. pb-6 + -mb-6:
@@ -1109,15 +1118,22 @@ export function TaskViewEdit({
 
               <ExtraContextSection
                 checklistEnabled={checklistEnabled}
-                relatedEnabled={relatedEnabled}
                 linksEnabled={linksEnabled}
                 links={links}
                 isView={isView}
                 onChecklistChange={handleChecklistChange}
-                onRelatedChange={handleRelatedChange}
                 onLinksEnabledChange={handleLinksEnabledChange}
                 onLinksChange={handleLinksChange}
               />
+
+              {!isNew && task.id && (
+                <RelatedTasksSection
+                  task={task as TaskEntity}
+                  availableTasks={availableTasks}
+                  onOpenTask={(taskId) => onOpenTask?.(taskId)}
+                  onTaskStateChange={(state) => onTaskStateChange?.(state)}
+                />
+              )}
 
               {!isNew && (
                 <FilesSection

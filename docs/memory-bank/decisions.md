@@ -1,5 +1,40 @@
 # Architectural Decisions (ADR log)
 
+## ADR-2026-09-24: «Связанные задачи» без отдельной вкладки (AGENT-04/09)
+
+### Контекст
+
+В `TaskViewEdit` существовал неработающий UI-only toggle, который записывал
+`metadata.related_tasks`; реального списка, выбора задач или `task_relations` он
+не создавал. При этом DB уже содержал `task_relations`, cycle detection,
+`is_blocked` и cascade unblock.
+
+### Решение
+
+1. Отдельную вкладку «Блокировки» не вводим. В «Общем» остаётся постоянный
+   блок «Связанные задачи» с двумя направлениями: «Ждёт завершения» и
+   «После завершения этой задачи».
+2. MVP поддерживает только явный `blocks` (weight 1.0). `spawned_from`,
+   `mentions`, semantic related и AI auto-links не смешиваются с блокировками.
+3. `task_relations` — единственный источник истины. `is_blocked` выводится из
+   наличия незавершённых входящих `blocks`; create/delete/complete/reopen
+   синхронизируются на уровне БД.
+4. Любой активный участник workspace может создать/удалить связь через
+   resource-scoped Route Handler. `workspace_id`, `weight`, `created_by`
+   определяются сервером; anon/authenticated не имеют прямого table access.
+5. Статусы берутся из `src/lib/taskColumns.ts`: «В очереди / В работе /
+   На проверке / Сделано». Старый `done: 'Готово'` в comments feed устранён.
+
+### Последствия
+
+- Карточка может переходить по цепочке связей и возвращаться «Назад».
+- `is_blocked` и `version` обновляются атомарно; PATCH-оптимистика не ломается.
+- Неисправленный legacy cycle helper обнаружен smoke-тестом и заменён bounded
+  recursive CTE; защита теперь реальна для всех writers.
+- Полный граф и AI-рекомендации остаются отдельным будущим scope.
+
+---
+
 ## ADR-2026-09-22: Agent Connectors — Onitask-as-Runtime для внешних агентов (Stage 15)
 
 ### Контекст

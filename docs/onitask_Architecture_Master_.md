@@ -1434,6 +1434,44 @@ EXECUTE FUNCTION context_invalidate();
 
 ---
 
+### 6.16.1 UI-операции над `blocks` (AGENT-04/09)
+
+Каноническое правило:
+
+```text
+is_blocked = EXISTS (
+  SELECT 1
+  FROM task_relations tr
+  JOIN tasks blocker ON blocker.id = tr.from_task_id
+  WHERE tr.to_task_id = tasks.id
+    AND tr.workspace_id = tasks.workspace_id
+    AND tr.relation_type = 'blocks'
+    AND blocker."column" <> 'done'
+)
+```
+
+`is_blocked` — производное состояние, а не независимый ручной флаг. Он
+пересчитывается при INSERT/DELETE ребра и при изменении статуса блокера:
+переход в `done` разблокирует задачу только при отсутствии других активных
+блокеров; возврат из `done` снова создаёт блокировку.
+
+UI использует только `blocks` и атомарные service-role RPC:
+
+- `create_task_block_relation(workspace_id, from_task_id, to_task_id, created_by)`;
+- `delete_task_block_relation(workspace_id, task_id, relation_id)`.
+
+Они проверяют принадлежность обеих задач workspace, запрещают self-link,
+циклы, duplicate и создание связи на/из `Сделано`. Cycle detection реализован
+единой bounded recursive CTE и применяется BEFORE-триггером ко всем writers,
+включая MCP. Прямой доступ anon/authenticated к `task_relations` закрыт; TWA
+использует resource-scoped Route Handlers.
+
+В Task Sheet это постоянный блок «Связанные задачи» в «Дополнительном
+контексте», не отдельная вкладка. Направления: входящие = «Ждёт завершения»,
+исходящие = «После завершения этой задачи».
+
+---
+
 ## 7. Контракт конкурентности и идемпотентности
 
 ### 7.1 Оптимистичная блокировка задач (version)

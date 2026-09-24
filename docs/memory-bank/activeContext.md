@@ -1,3 +1,37 @@
+## AGENT-04/09 · «Связанные задачи» как блок Task Sheet (2026-09-24) ✅
+
+**Решение пользователя:** отдельная вкладка «Блокировки» не нужна. Старый UI-only
+toggle `metadata.related_tasks` заменяется постоянным блоком **«Связанные задачи»**
+в секции «Дополнительный контекст». MVP поддерживает только явную связь `blocks`
+(вес 1.0), направленно разделяет входящие и исходящие зависимости, использует
+актуальные статусы: «В очереди / В работе / На проверке / Сделано».
+
+**Scope:** GET/POST/DELETE `/api/tasks/:id/relations`; атомарные DB RPC; поиск
+по `full_id`/title; навигация по связанной задаче с возвратом назад; удаление
+ошибочной связи; `is_blocked` на create/delete/complete/reopen; orphan repair
+через удаление ребра завершённого блокера. Не входят `spawned_from`, `mentions`,
+семантические связи и AI-автосвязи.
+
+**Статус (2026-09-24): ✅** UI и DB-контур реализованы. Старый toggle
+`metadata.related_tasks` удалён. Реализованы GET/POST/DELETE relations API, только
+`blocks`, поиск по `full_id`/title, направления «Ждёт завершения» / «После
+завершения этой задачи», progress блокеров, downstream impact, переход/назад,
+atomic sync `is_blocked` на create/delete/complete/reopen и orphan repair.
+Cycle helper исправлен: bounded recursive CTE + BEFORE trigger для всех writers.
+Anon/authenticated direct table access закрыт; TWA использует service-only RPC
+через resource-scoped Route Handlers.
+
+**Валидация:** production rollback-smoke create/duplicate/cycle/done/reopen/delete ✅;
+после smoke `task_relations=0`, `is_blocked=0`; type-check ✅; lint 0 errors ✅;
+Vitest 181/181 ✅; `next build` с временными placeholder-env ✅ (44/44 страницы,
+новые relations routes присутствуют в route manifest); `git diff --check` ✅. Advisors: новых relations-замечаний нет.
+
+**Отдельно:** `AGENT-05` остаётся P2 — глобальный cascade toast не реализован.
+
+retry_count: 0. Блокеров нет.
+
+---
+
 ## FIX: разовый VACUUM FULL pg_net._http_response (2026-09-24) ✅
 
 **Выполнено:** `VACUUM (FULL, VERBOSE, ANALYZE) net._http_response` после проверки пустой

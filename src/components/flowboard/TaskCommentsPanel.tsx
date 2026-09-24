@@ -40,17 +40,7 @@ import { isReviewDecision } from '@/lib/reviewDecision';
 import type { CommentsPage, FeedPageCursor, TaskFeedItem } from '@/types/comments';
 
 /** Column keys → ru labels (match TaskForm / board column names) */
-const COLUMN_LABELS: Record<string, string> = {
-  inbox: 'Входящие',
-  backlog: 'В очереди',
-  in_progress: 'В работе',
-  review: 'На проверке',
-  done: 'Готово',
-};
-
-function columnLabel(key: unknown): string {
-  return COLUMN_LABELS[String(key)] ?? String(key ?? '—');
-}
+import { taskColumnLabel } from '@/lib/taskColumns';
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
 
@@ -362,8 +352,8 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
               {items.map((item) => {
                 // ── System status line (single centered row, no bubble) ──
                 if (item.kind === 'status') {
-                  const from = columnLabel(item.payload?.from_column);
-                  const to = columnLabel(item.payload?.to_column);
+                  const from = taskColumnLabel(typeof item.payload?.from_column === 'string' ? item.payload.from_column : null);
+                  const to = taskColumnLabel(typeof item.payload?.to_column === 'string' ? item.payload.to_column : null);
                   return (
                     <div
                       key={item.item_id}

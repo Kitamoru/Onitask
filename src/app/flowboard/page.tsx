@@ -22,6 +22,7 @@ import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
 import { filterTasksForUser } from '@/lib/streamFilter';
 import { formatWorkerRole } from '@/lib/roles';
+import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -77,6 +78,7 @@ function FlowBoardPageContent() {
     accentColor: 'var(--color-accent-amber)',
   });
   const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
+  const [taskSheetHistory, setTaskSheetHistory] = useState<TaskEntity[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
   // FILE-03: deep-link «Обсудить задачу» → открыть вкладку «Комментарии»
   const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
@@ -126,6 +128,7 @@ function FlowBoardPageContent() {
     const task = tasks.find(matchTask);
     if (task) {
       setSelectedTask(task);
+      setTaskSheetHistory([]);
       // FILE-03: ?tab=comments → открыть вкладку «Комментарии»
       const tabParam = searchParams.get('tab');
       setOpenTaskTab(tabParam === 'comments' ? 'comments' : 'general');
@@ -176,16 +179,18 @@ function FlowBoardPageContent() {
     // Single source of truth: derive column counters from the same `tasks` array
     // that powers the bottom sheet, so both stay consistent during optimistic moves.
     const countByColumn = (col: string) => tasks.filter((t) => t.column === col).length;
-    const inProgressCount = countByColumn('in_progress');
-    const backlogCount = countByColumn('backlog');
-    const reviewCount = countByColumn('review');
-    const doneCount = countByColumn('done');
-    return [
-      { id: 'backlog', label: 'В очереди', count: backlogCount, shapes: Math.min(backlogCount, 10), maxShapes: 10, color: 'var(--color-text-primary)' },
-      { id: 'in_progress', label: 'В работе', count: inProgressCount, shapes: Math.min(inProgressCount, 10), maxShapes: 10, color: 'var(--color-accent-amber)' },
-      { id: 'review', label: 'На проверке', count: reviewCount, shapes: Math.min(reviewCount, 10), maxShapes: 10, color: 'var(--color-signal-cyan)' },
-      { id: 'done', label: 'Сделано', count: doneCount, shapes: Math.min(doneCount, 10), maxShapes: 10, color: 'var(--color-signal-green)' },
-    ];
+    return TASK_COLUMN_ORDER.map((column) => {
+      const count = countByColumn(column);
+      const meta = TASK_COLUMN_META[column];
+      return {
+        id: column,
+        label: meta.label,
+        count,
+        shapes: Math.min(count, 10),
+        maxShapes: 10,
+        color: meta.accent,
+      };
+    });
   }, [metrics, tasks]);
 
   const workers = useMemo<WorkerCardData[]>(() => {
@@ -276,8 +281,52 @@ function FlowBoardPageContent() {
 
   const handleTaskTap = useCallback((taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
-    setSelectedTask(task ?? null);
+    if (!task) return;
+    setTaskSheetHistory([]);
+    setSelectedTask(task);
   }, [tasks]);
+
+  const handleRelatedTaskOpen = useCallback((taskId: string) => {
+    const target = tasks.find((task) => task.id === taskId);
+    if (!target || !selectedTask) return;
+    setTaskSheetHistory((previous) => previous.at(-1)?.id === selectedTask.id
+      ? previous
+      : [...previous, selectedTask]);
+    setSelectedTask(target);
+  }, [selectedTask, tasks]);
+
+  const handleTaskSheetBack = useCallback(() => {
+    setTaskSheetHistory((previous) => {
+      const next = [...previous];
+      const previousTask = next.pop();
+      if (previousTask) setSelectedTask(previousTask);
+      return next;
+    });
+  }, []);
+
+  const handleTaskSheetClose = useCallback(() => {
+    setSelectedTask(null);
+    setTaskSheetHistory([]);
+  }, []);
+
+  const handleTaskStateChange = useCallback((state: import('@/types/taskRelations').AffectedTaskState) => {
+    const affected = tasks.find((task) => task.id === state.id);
+    if (affected) {
+      dispatch({
+        type: 'PATCH_TASK',
+        payload: {
+          ...affected,
+          is_blocked: state.is_blocked,
+          version: state.version,
+          updated_at: state.updated_at,
+        },
+      });
+    }
+    setSelectedTask((current) => current?.id === state.id
+      ? { ...current, is_blocked: state.is_blocked, version: state.version, updated_at: state.updated_at }
+      : current);
+    invalidateBoardCounts();
+  }, [dispatch, invalidateBoardCounts, tasks]);
 
   const refreshMetrics = useCallback(async (options?: { force?: boolean }) => {
     const force = options?.force ?? false;
@@ -603,28 +652,33 @@ function FlowBoardPageContent() {
                         {/* Task view/edit bottom sheet */}
                 <TaskViewEdit
           open={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
+          onClose={handleTaskSheetClose}
           task={selectedTask}
           workers={assignableWorkers}
+          availableTasks={tasks}
           mode="view"
           initialTab={openTaskTab}
+          onOpenTask={handleRelatedTaskOpen}
+          onBack={handleTaskSheetBack}
+          canGoBack={taskSheetHistory.length > 0}
+          onTaskStateChange={handleTaskStateChange}
           onSave={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             invalidateBoardCounts();
-            setSelectedTask(null);
+            handleTaskSheetClose();
           }}
           onDelete={(taskId) => {
             // Optimistic: remove from state immediately so UI updates instantly
             dispatch({ type: 'REMOVE_TASK', payload: taskId });
             invalidateBoardCounts();
-            setSelectedTask(null);
+            handleTaskSheetClose();
           }}
           onMoveTask={handleMoveTask}
           onReviewResolved={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             // review решение закрывает карточку — задача уже сменила колонку.
             invalidateBoardCounts();
-            setSelectedTask(null);
+            handleTaskSheetClose();
           }}
           currentUserId={authData?.worker?.id}
         />

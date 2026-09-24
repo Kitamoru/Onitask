@@ -13,6 +13,7 @@
 import { useState, useCallback } from 'react';
 import { TextInput, TextArea, Button } from '@/components/ui/desk-ui';
 import { createTask } from '@/lib/api/flow';
+import { taskColumnLabel, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 import type { TaskEntity } from '@/types/flowboard';
 
 export interface TaskFormProps {
@@ -22,11 +23,9 @@ export interface TaskFormProps {
   className?: string;
 }
 
-const COLUMNS = [
-  { value: 'backlog', label: 'В очереди' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'review', label: 'На проверке' },
-];
+const COLUMNS = TASK_COLUMN_ORDER
+  .filter((column) => column !== 'done')
+  .map((value) => ({ value, label: taskColumnLabel(value) }));
 
 const PRIORITIES = [
   { value: 'low', label: 'Низкий' },

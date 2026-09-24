@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
       is_inbox: !column, // auto-set inbox if no explicit column
       tags: tags ?? [],
       source: source ?? 'manual',
-      // metadata (external_links / checklist / related_tasks) — только валидный объект
+      // metadata (external_links / checklist) — только валидный объект
       metadata:
         metadata && typeof metadata === 'object' && !Array.isArray(metadata)
           ? (metadata as Record<string, unknown>)

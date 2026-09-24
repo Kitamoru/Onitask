@@ -18,18 +18,11 @@
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/desk-ui';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
+import { taskColumnLabel, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 import type { TaskEntity } from '@/types/flowboard';
 
 /** Column order matches the FlowBoard Kanban order. */
-export const MOVE_COLUMN_ORDER: string[] = ['backlog', 'in_progress', 'review', 'done'];
-
-/** Localized column labels tuned for the move sheet. */
-const MOVE_COLUMN_LABELS: Record<string, string> = {
-  backlog: 'В очереди',
-  in_progress: 'В работе',
-  review: 'На проверке',
-  done: 'Сделано',
-};
+export const MOVE_COLUMN_ORDER: string[] = [...TASK_COLUMN_ORDER];
 
 export interface MoveTaskSheetProps {
   /** Whether the sheet is open */
@@ -97,7 +90,7 @@ export function MoveTaskSheet({
           {columns.map((col) => {
             const isActive = selectedColumn === col;
             const color = COLUMN_ACCENTS[col] ?? COLUMN_ACCENTS.in_progress;
-            const label = MOVE_COLUMN_LABELS[col] ?? col;
+            const label = taskColumnLabel(col);
             return (
               <button
                 key={col}
@@ -147,7 +140,7 @@ export function MoveTaskSheet({
           disabled={isSameAsTarget}
           className="w-full"
         >
-          {`Переместить → ${MOVE_COLUMN_LABELS[selectedColumn] ?? selectedColumn}`}
+          {`Переместить → ${taskColumnLabel(selectedColumn)}`}
         </Button>
       </div>
     </BottomSheet>

@@ -70,7 +70,7 @@
 | Реализовать trg_cascade_unblock | ✅ 6.16 | ✅ sql_anomalies §5 (контракт триггеров) |
 | Реализовать trg_context_invalidate | ✅ 6.16 | ✅ ai §2.9 (Workspace Context Rebuild) |
 | Построить Workspace Context Rebuild Pipeline | ✅ 6.4, 6.5, A-12 | ✅ ai §2.9 |
-| Реализовать Blocker Chain в Task Sheet | ✅ 6.16 | ✅ flow §22 |
+| Реализовать Blocker Chain в Task Sheet | ✅ 6.16 | ✅ flow §22 — блок «Связанные задачи», только `blocks` |
 | Реализовать Cascade Unblock toast | ✅ 6.16 (trg_cascade_unblock) | ✅ flow §13 |
 | Реализовать Smart Backlog для агентов | ✅ 6.16 (task_relations) | ✅ mcp_contract §7 п.12 |
 | Добавить orphan_blocker аномалию | ✅ 6.16 | ✅ sql_anomalies §3.10, §4 |
@@ -404,7 +404,7 @@
 - §17: Speed Tiers — Blocker Chain (Instant SQL JOIN) и Cascade Unblock (Realtime)
 - §19: Risk Pulse «Процессы» расширен `orphan_blockers`; SQL обновлён
 - §20: pill «🔄 Цепочка ×N» (Phase 1.1)
-- §22: вкладка «Блокировки» — get_task_subgraph, orphan block detection, создание связей через UI
+- §22: добавлен блок «Связанные задачи» в Task Sheet (AGENT-04/09). Источник: server-side relations API поверх `task_relations`; два направления, поиск, progress/impact, orphan repair, переход/назад.
 
 ---
 

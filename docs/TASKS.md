@@ -395,11 +395,14 @@ format is deliberately compact so that agents can load the file quickly.
 - [ ] AGENT-03 Operator Queue (`pending_escalations`, [Разрешить]/[Открыть задачу→]) #ui !high @blocked_by:DB-13,MCP-04
       **Сверка 2026-09-19:** не реализовано — вьюха готова (`supabase/migrations/001_init.sql:1448`), в `src/` единственное упоминание — тип `pending_escalations` (`src/types/flowboard.ts:219`); UI и экшена «Разрешить» нет.
       flow_.md §21, team_tab §2.7 (SQL-справочник).
-- [ ] AGENT-04 Task Sheet, вкладка «Блокировки» (`get_task_subgraph`, orphan block detection, `POST /api/tasks/:id/relations`) #ui !high @blocked_by:MCP-06
-      **Сверка 2026-09-19:** не реализовано — `get_task_subgraph` вызывается только на сервере (`lib/shared/mcpAuth.ts:434`, `supabase/functions/enrich-task`), роута `src/app/api/tasks/[id]/relations` нет.
-      flow_.md §22.
+- [x] AGENT-04 Task Sheet, блок «Связанные задачи» (relations API, orphan repair) #ui !high @blocked_by:MCP-06
+      **Реализовано 2026-09-24:** отдельная вкладка отменена по решению владельца;
+      постоянный блок в «Дополнительном контексте», только `blocks`, два направления,
+      поиск по full_id/title, progress блокеров, downstream impact, переход/назад.
+      DB RPC + sync is_blocked create/delete/complete/reopen; cycle helper исправлен.
 - [ ] AGENT-05 Cascade Unblock toast (Realtime `cascade_unblock`) #ui !med @blocked_by:INV-13
-      **Сверка 2026-09-19:** не реализовано — `cascade_unblock` встречается только в комментарии типа (`src/types/flowboard.ts:355`).
+      **Частично закрыто 2026-09-24:** DB cascade/reopen, atomic `is_blocked` и
+      `affected_task` sync в relations API готовы; отдельный глобальный toast — P2.
 - [ ] AGENT-06 Pill «🔄 Цепочка ×N» для `handoff_chain` (Phase 1.1 — можно отложить за MVP) #ui !low @blocked_by:AGENT-01
       **Сверка 2026-09-19:** не реализовано (Phase 1.1, по описанию отложено).
 - [ ] AGENT-07 Task Sheet, вкладка «Детали» (`ai_hint`, описание, метаданные, кнопка «→ следующая колонка») #ui !high @blocked_by:AGENT-04
@@ -407,9 +410,10 @@ format is deliberately compact so that agents can load the file quickly.
       flow_.md §22.
 - [x] AGENT-08 Task Sheet, вкладка «Комментарии» (фид: `task_comments` + `task_column_history` + `agent_events` через RPC `get_task_feed`; composer → POST `/api/tasks/:id/comments`; live через broadcast `task-comments-<task_id>`; ADR-2026-09-06, миг. 076) #ui !med
       flow_.md §22, Master §6.10.
-- [ ] AGENT-09 Route Handler `POST /api/tasks/:id/relations` (создание связей task_relations через UI) #db !med @blocked_by:INV-13
-      **Сверка 2026-09-19:** не реализовано — `src/app/api/tasks/[id]/` содержит только `attachments`, `comments`, `review`, `submissions`, `submit`.
-      flow_.md §22, dev_setup §2.2. Ошибки: самоссылка, дубль связи.
+- [x] AGENT-09 Route Handler relations (`GET/POST/DELETE`, только `blocks`) #api !med @blocked_by:INV-13
+      **Реализовано 2026-09-24:** resource-scoped TWA auth/tenancy, server-owned
+      `workspace_id`/`weight`/`created_by`, self-link/duplicate/cycle/done guards,
+      atomic `is_blocked`, orphan repair. Vitest: 7 route-тестов.
 
 ---
 
