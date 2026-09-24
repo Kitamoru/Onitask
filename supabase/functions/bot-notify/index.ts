@@ -305,8 +305,9 @@ async function processTaskDoneNotification(job: {
     ));
   const context: NotifyContext =
     job.payload.via_review === true ? 'done_approved' : 'done';
+  const hasDetails = job.payload.has_details === true;
   const card = await buildTaskCardData(job, {});
-  const taskCard = buildTaskNotifyCard(card, context, { reason });
+  const taskCard = buildTaskNotifyCard(card, context, { reason, hasDetails });
 
   for (const telegramId of recipients) {
     const messageId = await sendTelegramMessage(
@@ -399,9 +400,10 @@ async function processTaskReviewNotification(job: {
       job.workspace_id,
       job.payload.task_id as string | undefined
     ));
+  const hasDetails = job.payload.has_details === true;
   const card = await buildTaskCardData(job, {});
   const taskId = job.payload.task_id as string | undefined;
-  const taskCard = buildTaskNotifyCard(card, 'review', { reason, taskId });
+  const taskCard = buildTaskNotifyCard(card, 'review', { reason, taskId, hasDetails });
 
   for (const telegramId of recipients) {
     const messageId = await sendTelegramMessage(

@@ -130,6 +130,28 @@ describe('bot-notify card: регрессии контекстов', () => {
     expect(res.text).not.toContain('Результат: нет доступа');
   });
 
+  describe('bot-notify card: three-level result', () => {
+    it('review: summary в карточке + указание на детали и файлы', () => {
+      const res = buildTaskNotifyCard(makeCard({ column: 'review' }), 'review', {
+        reason: 'подготовлено сравнение поставщиков',
+        taskId: 'uuid-1',
+        hasDetails: true,
+      });
+      expect(res.text).toContain('Результат: подготовлено сравнение поставщиков');
+      expect(res.text).toContain('Подробности — в комментариях задачи.');
+      expect(res.text).not.toContain('suppliers');
+    });
+
+    it('старый результат без details не добавляет ложную подсказку', () => {
+      const res = buildTaskNotifyCard(makeCard({ column: 'review' }), 'review', {
+        reason: 'краткий итог',
+        taskId: 'uuid-1',
+      });
+      expect(res.text).toContain('Результат: краткий итог');
+      expect(res.text).not.toContain('Подробности — в комментариях задачи.');
+    });
+  });
+
   it('done без reason — нет пустой строки «Результат:»', () => {
     const res = buildTaskNotifyCard(makeCard(), 'done');
     expect(res.text).not.toContain('Результат:');

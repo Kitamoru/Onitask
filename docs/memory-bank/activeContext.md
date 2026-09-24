@@ -41,14 +41,23 @@
 `agent-runtime` и `bot-notify`; функции используют собственную timing-safe авторизацию.
 Production-команды также сохраняют явный `--use-api --no-verify-jwt`.
 
-**Валидация:** `npm run type-check` — 0 ошибок; `vitest` — 196 passed / 19 файлов
-(новые: 10 тестов attachments, 5 тестов карточки эскалации); esbuild-бандл обеих
-функций собирается (`--external:npm:*`, `--external:https://*`).
+**Контракт результата агента (миграция `104`):** `summary` — короткий результат
+для Telegram-карточки; `details` — подробный текст, который `ops_terminal` атомарно
+пишет в `task_comments` от имени агента (`source='agent'`, максимум 2000 символов);
+`attachments[]` — готовые XLSX/DOCX/CSV и другие файлы через существующий
+FILE-01 Storage-пайплайн; в Telegram файлы отправляются существующим
+`sendTaskAttachments` после карточки. Старый агент без `details` остаётся совместимым
+и не создаёт дублирующий комментарий. В review/done payload передаётся `has_details`,
+чтобы карточка показывала ссылку на комментарии.
+
+**Валидация:** `npm run type-check` — 0 ошибок; `vitest` — 215 passed / 21 файл
+(новые: 10 тестов attachments, 4 теста provider, 26 тестов карточки); `git diff --check` — clean.
 
 **Деплой (выполнено):** `npx supabase@2.117.0 functions deploy agent-runtime bot-notify
 --project-ref atarmvtzvlwhkheeabeb --use-api --no-verify-jwt` (`--use-api` — без Docker;
 относительные импорты `provider.ts`/`attachments.ts`/`card.ts` уезжают ассетами функции).
-agent-runtime v3→**4**, bot-notify v41→**42**, обе ACTIVE; `verify_jwt` остался off —
+agent-runtime v5 / bot-notify v44 (ACTIVE, `--use-api`, `verify_jwt` off,
+bot-notify обновлён после финальной формулировки подсказки).
 проверено мусорным Bearer: отвечает наш код (`{"error":"unauthorized"}` /
 `{"error":"Unauthorized"}`), а не шлюзовый `{"code":401,"message":"Missing authorization header"}`.
 `function_logs`: только `booted` (30–56 мс), ошибок резолва модулей нет.
@@ -56,24 +65,12 @@ agent-runtime v3→**4**, bot-notify v41→**42**, обе ACTIVE; `verify_jwt` �
 **Осталось:** боевой прогон (DS-07) — увидеть `coerced`/`raw_preview`/`nack_detail`
 в `agent_runs` и файлы агента в карточке.
 
-**Наблюдение (вне скоупа, обе ветки — и MCP, и hosted):**
-`task_attachments.execution_id` — FK `ON DELETE CASCADE` (`confdeltype='c'`), а cron
-`gc_ops_history` (073, `0 4 * * *`) удаляет `task_executions` со статусом closed/expired
-старше 30 дней → манифест уходит каскадом, а бинарник добирает
-`gc_orphan_task_attachments` (081, `10 3 * * *`: объект без строки манифеста старше 1 ч).
-Итог: файлы задачи живут ~30 дней, хотя решение 077 (decisions.md) прямо обещало
-«файлы переживают GC execution» — именно этим аргументом отклонялся вариант A (base64
-в `task_executions`).
+**Наблюдение (обновлено 2026-09-24):** `task_attachments.execution_id` использует
+`ON DELETE SET NULL` (миграция `102`), поэтому GC execution больше не удаляет манифест.
+`gc_orphan_task_attachments` (081, `10 3 * * *`) по-прежнему убирает только объекты без
+строки манифеста старше часа. Бинарник в Storage живёт вместе с задачей.
 
-Замерено на 2026-09-24: в `task_attachments` 13 строк, из них **9 уже с
-`execution_id IS NULL`** (загрузки людьми без execution), колонка изначально nullable,
-а `idx_task_attachments_execution` сделан частичным (`WHERE execution_id IS NOT NULL`).
-То есть NULL-состояние в проде уже норма, а `UNIQUE(execution_id, filename)` дедуплицирует
-только внутри живого execution — смена FK на `ON DELETE SET NULL` дедуп retry не ломает
-(в отличие от первоначальной оценки). Асимметрия в той же таблице: `submission_id` уже
-`ON DELETE SET NULL`. Правка — одна миграция (DROP/ADD CONSTRAINT, колонку делать
-nullable не нужно). Решение за владельцем: принять 30 дней как осознанный retention
-(и поправить decisions.md) или сделать `102_attachments_survive_execution_gc.sql`.
+**Решение владельца:** принят вариант B — `ON DELETE SET NULL`; миграция `102` применена и зафиксирована в GitHub.
 
 ---
 

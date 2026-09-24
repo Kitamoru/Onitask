@@ -24,6 +24,8 @@ export interface AgentAttachment {
 export interface AgentRunResult {
   outcome: RunOutcome;
   summary: string;
+  /** Подробный результат для комментария задачи; summary остаётся коротким для карточки. */
+  details: string | null;
   metadata: Record<string, unknown>;
   nextOwner: string | null;
   attachments: AgentAttachment[];
@@ -130,6 +132,7 @@ const CONTRACT_EXAMPLE = [
   '{',
   '  "outcome": "review",',
   '  "summary": "Служебная записка на списание 15 гвоздей подготовлена, файл приложен.",',
+  '  "details": "Подробное описание результата, шаги и важные детали для комментария задачи.",',
   '  "metadata": { "document_format": "docx" },',
   '  "next_owner": null,',
   '  "attachments": [',
@@ -163,8 +166,9 @@ export function buildMessages(request: RunRequest): { role: string; content: str
     '',
     'Поля:',
     '- outcome (обязательно) — один из: "review" — работа выполнена, нужна проверка человеком (обычный случай); "escalate" — нужен человек (нет данных, противоречивые требования, нет доступа); "handoff" — передать другому агенту.',
-    '- summary (обязательно) — строка 1-3 предложения: что сделано и что получилось, для человека, без markdown.',
-    '- metadata (необязательно) — объект с машиночитаемыми деталями, напр. {"document_format":"docx"}. Не дублируй им summary.',
+    '- summary (обязательно) — 1-3 предложения без markdown: что сделано и что получилось; эта строка попадает в карточку задачи.',
+    '- details (желательно) — подробный текст для комментария задачи, до 1800 символов. Для таблиц, смет, сравнений и планов добавь готовый xlsx/csv в attachments; для аналитического отчёта — docx.',
+    '- metadata (необязательно) — объект с машиночитаемыми деталями, напр. {"document_format":"docx"}. Не дублируй им summary или details.',
     '- next_owner (обязательно) — имя агента-получателя при outcome="handoff", иначе null.',
     '- attachments (необязательно) — массив готовых файлов-артефактов, до 5 штук. Если задача просит создать документ/файл, файл нужно вернуть ЗДЕСЬ (одним из элементов массива), а не только упомянуть в summary.',
     '  Элемент файла: {"filename": "<имя с расширением>", "content_base64": "<содержимое в base64>", "caption": "<подпись>"}.',
@@ -334,11 +338,13 @@ export function normalizeResult(payload: unknown): AgentRunResult | null {
 
   const strictOutcome = asString(record.outcome);
   const strictSummary = asString(record.summary);
+  const strictDetails = asString(record.details);
 
   if (strictOutcome && OUTCOMES.includes(strictOutcome as RunOutcome) && strictSummary) {
     return {
       outcome: strictOutcome as RunOutcome,
       summary: strictSummary,
+      details: strictDetails ? strictDetails.slice(0, 2000) : null,
       metadata: asRecord(record.metadata),
       nextOwner: asString(record.next_owner),
       attachments: asAttachments(record.attachments),
@@ -366,9 +372,27 @@ export function normalizeResult(payload: unknown): AgentRunResult | null {
     (Object.keys(nested).length > 0 ? JSON.stringify(nested) : null);
   if (!summary) return null;
 
+  const details =
+    strictDetails ??
+    asString(nested.details) ??
+    asString(record.details) ??
+    // Старый конверт {result: {...}}: сохраняем нетривиальное содержимое result,
+    // иначе suppliers/next_steps/cost из ответа агента снова потеряются.
+    (Object.keys(nested).some(
+      (key) => !['summary', 'description', 'message', 'metadata', 'attachments', 'files'].includes(key),
+    )
+      ? JSON.stringify(
+          Object.fromEntries(
+            Object.entries(nested).filter(
+              ([key]) => !['summary', 'description', 'message', 'metadata', 'attachments', 'files'].includes(key),
+            ),
+          ),
+        )
+      : null);
   return {
     outcome,
     summary: summary.slice(0, 2000),
+    details: details ? details.slice(0, 2000) : null,
     metadata: {
       ...asRecord(nested.metadata),
       coerced_contract: true,

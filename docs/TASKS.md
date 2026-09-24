@@ -905,14 +905,18 @@ format is deliberately compact so that agents can load the file quickly.
       правила в `attachments.ts` — паритет `lib/shared/attachments.ts`).
       `bot-notify`: карточка эскалации печатает «Последняя попытка»/«Детали»
       (`nack_reason`/`nack_detail` из payload триггера).
-      БД: `098`–`103` (ops_nack/trigger/reaper + CHECK `task_comments.source`,
-      `task_attachments.source`, фильтрация stale `nack_*` в escalation alert).
-      Валидация: type-check 0, vitest 196 passed.
+      БД: `098`–`104` (ops_nack/trigger/reaper + CHECK `task_comments.source`,
+      `task_attachments.source`, фильтрация stale `nack_*`, `summary/details` и агентские
+      комментарии `source='agent'`).
+      Валидация: type-check 0, lint 0 errors/20 existing warnings, vitest 215 passed / 21 files.
       `supabase/config.toml` фиксирует `verify_jwt=false` для `agent-runtime`
       и `bot-notify`; production-деплой выполняется через `--use-api
       --no-verify-jwt` (собственная авторизация функций).
-      Задеплоено: agent-runtime v4 / bot-notify v42 (ACTIVE, `--use-api`, `verify_jwt` off,
-      boot чистый). Осталось: боевой прогон DS-07 (реальный ключ Drift).
+      Контракт результата: `summary` → карточка, `details` → `task_comments`,
+      `attachments[]` → Storage; XLSX/DOCX проходят существующий FILE-01 пайплайн.
+      Задеплоено: agent-runtime v5 / bot-notify v44 (ACTIVE, `--use-api`, `verify_jwt` off,
+      bot-notify обновлён после финальной формулировки подсказки). Осталось: боевой прогон DS-07
+      (реальный ключ Drift).
 
 
 ---

@@ -490,6 +490,9 @@ async function handleJob(
       p_summary: outcome.result.summary,
       p_metadata: {
         ...outcome.result.metadata,
+        ...(outcome.result.details
+          ? { details: outcome.result.details }
+          : {}),
         source: 'hosted_connector',
         run_id: runId,
         model: outcome.usage.model ?? job.model,
@@ -538,6 +541,7 @@ async function handleJob(
         response_digest: {
           outcome: outcome.result.outcome,
           summary_length: outcome.result.summary.length,
+          details_length: outcome.result.details?.length ?? 0,
           raw_length: outcome.rawLength,
           next_owner: outcome.result.nextOwner,
           // Мягкий разбор конверта не должен быть молчаливым (provider.ts).

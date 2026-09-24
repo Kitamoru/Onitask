@@ -220,6 +220,8 @@ export function buildTaskNotifyCard(
     nackReason?: string;
     /** ops_nack detail последней попытки (metadata.nack_detail) — сырой диагноз. */
     nackDetail?: string;
+    /** Детали результата агента доступны в комментариях задачи. */
+    hasDetails?: boolean;
   }
 ): {
   text: string;
@@ -248,6 +250,9 @@ export function buildTaskNotifyCard(
   } else if (extras?.reason) {
     extraLines.push('');
     extraLines.push(`Результат: ${escapeHtml(extras.reason)}`);
+    if (extras.hasDetails) {
+      extraLines.push('Подробности — в комментариях задачи.');
+    }
   }
 
   if (
