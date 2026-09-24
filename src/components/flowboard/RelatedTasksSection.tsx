@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { Button, Card, NotchedPanel, SectionHeader } from '@/components/ui/desk-ui';
 import { createTaskRelation, deleteTaskRelation, getTaskRelations } from '@/lib/api/taskRelations';
 import { taskColumnLabel } from '@/lib/taskColumns';
@@ -214,10 +214,10 @@ export function RelatedTasksSection({
           {editable && task.column !== 'done' && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button variant="outline" onClick={() => setPickerDirection('blocked_by')} disabled={pendingAction}>
-                <Plus className="h-4 w-4" /> Добавить блокер
+                Добавить блокер
               </Button>
               <Button variant="outline" onClick={() => setPickerDirection('blocks')} disabled={pendingAction}>
-                <Plus className="h-4 w-4" /> Эта задача блокирует
+                Эта задача блокирует
               </Button>
             </div>
           )}
