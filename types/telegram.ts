@@ -96,6 +96,15 @@ export interface KeyboardButton {
   request_chat?: { chat_id: number; request_access: string };
 }
 
+/** Выделенный фрагмент при ответе через «Quote» (Bot API 7.0+) */
+export interface TextQuote {
+  text: string;
+  position: number;
+  entities?: MessageEntity[];
+  /** true = фрагмент выделен вручную, false = сгенерирован автоматически */
+  is_manual?: boolean;
+}
+
 /** Происхождение пересланного сообщения (Bot API 7.0+) */
 export type ForwardOrigin =
   | { type: 'user'; sender_user: User; date: number }
@@ -115,6 +124,8 @@ export interface Message {
   /** Оригинал пересланного сообщения (Bot API 7.0+). У пересланного
    *  сообщения `from` — это переславший, исходный автор здесь. */
   forward_origin?: ForwardOrigin;
+  /** Выделенный фрагмент исходного сообщения (Quote & Reply) */
+  quote?: TextQuote;
   message_thread_id?: number; // for forum topics / threads (Bot API 7.4+)
   edit_date?: number;
   text?: string;

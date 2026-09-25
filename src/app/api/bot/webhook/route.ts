@@ -33,6 +33,7 @@ import {
 } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
 import { resolveActorId } from '../../../../../src/lib/bot/actor';
+import { extractReplySource } from '../../../../../src/lib/bot/replySource';
 import {
   setPendingTask,
   clearPendingTask,
@@ -698,14 +699,27 @@ async function handleCommandRequiringWorkspace(
     return;
   }
 
-  let effectiveArgs = args;
-  if (message?.reply_to_message?.text) {
-    effectiveArgs = message.reply_to_message.text.trim();
-  }
+  // Текст задачи: аргументы команды либо тело процитированного сообщения
+  // (§5.1.4). Раньше читался только reply_to_message.text, поэтому реплай
+  // на фото с подписью и на пересланное сообщение уходил в «пришлите текст».
+  const replySource = extractReplySource(message?.reply_to_message);
+  const effectiveArgs = replySource?.text || args;
 
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
     if (!effectiveArgs || effectiveArgs.trim().length === 0) {
+      // Тело процитированного сообщения есть, но Telegram его не прислал
+      // (защита контента в канале) — присылать текст заново бессмысленно.
+      if (replySource?.protectedContent) {
+        await sendMessage(BOT_TOKEN, {
+          chat_id: chatId,
+          text:
+            '🔒 Telegram не отдал боту содержимое этого сообщения — ' +
+            'у канала-источника включена защита контента.\n\n' +
+            'Скопируй текст и пришли его сюда или командой /task <текст>.',
+        });
+        return;
+      }
       await sendMessage(BOT_TOKEN, {
         chat_id: chatId,
         text:
@@ -738,6 +752,16 @@ async function handleCommandRequiringWorkspace(
   }
 
   if (!effectiveArgs || effectiveArgs.trim().length === 0) {
+    if (replySource?.protectedContent) {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text:
+          '🔒 Telegram не отдал боту содержимое этого сообщения — ' +
+          'у канала-источника включена защита контента.\n\n' +
+          'Скопируй текст и пришли его сюда или командой /task <текст>.',
+      });
+      return;
+    }
     await sendMessage(BOT_TOKEN, {
       chat_id: chatId,
       text:
