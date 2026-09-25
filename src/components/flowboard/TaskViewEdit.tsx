@@ -239,6 +239,9 @@ const ResponsibilitySection = memo(function ResponsibilitySection({
   isView,
   onOpenAssignee,
   onOpenReviewer,
+  onClaim,
+  canClaim = false,
+  claimBusy = false,
 }: {
   task?: Partial<TaskEntity> | null;
   workers: WorkerCardData[];
@@ -247,6 +250,9 @@ const ResponsibilitySection = memo(function ResponsibilitySection({
   isView: boolean;
   onOpenAssignee: () => void;
   onOpenReviewer: () => void;
+  onClaim?: () => void;
+  canClaim?: boolean;
+  claimBusy?: boolean;
 }) {
   const creatorWorker = task?.created_by
     ? workers.find((w) => w.id === task.created_by) ??
@@ -282,6 +288,17 @@ const ResponsibilitySection = memo(function ResponsibilitySection({
             avatarUrl={reviewerWorker.avatarUrl}
             role="Проверяющий"
           />
+        )}
+
+        {canClaim && onClaim && (
+          <Button
+            variant="outline"
+            onClick={onClaim}
+            disabled={claimBusy}
+            className="w-full"
+          >
+            {claimBusy ? 'Назначение...' : 'Взять в работу'}
+          </Button>
         )}
 
         {!isView && (
@@ -689,6 +706,25 @@ export function TaskViewEdit({
 
   const handleOpenAssignee = useCallback(() => setAssigneeSheetOpen(true), []);
   const handleOpenReviewer = useCallback(() => setReviewerSheetOpen(true), []);
+
+  // TASK-PERM: self-claim — участник доски берёт задачу из backlog на себя.
+  // Ровно тот PATCH, который сервер разрешает при canClaim (assigned_to →
+  // свой worker и ничего больше). Отдельный «взять в работу» нужен потому,
+  // что кнопка «Редактировать» скрыта без canEdit, а кнопки назначения
+  // доступны только в edit-режиме — иначе member не мог взять задачу вообще.
+  const [claimBusy, setClaimBusy] = useState(false);
+  const handleClaim = useCallback(async () => {
+    if (!task?.id || !currentUserId) return;
+    setClaimBusy(true);
+    setError(null);
+    const res = await patchTask(task.id, {
+      assigned_to: currentUserId,
+      expected_version: task.version ?? undefined,
+    });
+    if (res.warning) setError(res.warning);
+    else onReviewResolved?.(res.task);
+    setClaimBusy(false);
+  }, [task, currentUserId, onReviewResolved]);
 
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -1155,6 +1191,9 @@ export function TaskViewEdit({
                 isView={isView}
                 onOpenAssignee={handleOpenAssignee}
                 onOpenReviewer={handleOpenReviewer}
+                onClaim={handleClaim}
+                canClaim={taskPermission.canClaim}
+                claimBusy={claimBusy}
               />
 
               <ExtraContextSection
