@@ -18,13 +18,23 @@ export type PlanType = 'free' | 'solo' | 'ai_dev' | 'team';
 
 /**
  * Commands available per plan.
- // bot.md §4 table — только /task и /help.
+ * bot.md §4 table.
+ *
+ * ВРЕМЕННО (2026-09-25): free-тарифу разрешены /task и /backlog.
+ * Спека §4 (стр. 116-120) ставит ✗ на Free — расхождение намеренное:
+ * тарифы не настроены, у всех workspace plan='free', и гейт блокировал бы
+ * создание задач вообще. Когда тарифы появятся, 'task' и 'backlog'
+ * убираются из free, и спека возвращается в силу.
+ *
+ * Ключи — канонические имена команд. Раньше вызывающая сторона передавала
+ * 'create-task', которого здесь нет, из-за чего isCommandAvailable
+ * возвращала false для ЛЮБОГО тарифа, включая team.
  */
 const PLAN_COMMANDS: Record<PlanType, string[]> = {
-  free: ['help'],
-  solo: ['help', 'task'],
-  ai_dev: ['help', 'task'],
-  team: ['help', 'task'],
+  free: ['help', 'task', 'backlog'],
+  solo: ['help', 'task', 'backlog'],
+  ai_dev: ['help', 'task', 'backlog'],
+  team: ['help', 'task', 'backlog'],
 };
 
 /**

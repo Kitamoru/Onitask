@@ -395,7 +395,7 @@ async function dispatchUpdate(update: any): Promise<void> {
 
     if (command === 'task') {
       const gateMessage = await checkFreemiumBoundary(
-        'create-task',
+        'task',
         effectiveUserId,
         workspaceId
       );
