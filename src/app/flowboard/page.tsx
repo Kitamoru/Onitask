@@ -22,6 +22,7 @@ import { useTaskNavigator } from '@/hooks/useTaskNavigator';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
 import { filterTasksForUser } from '@/lib/streamFilter';
+import { findActiveWorkspaceWorkerId } from '@/lib/activeWorkspaceWorker';
 import { formatWorkerRole } from '@/lib/roles';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 
@@ -112,7 +113,12 @@ function FlowBoardPageContent() {
   // STREAM-01: персональный фильтр — stream показывает только задачи, созданные
   // пользователем, назначенные ему, на проверке у него (reviewer) или переданные
   // ему (handoff). FlowBoard по-прежнему получает весь список доски.
-  const currentUserId = authData?.worker?.id;
+  const currentUserId = findActiveWorkspaceWorkerId(
+    state.workers.items,
+    authData?.profile_id,
+    state.activeWorkspaceId,
+    authData?.worker?.id,
+  );
   const streamTasks = useMemo(
     () => filterTasksForUser(tasks, currentUserId),
     [tasks, currentUserId],
@@ -776,7 +782,7 @@ function FlowBoardPageContent() {
             storyPointValues: [1, 2, 3, 5, 8],
             hoursPerSp: {},
           }}
-          currentUserId={authData?.worker?.id}
+          currentUserId={currentUserId}
         />
 
         {/* SUBMIT-01: шаг «Результат» — сдача исполнителя (backlog/in_progress → review/done) */}
@@ -811,7 +817,7 @@ function FlowBoardPageContent() {
           workspaceId={state.activeWorkspaceId ?? undefined}
           workspaceName={workspaceName}
           canRevoke={canRevoke}
-          currentWorkerId={authData?.worker?.id}
+          currentWorkerId={currentUserId}
           onRevokeSuccess={() => {
             setSelectedWorker(null);
             refreshMetrics({ force: true });
