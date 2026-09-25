@@ -21,6 +21,13 @@
 `npm run build` ⚠️ не завершён из-за некорректного `SUPABASE_URL` в локальном `.env.local` на этапе page-data `/api/bot/webhook`; компиляция и type/lint внутри build прошли.
 Live smoke-check Agent Card/Agent Sheet в Telegram/WebApp не выполнен: требуется Telegram initData и подключённый workspace. Следующий шаг: после корректного окружения выполнить smoke, затем commit.
 
+## Bugfix pass · Sprint/Boards/Agent UI (2026-09-25) ✅
+
+Исправлены: сохранение `taskIds` при создании спринта и compact `Сделано: 0 / N`; boards People/Processes
+переведены на F-01 и anomaly views; удаление Agent Connector доступно только после «Редактировать»
+и использует коралловую destructive-кнопку; заголовок «Добавить агента» увеличен до 20px, текст
+о бесплатной проверке удалён. Добавлены regression-тесты sprint route, sprint stats и boards read model.
+
 ---
 
 

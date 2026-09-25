@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowMetrics, type BuildFlowMetricsInput } from '@/lib/server/flowMetrics';
+import { buildFlowMetrics, getSprintTaskStats, type BuildFlowMetricsInput } from '@/lib/server/flowMetrics';
 
 function baseInput(overrides: Partial<BuildFlowMetricsInput> = {}): BuildFlowMetricsInput {
   return {
@@ -32,6 +32,22 @@ function task(overrides: Partial<BuildFlowMetricsInput['tasks'][number]> = {}) {
     ...overrides,
   };
 }
+
+describe('getSprintTaskStats', () => {
+  it('returns assigned task ids and done task count for the compact sprint card', () => {
+    const tasks = [
+      { id: 't-1', sprint_id: 'sp-1', column: 'in_progress' },
+      { id: 't-2', sprint_id: 'sp-1', column: 'done' },
+      { id: 't-3', sprint_id: 'sp-2', column: 'done' },
+      { id: 't-4', sprint_id: null, column: 'backlog' },
+    ];
+    expect(getSprintTaskStats(tasks, 'sp-1')).toEqual({ taskIds: ['t-1', 't-2'], doneTasks: 1 });
+  });
+
+  it('does not count a sprint with no assigned tasks as progress', () => {
+    expect(getSprintTaskStats([{ id: 't-1', sprint_id: null, column: 'done' }], 'sp-1')).toEqual({ taskIds: [], doneTasks: 0 });
+  });
+});
 
 describe('buildFlowMetrics', () => {
   it('counts F-01 assigned and reviewer load for a human worker', () => {

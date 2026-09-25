@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * POST /api/flow/metrics — server-side Flow Board read model.
+ * POST /api/flow/metrics вЂ” server-side Flow Board read model.
  * Uses the shared calculator so it cannot drift from my-data.
  */
 
@@ -17,6 +17,7 @@ import {
   type PendingEscalationRow,
   type ReviewBacklogRow,
   type StuckTaskRow,
+  getSprintTaskStats,
 } from '../../../../lib/server/flowMetrics';
 import type { Database } from '../../../../../types/supabase';
 
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     const requestedWorkspaceId = body.workspace_id as string | undefined;
     const auth = await authenticateRequest(initData);
     if (!auth.authenticated) {
-      return NextResponse.json({ error: auth.error || 'Не авторизован' }, { status: auth.status || 401 });
+      return NextResponse.json({ error: auth.error || 'РќРµ Р°РІС‚РѕСЂРёР·РѕРІР°РЅ' }, { status: auth.status || 401 });
     }
 
     const supabase = createServerClient();
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
           .eq('to_column', 'in_progress')
       : { data: [] as unknown[] };
     const sprintRow = (sprintResult.data ?? [])[0] as SprintsRow | undefined;
+    const sprintTaskStats = sprintRow ? getSprintTaskStats(tasks, sprintRow.id) : { taskIds: [], doneTasks: 0 };
     const sprint = sprintRow ? {
       id: sprintRow.id,
       name: sprintRow.name || '',
@@ -103,7 +105,8 @@ export async function POST(req: NextRequest) {
       inProgress: tasks.filter((task) => task.column === 'in_progress' && task.sprint_id === sprintRow.id).length,
       onReview: tasks.filter((task) => task.column === 'review' && task.sprint_id === sprintRow.id).length,
       isActive: sprintRow.status === 'active',
-    } : null;
+      ...sprintTaskStats,
+      } : null;
     const settings = (settingsResult.data ?? {}) as { story_points_config?: { sprint_enabled?: boolean }; flow_config?: Record<string, unknown> | null; enable_cognitive_budget?: boolean; velocity_window_days?: number };
     const metrics = buildFlowMetrics({
       workspaceId,

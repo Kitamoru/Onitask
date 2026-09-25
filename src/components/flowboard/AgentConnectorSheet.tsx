@@ -146,15 +146,17 @@ export function AgentConnectorSheet({
           <h2
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-lg)',
+              fontSize: '20px',
+               lineHeight: '24px',
+               fontWeight: 500,
+               letterSpacing: '-0.025em',
               color: 'var(--color-text-primary)',
             }}
           >
             Добавить агента
           </h2>
           <p className="text-sm text-text-muted">
-            Onitask сам отправит задачу на endpoint агента и заберёт результат. Связь
-            проверяется бесплатно — без расхода токенов.
+          Onitask сам отправит задачу на endpoint агента и заберёт результат.
           </p>
         </div>
 

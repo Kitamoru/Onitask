@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * POST /api/workspaces/my-data РІР‚вЂќ Returns authenticated user's workspace data + flow metrics.
+ * POST /api/workspaces/my-data Р Р†Р вЂљРІР‚Сњ Returns authenticated user's workspace data + flow metrics.
  *
  * Consolidated endpoint: returns workers, workspaces, tasks AND pre-computed metrics
  * in a single HTTP call.
@@ -9,7 +9,7 @@
  * Optimization: when `partial: true` + `workspace_id` is provided, only tasks for the
  * requested workspace are fetched (not all tasks across all workspaces).
  *
- * Full load additionally returns `sprintsByWorkspace` РІР‚вЂќ active/planning sprint summary
+ * Full load additionally returns `sprintsByWorkspace` Р Р†Р вЂљРІР‚Сњ active/planning sprint summary
  * per workspace for BoardCard on /boards.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -26,6 +26,7 @@ import {
   type PendingEscalationRow,
   type ReviewBacklogRow,
   type StuckTaskRow,
+  getSprintTaskStats,
 } from '../../../../lib/server/flowMetrics';
 import type { Database } from '../../../../../types/supabase';
 
@@ -33,7 +34,7 @@ type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type WorkersRow = Database['public']['Tables']['workers']['Row'];
 type SprintsRow = Database['public']['Tables']['sprints']['Row'];
 
-/** Р С™РЎР‚Р В°РЎвЂљР С”Р В°РЎРЏ РЎРѓР Р†Р С•Р Т‘Р С”Р В° РЎРѓР С—РЎР‚Р С‘Р Р…РЎвЂљР В° Р Т‘Р В»РЎРЏ BoardCard Р Р…Р В° /boards РІР‚вЂќ Р С‘Р В· lib/sprintSummary */
+/** Р В РЎв„ўР РЋР вЂљР В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В Р’В°Р РЋР РЏ Р РЋР С“Р В Р вЂ Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В° Р РЋР С“Р В РЎвЂ”Р РЋР вЂљР В РЎвЂР В Р вЂ¦Р РЋРІР‚С™Р В Р’В° Р В РўвЂР В Р’В»Р РЋР РЏ BoardCard Р В Р вЂ¦Р В Р’В° /boards Р Р†Р вЂљРІР‚Сњ Р В РЎвЂР В Р’В· lib/sprintSummary */
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateRequest(initData);
     if (!auth.authenticated) {
       return NextResponse.json(
-        { error: auth.error || 'Р СњР Вµ Р В°Р Р†РЎвЂљР С•РЎР‚Р С‘Р В·Р С•Р Р†Р В°Р Р…' },
+        { error: auth.error || 'Р В РЎСљР В Р’Вµ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР В РЎвЂР В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р В Р вЂ¦' },
         { status: auth.status || 401 },
       );
     }
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     const taskWorkspaceIds =
       isPartial && requestedWorkspaceId ? [requestedWorkspaceId] : workspaceIds;
 
-    // Full load: РЎРѓР С—РЎР‚Р С‘Р Р…РЎвЂљРЎвЂ№ Р С—Р С• Р Р†РЎРѓР ВµР С workspace. Partial: РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В°Р С”РЎвЂљР С‘Р Р†Р Р…РЎвЂ№Р в„–.
+    // Full load: Р РЋР С“Р В РЎвЂ”Р РЋР вЂљР В РЎвЂР В Р вЂ¦Р РЋРІР‚С™Р РЋРІР‚в„– Р В РЎвЂ”Р В РЎвЂў Р В Р вЂ Р РЋР С“Р В Р’ВµР В РЎВ workspace. Partial: Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В Р’В°Р В РЎвЂќР РЋРІР‚С™Р В РЎвЂР В Р вЂ Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“.
     const sprintQueryWorkspaceIds =
       isPartial && requestedWorkspaceId ? [requestedWorkspaceId] : workspaceIds;
 
@@ -207,11 +208,14 @@ export async function POST(req: NextRequest) {
 
     const allSprints = (sprintResult.data as SprintsRow[] | null) ?? [];
 
-    // Metrics: РЎвЂљР С•Р В»РЎРЉР С”Р С• РЎРѓР С—РЎР‚Р С‘Р Р…РЎвЂљ Р В°Р С”РЎвЂљР С‘Р Р†Р Р…Р С•Р С–Р С• (metrics) workspace
+    // Metrics: Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р РЋР С“Р В РЎвЂ”Р РЋР вЂљР В РЎвЂР В Р вЂ¦Р РЋРІР‚С™ Р В Р’В°Р В РЎвЂќР РЋРІР‚С™Р В РЎвЂР В Р вЂ Р В Р вЂ¦Р В РЎвЂўР В РЎвЂ“Р В РЎвЂў (metrics) workspace
     const sprintsForMetrics = metricsWorkspaceId
       ? allSprints.filter((s) => s.workspace_id === metricsWorkspaceId)
       : [];
 
+    const sprintTaskStats = sprintsForMetrics[0]
+      ? getSprintTaskStats(relevantTasks, sprintsForMetrics[0].id)
+      : { taskIds: [], doneTasks: 0 };
     const metrics = buildFlowMetrics({
       workspaceId: metricsWorkspaceId,
       tasks: relevantTasks as FlowMetricsTask[],
@@ -240,11 +244,12 @@ export async function POST(req: NextRequest) {
         inProgress: 0,
         onReview: 0,
         isActive: sprintsForMetrics[0].status === 'active',
+        ...sprintTaskStats,
       } : null,
       sprintEnabled: (settingsResult.data as any)?.story_points_config?.sprint_enabled ?? false,
     });
 
-    // Per-workspace sprint summaries Р Т‘Р В»РЎРЏ BoardCard
+    // Per-workspace sprint summaries Р В РўвЂР В Р’В»Р РЋР РЏ BoardCard
     const sprintsByWorkspace = buildSprintsByWorkspace(allSprints);
 
     return NextResponse.json({

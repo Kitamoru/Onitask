@@ -48,9 +48,14 @@ function buildSupabase(bySelect: Record<string, QResult>) {
 }
 
 const SELECT_USER_WORKERS = 'workspace_id';
-const SELECT_MEMBERS = 'workspace_id, type';
-const SELECT_TASKS = 'workspace_id, column, assigned_to, needs_human, is_inbox';
+const SELECT_MEMBERS = 'id, workspace_id, type';
+const SELECT_TASKS = 'workspace_id, column, assigned_to, reviewer_id, cognitive_weight, is_inbox';
 const SELECT_SPRINTS = 'workspace_id, name, goal, status, start_date, end_date';
+const SELECT_SETTINGS = 'workspace_id, enable_cognitive_budget';
+const SELECT_REVIEW = 'workspace_id, reviewer_id, review_count';
+const SELECT_STUCK = 'workspace_id, id, title, assigned_to';
+const SELECT_ORPHAN = 'workspace_id, id, title, hours_blocked';
+const SELECT_ESCALATIONS = 'workspace_id, id, title, escalation_reason';
 
 describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
   beforeEach(() => {
@@ -125,14 +130,19 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       },
       [SELECT_MEMBERS]: {
         data: [
-          { workspace_id: 'ws-1', type: 'human' },
-          { workspace_id: 'ws-1', type: 'human' },
-          { workspace_id: 'ws-1', type: 'agent' },
-          { workspace_id: 'ws-2', type: 'human' },
+          { id: 'h1', workspace_id: 'ws-1', type: 'human' },
+          { id: 'h2', workspace_id: 'ws-1', type: 'human' },
+          { id: 'a1', workspace_id: 'ws-1', type: 'agent' },
+          { id: 'h3', workspace_id: 'ws-2', type: 'human' },
         ],
         error: null,
       },
       [SELECT_SPRINTS]: { data: [], error: null },
+      [SELECT_SETTINGS]: { data: [{ workspace_id: 'ws-1', enable_cognitive_budget: true }, { workspace_id: 'ws-2', enable_cognitive_budget: true }], error: null },
+      [SELECT_REVIEW]: { data: [{ workspace_id: 'ws-1', reviewer_id: 'h1' }], error: null },
+      [SELECT_STUCK]: { data: [{ workspace_id: 'ws-1', id: 's1' }], error: null },
+      [SELECT_ORPHAN]: { data: [{ workspace_id: 'ws-2', id: 'o1' }], error: null },
+      [SELECT_ESCALATIONS]: { data: [{ workspace_id: 'ws-1', id: 'e1' }], error: null },
     });
     vi.mocked(createServerClient).mockReturnValue(supabase);
 
@@ -144,9 +154,8 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       'ws-1': { inQueue: 2, inWork: 1, onReview: 1, done: 3 },
       'ws-2': { inQueue: 0, inWork: 1, onReview: 0, done: 1 },
     });
-    // people — distinct assignee (p1, p2, p3), processes — все in_progress,
-    // escalations — только активные needs_human вне done/inbox.
-    expect(json.data.riskData).toEqual({ people: 3, processes: 2, escalations: 1 });
+    // People: F-01 overloaded humans. Processes: review backlog + stuck + orphan.
+    expect(json.data.riskData).toEqual({ people: 0, processes: 3, escalations: 1 });
     expect(json.data.members).toEqual({
       'ws-1': { humans: 2, agents: 1 },
       'ws-2': { humans: 1, agents: 0 },
@@ -166,6 +175,11 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       },
       [SELECT_MEMBERS]: { data: [], error: null },
       [SELECT_SPRINTS]: { data: [], error: null },
+      [SELECT_SETTINGS]: { data: [], error: null },
+      [SELECT_REVIEW]: { data: [], error: null },
+      [SELECT_STUCK]: { data: [], error: null },
+      [SELECT_ORPHAN]: { data: [], error: null },
+      [SELECT_ESCALATIONS]: { data: [], error: null },
     });
     vi.mocked(createServerClient).mockReturnValue(supabase);
 

@@ -38,6 +38,8 @@ export interface SprintInfo {
   isActive: boolean;
   /** IDs of tasks assigned to this sprint (for edit sheet pre-selection) */
   taskIds?: string[];
+  /** Number of assigned tasks currently in done */
+  doneTasks?: number;
 }
 
 // ─── Signals (Risk Pulse) ────────────────────────────────────────────────────

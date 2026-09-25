@@ -395,6 +395,7 @@ format is deliberately compact so that agents can load the file quickly.
       **Реализовано 2026-09-25:** `RiskPulseSheet` показывает review-backlog, stuck и
       phantom-blockers из `riskBreakdown.processes`; backend formula и UI-группы готовы.
       `handoff_chain` сознательно остаётся отдельным Agent/Operator-сигналом (ADR-2026-09-25).
+      **Bugfix 2026-09-25:** boards `People` использует F-01 cognitive load, `Processes` — review backlog + stuck + orphan blockers, `Escalations` — pending escalations; sprint read model возвращает `taskIds`/`doneTasks` и API принимает `taskIds`/`task_ids`. Agent delete доступен только в режиме редактирования, Add Agent Sheet очищен от лишнего текста.
 
 - [x] NAV-01 Unified task navigation resolver: task/flow/invite namespace, cross-workspace launch, `open_task_id`, global/local Operator Queue scopes #api !high @blocked_by:INV-13
       **Реализовано 2026-09-25:** `/api/init` server-side резолвит task `full_id` в UUID задачи и workspace с проверкой membership; root/FlowBoard/useTaskNavigator используют единый путь; `comments` tab сохраняется; legacy `open_task` и invite поддержаны; `TelegramDeepLinkRouter` удалён; `DataContext` получил stale-load generation guard; `/boards` открывает `scope=all` Operator Queue. Regression: parser, resolver, init, queue, SDK tests.

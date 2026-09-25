@@ -136,6 +136,18 @@ const WIP_LIMITS: Record<(typeof COLUMN_NAMES)[number], number | null> = {
 };
 const MAX_COGNITIVE_SLOTS = 3;
 
+/** Task counts used by the compact sprint card and sprint edit sheet. */
+export function getSprintTaskStats(
+  tasks: Array<{ id: string; sprint_id?: string | null; column: string }>,
+  sprintId: string,
+): { taskIds: string[]; doneTasks: number } {
+  const taskIds = tasks.filter((task) => task.sprint_id === sprintId).map((task) => task.id);
+  const doneTasks = tasks.filter(
+    (task) => task.sprint_id === sprintId && task.column === 'done',
+  ).length;
+  return { taskIds, doneTasks };
+}
+
 function numberValue(value: number | string | null | undefined): number {
   const parsed = typeof value === 'number' ? value : Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;

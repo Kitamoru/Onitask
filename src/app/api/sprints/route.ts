@@ -91,10 +91,12 @@ export async function POST(request: NextRequest) {
       goal,
       capacity,
       task_ids,
+      taskIds,
       workspace_id: requestedWorkspaceId,
     } = body as Record<string, unknown>;
     const start_date = (sd ?? startDate) as string | undefined;
     const end_date = (ed ?? endDate) as string | undefined;
+    const sprintTaskIds = (task_ids ?? taskIds) as unknown;
 
     // Validation: name + dates are required
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -161,11 +163,11 @@ export async function POST(request: NextRequest) {
     }
 
     // If task_ids provided, assign them to the sprint
-    if (Array.isArray(task_ids) && task_ids.length > 0) {
+    if (Array.isArray(sprintTaskIds) && sprintTaskIds.length > 0) {
       const { error: tasksError } = await supabase
         .from('tasks')
         .update({ sprint_id: sprint.id })
-        .in('id', task_ids)
+        .in('id', sprintTaskIds)
         .eq('workspace_id', targetWorkspaceId);
 
       if (tasksError) {
