@@ -25,7 +25,10 @@ export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onR
   const query = useQuery({
     queryKey,
     queryFn: () => getEscalations(workspaceId),
-    enabled: open && Boolean(workspaceId),
+    // Keep the queue warm while the active board is mounted. The bottom sheet
+    // can then render cached cards immediately instead of replacing its title,
+    // loader and empty content after the first API response.
+    enabled: Boolean(workspaceId),
     staleTime: 15_000,
   });
   const retryMutation = useMutation({
