@@ -189,6 +189,20 @@ describe('bot-notify card: deep-link', () => {
     );
   });
 
+  it('review open-button сразу открывает комментарии', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'review', { taskId: 'task-uuid' });
+    const btn = res.replyMarkup.inline_keyboard.flat().find((b) => b.url);
+    expect(btn?.url).toBe(
+      'https://t.me/onitaskbot/onitask?startapp=task_ONI-42_comments',
+    );
+  });
+
+  it('остальные контексты сохраняют обычный deep-link', () => {
+    const res = buildTaskNotifyCard(makeCard(), 'escalation');
+    const btn = res.replyMarkup.inline_keyboard.flat().find((b) => b.url);
+    expect(btn?.url).toBe('https://t.me/onitaskbot/onitask?startapp=task_ONI-42');
+  });
+
   it('CARD_CONFIG.botUsername перекрывает дефолт (env TELEGRAM_BOT_USERNAME)', () => {
     const prev = CARD_CONFIG.botUsername;
     try {

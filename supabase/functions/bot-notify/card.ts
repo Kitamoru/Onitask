@@ -191,16 +191,22 @@ export function buildHeader(context: NotifyContext, fullId: string): string {
   }
 }
 
-export function buildOpenButton(card: TaskCardData): { text: string; url: string } {
+export function buildOpenButton(
+  card: TaskCardData,
+  context: NotifyContext,
+): { text: string; url: string } {
+  const url = context === 'review'
+    ? taskCommentsDeepLink(card.fullId)
+    : taskDeepLink(card.fullId);
   if (isLowClarity(card)) {
     return {
       text: `✏️ Уточнить ${card.fullId} →`,
-      url: taskDeepLink(card.fullId),
+      url,
     };
   }
   return {
     text: 'Открыть в приложении',
-    url: taskDeepLink(card.fullId),
+    url,
   };
 }
 
@@ -282,7 +288,7 @@ export function buildTaskNotifyCard(
   const body = renderTaskCardBody(card, { extraLines });
   const text = `${header}\n\n${body}`.slice(0, 4096);
 
-  const openBtn = buildOpenButton(card);
+  const openBtn = buildOpenButton(card, context);
   let rows: Array<
     Array<{ text: string; url?: string; callback_data?: string }>
   >;

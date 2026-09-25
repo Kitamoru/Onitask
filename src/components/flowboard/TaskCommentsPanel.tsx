@@ -29,7 +29,7 @@
  * Based on: Figma 322-27840, docs/onitask_flow_.md §22 (ADR-2026-09-06).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 import { getClient } from '@/lib/supabase/client';
@@ -37,6 +37,7 @@ import { getTaskFeedPage, createComment } from '@/lib/api/comments';
 import { formatFeedTime } from '@/lib/date';
 import { TextArea } from '@/components/ui/desk-ui';
 import { isReviewDecision } from '@/lib/reviewDecision';
+import { scrollFeedToLatest } from '@/lib/commentsScroll';
 import type { CommentsPage, FeedPageCursor, TaskFeedItem } from '@/types/comments';
 
 /** Column keys → ru labels (match TaskForm / board column names) */
@@ -150,6 +151,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
   const [sendError, setSendError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const feedScrollRef = useRef<HTMLDivElement>(null);
 
   // ── Feed: useInfiniteQuery (FILE-12) ──────────────────────────────────────
   // Второй гарантийный потребитель React Query (ADR-2026-09-11). Кэш =
@@ -181,6 +183,16 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
   const loadError = feed.error
     ? (feed.error instanceof Error ? feed.error.message : String(feed.error))
     : null;
+
+  // Открываем ленту сразу на свежем комментарии. Скроллим только внутренний
+  // контейнер ленты, чтобы не двигать внешний scroll BottomSheet и composer.
+  useEffect(() => {
+    if (loading || items.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      scrollFeedToLatest(feedScrollRef.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [items.length, loading]);
 
   // ── Мутации кэша фида (кэш = единственный источник истины, паттерн FILE-09) ─
   const mutateFeed = useCallback(
@@ -323,7 +335,7 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
     <div className="flex h-full min-h-0 flex-col">
       {/* Feed — горизонтальный паддинг даёт сам шит (TaskViewEdit: px-4),
           внутри панели комментариев он должен быть 0 (ДС, Figma 322:27995) */}
-      <div className="min-h-0 flex-1 overflow-y-auto py-3">
+      <div ref={feedScrollRef} className="min-h-0 flex-1 overflow-y-auto py-3">
         {loading ? (
           <CommentSkeleton />
         ) : loadError && items.length === 0 ? (

@@ -167,7 +167,7 @@ export function buildMessages(request: RunRequest): { role: string; content: str
     'Поля:',
     '- outcome (обязательно) — один из: "review" — работа выполнена, нужна проверка человеком (обычный случай); "escalate" — нужен человек (нет данных, противоречивые требования, нет доступа); "handoff" — передать другому агенту.',
     '- summary (обязательно) — 1-3 предложения без markdown: что сделано и что получилось; эта строка попадает в карточку задачи.',
-    '- details (желательно) — подробный текст для комментария задачи, до 1800 символов. Для таблиц, смет, сравнений и планов добавь готовый xlsx/csv в attachments; для аналитического отчёта — docx.',
+    '- details (обязательно для outcome="review") — готовый русскоязычный текст для комментария задачи, до 1800 символов. Не возвращай JSON или структурированный объект: Onitask не переводит доменные ключи автоматически. Для таблиц, смет, сравнений и планов добавь готовый xlsx/csv в attachments; для аналитического отчёта — docx.',
     '- metadata (необязательно) — объект с машиночитаемыми деталями, напр. {"document_format":"docx"}. Не дублируй им summary или details.',
     '- next_owner (обязательно) — имя агента-получателя при outcome="handoff", иначе null.',
     '- attachments (необязательно) — массив готовых файлов-артефактов, до 5 штук. Если задача просит создать документ/файл, файл нужно вернуть ЗДЕСЬ (одним из элементов массива), а не только упомянуть в summary.',
@@ -243,111 +243,22 @@ export function topLevelKeys(payload: unknown): string[] {
   return Object.keys(payload as Record<string, unknown>).slice(0, 12);
 }
 
-/** Ключи, которые не несут пользовательской ценности в legacy-конверте. */
-const DETAIL_INTERNAL_KEYS = new Set([
-  'task_id',
-  'status',
-  'state',
-  'result_status',
-  'summary',
-  'description',
-  'message',
-  'note',
-  'metadata',
-  'attachments',
-  'files',
-  'coerced_contract',
-  'observed_keys',
-]);
-
-const DETAIL_LABELS: Record<string, string> = {
-  suppliers: 'Поставщики',
-  recommended: 'Рекомендованный вариант',
-  alternatives: 'Альтернативы',
-  next_steps: 'Следующие шаги',
-  estimated_cost: 'Ориентировочная стоимость',
-  deadline: 'Срок',
-  delivery: 'Доставка',
-  min_order: 'Минимальный заказ',
-  contact: 'Контакт',
-  rationale: 'Почему подходит',
-  document_format: 'Формат документа',
-  suppliers_15t: 'Поставщики на 15 тонн',
-  ogurtsy_15t: 'Огурцы, 15 тонн',
-  vodka_15b: 'Водка, 15 бутылок',
-  cucumbers: 'Огурцы',
-  vodka: 'Водка',
-  name: 'Название',
-  site: 'Сайт',
-  price: 'Цена',
-  phone: 'Телефон',
-  note: 'Примечание',
-  total: 'Итого',
-};
-
-function humanDetailLabel(key: string): string {
-  return DETAIL_LABELS[key] ?? key.replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-}
-
-function formatDetailScalar(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value === null || value === undefined) return '—';
-  return '';
-}
-
-function formatDetailValue(value: unknown, depth = 0): string {
-  const indent = '  '.repeat(Math.min(depth, 3));
-  if (Array.isArray(value)) {
-    if (!value.length) return `${indent}—`;
-    return value
-      .map((item) => {
-        if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-          return `${indent}• ${formatDetailScalar(item)}`;
-        }
-        return `${indent}•\n${formatDetailValue(item, depth + 1)}`;
-      })
-      .join('\n');
-  }
-  if (typeof value === 'object' && value !== null) {
-    const record = value as Record<string, unknown>;
-    const lines: string[] = [];
-    for (const [key, item] of Object.entries(record)) {
-      if (DETAIL_INTERNAL_KEYS.has(key)) continue;
-      const label = humanDetailLabel(key);
-      if (item === null || item === undefined || item === '') continue;
-      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-        lines.push(`${indent}${label}: ${formatDetailScalar(item)}`);
-      } else if (Array.isArray(item) || typeof item === 'object') {
-        lines.push(`${indent}${label}:`);
-        lines.push(formatDetailValue(item, depth + 1));
-      }
-    }
-    return lines.filter(Boolean).join('\n');
-  }
-  return `${indent}${formatDetailScalar(value)}`;
-}
-
-/** Превращает result агента в комментарий без JSON-артефактов. */
+/** Принимает только готовый человеческий текст, не пытаясь переводить JSON-домены. */
 export function formatHumanDetails(value: unknown, limit = 2000): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text) return null;
-    // Некоторые агенты кладут JSON-строку в details. Преобразуем только если
-    // вся строка действительно является JSON-объектом/массивом.
-    if (text.startsWith('{') || text.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(text) as unknown;
-        return formatHumanDetails(parsed, limit);
-      } catch {
-        // Обычный текст с фигурными скобками оставляем как есть.
-      }
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!text) return null;
+  // Структурированный результат без details не должен превращаться в комментарий:
+  // безопасного универсального русского названия для произвольного ключа нет.
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      JSON.parse(text);
+      return null;
+    } catch {
+      // Обычный текст с фигурными скобками допустим.
     }
-    return text.slice(0, limit);
   }
-  const text = formatDetailValue(value).replace(/\n{3,}/g, '\n\n').trim();
-  return text ? text.slice(0, limit) : null;
+  return text.slice(0, limit);
 }
 
 /**
@@ -448,10 +359,14 @@ export function normalizeResult(payload: unknown): AgentRunResult | null {
   const strictDetails = asString(record.details);
 
   if (strictOutcome && OUTCOMES.includes(strictOutcome as RunOutcome) && strictSummary) {
+    const details = formatHumanDetails(strictDetails);
+    // Для review подробный результат — часть контракта: иначе карточка
+    // останется без комментария, а runtime не будет угадывать доменный JSON.
+    if (strictOutcome === 'review' && !details) return null;
     return {
       outcome: strictOutcome as RunOutcome,
       summary: strictSummary,
-      details: formatHumanDetails(strictDetails),
+      details,
       metadata: asRecord(record.metadata),
       nextOwner: asString(record.next_owner),
       attachments: asAttachments(record.attachments),
@@ -475,24 +390,16 @@ export function normalizeResult(payload: unknown): AgentRunResult | null {
     asString(nested.message) ??
     asString(record.description) ??
     asString(record.message) ??
-    asString(record.note) ??
-    (Object.keys(nested).length > 0 ? JSON.stringify(nested) : null);
+    asString(record.note);
   if (!summary) return null;
 
   const details =
     (strictDetails ? formatHumanDetails(strictDetails) : null) ??
     (nested.details ? formatHumanDetails(nested.details) : null) ??
     (record.details ? formatHumanDetails(record.details) : null) ??
-    // Старый конверт {result: {...}}: сохраняем нетривиальное содержимое result,
-    // иначе suppliers/next_steps/cost из ответа агента снова потеряются.
-    formatHumanDetails(
-      Object.fromEntries(
-        Object.entries(nested).filter(
-          ([key]) =>
-            !['summary', 'description', 'message', 'metadata', 'attachments', 'files'].includes(key),
-        ),
-      ),
-    );
+    // Старый конверт {result: {...}}: без готового текстового details
+    // не превращаем произвольный доменный объект в пользовательский комментарий.
+    null;
   return {
     outcome,
     summary: summary.slice(0, 2000),
