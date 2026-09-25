@@ -356,11 +356,12 @@ export async function DELETE(
       .delete()
       .eq('task_id', taskId);
 
-    // Clean up bot_task_drafts
-    await anySupabase
-      .from('bot_task_drafts')
-      .delete()
-      .eq('task_id', taskId);
+    // bot_task_drafts здесь НЕ чистим: колонки task_id у таблицы нет
+    // (миграция 030: id, user_id, chat_id, title, description, source,
+    // created_at, expires_at), и черновик не связан с задачей — он живёт
+    // по chat_id 10 минут и удаляется по TTL (purge_expired_bot_task_drafts).
+    // Прежний код звал delete().eq('task_id', taskId) и падал с 42703
+    // undefined_column на каждом DELETE /api/tasks/:id.
 
     // FILE-07: бинарники вложений из Storage (строки task_attachments каскадят
     // сами по ON DELETE CASCADE; объекты в bucket — нет, чистим явно ДО delete)
