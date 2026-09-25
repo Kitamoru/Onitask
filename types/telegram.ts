@@ -96,6 +96,13 @@ export interface KeyboardButton {
   request_chat?: { chat_id: number; request_access: string };
 }
 
+/** Происхождение пересланного сообщения (Bot API 7.0+) */
+export type ForwardOrigin =
+  | { type: 'user'; sender_user: User; date: number }
+  | { type: 'hidden_user'; sender_user_name: string; date: number }
+  | { type: 'chat'; sender_chat: Chat; author_signature?: string; date: number }
+  | { type: 'channel'; chat: Chat; message_id: number; author_signature?: string; date: number };
+
 /** Telegram Message object */
 export interface Message {
   message_id: number;
@@ -105,6 +112,9 @@ export interface Message {
   sender_chat?: Chat;
   reply_to_message?: Message;
   via_bot?: User;
+  /** Оригинал пересланного сообщения (Bot API 7.0+). У пересланного
+   *  сообщения `from` — это переславший, исходный автор здесь. */
+  forward_origin?: ForwardOrigin;
   message_thread_id?: number; // for forum topics / threads (Bot API 7.4+)
   edit_date?: number;
   text?: string;

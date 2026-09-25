@@ -32,6 +32,7 @@ import {
   resolveProfileId,
 } from '../../../../../src/lib/bot/workspaceResolver';
 import { checkFreemiumBoundary } from '../../../../../src/lib/bot/freemium';
+import { resolveActorId } from '../../../../../src/lib/bot/actor';
 import {
   setPendingTask,
   clearPendingTask,
@@ -243,14 +244,19 @@ async function dispatchUpdate(update: any): Promise<void> {
   const chat = message.chat;
   const chatId = chat.id;
   const text = message.text;
-  const userId = message.from?.id;
+  const userId = resolveActorId(message);
 
   if (!userId) {
     console.error('[Bot Webhook] ERROR No user id in message');
     return;
   }
 
-  let effectiveUserId = userId;
+  // Актор — автор команды (message.from), а не автор процитированного
+  // сообщения. Раньше здесь стояла подмена effectiveUserId на
+  // reply_to_message.from.id: у пересланного сообщения `from` — это
+  // переславший, а не автор оригинала, поэтому /task в реплае на чужое
+  // или пересланное сообщение уходил в «Профиль не найден. Начните с /start».
+  const effectiveUserId = userId;
   const chatType = chat.type;
 
   if (chatType !== 'private') {
@@ -258,9 +264,6 @@ async function dispatchUpdate(update: any): Promise<void> {
     if (!botMentioned) {
       console.log('[Bot Webhook] Ignoring non-private chat without bot mention');
       return;
-    }
-    if (message.reply_to_message?.from) {
-      effectiveUserId = message.reply_to_message.from.id;
     }
   }
 
