@@ -13,6 +13,7 @@
 
 import { validateTelegramInitData } from '../src/lib/telegram/validate';
 import { createServerClient } from './supabase';
+import { getTaskPermission } from '../src/lib/taskPermissions';
 import type { TelegramUser } from '../src/lib/telegram/validate';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -170,6 +171,44 @@ export async function getActiveWorkerInWorkspace(
     .limit(1);
 
   return data?.[0] ?? null;
+}
+
+/**
+ * TASK-PERM: права текущего пользователя на запись в конкретную задачу.
+ *
+ * Серверная обёртка над чистым правилом `getTaskPermission`
+ * (src/lib/taskPermissions.ts — тот же модуль использует клиент, поэтому
+ * UI и Route Handler не могут разойтись). Единственный источник worker-строки —
+ * уже существующий getActiveWorkerInWorkspace, т.е. лишнего запроса в БД нет.
+ *
+ * Правило: owner/admin — всё; автор (created_by) — правит и удаляет;
+ * исполнитель (assigned_to) — правит, но не удаляет; остальные — ничего.
+ * Плюс self-claim: непривилегированный участник может взять задачу из backlog
+ * без исполнителя (canClaim), после чего получает права исполнителя.
+ *
+ * Возвращает null, если профиль не состоит в workspace задачи — вызывающий
+ * код уже отвечает 404/403 сам, чтобы не раскрывать существование задачи.
+ */
+export async function getTaskWritePermission(
+  profileId: string,
+  task: {
+    workspace_id: string;
+    created_by: string | null;
+    assigned_to: string | null;
+    column: string;
+  },
+): Promise<ReturnType<typeof getTaskPermission> | null> {
+  const actor = await getActiveWorkerInWorkspace(profileId, task.workspace_id);
+  if (!actor) return null;
+
+  return getTaskPermission(
+    {
+      created_by: task.created_by,
+      assigned_to: task.assigned_to,
+      column: task.column,
+    },
+    { workerId: actor.id, role: actor.role },
+  );
 }
 
 /**

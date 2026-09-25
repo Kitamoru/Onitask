@@ -29,6 +29,13 @@ export interface ColumnTasksSheetProps {
   accentColor?: string;
   /** Callback when a task is moved to a different column (optimistic — called immediately) */
   onMoveTask?: (taskId: string, newColumn: string) => void;
+  /**
+   * TASK-PERM: право текущего пользователя на перемещение задачи
+   * (автор / исполнитель / owner+admin). Если возвращает false, карточка
+   * остаётся read-only: свайп ничего не делает и подсказывает причину —
+   * ограничение читается как правило, а не как «ничего не произошло».
+   */
+  canMoveTask?: (taskId: string) => boolean;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
 }
@@ -50,6 +57,7 @@ export function ColumnTasksSheet({
   tasks,
   accentColor,
   onMoveTask,
+  canMoveTask,
   onTaskTap,
 }: ColumnTasksSheetProps) {
   const color = accentColor ?? (column ? COLUMN_ACCENTS[column] : 'var(--color-accent-amber)');
@@ -95,6 +103,10 @@ export function ColumnTasksSheet({
   const handleMoveNext = useCallback(
     (taskId: string) => {
       if (!column) return;
+      if (canMoveTask && !canMoveTask(taskId)) {
+        alert('Задача не ваша: двигать её может автор, исполнитель или администратор доски');
+        return;
+      }
       const currentIndex = COLUMN_ORDER.indexOf(column);
       if (currentIndex < 0 || currentIndex >= COLUMN_ORDER.length - 1) return;
       const nextColumn = COLUMN_ORDER[currentIndex + 1];
@@ -104,12 +116,16 @@ export function ColumnTasksSheet({
       setPendingExit((prev) => new Map(prev).set(taskId, column));
       onMoveTask?.(taskId, nextColumn);
     },
-    [column, onMoveTask]
+    [column, onMoveTask, canMoveTask]
   );
 
   const handleMovePrev = useCallback(
     (taskId: string) => {
       if (!column) return;
+      if (canMoveTask && !canMoveTask(taskId)) {
+        alert('Задача не ваша: двигать её может автор, исполнитель или администратор доски');
+        return;
+      }
       const currentIndex = COLUMN_ORDER.indexOf(column);
       if (currentIndex <= 0) return;
       const prevColumn = COLUMN_ORDER[currentIndex - 1];
@@ -119,7 +135,7 @@ export function ColumnTasksSheet({
       setPendingExit((prev) => new Map(prev).set(taskId, column));
       onMoveTask?.(taskId, prevColumn);
     },
-    [column, onMoveTask]
+    [column, onMoveTask, canMoveTask]
   );
 
   const handleTap = useCallback(

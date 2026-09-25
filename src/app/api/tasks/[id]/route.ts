@@ -22,7 +22,10 @@ import {
   authenticateRequest,
   extractInitData,
   isWorkspaceMember,
+  getActiveWorkerInWorkspace,
+  getTaskWritePermission,
 } from '../../../../../lib/api-auth';
+import { TASK_FORBIDDEN_EDIT, TASK_FORBIDDEN_DELETE } from '@/lib/taskPermissions';
 import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 import {
@@ -79,7 +82,7 @@ export async function PATCH(
     const supabase = createServerClient();
     const { data: taskRow, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('version, workspace_id, column, reviewer_id, metadata, created_by')
+      .select('version, workspace_id, column, reviewer_id, metadata, created_by, assigned_to')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -93,6 +96,37 @@ export async function PATCH(
 
     if (!(await isWorkspaceMember(auth.profileId!, taskRow.workspace_id))) {
       return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
+    }
+
+    // TASK-PERM: перемещение (column) и редактирование полей — это ОДИН и тот же
+    // PATCH, поэтому единая проверка canEdit закрывает оба случая.
+    // Правило: owner/admin — всё; автор (created_by) — правит; исполнитель
+    // (assigned_to) — правит; остальные участники доски — нет.
+    // Исключение — self-claim: участник может взять задачу из backlog без
+    // исполнителя себе (тогда меняется только assigned_to → его worker.id).
+    const permission = await getTaskWritePermission(auth.profileId!, {
+      workspace_id: taskRow.workspace_id as string,
+      created_by: (taskRow.created_by as string | null) ?? null,
+      assigned_to: (taskRow.assigned_to as string | null) ?? null,
+      column: taskRow.column as string,
+    });
+
+    if (!permission) {
+      return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
+    }
+
+    const actor = await getActiveWorkerInWorkspace(auth.profileId!, taskRow.workspace_id as string);
+    const isSelfClaim =
+      permission.canClaim &&
+      actor != null &&
+      body.assigned_to === actor.id &&
+      Object.keys(update).every((k) => k === 'assigned_to' || k === 'moved_to_column_at');
+
+    if (!permission.canEdit && !isSelfClaim) {
+      return NextResponse.json(
+        { error: TASK_FORBIDDEN_EDIT },
+        { status: 403 },
+      );
     }
 
     const { data: settingsRow } = await supabase
@@ -152,21 +186,10 @@ export async function PATCH(
       ((taskRow.metadata as Record<string, unknown> | null) ?? {})
         .review_pending === true
     ) {
-      const { data: actorWorker } = await supabase
-        .from('workers')
-        .select('id, role')
-        .eq('source_id', auth.profileId!)
-        .eq('workspace_id', taskRow.workspace_id)
-        .eq('type', 'human')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      const role = actorWorker?.role as string | null | undefined;
-      const isOwnerAdmin = !!actorWorker && (role === 'owner' || role === 'admin');
-      const isCreator =
-        !!actorWorker &&
-        !!taskRow.created_by &&
-        taskRow.created_by === actorWorker.id;
+      // actor уже получен выше (worker текущего пользователя в workspace задачи).
+      const role = actor?.role as string | null | undefined;
+      const isOwnerAdmin = !!actor && (role === 'owner' || role === 'admin');
+      const isCreator = !!actor && !!taskRow.created_by && taskRow.created_by === actor.id;
 
       if (!isOwnerAdmin && !isCreator) {
         return NextResponse.json(
@@ -271,7 +294,7 @@ export async function DELETE(
     // for valid members once they switched boards (multi-workspace users).
     const { data: taskData, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('workspace_id')
+      .select('workspace_id, created_by, assigned_to, column')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -290,6 +313,24 @@ export async function DELETE(
     if (!(await isWorkspaceMember(auth.profileId!, taskWorkspaceId))) {
       console.error('[DELETE /api/tasks/:id] Access denied — not a member of task workspace:', taskWorkspaceId);
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
+    }
+
+    // TASK-PERM: удалять задачу может её автор или администратор доски.
+    // Исполнитель (assigned_to) правит и двигает, но не удаляет.
+    const permission = await getTaskWritePermission(auth.profileId!, {
+      workspace_id: taskWorkspaceId as string,
+      created_by: (taskData as any).created_by ?? null,
+      assigned_to: (taskData as any).assigned_to ?? null,
+      column: (taskData as any).column ?? '',
+    });
+
+    if (!permission) {
+      return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
+    }
+
+    if (!permission.canDelete) {
+      console.error('[DELETE /api/tasks/:id] Access denied — not creator nor admin');
+      return NextResponse.json({ error: TASK_FORBIDDEN_DELETE }, { status: 403 });
     }
 
     console.log('[DELETE /api/tasks/:id] Workspace check passed, proceeding with cascade delete');

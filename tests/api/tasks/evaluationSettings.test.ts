@@ -8,6 +8,10 @@ vi.mock('@core/api-auth', () => ({
   getDefaultWorkspaceId: vi.fn(),
   isWorkspaceMember: vi.fn(),
   getActiveWorkerInWorkspace: vi.fn(),
+  // TASK-PERM: права на запись в задачу. Эти тесты проверяют evaluation-гейты
+  // (cognitive_weight / story_points), а не модель прав, поэтому по умолчанию
+  // права выдаём — иначе PATCH отсекался бы новой проверкой canEdit.
+  getTaskWritePermission: vi.fn(),
 }));
 vi.mock('@core/supabase', () => ({ createServerClient: vi.fn() }));
 vi.mock('@core/taskEnrichment', () => ({
@@ -22,6 +26,7 @@ import {
   extractInitData,
   getActiveWorkerInWorkspace,
   getDefaultWorkspaceId,
+  getTaskWritePermission,
   isWorkspaceMember,
 } from '@core/api-auth';
 import { createServerClient } from '@core/supabase';
@@ -92,6 +97,11 @@ describe('task API evaluation gates', () => {
     vi.mocked(getDefaultWorkspaceId).mockResolvedValue('ws-1');
     vi.mocked(isWorkspaceMember).mockResolvedValue(true);
     vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue({ id: 'worker-1', workspace_id: 'ws-1', source_id: 'profile-1', type: 'human', role: 'member' });
+    // TASK-PERM: полные права по умолчанию (см. комментарий к моку выше).
+    vi.mocked(getTaskWritePermission).mockResolvedValue({
+      isAdmin: false, isCreator: true, isAssignee: false,
+      canEdit: true, canDelete: true, canClaim: false,
+    });
   });
 
   it('rejects hidden CW and SP values on create', async () => {

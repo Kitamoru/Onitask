@@ -68,6 +68,7 @@ import {
 import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
+import { getTaskPermission } from '@/lib/taskPermissions';
 import { ReviewDecisionBlock } from './ReviewDecisionBlock';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
@@ -944,6 +945,21 @@ export function TaskViewEdit({
     ? workers.find((worker) => worker.id === currentUserId)?.role ?? null
     : null;
 
+  // TASK-PERM: права на запись в эту задачу (автор / исполнитель / owner+admin).
+  // Тот же чистый модуль getTaskPermission, что использует Route Handler, поэтому
+  // кнопки «Переместить»/«Редактировать»/«Удалить задачу» не обещают действий,
+  // которые сервер отклонит 403.
+  const taskPermission = getTaskPermission(
+    task
+      ? {
+          created_by: task.created_by ?? null,
+          assigned_to: task.assigned_to ?? null,
+          column: task.column ?? 'backlog',
+        }
+      : null,
+    { workerId: currentUserId, role: currentUserRole },
+  );
+
   const availableForAssignee = workers.filter((w) => w.id !== reviewerId);
   const availableForReviewer = workers.filter((w) => w.id !== assignedTo);
 
@@ -1212,7 +1228,7 @@ export function TaskViewEdit({
             />
           )}
 
-          {tab === 'general' && isView && !isNew && (
+          {tab === 'general' && isView && !isNew && taskPermission.canEdit && (
             <div className="mt-2 flex flex-col gap-2">
               <Button
                 variant="solid"
@@ -1257,15 +1273,17 @@ export function TaskViewEdit({
               >
                 {loading ? 'Сохранение...' : 'Сохранить'}
               </Button>
-              <Button
-                variant="solid"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={loading || deleting}
-                fill="#EF4444"
-                textColor="#FAFAFA"
-              >
-                Удалить задачу
-              </Button>
+              {taskPermission.canDelete && (
+                <Button
+                  variant="solid"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={loading || deleting}
+                  fill="#EF4444"
+                  textColor="#FAFAFA"
+                >
+                  Удалить задачу
+                </Button>
+              )}
             </div>
           )}
 

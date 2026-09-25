@@ -24,6 +24,7 @@ import { setPreferredView } from '@/lib/viewPreference';
 import { filterTasksForUser } from '@/lib/streamFilter';
 import { findActiveWorkspaceWorkerId } from '@/lib/activeWorkspaceWorker';
 import { formatWorkerRole } from '@/lib/roles';
+import { getTaskPermission } from '@/lib/taskPermissions';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 
 // Сброс скролла при переходе на страницу
@@ -416,6 +417,14 @@ function FlowBoardPageContent() {
       if (!state.activeWorkspaceId) return;
       const task = state.tasks.items.find((t) => t.id === taskId);
       const originalColumn = task?.column;
+      // TASK-PERM: перемещение = PATCH с полем column, поэтому право на него
+      // то же, что на редактирование (автор / исполнитель / owner+admin).
+      // Проверяем ДО оптимистичного обновления: иначе карточка сначала уедет,
+      // потом вернётся, и это выглядит как «ничего не произошло».
+      if (task && !taskPermissionFor(task).canEdit) {
+        alert('Задача не ваша: двигать её может автор, исполнитель или администратор доски');
+        return;
+      }
       // SUBMIT-01: сдача исполнителя — переход в review/done из НЕ-review колонки
       // открывает шаг «Результат» (колонку НЕ двигаем, пока сдача не принята).
       // review→done/review→in_progress сюда не попадают (это ревью-решение, REV-01).
@@ -606,6 +615,15 @@ function FlowBoardPageContent() {
   const canRevoke = activeWs?.role === 'owner' || activeWs?.role === 'admin';
   const workspaceName = activeWs?.name ?? '';
 
+  // TASK-PERM: права на запись в конкретную задачу (тот же чистый модуль, что
+  // использует Route Handler — UI и сервер считают права одинаково).
+  // Нужны, чтобы карточки read-only участника выглядели как правило, а не как
+  // «ничего не происходит»: перемещение/редактирование отключены заранее.
+  // Намеренно обычная функция, а не useCallback: getTaskPermission — дешёвая
+  // чистая функция, а хук здесь стоял бы ПОСЛЕ ранних return (rules-of-hooks).
+  const taskPermissionFor = (task: Pick<TaskEntity, 'created_by' | 'assigned_to' | 'column'>) =>
+    getTaskPermission(task, { workerId: currentUserId, role: activeWs?.role });
+
   return (
     <>
       {isStreamView ? (
@@ -742,6 +760,10 @@ function FlowBoardPageContent() {
           tasks={tasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
+          canMoveTask={(taskId) => {
+            const t = state.tasks.items.find((item) => item.id === taskId);
+            return t ? taskPermissionFor(t).canEdit : true;
+          }}
           onTaskTap={handleTaskTap}
         />
 

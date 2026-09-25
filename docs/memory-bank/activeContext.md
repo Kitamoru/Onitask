@@ -1,3 +1,112 @@
+## TASK-PERM: права на запись в задачу (2026-09-25) ✅
+
+**Баг (проверен на live-данных):** `kitamoru` (`9770a9dc-…`, tg 425693173) — member в «Булатове» (`cf9684bf-…`). Все 12 задач там чужие (`created_by` = truebulat, `assigned_to` = NULL), и он мог их все править и удалять.
+
+**Корень — не только RLS.** Политика называлась `members_can_update_own_tasks`, но условие проверяло лишь членство (слово «own» вводило в заблуждение). При этом РТ-запросы идут через `SUPABASE_SERVICE_ROLE_KEY` (BYPASSRLS), так что политика не применялась вообще: и PATCH, и DELETE проверяли только `isWorkspaceMember`. Политика `members_can_delete_tasks` уже требовала admin — дрейф был только в слое Route Handler.
+
+**Ключевой факт:** «переместить» и «отредактировать» — это ОДИН `PATCH /api/tasks/[id]` (drag-and-drop, штрих в карточке, `MoveTaskSheet` — всё с полем `column`). Отдельного move-эндпоинта для TWA нет, поэтому запрет `canEdit` автоматически закрывает и перемещение. Агентский `move_task` идёт через service_role и не затронут.
+
+**Правило (согласовано с владельцем):** owner/admin — всё; автор (`created_by`) — правит и удаляет; исполнитель (`assigned_to`) — правит, но не удаляет; остальные участники ничего. Плюс **self-claim**: member берёт задачу **только из backlog** при `assigned_to IS NULL` (иначе «взять в работу» технически невозможно — нужен `UPDATE assigned_to`, который сам же запрещён). Семантика совпадает с уже принятой моделью review-решения (миграции 049/083).
+
+**Файлы:**
+- ➕ `src/lib/taskPermissions.ts` — чистая функция `getTaskPermission` (единый источник истины для UI и сервера, приём как в `reviewDecision.ts`/`streamFilter.ts`), тексты отказов.
+- ➕ `supabase/migrations/113_task_write_permissions.sql` — применена через MCP.
+- `lib/api-auth.ts` — `getTaskWritePermission` поверх существующего `getActiveWorkerInWorkspace` (лишних запросов нет).
+- `src/app/api/tasks/[id]/route.ts` — PATCH: `canEdit` (или self-claim: только `assigned_to` → свой worker) иначе 403; DELETE: `canDelete` иначе 403. Дублирующийся запрос за actor в блоке `review_pending` убран — переиспользуется уже полученный.
+- `src/app/flowboard/page.tsx` — `taskPermissionFor` (**обычная функция, не useCallback**: хук стоял бы ПОСЛЕ ранних return → rules-of-hooks); `handleMoveTask` отказывает ДО оптимистичного обновления.
+- `src/components/flowboard/ColumnTasksSheet.tsx` — проп `canMoveTask`, свайп по read-only карточке не уезжает.
+- `src/components/flowboard/TaskViewEdit.tsx` — «Переместить»/«Редактировать» скрыты без `canEdit`, «Удалить задачу» — без `canDelete`.
+- ➕ `tests/lib/taskPermissions.test.ts` (15) + `tests/api/tasks/taskPermissions.test.ts` (14); в `evaluationSettings.test.ts` добавлен мок нового хелпера (тесты проверяют evaluation-гейты, не права).
+
+**UX read-only (согласовано с владельцем):** карточки не просто «не реагируют» — кнопки скрыты, а свайп/попытка перемещения даёт `alert` с причиной. `alert()` выбран потому, что `submitError` привязан к `ResultStepSheet` (виден только при `resultStep !== null`), а проект уже использует `alert()` для таких ошибок (`FlowBoard.tsx`, `BoardViewEdit.tsx`).
+
+**Live-валидация (профиль `9770a9dc`, реальные данные):**
+- «Булатово» (member): 12 задач, `can_edit=0`, `can_delete=0`; `UPDATE` чужой задачи → **0 строк**.
+- «ОниДизайн» (member): из 5 задач доступны ровно 2 — где он исполнитель; `UPDATE` проходит.
+- «Онитаск» (owner): `UPDATE` проходит на всех 29.
+
+**Проверки:** `npm run type-check` ✅; `npm run lint` ✅ 0 errors, 20 warnings (было 19, +1 — существующий `exhaustive-deps` в `page.tsx`); `npm test -- --run` ✅ 35 files / 305 tests; Advisors — новых findings нет.
+
+---
+
+## RLS cleanup · Фаза 2 (2026-09-25) ✅
+
+**Применено через Supabase MCP:** `112_rls_phase2_cleanup` (20260925154737).
+
+**Что сделано:**
+- `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` на `public.get_my_workspace_ids()`, `is_workspace_admin(uuid)`, `is_workspace_owner(uuid)`; оставлен только `service_role`. Advisory `authenticated_security_definer_function_executable` (3 findings) **устранён**. Функции НЕ удалены — остались deprecated-обёртками для совместимости.
+- `telegram_message_queue`: удалены политики `agents_insert_own_messages_...` и `agents_read_own_workspace_queue_...` (миграция 024, роли `{anon, authenticated}`, условия `USING (true)` / `WITH CHECK (true)` — несмотря на имена «own», не ограничивали ничего) + `REVOKE ALL` от anon/authenticated.
+
+**Проверка безопасности до правки:** writer — `lib/domain/agent/sendMessageToChat.ts` через `lib/shared/mcpAuth.ts` → `SUPABASE_SERVICE_ROLE_KEY`; consumer — `supabase/functions/bot-notify/index.ts` `drainTelegramMessageQueue` → тоже `service_role`; GC — `gc_telegram_message_queue()` (cron 073). Оба живых пути обходят RLS, политики для anon были мёртвым кодом от эпохи anon-ключа. В таблице `telegram_chat_id`, `message`, `attachments` (jsonb с `content_base64`, миграция 077) — то есть anon-ключ из клиентского бандла позволял читать и вставлять такие строки.
+
+**Зависимости public-хелперов проверены перед отзывом:** `pg_depend`/`pg_rewrite` — 0 dependents (ни views, ни functions); `pg_policies` — ни одна политика public/tracker не ссылается на них (все переведены на `onitask_private.*` в 109); grep по репозиторию — вызовов из TS нет.
+
+**Валидация live SQL:**
+- ACL: `anon_exec=false, auth_exec=false, svc_exec=true` по всем трём функциям.
+- `telegram_message_queue`: `anon_sel=false, anon_ins=false, auth_sel=false, svc_sel=true`, RLS включён; остались только 2 политики `TO service_role` (full_access, update_queue) — корректно.
+- `SET ROLE authenticated` + member uid: workers 7, tasks 46, workspaces 3, comments 21, attachments 13, submissions 13, sprints 2.
+- Non-member uid: 0 по всем этим таблицам (tenant isolation цел). Попытка `SELECT` очереди под authenticated → `42501` (ожидаемо, гранта нет).
+- `get_task_feed` (SECURITY INVOKER, 076) под member: 17/6/22 строки по задачам с 6/4/3 комментариями — RPC-путь комментариев не сломан.
+- Advisors: security — `authenticated_security_definer_function_executable` исчез; остались `rls_enabled_no_policy` (11 service-only таблиц, ожидаемо) и `function_search_path_mutable` (39, вне scope). performance без изменений: `unused_index` (43), новых `unindexed_foreign_keys` нет.
+- `npm run type-check` ✅; `npm run lint` ✅ 0 errors, 19 existing warnings; `npm test -- --run` ✅ 33 files / 276 tests; `git diff --check` ✅.
+
+**Сознательно НЕ тронуто (нужна отдельная задача):**
+- `workspaces_insert_anon` — формально дыра (anon может вставить workspace с любым `owner_id`), но добавлена в 011 как fallback «when service_role key is missing» (TWA auth = init_data, не JWT). Убирать только вместе с удалением fallback-ветки в `lib/supabase.ts`.
+- Grants на схему `tracker` для `authenticated` — сначала подтвердить, что браузерный клиент читает `tracker.columns` напрямую.
+- Массовый отзыв anon-грантов на остальных 28 таблицах (у всех RLS включён, политик для anon нет — фактический доступ закрыт RLS, но гранты остаются как defense-in-depth долг).
+- `function_search_path_mutable` (39) и `unused_index` (43) — вне scope.
+
+**Статус:** Фаза 1 ✅ · Фаза 2 ✅
+
+---
+
+## RLS private helpers · Фаза 1 (2026-09-25) ✅
+
+## RLS private helpers · Фаза 1 (2026-09-25) ✅
+
+**Применено через Supabase MCP:**
+- `109_private_rls_helpers_and_policy_fix` (20260925154033);
+- `110_workers_update_role_guard` (20260925154147);
+- `111_workers_update_workspace_guard` (20260925154252).
+
+**Что сделано:**
+- Создана private schema `onitask_private` (не входит в Data API; `anon` не имеет USAGE/EXECUTE).
+- Добавлены `SECURITY DEFINER` helpers с `SET search_path = ''`: `user_workspace_ids`, `is_workspace_admin`, `is_workspace_owner`, `worker_role`, `worker_workspace`. Owner — `postgres` (BYPASSRLS), поэтому helpers читают membership без рекурсии.
+- Переписаны tenant RLS-пolicies, которые напрямую делали `FROM public.workers`: workers, tasks, workspaces, sprints, invite_links, workspace_links, settings, telegram chats, documents/chunks, task history, MCP keys, task artifacts/comments, tracker.columns. Grants и service-only таблицы не менялись.
+- `workers_update_own` теперь использует `source_id = auth.uid()::text`; self-update не может менять `role` или `workspace_id` (110/111), admin-операции сохранены.
+- Public helpers-обёртки в `public` сохранены для обратной совместимости; это Phase 2 cleanup, здесь не удалялись.
+
+**Валидация live SQL:**
+- `SET ROLE authenticated` больше не даёт `42P17` на `workers/tasks/workspaces/sprints/settings/history/attachments/submissions`; member видит свои строки (7 workers, 46 tasks, 3 workspaces, 13 submissions).
+- Non-member и anon видят 0 строк; попытка update чужой worker запрещена.
+- Self-update display_name без смены role/workspace разрешён; смена role и перенос в чужой workspace отклонены RLS.
+- Admin update workspace разрешён; service_role видит workers/tasks/agent_runs/executions.
+- `recursive_policy_expressions = 0`; anon не имеет private schema usage/execute; все private helpers имеют `search_path = ''`.
+- `npm run type-check` ✅; `npm run lint` ✅ 0 errors, 19 existing warnings; `npm test -- --run` ✅ 33 files / 276 tests; `git diff --check` ✅.
+
+**Ожидаемые Advisor findings (на момент Фазы 1; public-хелперы закрыты в Фазе 2 / миграции 112):** `rls_enabled_no_policy` на service-only таблицах; старые `function_search_path_mutable` (39) и `unused_index` (43) вне текущего hardening. `tracker` schema usage для authenticated не менялась.
+
+---
+
+
+## Supabase Advisor hardening (2026-09-25) ✅
+
+**Применено через Supabase MCP:** миграции `106_advisor_security_performance_hardening` (20260925151858), `107_fix_membership_rls_helpers` (20260925152026), `108_scope_rls_helper_execute` (20260925152119).
+
+**Сделано:**
+- добавлены 7 покрывающих FK-индексов: `bot_attach_pending.workspace_id`, `bot_task_messages.task_id/workspace_id`, `task_attachments.uploaded_by/workspace_id`, `task_submissions.accepted_by/submitted_by`;
+- удалены 5 доказанно дублирующих индексов (`profiles.idx_profiles_telegram`, `workers.idx_workers_source_id`, `invite_links.idx_invite_links_code`, `tasks.idx_tasks_dedup_key_lookup`, `bot_task_messages.idx_bot_task_messages_chat`);
+- service-only таблицы (`agent_connectors`, `agent_runs`, `bot_attach_pending`, `bot_review_fix_pending`, `bot_task_messages`, `dispatch_outbox`, `dispatch_receipts`, `task_deadline_notifications`, `task_executions`) получили `REVOKE ALL` от `anon`/`authenticated`; RLS не ослаблен;
+- `task_attachments_select_member` и `task_submissions_select_member` переведены на `public.get_my_workspace_ids()` — это устраняет infinite recursion при прямом membership-subquery через RLS-protected `workers`;
+- RLS helper-функции и server-only RPC получили `SET search_path = ''`; `get_task_card_data`, `get_task_card_data_by_full_id`, `init_workspace_columns`, `init_workspace_settings`, `transfer_workspace_ownership` доступны только `service_role`; helper-функции — `authenticated`, но не `anon`.
+
+**Валидация:** `npm run type-check` ✅; `npm run lint` ✅ 0 errors, 19 existing warnings; `npm test -- --run` ✅ 33 files / 276 tests; `git diff --check` ✅. Live smoke: member видит 13 attachments и 13 submissions, non-member видит 0; `get_task_card_data` и `get_task_card_data_by_full_id` под `service_role` возвращают `CIRK-3`; service-only таблицы недоступны anon/authenticated ✅.
+
+**Ожидаемые advisor findings оставлены осознанно:** `rls_enabled_no_policy` на service-only таблицах (RLS без client policies — защита лучше широких policies), `function_search_path_mutable` на старых функциях вне изменённого контура, `unused_index` (43) из-за малого объёма/статистики, `authenticated_security_definer_function_executable` для трёх RLS helpers, которые должны вызываться из RLS-политик. Прямой `SELECT FROM tasks` под `SET ROLE authenticated` по-прежнему даёт `infinite recursion` в старых политиках `tasks`/`workers`; это существующий конфликт вне FILE-01/SUBMIT-01 hardening, не регрессия текущих миграций. retry_count: 0.
+
+---
+
+
 ## Evaluation settings integration (2026-09-25) ✅
 
 **Сделано:** добавлен единый `FlowMetricsResponse.evaluation` из `workspace_settings`.
