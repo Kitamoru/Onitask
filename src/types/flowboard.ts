@@ -93,8 +93,28 @@ export interface AgentCardData {
   roleTitle?: string | null;
   /** Whether agent is overloaded */
   overloaded?: boolean;
+  /** A-11 assignment risk score (0–100), separate from F-01 cognitive load */
+  attentionRiskScore?: number;
+  /** A-11 risk level, separate from F-01 overload status */
+  attentionRiskLevel?: 'ok' | 'warning' | 'critical';
   /** List of active task references */
   tasks: string[];
+  /** Server-calculated velocity window in days */
+  velocityWindowDays?: number;
+  /** Unique tasks returned from review to in_progress in the velocity window */
+  reworkCount?: number;
+  /** Rework rate relative to completed tasks in the velocity window */
+  reworkRate?: number;
+  /** Story points per day over the configured window (agent status) */
+  throughput?: number;
+  /** Pending escalation count (agent status) */
+  pendingEscalations?: number;
+  /** Whether the agent has an incoming handoff */
+  hasIncomingHandoff?: boolean;
+  /** Number of incoming handoffs */
+  handoffCount?: number;
+  /** Human-readable interpretation of current agent health */
+  interpretationHint?: string;
 }
 
 // ─── Worker Card ─────────────────────────────────────────────────────────────
@@ -122,10 +142,20 @@ export interface WorkerCardData {
   roleTitle?: string | null;
   /** Whether worker is overloaded */
   overloaded?: boolean;
+  /** A-11 assignment risk score (0–100), separate from F-01 cognitive load */
+  attentionRiskScore?: number;
+  /** A-11 risk level, separate from F-01 overload status */
+  attentionRiskLevel?: 'ok' | 'warning' | 'critical';
   /** List of active task references */
   tasks: string[];
   /** Worker type: human or AI agent */
   type: 'human' | 'agent';
+  /** Server-calculated velocity window in days */
+  velocityWindowDays?: number;
+  /** Unique tasks returned from review to in_progress in the velocity window */
+  reworkCount?: number;
+  /** Rework rate relative to completed tasks in the velocity window */
+  reworkRate?: number;
 }
 
 // ─── Flow Board Props ────────────────────────────────────────────────────────
@@ -159,7 +189,7 @@ export interface FlowBoardProps {
 
 // ─── API Response Types ──────────────────────────────────────────────────────
 
-/** Response from GET /api/flow/metrics Edge Function */
+/** Response from POST /api/flow/metrics — server-side Flow Board read model */
 export interface FlowMetricsResponse {
   /** Whether sprint is enabled for this workspace */
   sprintEnabled: boolean;
@@ -178,6 +208,56 @@ export interface FlowMetricsResponse {
     columns: number;
     workers: number;
     alerts: number;
+  };
+  /** Local Risk Pulse for the current workspace */
+  risk: {
+    people: number;
+    processes: number;
+    escalations: number;
+  };
+  /** Server-side detail for Risk Pulse drill-downs */
+  riskBreakdown: {
+    people: Array<{
+      worker_id: string;
+      display_name: string;
+      cognitive_load: number;
+      attention_risk_score: number;
+      risk_level: 'ok' | 'warning' | 'critical';
+    }>;
+    processes: {
+      reviewBacklog: Array<{
+        reviewer_id: string;
+        reviewer_name: string | null;
+        review_count: number;
+        workspace_id: string;
+      }>;
+      stuck: Array<{
+        id: string;
+        title: string;
+        column: string;
+        assigned_to: string | null;
+        assignee_name: string | null;
+        hours_stuck: number | string | null;
+        workspace_id: string;
+      }>;
+      orphanBlockers: Array<{
+        id: string;
+        title: string;
+        column: string;
+        assigned_to: string | null;
+        assignee_name: string | null;
+        hours_blocked: number | string | null;
+        workspace_id: string;
+      }>;
+    };
+    escalations: Array<{
+      id: string;
+      title: string;
+      escalation_reason: string | null;
+      workspace_id: string;
+      assigned_agent: string | null;
+      hours_pending: number | string | null;
+    }>;
   };
 }
 
@@ -217,6 +297,26 @@ export interface WorkerMetricData {
   throughput?: number;
   /** Pending escalations count for agents */
   pending_escalations?: number;
+  /** Number of incoming handoffs currently assigned to the agent */
+  handoff_count?: number;
+  /** Human-readable interpretation of current agent health */
+  interpretation_hint?: string;
+  /** A-11 attention risk score (0–100), separate from F-01 cognitive load */
+  attention_risk_score?: number;
+  /** A-11 risk level, separate from F-01 overload status */
+  attention_risk_level?: 'ok' | 'warning' | 'critical';
+  /** Story points completed per day over the configured velocity window */
+  sp_per_day?: number;
+  /** Configured velocity window in days */
+  velocity_window_days?: number;
+  /** Completed story points inside the velocity window */
+  completed_story_points?: number;
+  /** Unique tasks returned from review to in_progress in the velocity window */
+  rework_count?: number;
+  /** Rework rate relative to completed tasks in the velocity window */
+  rework_rate?: number;
+  /** Completed tasks in the velocity window */
+  completed_task_count?: number;
 }
 
 /** Alert / anomaly data */

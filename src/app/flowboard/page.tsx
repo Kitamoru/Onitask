@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet, AgentConnectorSheet, OperatorQueueSheet } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet, AgentConnectorSheet, AgentSheet, OperatorQueueSheet, RiskPulseSheet, type RiskPulseSignal } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import type {
@@ -73,6 +73,7 @@ function FlowBoardPageContent() {
   }, [isStreamView, router]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEscalationQueue, setShowEscalationQueue] = useState(false);
+  const [riskPulseSignal, setRiskPulseSignal] = useState<RiskPulseSignal | null>(null);
   // Stage 15: «Добавить агента» открывает форму коннектора (endpoint + key),
   // а не страницу MCP-ключей — см. AgentConnectorSheet.
   const [showAgentSheet, setShowAgentSheet] = useState(false);
@@ -85,6 +86,7 @@ function FlowBoardPageContent() {
   const [selectedTask, setSelectedTask] = useState<TaskEntity | null>(null);
   const [taskSheetHistory, setTaskSheetHistory] = useState<TaskEntity[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<WorkerCardData | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<AgentCardData | null>(null);
   // FILE-03: deep-link «Обсудить задачу» → открыть вкладку «Комментарии»
   const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
   // SUBMIT-01: сдача исполнителя — шаг «Результат» открывается при переходе
@@ -158,34 +160,13 @@ function FlowBoardPageContent() {
 
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];
-    const newSignals: SignalData[] = [];
-    const overloadedCount = metrics.workers.filter(w => w.status === 'overloaded').length;
-    if (overloadedCount > 0) {
-      const overloadedNames = metrics.workers
-        .filter(w => w.status === 'overloaded')
-        .map(w => w.display_name)
-        .join(', ');
-      newSignals.push({ id: 'people', label: 'Люди', count: overloadedCount });
-    } else {
-      newSignals.push({ id: 'people', label: 'Люди', count: 0 });
-    }
-    const bottleneckCount = metrics.columns.filter(c => c.health === 'red').length;
-    const stuckCount = 0;
-    if (bottleneckCount + stuckCount > 0) {
-      newSignals.push({ id: 'processes', label: 'Процессы', count: bottleneckCount + stuckCount });
-    } else {
-      newSignals.push({ id: 'processes', label: 'Процессы', count: 0 });
-    }
-    const escalationCount = tasks.filter(
-      (task) => task.needs_human && task.column !== 'done',
-    ).length;
-    if (escalationCount > 0) {
-      newSignals.push({ id: 'escalations', label: 'Эскалации', count: escalationCount });
-    } else {
-      newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0 });
-    }
-    return newSignals;
-  }, [metrics, tasks]);
+    const risk = metrics.risk;
+    return [
+      { id: 'people', label: 'Люди', count: risk.people },
+      { id: 'processes', label: 'Процессы', count: risk.processes },
+      { id: 'escalations', label: 'Эскалации', count: risk.escalations },
+    ];
+  }, [metrics]);
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
     if (!metrics) return [];
@@ -222,13 +203,18 @@ function FlowBoardPageContent() {
           id: w.id,
           displayName: w.display_name,
           cognitiveWeight: w.cognitive_load,
-          spPerDay: 3.5,
-          trendUp: true,
-          activeDays: 5,
+          spPerDay: w.sp_per_day ?? 0,
+          trendUp: (w.sp_per_day ?? 0) > 0,
+          activeDays: w.velocity_window_days ?? 14,
+          velocityWindowDays: w.velocity_window_days,
+          reworkCount: w.rework_count,
+          reworkRate: w.rework_rate,
           roleLabel: formatWorkerRole(w.role, w.role_title),
           role: w.role,
           roleTitle: w.role_title,
           overloaded: w.status === 'overloaded',
+          attentionRiskScore: w.attention_risk_score,
+          attentionRiskLevel: w.attention_risk_level,
           tasks: tasksToWorkerTaskList(workerTasks),
           type: 'human',
         } as WorkerCardData;
@@ -245,13 +231,22 @@ function FlowBoardPageContent() {
           id: w.id,
           name: w.display_name,
           cognitiveWeight: w.cognitive_load,
-          spPerDay: 5.0,
-          trendUp: true,
-          activeDays: 5,
+          spPerDay: w.sp_per_day ?? 0,
+          trendUp: (w.sp_per_day ?? 0) > 0,
+          activeDays: w.velocity_window_days ?? 14,
+          velocityWindowDays: w.velocity_window_days,
+          reworkCount: w.rework_count,
+          reworkRate: w.rework_rate,
+          throughput: w.throughput,
+          pendingEscalations: w.pending_escalations,
+          handoffCount: w.handoff_count,
+          interpretationHint: w.interpretation_hint,
           roleLabel: 'AI-агент',
           role: w.role,
           roleTitle: w.role_title,
           overloaded: w.status === 'overloaded',
+          attentionRiskScore: w.attention_risk_score,
+          attentionRiskLevel: w.attention_risk_level,
           tasks: tasksToWorkerTaskList(workerTasks),
         } as AgentCardData;
       });
@@ -266,13 +261,18 @@ function FlowBoardPageContent() {
         id: w.id,
         displayName: w.display_name,
         cognitiveWeight: w.cognitive_load,
-        spPerDay: w.type === 'agent' ? 5.0 : 3.5,
-        trendUp: true,
-        activeDays: 5,
+        spPerDay: w.sp_per_day ?? 0,
+        trendUp: (w.sp_per_day ?? 0) > 0,
+        activeDays: w.velocity_window_days ?? 14,
+        velocityWindowDays: w.velocity_window_days,
+        reworkCount: w.rework_count,
+        reworkRate: w.rework_rate,
         roleLabel: w.type === 'agent' ? 'AI-агент' : formatWorkerRole(w.role, w.role_title),
         role: w.role,
         roleTitle: w.role_title,
         overloaded: w.status === 'overloaded',
+        attentionRiskScore: w.attention_risk_score,
+        attentionRiskLevel: w.attention_risk_level,
         tasks: tasksToWorkerTaskList(workerTasks),
         type: w.type,
       } as WorkerCardData;
@@ -639,11 +639,33 @@ function FlowBoardPageContent() {
           onColumnClick={handleColumnClick}
           onSignalClick={(signalId) => {
             if (signalId === 'escalations') setShowEscalationQueue(true);
+            if (signalId === 'people' || signalId === 'processes') setRiskPulseSignal(signalId);
           }}
           onWorkerClick={handleWorkerClick}
+          onAgentClick={setSelectedAgent}
           onToggleView={toggleView}
         />
       )}
+
+      <RiskPulseSheet
+        open={riskPulseSignal !== null}
+        onClose={() => setRiskPulseSignal(null)}
+        signal={riskPulseSignal}
+        metrics={metrics ?? null}
+        onOpenWorker={(workerId) => {
+          const worker = workers.find((item) => item.id === workerId);
+          if (worker) {
+            setRiskPulseSignal(null);
+            setSelectedWorker(worker);
+          }
+        }}
+        onOpenTask={(taskId) => {
+          setRiskPulseSignal(null);
+          if (state.activeWorkspaceId) {
+            void openTask({ taskId, workspaceId: state.activeWorkspaceId, source: 'risk_pulse' });
+          }
+        }}
+      />
 
       {state.activeWorkspaceId && (
         <OperatorQueueSheet
@@ -783,6 +805,20 @@ function FlowBoardPageContent() {
               sessionStorage.setItem('boards-needs-refresh', Date.now().toString());
             }
             router.push('/boards');
+          }}
+        />
+
+        <AgentSheet
+          open={!!selectedAgent}
+          onClose={() => setSelectedAgent(null)}
+          agent={selectedAgent}
+          tasks={tasks}
+          workspaceId={state.activeWorkspaceId ?? null}
+          canManage={canRevoke}
+          onSaved={() => refreshMetrics({ force: true })}
+          onOpenTask={(taskId) => {
+            setSelectedAgent(null);
+            void openTask({ taskId, workspaceId: state.activeWorkspaceId!, source: 'agent_sheet' });
           }}
         />
 

@@ -141,7 +141,7 @@ Chips: В работе / Ревью / Заблокировано — тольк�
 - Время с момента передачи
 - Кнопка «Взять в работу» → `move_task` → `in_progress` (сбрасывает `handoff_to` и `handoff_notes`)
 
-**Блок «Флоу · 7 дней»:**
+**Блок «Метрики · 7 дней»:**
 
 | Метрика | Отображение в UI | Формула | Хорошо | Плохо |
 |---|---|---|---|---|
@@ -375,7 +375,7 @@ WHERE assigned_to = $agent_worker_id
 | Invite FAB + реферальная ссылка | MVP | Bot handler |
 | **Operator Queue §2.7** | **MVP** | `pending_escalations` view + `workspaces.task_prefix` |
 | Карточки агентов collapsed | Phase 1.1 | `agent_events.from_column / to_column` |
-| Bottom sheet агента — Флоу метрики | Phase 1.1 | `escalate_task` MCP tool |
+| Bottom sheet агента — метрики и статус | Phase 1.1 | `escalate_task` MCP tool |
 | Блок эскалаций в expanded sheet агента | Phase 1.1 | `needs_human + escalation_reason` |
 | Workspace Settings (Admin) | Phase 1.1 | `velocity_window_days` |
 | Role change inline в sheet | Phase 1.2 | — |
@@ -395,7 +395,7 @@ WHERE assigned_to = $agent_worker_id
 **v1.3.0 — июнь 2026**
 - Статус изменён на Deprecated. Содержимое перенесено в `onitask_flow_.md` §19–23
 - §2.1: Risk Pulse — переименованы сигналы: «Перегружены» → «Люди», «Ревью-блок» → «Процессы». Уточнён источник «Люди»: `F-01.used = 3` (шкала 0–3), не `overloaded_workers` view (порог 6). «Процессы» объединяет `review_backlog` + `stuck_tasks` в один суммарный счётчик. Добавлена колонка «Прежнее название» для трассируемости
-- §2.5: таблица «Флоу · 7 дней» — добавлена колонка «Отображение в UI». Терминология зафиксирована: «% эскалаций» (не «Escalation rate»), «% возвратов» (не «Rework rate»), «Задач/день» (не «Throughput»). «Handoff» сохранён как технический термин без перевода
+- §2.5: таблица «Метрики · 7 дней» — добавлена колонка «Отображение в UI». Терминология зафиксирована: «% эскалаций» (не «Escalation rate»), «% возвратов» (не «Rework rate»), «Задач/день» (не «Throughput»). «Handoff» сохранён как технический термин без перевода
 - §2.1, §2.4: скоуп Risk Pulse зафиксирован — только текущий workspace. Глобальные алерты → Workspace Manager (flow_.md §23)
 
 **v1.2.0 — май 2026**

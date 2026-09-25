@@ -1,3 +1,29 @@
+## ADR-2026-09-25: Атрибуция rework по текущему assignee
+
+### Решение
+
+`rework` считается по уникальным задачам с переходом `review → in_progress` внутри
+`velocity_window_days`. Задача атрибутируется текущему `tasks.assigned_to` на момент
+формирования server read model.
+
+### Почему не `moved_by`
+
+`task_column_history.moved_by` nullable из-за известной race condition при заполнении
+истории. Для MVP это может привести к потере части возвратов. Текущий assignee даёт
+стабильную, единообразную атрибуцию Worker Sheet; если задача была переназначена,
+история возврата относится к её текущему владельцу.
+
+### Последствия
+
+- `rework_count` — количество уникальных task IDs, не количество переходов;
+- `rework_rate = rework_count / completed_task_count`;
+- окно и tenant scope соответствуют остальному flow metrics;
+- изменение семантики на `moved_by` можно сделать отдельной миграцией/ADR после
+  устранения race condition в `task_column_history`.
+
+---
+
+
 # Architectural Decisions (ADR log)
 
 ## ADR-2026-09-25: Unified task navigation и cross-workspace launch (NAV-01)
@@ -21,6 +47,34 @@ Task/flow ссылки резолвятся server-side в `/api/init` с про
 - Общий Operator Queue на `/boards` и локальный на FlowBoard используют один API,
   но разные scopes: `all` и `workspace_id`.
 - Проверки parser/resolver/init/queue/SDK добавлены в Vitest.
+
+---
+
+## ADR-2026-09-25: Risk Pulse read model и границы сигналов (RISK-00)
+
+### Решение
+
+1. `POST /api/flow/metrics` и `POST /api/workspaces/my-data` используют один чистый
+   server-side calculator `src/lib/server/flowMetrics.ts`. Это исключает расхождение
+   двух реализаций метрик.
+2. F-01 и A-11 разные метрики: Risk Pulse «Люди» использует F-01 `used = 3`
+   (assigned `in_progress` + reviewer `review`), а `attention_risk_score` из
+   `attention_risk_pulse` остаётся риском назначения для badge и pre-flight.
+3. Risk Pulse «Процессы» = `review_backlog + stuck_tasks + orphan_blockers`.
+   `handoff_chain` не входит в счётчик и остаётся отдельной Agent/Operator-аномалией.
+4. Локальный Risk Pulse Flow Board ограничен текущим workspace и приходит в
+   `risk`/`riskBreakdown`. `/boards` остаётся отдельной global summary-моделью.
+5. `workspace_context` сохраняет канонический лимит 800 символов, совпадающий с DB CHECK.
+
+### Последствия
+
+- DB views `review_backlog`, `stuck_tasks`, `orphan_blockers` и `pending_escalations`
+  являются источниками истины для локальных сигналов.
+- Клиент больше не должен считать Risk Pulse по красным колонкам или числу
+  назначенных исполнителей.
+- Следующий шаг `RISK-01` — UI-переключение сигналов и drill-down; `RISK-09`
+  теперь означает только отображение `orphan_blockers` в готовом breakdown.
+- Новых миграций для RISK-00 не требуется.
 
 ---
 

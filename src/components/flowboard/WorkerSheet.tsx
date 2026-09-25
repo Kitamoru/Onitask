@@ -11,8 +11,7 @@
  *                 на своей карточке: «Передать владение» (у владельца,
  *                 миграция 080) и «Покинуть доску» (у не-владельца).
  *
- * Метрики считаются на клиенте из board-tasks + спринта. Reworks (← task_column_history) пока
- * не запрашиваются — показываем 0 с заготовкой под будущее подключение.
+ * Метрики приходят из server flow metrics. Rework — уникальные задачи review → in_progress.
  */
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
@@ -146,10 +145,10 @@ export function WorkerSheet({
     [tasks, worker?.id],
   );
 
-  // Метрики считаются на клиенте
+  // Метрики приходят из server flow metrics.
   const metrics = useMemo(() => {
-    const velocity = worker?.spPerDay ?? 0; // SP/день
-    let daysLeft = METRIC_WINDOW_DAYS;
+    const velocity = worker?.spPerDay ?? 0; // SP/день из server flow metrics
+    let daysLeft = worker?.velocityWindowDays ?? METRIC_WINDOW_DAYS;
     if (sprint && sprint.isActive) {
       daysLeft = Math.max(0, sprint.totalDays - sprint.daysElapsed);
     }
@@ -158,14 +157,15 @@ export function WorkerSheet({
     const gap = assignedSP - forecastSP;
     return {
       velocity,
-      periodDays: METRIC_WINDOW_DAYS,
-      rework: 0, // TODO: task_column_history
+      periodDays: worker?.velocityWindowDays ?? METRIC_WINDOW_DAYS,
+      rework: worker?.reworkRate ?? 0,
+      reworkCount: worker?.reworkCount ?? 0,
       daysLeft,
       forecastSP,
       assignedSP,
       gap,
     };
-  }, [worker?.spPerDay, workingTasks, sprint]);
+  }, [worker?.spPerDay, worker?.reworkRate, worker?.reworkCount, workingTasks, sprint]);
 
   // ─── Revoke access ────────────────────────────────────────────────────────
 
@@ -606,6 +606,7 @@ interface StatusMetricsProps {
     velocity: number;
     periodDays: number;
     rework: number;
+    reworkCount: number;
     forecastSP: number;
     assignedSP: number;
     gap: number;
@@ -667,9 +668,9 @@ function StatusMetrics({ metrics }: StatusMetricsProps) {
         caption="Скорость"
       />
       <MetricCard
-        value={String(metrics.rework)}
-        sub={`Rework · ${metrics.periodDays}д`}
-        caption="Переработки"
+        value={String(metrics.reworkCount)}
+        sub={`${Math.round(metrics.rework * 100)}% возвратов · ${metrics.periodDays}д`}
+        caption="Возвраты"
       />
 
       <div className="col-span-2 flex flex-col gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">

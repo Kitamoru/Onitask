@@ -201,9 +201,10 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] FLOW-07 `UrgencyBadge.tsx` — светофор по дедлайну #ui !med @blocked_by:FLOW-01
       product_vision US-04. Реализовано: src/components/flowboard/UrgencyBadge.tsx.
       Цвета: red (просрочено/≤24ч), amber (≤48ч), green (>48ч).
-- [x] FLOW-08 `GET /api/flow/metrics` → Edge Function `flow-metrics` (кэш 5с columns / 60с workers+alerts) #db !high @blocked_by:DB-13
-      flow_.md §9–10, A-10. Реализовано: src/app/api/flow/metrics/route.ts (POST).
-      Возвращает: sprintEnabled, sprint, columns (health), workers (load), alerts. TTL 30с.
+- [x] FLOW-08 `POST /api/flow/metrics` — единый server-side flow read model (columns/workers/risk) #db !high @blocked_by:DB-13
+      flow_.md §9–10, A-10. Реализовано: `src/app/api/flow/metrics/route.ts` и общий
+      `src/lib/server/flowMetrics.ts`; тот же calculator используется в `my-data`.
+      Контракт возвращает `risk`/`riskBreakdown`; `handoff_chain` в «Процессы» не входит.
 - [x] FLOW-09 Column Health Grid 2×2 + bottom sheet по тапу колонки #ui !med ✅
       Реализовано: `TaskStatusCard` в `FlowBoard.tsx` (строки 404-477) + `handleColumnClick` → `ColumnTasksSheet`.
       WIP-метрики вычисляются из `metrics.columns[].health` (green/yellow/red).
@@ -355,31 +356,45 @@ format is deliberately compact so that agents can load the file quickly.
 
 > dev_setup §3: Risk Pulse, карточки участников, velocity SQL, Invite FAB. DoD: Risk Pulse актуален, SP/день корректен, Invite FAB генерирует ссылку.
 
-- [ ] RISK-01 Risk Pulse — три сигнала (Люди/Процессы/Эскалации) + tappable drill-down #ui !high @blocked_by:DB-13
-      **Сверка 2026-09-19:** частично — три сигнала реализованы (`src/app/flowboard/page.tsx:132–158`, рендер `SignalCard`, `FlowBoard.tsx:386`), tappable drill-down отсутствует.
-      flow_.md §19.
+- [x] RISK-00 Risk Pulse server read model: единый F-01/A-11/Risk Pulse contract для `flow-metrics` и `my-data` #api !high @blocked_by:FLOW-08
+      **Реализовано 2026-09-25:** `src/lib/server/flowMetrics.ts` — чистый typed calculator;
+      F-01 считает assigned in_progress + reviewer review, A-11 `attention_risk_score` отдельный;
+      Processes = review_backlog + stuck_tasks + orphan_blockers; handoff_chain исключён.
+      `FlowMetricsResponse` расширен `risk` и `riskBreakdown`; 6 unit-теста формул.
+- [x] RISK-01 Risk Pulse — три сигнала (Люди/Процессы/Эскалации) + tappable drill-down #ui !high @blocked_by:RISK-00
+      **Реализовано 2026-09-25:** Flow Board использует `metrics.risk` вместо клиентских
+      колонок; все три карточки tappable. People → перегруженные участники + A-11 score;
+      Processes → review-backlog/stuck/orphan; Escalations → существующий Operator Queue.
 - [ ] RISK-02 Предупреждение «уведомления выключены» при отсутствии Telegram-чата #ui !low @blocked_by:RISK-01
       **Сверка 2026-09-19:** не реализовано — `workspace_telegram_chats` в `src/` не используется.
-- [ ] RISK-03 Worker Load (человек collapsed/expanded, badge «⚠ Риск N» из `attention_risk_pulse`) #ui !high @blocked_by:DB-13
-      **Сверка 2026-09-19:** частично — карточки участников и бейдж «Перегружен» есть (`FlowBoard.tsx:557–663`, PersonCard), скор из `attention_risk_pulse` в клиенте не читается.
-      flow_.md §20.
-- [ ] RISK-04 Worker Sheet — участник (Сейчас/Метрики, pre-flight scoring при назначении) #ui !high @blocked_by:RISK-03
-      **Сверка 2026-09-19:** частично — `WorkerSheet.tsx` есть (табы «Статус»/«Доступы», velocity/forecast из `spPerDay`), pre-flight scoring при назначении отсутствует.
-      flow_.md §21.
-- [ ] RISK-05 Velocity SQL интеграция в блок «Метрики» #db !med @blocked_by:RISK-04
-      **Сверка 2026-09-19:** velocity считается на клиенте (`WorkerSheet.tsx:151`), вьюха `velocity_drop` не используется.
-      team_tab §4.1 (справочник).
-- [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 2000 симв) #ui !med @blocked_by:WS-03
-      **Сверка 2026-09-19:** не реализовано — `workspace_context` пишет только Edge Function `rebuild-workspace-context`, в `src/` не используется.
-      flow_.md §23, Master §6.4. Лимит 2000 символов (не 800 — исправлено по flow_.md §23).
+- [x] RISK-03 Worker Load (человек collapsed/expanded, badge «⚠ Риск N» из `attention_risk_pulse`) #ui !high @blocked_by:RISK-00
+      **Реализовано 2026-09-25:** `attention_risk_score`/`attention_risk_level` из общего
+      metrics-контракта пробрасываются в worker/agent cards; `PersonCard` показывает A-11
+      badge «⚠ Риск N» при score ≥ 60, отдельно от F-01 badge «Перегружен».
+      `flow_.md §20`; `RISK-04/05` остаются отдельными pre-flight/velocity срезами.
+- [x] RISK-04 Worker Sheet — участник (Статус/Доступы, pre-flight scoring при назначении) #ui !high @blocked_by:RISK-03
+      **Реализовано 2026-09-25:** Worker Sheet использует вкладки «Статус» / «Доступы»;
+      в статусе показывает velocity window, SP/день, forecast, assigned SP, Gap и реальные
+      `rework_count`/`rework_rate` по уникальным задачам `review → in_progress`.
+      A-11 pre-flight в `WorkerSelectSheet` показывает score/level, текущую F-01 нагрузку,
+      вес новой задачи и действия «Назначить» / «Выбрать другого».
+- [x] RISK-05 Velocity SQL интеграция в блок «Метрики» #db !med @blocked_by:RISK-04
+      **Реализовано 2026-09-25:** `flowMetrics` считает SP/день server-side из завершённых
+      задач за `workspace_settings.velocity_window_days` (fallback 14 дней) и `task_enrichments.story_points`.
+      `my-data` и `flow-metrics` используют один расчёт; Worker Load больше не содержит hardcoded
+      `3.5/5.0`; Worker Sheet получает фактическое окно и скорость. 2 unit-теста velocity.
+- [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 800 симв) #ui !med @blocked_by:WS-03
+      **Сверка 2026-09-25:** не реализовано — `workspace_context` пишет только Edge Function
+      `rebuild-workspace-context`. Канонический лимит — 800 символов (совпадает с DB CHECK и Master §6.4).
 - [x] RISK-07 Invite FAB + реферальная ссылка (`t.me/onitask_bot?start=ws_CODE`) #ui !med @blocked_by:DB-15
       **Сверка 2026-09-19:** реализовано — `InviteModal.tsx` + FAB (`src/app/flowboard/page.tsx:534,548`), ссылка из `GET/POST /api/workspaces/[id]/invite`. Фактический формат — `https://t.me/onitaskbot/onitask?startapp=<code>` (deep link в TWA), а не `?start=ws_CODE`.
 - [ ] RISK-08 Workspace Manager (вкладка «Доски»): карточки workspace, глобальные алерты, переключение #ui !med @blocked_by:WS-01
       **Сверка 2026-09-19:** частично — карточки досок и RiskPulse-агрегат есть (`src/app/boards/page.tsx`, `useBoardCounts`); отдельного списка глобальных алертов нет, источник агрегатов — `useBoardCounts`, а не Edge Function `/api/workspaces/summary`.
       flow_.md §23. Источник: `/api/workspaces/summary` (Edge Function, cache 60–300с).
-- [ ] RISK-09 Risk Pulse «Процессы»: добавить `orphan_blockers` и `handoff_chain` в формулу (v3.6.0) #ui !med @blocked_by:RISK-01,DB-14
-      **Сверка 2026-09-19:** не реализовано — вьюхи `orphan_blockers`/`handoff_chain` в UI не используются.
-      flow_.md §19 (v3.6.0). Drill-down по трём группам: ревью-блок / stuck / orphan.
+- [x] RISK-09 Risk Pulse «Процессы»: добавить `orphan_blockers` в формулу и drill-down (v3.6.0) #ui !med @blocked_by:RISK-01
+      **Реализовано 2026-09-25:** `RiskPulseSheet` показывает review-backlog, stuck и
+      phantom-blockers из `riskBreakdown.processes`; backend formula и UI-группы готовы.
+      `handoff_chain` сознательно остаётся отдельным Agent/Operator-сигналом (ADR-2026-09-25).
 
 - [x] NAV-01 Unified task navigation resolver: task/flow/invite namespace, cross-workspace launch, `open_task_id`, global/local Operator Queue scopes #api !high @blocked_by:INV-13
       **Реализовано 2026-09-25:** `/api/init` server-side резолвит task `full_id` в UUID задачи и workspace с проверкой membership; root/FlowBoard/useTaskNavigator используют единый путь; `comments` tab сохраняется; legacy `open_task` и invite поддержаны; `TelegramDeepLinkRouter` удалён; `DataContext` получил stale-load generation guard; `/boards` открывает `scope=all` Operator Queue. Regression: parser, resolver, init, queue, SDK tests.
@@ -392,10 +407,16 @@ format is deliberately compact so that agents can load the file quickly.
 > dev_setup §3: Agent cards, Escalation queue, `escalate_task`, метрики агента. DoD: оператор видит очередь эскалаций, `needs_human=true` отображается корректно.
 
 - [ ] AGENT-01 Agent Card collapsed (◆ + цвет throughput + queue depth) #ui !high @blocked_by:RISK-03
-      **Сверка 2026-09-19:** частично — секция агентов и карточки рендерятся (`FlowBoard.tsx:1014–1022`, `PersonCard` c `type="agent"`, данные `page.tsx:207–226`): имя, роль, SP/д, задачи; ◆-маркер, цвет throughput и queue depth отсутствуют.
-      flow_.md §20.
-- [ ] AGENT-02 Agent Card expanded (Interpretation hint, «Флоу · 7 дней») #ui !high @blocked_by:AGENT-01
-      **Сверка 2026-09-19:** не реализовано — карточка агента открывает тот же `WorkerSheet` (табы «Статус»/«Доступы»), блока «Флоу · 7 дней» и Interpretation hint нет.
+      **Частично 2026-09-25:** Agent Card показывает ◆-маркер, `задач/д · 7д` и открывает Agent Sheet.
+      Полноценный цветовой throughput и collapsed queue-depth badge остаются отдельным follow-up;
+      Agent Sheet от этого не зависит.
+- [x] AGENT-02 Agent Card expanded (Interpretation hint, «Метрики · 7 дней») #ui !high
+      **Реализовано 2026-09-25:** отдельный `AgentSheet` с вкладками «Статус» / «Подключение».
+      Статус использует throughput, pending escalations, handoff и interpretation hint;
+      блок недельных данных называется «Метрики · 7 дней». Подключение использует
+      существующие `listAgents` / `updateAgent` / `revokeAgent`, имеет read-only просмотр,
+      редактирование и удаление с подтверждением. Когнитивная нагрузка агента в UI не отображается.
+      Agent Sheet не зависит от оставшихся cosmetic follow-up пунктов Agent Card.
 - [x] AGENT-03 Operator Queue (`pending_escalations`, «Попробовать снова» / «Открыть задачу») #ui !high @blocked_by:DB-13,MCP-04
       **Реализовано 2026-09-25:** tappable Risk Pulse «Эскалации», workspace-scoped
       oldest-first queue, readable reasons, suggested_action/nack diagnostics,

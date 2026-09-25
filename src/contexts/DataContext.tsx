@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Database } from '../../types/supabase';
+import type { FlowMetricsResponse } from '../types/flowboard';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
@@ -60,47 +61,7 @@ type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type Worker = Database['public']['Tables']['workers']['Row'];
 
-export interface FlowMetrics {
-  sprintEnabled: boolean;
-  sprint: {
-    id: string;
-    name: string;
-    topic: string;
-    startDate: string;
-    endDate: string;
-    daysElapsed: number;
-    totalDays: number;
-    progress: number;
-    doneSP: number;
-    totalSP: number;
-    inProgress: number;
-    onReview: number;
-    isActive: boolean;
-    status?: string;
-    doneTasks?: number;
-    totalTasks?: number;
-  } | null;
-  columns: Array<{
-    name: string;
-    wip_current: number;
-    wip_limit?: number | null;
-    health: 'green' | 'yellow' | 'red';
-  }>;
-  workers: Array<{
-    id: string;
-    display_name: string;
-    type: 'human' | 'agent';
-    role: string | null;
-    role_title: string | null;
-    status: 'ok' | 'overloaded';
-    cognitive_load: number;
-  }>;
-  alerts: Array<{
-    type: string;
-    severity: 'low' | 'medium' | 'high';
-    message: string;
-  }>;
-}
+export type FlowMetrics = FlowMetricsResponse;
 
 interface DataStore {
   tasks: {

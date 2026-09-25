@@ -80,6 +80,8 @@ export interface WorkerCardData {
   activeDays: number;
   roleLabel: string;
   overloaded?: boolean;
+  attentionRiskScore?: number;
+  attentionRiskLevel?: 'ok' | 'warning' | 'critical';
   tasks: string[];
   /** Worker type: human or AI agent */
   type: 'human' | 'agent';
@@ -94,7 +96,23 @@ export interface AgentCardData {
   activeDays: number;
   roleLabel: string;
   overloaded?: boolean;
+  attentionRiskScore?: number;
+  attentionRiskLevel?: 'ok' | 'warning' | 'critical';
   tasks: string[];
+  /** Server-calculated velocity window in days */
+  velocityWindowDays?: number;
+  /** Unique tasks returned from review to in_progress in the velocity window */
+  reworkCount?: number;
+  /** Rework rate relative to completed tasks in the velocity window */
+  reworkRate?: number;
+  /** Story points per day over the configured window (agent status) */
+  throughput?: number;
+  /** Pending escalation count (agent status) */
+  pendingEscalations?: number;
+  /** Number of incoming handoffs */
+  handoffCount?: number;
+  /** Human-readable interpretation of current agent health */
+  interpretationHint?: string;
 }
 
 export interface FlowBoardProps {
@@ -126,6 +144,8 @@ export interface FlowBoardProps {
   onSignalClick?: (signalId: string) => void;
   /** Called when the worker bottom sheet should open. */
   onWorkerClick?: (worker: WorkerCardData) => void;
+  /** Called when the agent bottom sheet should open. */
+  onAgentClick?: (agent: AgentCardData) => void;
   /** Toggle between flowboard and stream views */
   onToggleView?: () => void;
 }
@@ -587,6 +607,9 @@ export function PersonCard({
   const activeDays = person.activeDays;
   const roleLabel = person.roleLabel;
   const overloaded = person.overloaded;
+  const attentionRiskScore = person.attentionRiskScore ?? 0;
+  const attentionRiskLevel = person.attentionRiskLevel ?? 'ok';
+  const agentThroughput = type === 'agent' && 'throughput' in person ? person.throughput ?? 0 : 0;
   const tasks = person.tasks;
 
     return (
@@ -620,7 +643,7 @@ export function PersonCard({
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-1">
           <UserAvatar displayName={displayName} avatarUrl={avatarUrl} />
-          <CognitiveWeightIndicator weight={cognitiveWeight} />
+          {type !== 'agent' && <CognitiveWeightIndicator weight={cognitiveWeight} />}
         </div>
         <div className="flex flex-col flex-1 gap-1">
           <div className="flex items-center justify-between">
@@ -635,7 +658,13 @@ export function PersonCard({
             >
               {displayName}
             </span>
-            {overloaded && <PriorityBadge label="Перегружен" color="red" />}
+             {overloaded && <PriorityBadge label="Перегружен" color="red" />}
+             {attentionRiskScore >= 60 && (
+               <PriorityBadge
+                 label={`⚠ Риск ${attentionRiskScore}`}
+                 color={attentionRiskLevel === 'critical' ? 'red' : 'amber'}
+               />
+             )}
           </div>
           <p
             style={{
@@ -649,10 +678,10 @@ export function PersonCard({
             {roleLabel}
           </p>
           <div className="flex items-center gap-1">
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{spPerDay}</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>SP/д</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? agentThroughput : spPerDay}</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{type === 'agent' ? 'задач/д' : 'SP/д'}</span>
             <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>•</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: trendUp ? 'var(--color-error)' : 'var(--color-text-primary)' }}>{activeDays}д ↑</span>
+            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? '7д' : `${activeDays}д`}</span>
           </div>
         </div>
       </div>
@@ -698,6 +727,7 @@ export function FlowBoard({
   onColumnClick,
   onSignalClick,
   onWorkerClick,
+  onAgentClick,
   onToggleView,
 }: FlowBoardProps) {
   // ─── Sprint sheet state ──────────────────────────────────────────────
@@ -982,9 +1012,7 @@ export function FlowBoard({
               <SignalCard
                  key={signal.id}
                  signal={signal}
-                 onClick={onSignalClick && signal.id === 'escalations'
-                  ? () => onSignalClick(signal.id)
-                  : undefined}
+                 onClick={onSignalClick ? () => onSignalClick(signal.id) : undefined}
                />
             ))}
           </div>
@@ -1038,7 +1066,7 @@ export function FlowBoard({
         <DeskSectionHeader title="Агенты" />
         <div className="flex flex-col gap-3">
           {agents.map((agent) => (
-            <PersonCard key={agent.id} person={agent} type="agent" />
+            <PersonCard key={agent.id} person={agent} type="agent" onClick={onAgentClick ? () => onAgentClick(agent) : undefined} />
           ))}
         </div>
         <Button variant="outline" onClick={onAddAgent} aria-label="Добавить агента" type="button">

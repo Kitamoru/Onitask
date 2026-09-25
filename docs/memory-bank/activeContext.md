@@ -1,3 +1,76 @@
+## RISK-05 · Server-side velocity (2026-09-25) ✅
+
+**Сделано:** velocity теперь считается в общем `flowMetrics` по завершённым задачам,
+`task_enrichments.story_points` и `workspace_settings.velocity_window_days` (fallback 14 дней).
+`flow-metrics` и `my-data` используют одинаковые enrichment rows; `WorkerCardData` получает
+`spPerDay` и `velocityWindowDays` из ответа. Hardcoded `3.5/5.0` удалены из Flow Board.
+Добавлены тесты на попадание/исключение задач из окна.
+
+**Проверки:** type-check ✅; lint 0 errors (20 existing warnings, включая новый warning о
+зависимости `WorkerSheet`); полный Vitest 247/247 ✅; `git diff --check` ✅. Миграций не применялось.
+
+## Выполнено 2026-09-25
+
+- [x] `rework` server-side: уникальные задачи `review → in_progress` за velocity window; `rework_count` и `rework_rate` пробрасываются в Worker Sheet.
+- [x] Когнитивная нагрузка не отображается для агентов; внутренний F-01 остаётся только для людей.
+- [x] `AgentSheet` с вкладками «Статус» / «Подключение»; недельный блок называется «Метрики · 7 дней».
+- [x] Подключение агента: read-only просмотр, режим редактирования, сохранение через `PATCH /api/agents/:id`, удаление с подтверждением.
+- [x] Agent status: throughput, pending escalations, handoff, interpretation hint; Agent Card показывает `задач/д · 7д`.
+
+Проверки: `npm run type-check` ✅; `npm run test` ✅ 247/247; `npm run lint` ✅ 0 errors, 20 existing warnings; `git diff --check` ✅.
+`npm run build` ⚠️ не завершён из-за некорректного `SUPABASE_URL` в локальном `.env.local` на этапе page-data `/api/bot/webhook`; компиляция и type/lint внутри build прошли.
+Live smoke-check Agent Card/Agent Sheet в Telegram/WebApp не выполнен: требуется Telegram initData и подключённый workspace. Следующий шаг: после корректного окружения выполнить smoke, затем commit.
+
+---
+
+
+## RISK-03/09 · A-11 badge и phantom group (2026-09-25) ✅
+
+**Сделано:** `RISK-09` закрыт: `RiskPulseSheet` показывает review-backlog, stuck и phantom-blockers
+из `riskBreakdown.processes`. `RISK-03` закрыт: A-11 `attention_risk_score`/`risk_level`
+пробрасываются из общего server metrics в worker/agent cards; `PersonCard` показывает
+`⚠ Риск N` при score ≥ 60, отдельно от F-01 badge «Перегружен». Для агентов тот же badge
+подготовлен через `attentionRiskScore`/`attentionRiskLevel` в `AgentCardData`.
+
+**Проверки:** type-check ✅; lint 0 errors ✅; flow-metrics/flowMetrics tests 8/8 ✅;
+полный Vitest ранее 245/245 ✅; миграций не применялось.
+
+**Следующий шаг:** выполнить live smoke-check Agent Sheet в Telegram/WebApp; после smoke —
+  зафиксировать этот проход в task log и подготовить commit.
+
+---
+
+
+## RISK-01 · Risk Pulse tappable signals (2026-09-25) ✅
+
+**Реализовано:** `src/components/flowboard/RiskPulseSheet.tsx` показывает People drill-down
+(перегруженные участники, F-01 `cognitive_load/3`, A-11 score/level) и Processes drill-down
+(review backlog, stuck tasks, phantom blockers). Flow Board переключён с клиентских
+красных колонок/локальных `needs_human` на server-side `metrics.risk`; все три карточки
+стали tappable. Escalations продолжают открывать Operator Queue.
+
+**Проверки:** `npm run type-check` ✅; `npm run test` — 245/245 ✅; `npm run lint` — 0 errors,
+19 existing warnings ✅; `git diff --check` ✅. Маршрутные тесты `flow-metrics` 2/2 и
+`my-data` 2/2 проходят. `handoff_chain` в breakdown отсутствует намеренно.
+
+**Следующий шаг:** smoke-check Agent Card/Agent Sheet; после него commit.
+
+---
+
+
+
+## RISK-00 · Risk Pulse server read model (2026-09-25) ✅
+
+
+**Решение:** добавлен общий чистый calculator `src/lib/server/flowMetrics.ts`; `POST /api/flow/metrics` и `POST /api/workspaces/my-data` используют его вместо двух расходящихся реализаций. F-01 считается по `cognitive_weight` (assigned `in_progress` + reviewer `review`, `is_inbox` исключён, бюджет выключается настройкой), A-11 `attention_risk_score` возвращается отдельно. Risk Pulse «Процессы» = `review_backlog + stuck_tasks + orphan_blockers`; `handoff_chain` сознательно не входит в счётчик. `FlowMetricsResponse` расширен `risk` и `riskBreakdown` для UI следующего шага.
+
+**Проверки:** `npm run type-check` ✅; `tests/lib/flowMetrics.test.ts` 6/6 ✅ (F-01, выключенный бюджет, A-11 не подменяет People, Processes, handoff_chain вне Processes, workspace scope); `myData` 2/2 ✅; `boardCounts` 6/6 ✅. Миграций не применялось. ADR-2026-09-25 в `decisions.md`, последовательность обновлена в `TASKS.md` (`RISK-00 → RISK-01`; `RISK-03` зависит от RISK-00).
+
+**Следующий шаг:** smoke-check Agent Card/Agent Sheet; после него commit.
+
+---
+
+
 ## NAV-01 · Unified task navigation resolver (2026-09-25) ✅
 
 **Решение:** `start_param` разбирается в `src/lib/taskLaunch.ts` как `task`,

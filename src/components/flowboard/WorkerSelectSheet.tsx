@@ -8,8 +8,9 @@
  * Allows clearing the current selection.
  */
 
+import { useEffect, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { Button } from '@/components/ui/desk-ui';
+import { Button, Card, SectionHeader } from '@/components/ui/desk-ui';
 import type { WorkerCardData } from '@/types/flowboard';
 
 export interface WorkerSelectSheetProps {
@@ -27,6 +28,14 @@ export interface WorkerSelectSheetProps {
   title?: string;
   /** Render as a stacked portal (higher z-index, for overlaying another BottomSheet) */
   stacked?: boolean;
+  /** Show A-11 pre-flight confirmation before assigning a task */
+  preflightEnabled?: boolean;
+  /** Cognitive weight of the task being assigned */
+  assignmentTaskWeight?: number;
+}
+
+export function shouldConfirmAssignment(worker: WorkerCardData, enabled = true): boolean {
+  return enabled && (worker.attentionRiskScore ?? 0) >= 60;
 }
 
 export function WorkerSelectSheet({
@@ -37,10 +46,27 @@ export function WorkerSelectSheet({
   onSelect,
   title = 'Выберите участника',
   stacked = false,
+  preflightEnabled = false,
+  assignmentTaskWeight = 1,
 }: WorkerSelectSheetProps) {
+  const [pendingWorker, setPendingWorker] = useState<WorkerCardData | null>(null);
+  useEffect(() => {
+    if (!open) setPendingWorker(null);
+  }, [open]);
   const handleSelect = (id: string) => {
-    // Immediately select and close — no visual feedback needed
+    const worker = workers.find((item) => item.id === id);
+    if (preflightEnabled && worker && shouldConfirmAssignment(worker)) {
+      setPendingWorker(worker);
+      return;
+    }
     onSelect(id);
+    onClose();
+  };
+
+  const confirmPending = () => {
+    if (!pendingWorker) return;
+    onSelect(pendingWorker.id);
+    setPendingWorker(null);
     onClose();
   };
 
@@ -53,6 +79,28 @@ export function WorkerSelectSheet({
       <div className="flex flex-col gap-4 px-4 pb-6">
         {/* Title */}
         <h3 className="text-[17px] font-semibold text-text">{title}</h3>
+
+        {pendingWorker && (
+          <Card notch={8}>
+            <div className="flex flex-col gap-3">
+              <SectionHeader title={`Назначить на ${pendingWorker.displayName}?`} />
+              <p className="text-sm text-text-muted">
+                Когнитивная нагрузка сейчас: {pendingWorker.cognitiveWeight}/3. Вес новой задачи: {assignmentTaskWeight}.
+              </p>
+              <p className="text-sm text-text-muted">
+                Риск назначения: {pendingWorker.attentionRiskScore ?? 0}/100 · {pendingWorker.attentionRiskLevel ?? 'ok'}.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button variant="solid" onClick={confirmPending}>
+                  Назначить
+                </Button>
+                <Button variant="outline" onClick={() => setPendingWorker(null)}>
+                  Выбрать другого
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Workers list */}
         {orderedWorkers.length === 0 ? (

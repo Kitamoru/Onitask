@@ -1272,6 +1272,8 @@ export function TaskViewEdit({
         }}
         title="Выберите исполнителя"
         stacked
+        preflightEnabled
+        assignmentTaskWeight={cognitiveWeight}
       />
       <WorkerSelectSheet
         open={reviewerSheetOpen}

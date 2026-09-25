@@ -22,6 +22,7 @@ import {
 import { probeAgentEndpoint } from '@core/shared/agentEndpoint';
 import {
   toPublicConnector,
+  validateAgentName,
   validateAutonomy,
   validateLimits,
   validateMcpAllowlist,
@@ -78,6 +79,16 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
 
+    if (body.agent_name !== undefined) {
+      const name = validateAgentName(body.agent_name);
+      if (!name.ok) {
+        return NextResponse.json(
+          { success: false, error: 'invalid_agent_name', message: name.message },
+          { status: 400 },
+        );
+      }
+      patch.agent_name = name.value;
+    }
     if (typeof body.is_paused === 'boolean') patch.is_paused = body.is_paused;
     if (body.model !== undefined) {
       patch.model =

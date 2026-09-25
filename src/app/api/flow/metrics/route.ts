@@ -1,49 +1,57 @@
 'use server';
 
 /**
- * POST /api/flow/metrics — Aggregate flow metrics for FlowBoard.
- *
- * Replaces client-side Supabase queries in src/lib/api/flow.ts getFlowMetrics().
- * Uses Telegram initData validation (server-side, service_role key bypasses RLS).
- * 
- * Response matches FlowMetricsResponse from flowboard types.
+ * POST /api/flow/metrics — server-side Flow Board read model.
+ * Uses the shared calculator so it cannot drift from my-data.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
+import { authenticateRequest, getDefaultWorkspaceId } from '../../../../../lib/api-auth';
 import {
-  authenticateRequest,
-  getDefaultWorkspaceId,
-} from '../../../../../lib/api-auth';
+  buildFlowMetrics,
+  type AttentionRiskRow,
+  type FlowMetricsTask,
+  type FlowMetricsWorker,
+  type OrphanBlockerRow,
+  type PendingEscalationRow,
+  type ReviewBacklogRow,
+  type StuckTaskRow,
+} from '../../../../lib/server/flowMetrics';
 import type { Database } from '../../../../../types/supabase';
 
+type TasksRow = Database['public']['Tables']['tasks']['Row'];
 type WorkersRow = Database['public']['Tables']['workers']['Row'];
 type SprintsRow = Database['public']['Tables']['sprints']['Row'];
-type TasksRow = Database['public']['Tables']['tasks']['Row'];
+
+const EMPTY_METRICS = {
+  sprintEnabled: false,
+  sprint: null,
+  columns: [],
+  workers: [],
+  alerts: [],
+  risk: { people: 0, processes: 0, escalations: 0 },
+  riskBreakdown: { people: [], processes: { reviewBacklog: [], stuck: [], orphanBlockers: [] }, escalations: [] },
+  cached_at: new Date().toISOString(),
+  cache_ttl: { columns: 5, workers: 60, alerts: 60 },
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const initData = body.init_data as string | undefined;
-    // Optional workspace_id override — allows FlowBoard to query a specific board's workspace
     const requestedWorkspaceId = body.workspace_id as string | undefined;
-
     const auth = await authenticateRequest(initData);
     if (!auth.authenticated) {
-      return NextResponse.json(
-        { error: auth.error || 'Не авторизован' },
-        { status: auth.status || 401 },
-      );
+      return NextResponse.json({ error: auth.error || 'Не авторизован' }, { status: auth.status || 401 });
     }
 
     const supabase = createServerClient();
+    const anySupabase = supabase as any;
     const profileId = auth.profileId!;
-
-    // 1. Determine workspace_id: prefer explicit override, fallback to user's primary workspace
     let workspaceId: string | null = null;
 
     if (requestedWorkspaceId) {
-      // Verify the user has access to this workspace (is owner or member)
       const { data: accessWorker } = await supabase
         .from('workers')
         .select('workspace_id')
@@ -51,175 +59,70 @@ export async function POST(req: NextRequest) {
         .eq('workspace_id', requestedWorkspaceId)
         .eq('is_active', true)
         .limit(1);
-      
-      if (accessWorker && accessWorker.length > 0) {
-        workspaceId = requestedWorkspaceId;
-      } else {
-        console.warn('metrics: user does not have access to requested workspace');
-      }
+      if (accessWorker?.length) workspaceId = requestedWorkspaceId;
     }
+    if (!workspaceId) workspaceId = await getDefaultWorkspaceId(profileId);
+    if (!workspaceId) return NextResponse.json({ success: true, data: EMPTY_METRICS });
 
-    // Fallback: default workspace from profile membership (deterministic —
-    // last_active_workspace_id if still a member, else first membership; never
-    // a non-deterministic `.limit(1)` worker).
-    if (!workspaceId) {
-      workspaceId = await getDefaultWorkspaceId(profileId);
-    }
-    if (!workspaceId) {
-      // Return empty metrics — user has no workspace yet
-      console.log('metrics: no workspace found for profile', profileId);
-      return NextResponse.json({
-        success: true,
-        data: {
-          sprintEnabled: false,
-          sprint: null,
-          columns: [],
-          workers: [],
-          alerts: [],
-          cached_at: new Date().toISOString(),
-          cache_ttl: { columns: 5, workers: 60, alerts: 60 },
-        },
-      });
-    }
+    const [settingsResult, sprintResult, taskResult, enrichmentResult, workersResult, attentionResult, reviewResult, stuckResult, orphanResult, escalationResult] = await Promise.all([
+      supabase.from('workspace_settings').select('story_points_config, flow_config, enable_cognitive_budget, velocity_window_days').eq('workspace_id', workspaceId).maybeSingle(),
+      supabase.from('sprints').select('*').eq('workspace_id', workspaceId).in('status', ['active', 'planning']).order('created_at', { ascending: false }).limit(1),
+      supabase.from('tasks').select('id, workspace_id, column, assigned_to, reviewer_id, handoff_to, cognitive_weight, is_inbox, is_blocked, needs_human, moved_to_column_at, sprint_id').eq('workspace_id', workspaceId),
+      supabase.from('task_enrichments').select('task_id, story_points').eq('workspace_id', workspaceId),
+      supabase.from('workers').select('*').eq('workspace_id', workspaceId).eq('is_active', true),
+      anySupabase.from('attention_risk_pulse').select('worker_id, attention_risk_score, risk_level').eq('workspace_id', workspaceId),
+      anySupabase.from('review_backlog').select('reviewer_id, reviewer_name, review_count, workspace_id').eq('workspace_id', workspaceId),
+      anySupabase.from('stuck_tasks').select('id, title, column, assigned_to, assignee_name, hours_stuck, workspace_id').eq('workspace_id', workspaceId),
+      anySupabase.from('orphan_blockers').select('id, title, column, assigned_to, assignee_name, hours_blocked, workspace_id').eq('workspace_id', workspaceId),
+      anySupabase.from('pending_escalations').select('id, title, escalation_reason, workspace_id, assigned_agent, hours_pending').eq('workspace_id', workspaceId),
+    ]);
 
-    // Get workspace settings for sprint_enabled
-    const { data: settingsData } = await supabase
-      .from('workspace_settings')
-      .select('story_points_config')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle();
-
-    const sprintEnabled = ((settingsData as any)?.story_points_config as any)?.sprint_enabled ?? false;
-
-    // 2. Sprint info
-    const { data: sprintData } = await supabase
-      .from('sprints')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .in('status', ['active', 'planning'])
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    let sprint: any = null;
-    if (sprintData && (sprintData as SprintsRow[]).length > 0) {
-      const sp = (sprintData as SprintsRow[])[0];
-      sprint = {
-        id: sp.id,
-        name: sp.name || '',
-        topic: '',
-        startDate: sp.start_date || '',
-        endDate: sp.end_date || '',
-        daysElapsed: 0,
-        totalDays: 7,
-        progress: 0,
-        doneSP: 0,
-        totalSP: sp.capacity ?? 0,
-        inProgress: 0,
-        onReview: 0,
-        isActive: sp.status === 'active',
-        status: sp.status,
-      };
-    }
-
-    // 3. Column health
-    const { data: columnCounts } = await supabase
-      .from('tasks')
-      .select('column, needs_human, is_inbox')
-      .eq('workspace_id', workspaceId)
-      .eq('is_inbox', false);
-
-    const columnMap: Record<string, number> = { backlog: 0, in_progress: 0, review: 0, done: 0 };
-    ((columnCounts ?? []) as TasksRow[]).forEach((t) => {
-      if (t.column in columnMap) {
-        columnMap[t.column]++;
-      }
+    const tasks = (taskResult.data ?? []) as TasksRow[] as FlowMetricsTask[];
+    const workers = (workersResult.data ?? []) as WorkersRow[] as FlowMetricsWorker[];
+    const taskIds = tasks.map((task) => task.id);
+    const { data: reworkRows } = taskIds.length > 0
+      ? await anySupabase
+          .from('task_column_history')
+          .select('task_id, from_column, to_column, moved_at')
+          .in('task_id', taskIds)
+          .eq('from_column', 'review')
+          .eq('to_column', 'in_progress')
+      : { data: [] as unknown[] };
+    const sprintRow = (sprintResult.data ?? [])[0] as SprintsRow | undefined;
+    const sprint = sprintRow ? {
+      id: sprintRow.id,
+      name: sprintRow.name || '',
+      topic: sprintRow.goal || '',
+      startDate: sprintRow.start_date || '',
+      endDate: sprintRow.end_date || '',
+      daysElapsed: 0,
+      totalDays: 7,
+      progress: 0,
+      doneSP: 0,
+      totalSP: sprintRow.capacity ?? 0,
+      inProgress: tasks.filter((task) => task.column === 'in_progress' && task.sprint_id === sprintRow.id).length,
+      onReview: tasks.filter((task) => task.column === 'review' && task.sprint_id === sprintRow.id).length,
+      isActive: sprintRow.status === 'active',
+    } : null;
+    const settings = (settingsResult.data ?? {}) as { story_points_config?: { sprint_enabled?: boolean }; flow_config?: Record<string, unknown> | null; enable_cognitive_budget?: boolean; velocity_window_days?: number };
+    const metrics = buildFlowMetrics({
+      workspaceId,
+      tasks,
+      workers,
+      attentionRiskRows: (attentionResult.data ?? []) as AttentionRiskRow[],
+      reviewBacklogRows: (reviewResult.data ?? []) as ReviewBacklogRow[],
+      stuckTaskRows: (stuckResult.data ?? []) as StuckTaskRow[],
+      orphanBlockerRows: (orphanResult.data ?? []) as OrphanBlockerRow[],
+      pendingEscalationRows: (escalationResult.data ?? []) as PendingEscalationRow[],
+      enrichmentRows: (enrichmentResult.data ?? []) as { task_id: string; story_points: number | null }[],
+      reworkRows: ((reworkRows ?? []) as Array<{ task_id: string; from_column: string; to_column: string; moved_at: string }>).map((row) => ({ ...row, worker_id: tasks.find((task) => task.id === row.task_id)?.assigned_to ?? '' })),
+      velocityWindowDays: settings.velocity_window_days ?? 14,
+      enableCognitiveBudget: settings.enable_cognitive_budget ?? true,
+      flowConfig: settings.flow_config ?? null,
+      sprint,
+      sprintEnabled: settings.story_points_config?.sprint_enabled ?? false,
     });
-
-    const wipLimits: Record<string, number | null> = {
-      backlog: 15, in_progress: 5, review: 4, done: null,
-    };
-
-    const columns: any[] = Object.entries(columnMap).map(([name, wip_current]) => {
-      const wip_limit = wipLimits[name] ?? null;
-      let health: 'green' | 'yellow' | 'red' = 'green';
-      if (wip_limit !== null && wip_current > wip_limit) health = 'red';
-      else if (wip_limit !== null && wip_current >= wip_limit * 0.8) health = 'yellow';
-      return { name, wip_current, wip_limit, health, avg_cycle_time_hours: null };
-    });
-
-    if (sprint) {
-      sprint.inProgress = columnMap.in_progress;
-      sprint.onReview = columnMap.review;
-    }
-
-    // 4. Worker load
-    const { data: workersData } = await supabase
-      .from('workers')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .eq('is_active', true);
-
-    const overloadThreshold = 6;
-    const workersMetrics: any[] = ((workersData ?? []) as WorkersRow[]).map((w) => {
-      const cognitive_load = w.type === 'human' ? Math.min(3, 1) : 0;
-      return {
-        id: w.id,
-        display_name: w.display_name || w.id.slice(0, 8),
-        type: w.type as 'human' | 'agent',
-        role: w.role,
-        role_title: w.role_title,
-        cognitive_load,
-        overload_threshold: overloadThreshold,
-        status: cognitive_load >= 3 ? 'overloaded' : 'ok',
-        throughput: w.type === 'agent' ? 1.2 : undefined,
-        pending_escalations: undefined,
-      };
-    });
-
-    // 5. Alerts
-    const alerts: any[] = [];
-    for (const wm of workersMetrics) {
-      if (wm.status === 'overloaded') {
-        alerts.push({
-          type: 'overloaded_member',
-          severity: 'high',
-          message: `${wm.display_name} перегружен: ${wm.cognitive_load} / ${wm.overload_threshold}`,
-        });
-      }
-    }
-    if (((columnCounts ?? []) as TasksRow[]).filter(
-      (task) => task.needs_human && task.column !== 'done' && !task.is_inbox,
-    ).length > 0) {
-      alerts.push({
-        type: 'escalation',
-        severity: 'high',
-        message: 'Есть задачи, ожидающие решения',
-      });
-    }
-
-    for (const col of columns) {
-      if (col.health === 'red') {
-        alerts.push({
-          type: 'bottleneck',
-          severity: 'high',
-          message: `Колонка "${col.name}" перегружена: ${col.wip_current} задач при лимите ${col.wip_limit}`,
-          column: col.name,
-        });
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        sprintEnabled,
-        sprint,
-        columns,
-        workers: workersMetrics,
-        alerts,
-        cached_at: new Date().toISOString(),
-        cache_ttl: { columns: 5, workers: 60, alerts: 60 },
-      },
-    });
+    return NextResponse.json({ success: true, data: metrics });
   } catch (err) {
     console.error('metrics: unexpected error', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });

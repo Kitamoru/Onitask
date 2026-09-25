@@ -133,6 +133,7 @@ export async function createAgent(params: {
 export async function updateAgent(
   connectorId: string,
   patch: {
+    agent_name?: string;
     is_paused?: boolean;
     model?: string | null;
     autonomy?: 'observer' | 'tasks' | 'full';

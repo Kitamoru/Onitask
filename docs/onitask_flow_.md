@@ -389,7 +389,7 @@ full_id = ${workspace_prefix}-${task_number}
 
 ## 19. Risk Pulse — пульс команды
 
-Три агрегированных сигнала. Instant tier, без LLM. Все tappable. Скоуп — только текущий workspace.
+Три агрегированных сигнала. Instant tier, без LLM. Все tappable. Скоуп — только текущий workspace. Локальные значения приходят в `risk`/`riskBreakdown` ответа `POST /api/flow/metrics`; `/boards` использует отдельную global summary-модель. `handoff_chain` не входит в «Процессы» и остаётся отдельной Agent/Operator-аномалией.
 
 | Сигнал | Источник данных | Порог | Tap-действие |
 |---|---|---|---|
@@ -479,7 +479,7 @@ Tappable → настройки workspace → «Telegram-чаты».
 
 Данные из кэша Flow Metrics (60 сек). Снапшот → `trg_record_assignment_snapshot` (Master §6.14).
 
-**Метрики:** SP/день за 14д + % возвратов, прогноз спринта vs Gap.
+**Метрики · 7 дней:** SP/день за 14д + % возвратов, прогноз спринта vs Gap.
 
 ---
 
@@ -658,7 +658,7 @@ SQL — см. [onitask_team_tab.md §2.7](onitask_team_tab.md#27-operator-queue)
 
 ### Поле «Контекст команды» (WorkspaceWizard + Settings)
 
-Редактируется только Admin/Owner. Лимит 2000 символов (Master §8).
+Редактируется только Admin/Owner. Лимит 800 символов (Master §8 и DB CHECK).
 
 **Placeholder:**
 ```

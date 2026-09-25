@@ -129,7 +129,7 @@ workers (
 | `/api/tasks/[id]` | GET, PATCH, DELETE | CRUD, PATCH без version-check в TWA |
 | `/api/tasks/[id]/decompose` | POST | AI-декомпозиция |
 | `/api/tasks/[id]/relations` | **POST** | создание `task_relations` (не GET) |
-| `/api/flow/metrics` | GET | делегирует в Edge Function `flow-metrics` |
+| `/api/flow/metrics` | **POST** | единый server-side flow read model (columns/workers/risk) |
 | `/api/ai/transcribe`, `/api/ai/parse-task`, `/api/ai/quota` | POST / POST / GET | F-04 |
 | `/api/mcp/*` (9 tools + `undo/:event_id`) | **POST only** | агентский интерфейс, GET нет вообще |
 | `/api/workspaces`, `/summary`, `/[id]/{members,invite,settings}` | GET/POST | Workspace Manager |
