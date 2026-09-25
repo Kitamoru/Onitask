@@ -204,6 +204,43 @@ async function downloadTelegramFile(fileId: string): Promise<Blob | null> {
   }
 }
 
+/**
+ * Транскрибировать голосовое из реплая (§5.1.1 — тот же пайплайн STT,
+ * что и для обычного голосового, отличается только источник file_id).
+ *
+ * Возвращает null, если скачать или распознать не удалось. Ошибка не
+ * бросается: лучше «не удалось распознать», чем 500 из webhook.
+ */
+async function transcribeVoiceFile(fileId: string): Promise<string | null> {
+  const blob = await downloadTelegramFile(fileId);
+  if (!blob) return null;
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const baseUrl =
+    process.env.NEXT_PUBLIC_WEBAPP_URL || `https://${process.env.VERCEL_URL}`;
+
+  const formData = new FormData();
+  formData.append('audio', blob, 'voice.ogg');
+
+  try {
+    const resp = await fetch(`${baseUrl}/api/ai/transcribe`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}` },
+      body: formData,
+    });
+    if (!resp.ok) {
+      console.warn('[Bot Webhook] transcribe failed:', resp.status);
+      return null;
+    }
+    const data = await resp.json();
+    const text = typeof data?.text === 'string' ? data.text.trim() : '';
+    return text || null;
+  } catch (err) {
+    console.error('[Bot Webhook] transcribe error:', err);
+    return null;
+  }
+}
+
 async function safeSendChatAction(chatId: number): Promise<void> {
   if (!BOT_TOKEN) {
     console.warn('[Bot Webhook] safeSendChatAction: BOT_TOKEN missing');
@@ -703,7 +740,25 @@ async function handleCommandRequiringWorkspace(
   // (§5.1.4). Раньше читался только reply_to_message.text, поэтому реплай
   // на фото с подписью и на пересланное сообщение уходил в «пришлите текст».
   const replySource = extractReplySource(message?.reply_to_message);
-  const effectiveArgs = replySource?.text || args;
+
+  // Голосовое в реплае: тот же STT-пайплайн, что и для обычного голосового,
+  // отличается только источник file_id (§5.1.1, §5.1.4).
+  let effectiveArgs = replySource?.text || args;
+  if (replySource?.voiceFileId) {
+    await safeSendChatAction(chatId);
+    const transcript = await transcribeVoiceFile(replySource.voiceFileId);
+    if (transcript) {
+      effectiveArgs = transcript;
+    } else {
+      await sendMessage(BOT_TOKEN, {
+        chat_id: chatId,
+        text:
+          '🎤 Не удалось распознать голосовое сообщение.\n\n' +
+          'Отправь текстом или попробуй записать голосовое ещё раз.',
+      });
+      return;
+    }
+  }
 
   if (availableWorkspaces.length === 1) {
     const ws = availableWorkspaces[0];
