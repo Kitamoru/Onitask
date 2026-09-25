@@ -23,12 +23,12 @@ import { DEFAULT_F04_CONFIG } from '../../../src/lib/ai/types';
 vi.mock('../../../src/lib/ai/parseWithFallback', () => ({
   parseWithFallback: vi.fn(),
 }));
-vi.mock('../../../src/lib/ai/workspaceContextCache', () => ({
-  getWorkspaceContextCache: vi.fn(),
+vi.mock('../../../src/lib/ai/operationalContext', () => ({
+  getOperationalContext: vi.fn(),
 }));
 
 import { parseWithFallback } from '../../../src/lib/ai/parseWithFallback';
-import { getWorkspaceContextCache } from '../../../src/lib/ai/workspaceContextCache';
+import { getOperationalContext } from '../../../src/lib/ai/operationalContext';
 
 export const VALID_PARSE: ParseResponseV2 = {
   title: 'Купить молоко',
@@ -77,7 +77,7 @@ export function makeDb(opts: {
 describe('prepareTaskDraft — two-phase draft (ai_.md §3.6a)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getWorkspaceContextCache).mockResolvedValue(null);
+    vi.mocked(getOperationalContext).mockResolvedValue(null);
   });
 
   it('INVARIANT: draft-фаза НЕ пишет в БД (ни tasks, ни enrichment_queue, ни task_events)', async () => {

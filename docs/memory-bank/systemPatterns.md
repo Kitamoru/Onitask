@@ -67,7 +67,7 @@ See [Architecture Master §1](onitask_Architecture_Master_.md#1-инвариан
 
 **Key invariants for development:**
 - INV-13: `task_relations.workspace_id` must be passed explicitly on every INSERT
-- INV-14: `workspace_context` (manual) and `workspace_context_cache` (system) strictly separated
+- INV-14: `workspace_context` (Admin, manual) is never written by the system
 - INV-15: `data_sharing_level = 'full'` requires Admin/Owner consent + DPA
 - INV-16: `/api/init` — find-or-create only (no auto-update of display_name/avatar_url)
 

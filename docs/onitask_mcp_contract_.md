@@ -156,12 +156,7 @@ function isToolAllowed(toolName: string, permissions: KeyConfig): boolean {
     flow_config:                 object,
     realtime_subscription_level: 'own_tasks' | 'all',
     workspace_context:           string | null,  // ручной контекст Admin (домен, стек, команда)
-    workspace_context_cache:     string | null,  // v0.6.0: derived cache оперативного состояния
-                                                 // (текущий спринт, блокировки, перегруженные)
-                                                 // null = кэш не собран или context_stale=true и rebuild в очереди
-                                                 // Использование: учитывать при formulation reason/suggested_action
-    context_stale:               boolean,        // v0.6.0: кэш устарел, rebuild в очереди
-                                                 // true → продолжать работу, stale лучше отсутствия
+                                                  // Использование: учитывать при formulation reason/suggested_action
     doc_kb_config:               object | null,
     agent_active_tasks:          TaskPreview[] | null
     // Задачи агента в in_progress/review с needs_human=false.
@@ -669,8 +664,8 @@ while (true):
    ```
 
    - `workspace_context` не null → учитывать домен в `reason` и `suggested_action`.
-   - `workspace_context_cache` не null → оперативное состояние (спринт, перегрузка, блокировки).
-   - `context_stale = true` → продолжать работу, stale кэш лучше отсутствия.
+   - Оперативного состояния (спринт, перегрузка, блокеры) в ответе нет: поля
+     `workspace_context_cache` и `context_stale` удалены 2026-09-25 (см. Changelog).
 
 2. Перед мутациями получать актуальный `version` (из `get_tasks_by_column` или из ответа мутации).
 
@@ -993,6 +988,24 @@ while (true):
 ---
 
 ## Changelog
+
+**v0.8.3 — сентябрь 2026**
+
+*Удаление мёртвого LLM-кэша оперативного контекста (F03-16) — **breaking change**:*
+
+- §4 `get_workspace_settings`: из ответа **удалены** поля
+  `workspace_context_cache: string | null` и `context_stale: boolean`.
+  Оба были бессмысленными: первое всегда `null` во всех workspace (Edge Function
+  `rebuild-workspace-context` не была задеплоена ни разу), второе всегда `true`.
+  Агенты, читавшие эти поля, должны перестать: за ними не стоит никаких данных.
+- §7 п.1: инструкция про `workspace_context_cache` / `context_stale` заменена
+  на указание, что оперативного состояния в ответе нет.
+- Ручной `workspace_context` **не изменён** — он остаётся источником доменного контекста.
+- Причина и альтернатива: оперативный контекст теперь считается детерминированно
+  в SQL по требованию (`get_workspace_operational_context`, Master §6.4a) и используется
+  внутри F-03/F-04; агентам он не передавался и раньше (поля были пустыми).
+- Внимание: агенты, собранные под v0.8.0–v0.8.2, получат `undefined` вместо этих
+  полей. Обработчики должны трактовать отсутствие как «данных нет».
 
 **v0.8.2 — август 2026**
 

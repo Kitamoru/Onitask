@@ -1,3 +1,170 @@
+## Спеки синхронизированы с БД после F03-16 (2026-09-25) ✅
+
+**Зачем:** после удаления контура 10 документов продолжали описывать
+`workspace_context_cache`, `context_stale`, `rebuild-workspace-context` и
+`workspace_context_rebuild` как существующие. Спеки — источник истины; расхождение
+с БД опаснее отсутствия фичи, потому что следующий разработчик будет искать
+несуществующий код.
+
+**Что переписано (живые части):**
+- **Master:** §6.4 (поля), §6.4a (**новая секция** — контракт
+  `get_workspace_operational_context`), §6.5 (CHECK-типы, индекс, приоритет воркера),
+  §6.16 (триггеры), §9 (cron), §1 (INV-14), §5 (Workspace Context Cache → «устарело»),
+  §8 (список потребителей настроек). Версия → v0.14.4 + запись в changelog.
+- **ai_.md:** §2.9 **переписан целиком** («Оперативный контекст», Instant Tier, без LLM)
+  + раздел «История» с причинами удаления; §2.1/§2.3/§3.4 (примеры SELECT и prompt-блоков,
+  `workspaceContextCacheBlock` → `operationalContextBlock`); changelog; версия → v0.14.4.
+- **mcp_contract:** §4 (2 поля убраны из ответа), §7 (инструкция агенту),
+  **новая запись v0.8.3 с явной пометкой breaking change**.
+- **INDEX:** навигационные строки (`trg_context_invalidate`, Rebuild Pipeline, промпт-блоки),
+  RPM-примечание («три пути» → «два»), changelog.
+- **flow_ / security_ / ARCHITECTURE-COMPACT / systemPatterns / techcontext:**
+  INV-14, список полей `workspace_settings`, guard `data_sharing_level`,
+  удаление функции из дерева Edge Functions.
+
+**Что намеренно НЕ переписано:**
+- `TASKS.md` и `activeContext.md` — это логи, а не спеки; в них упоминания остались
+  как объяснение «что было и почему удалено» (помечены `~~перечёркнуто~~` + `ОТМЕНЕНА`).
+- Исторические changelog-записи (`Master` v0.12.0, `INDEX`, `mcp_contract` v0.6.0, `flow_`) —
+  они верны для своих версий. Вместо правки добавлена новая запись сверху.
+- `docs/mcp new doc/` — снимок реализации v0.8.0, на который не ссылается ни INDEX,
+  ни MOC (проверено: 0 ссылок). Правка «фальсифицировала» бы запись о том, что было в v0.8.0.
+
+**INV-14 — переформулирован, не снят.** Было: «`workspace_context` (ручной) и
+`workspace_context_cache` (derived) строго разделены». Стало: «`workspace_context`
+никогда не пишется системой». Разделять больше нечего, но сама гарантия нужна и
+проверяема; retire был бы потерей защиты. Соответствующая задача INV-14 в TASKS.md
+закрыта как отменённая — предмет проверки исчез.
+
+**TASKS.md:** 48 открытых / 163 закрытых. Добавлены **DUP-01** (воркер `duplicate_check` —
+инфраструктура рабочая, в отличие от кэша; 48 старых джоб бессмысленны, вычистить
+перед стартом) и **DUP-02** (унификация порога перегрузки view vs UI).
+
+**Проверки:** type-check 0; vitest 309/309; `git diff --check` чисто.
+Комментарии INV-14 в коде (`enrich-task/index.ts`, `getTaskContext.ts`) тоже обновлены.
+
+---
+
+## F03-16/17: удаление LLM-кэша контекста, замена на SQL-расчёт (2026-09-25) ✅
+
+**Решение владельца:** «ощущение, что это мёртвый функционал, который надо зачистить» —
+и это подтвердилось. Но диагноз был не «мёртвый», а **«не построенный»**:
+Edge Function `rebuild-workspace-context` (14 КБ) **написана, но не задеплоена ни разу**,
+`workspace_context_cache` = NULL во всех 4 workspace, cron `workspace-context-fallback`
+ежечасно клеил джобы без потребителя. Те же величины уже считаются детерминированно
+в `buildFlowMetrics` для `/api/flow/metrics`.
+
+**Корень проблемы — LLM использовался как JSON-компрессор** для данных, уже лежащих
+в БД. Платная недетерминированная потеря информации там, где `jsonb_build_object`
+даёт то же самое бесплатно и точно. Плюс кэш требовал целой инфраструктуры:
+cron, staleness-флаг, триггеры инвалидации, гонка за устареванием.
+
+**Миграции 114–119 (применены через Supabase MCP):**
+- `114` — `get_workspace_operational_context(uuid) RETURNS jsonb` (STABLE,
+  `SET search_path=''`): sprint, overloaded_workers, escalations, blockers, active_tasks.
+- `115` — **fix моего же бага**: в 114 в подзапросе нагрузки стоял `JOIN tasks t ON true`
+  без фильтра = декартово произведение со ВСЕМИ задачами. Функция показывала
+  `kitamoru` перегруженным при реальной нагрузке 2. Проверено эталонным запросом.
+- `116` — документирование семантики порога перегрузки (см. ниже).
+- `117` — удаление мёртвого контура: джобы `workspace_context_rebuild`, cron jobid 7,
+  `trg_context_invalidate_*` + `context_invalidate()`, тип из CHECK, UNIQUE-индекс,
+  поля `workspace_context_cache` + `context_stale`. Ручной `workspace_context` НЕ тронут.
+- `119` — **закрытие дыры в доступе** (см. ниже).
+
+**Дыра, которую я же создал и закрыл:** Supabase выдаёт EXECUTE на новые функции через
+ALTER DEFAULT PRIVILEGES — мой `REVOKE ... FROM PUBLIC` в 114 был перебит, и
+`anon`/`authenticated` получили EXECUTE. Утечки не было только случайно:
+`authenticated` падал на «permission denied for table task_relations». Стоило бы
+кто-то выдать SELECT — RPC отдала бы оперативный контекст **чужого** workspace любому
+аутентифицированному (проверки membership внутри функции нет). Миграция 119 жёстко
+ограничила EXECUTE ролью `service_role`; проверено: anon=false, authenticated=false,
+service_role=true.
+
+**Найденное расхождение (НЕ чинил, задокументировал в 116):** в кодовой базе ДВЕ
+семантики перегрузки — view `overloaded_workers` (порог `flow_config.overload_threshold`,
+default 6, `>`) против `buildFlowMetrics` + UI (шкала F-01 0–3, `>=3`). Выбрал вторую:
+именно её рендерит UI, иначе LLM называла бы перегруженным того, кого видно как «ok».
+Унификация — отдельная задача.
+
+**Код:** `src/lib/ai/operationalContext.ts` (новый, заменил `workspaceContextCache.ts`),
+`prompts.ts` (блок `operationalContextBlock`), `parseAndPrepare.ts`,
+`supabase/functions/enrich-task/index.ts` (`buildOperationalContextBlock`),
+MCP `getWorkspaceSettings` — 2 поля убраны из контракта.
+`supabase/functions/rebuild-workspace-context/` удалена; `enrich-task` задеплоен **v11**.
+`types/supabase.ts` дополнен вручную (файл UTF-16LE + CRLF — редактор его портит,
+правил через PowerShell с сохранением кодировки).
+
+**Тесты:** `tests/lib/ai/operationalContext.test.ts` (9) заменил
+`tests/api/ai/workspaceContextCache.test.ts` (4). **309 passed (было 305)**, type-check 0,
+lint 0 errors / 20 warnings (без изменений). TEST-CACHE-01 (7 подзадач) снята — тестировать
+нечего; её подзадача .7 проверяла «graceful degradation при cache=null», что было
+**постоянным состоянием прода** — тест прошёл бы, ничего не проверив.
+
+**Бэклог:** удалено 62 сироты из 110 `duplicate_check` (задачи удалены). Осталось 48
+по живым задачам — **не трогал**: сама дедупликация рабочая (`find_duplicate_tasks`
+существует и корректна), отсутствует только воркер. Это отдельное решение.
+
+**TASKS.md:** 47 открытых / 162 закрытых (было 51/158). F03-12 и F03-17 помечены
+отменёнными с указанием, чем заменены — чтобы история не выглядела как «не сделано».
+
+---
+
+## Сверка TASKS.md ↔ live-реальность (2026-09-25) ✅
+
+**Зачем:** задача владельца — закрыть дрейф `TASKS.md` перед выбором следующей фичи.
+Проверяла не по коду, а по **live-БД через Supabase MCP** (триггеры, CHECK-констрейнты,
+очередь, кэш) и по `list_edge_functions` — прошлая «сверка» 2026-09-19 смотрела только
+на исходники и потому ошиблась на DB-20.
+
+**Главное: DB-20 закрыть было нельзя — под ним нашлось три живых бага.**
+- Триггеров `trg_schedule_calendar_reminder` / `trg_cancel_calendar_reminder` на
+  `calendar_events` в проде **нет** (есть только `updated_at` и `validate_calendar_times`).
+  Функция `schedule` есть, `cancel` — **отсутствует как функция**. Напоминания не
+  планируются никогда, `calendar-reminder` читает пустую очередь. → переименовано в **DB-20b**.
+- CHECK `enrichment_queue.status` = `(pending, processing, done, failed)` — **без
+  `'cancelled'`**, а обе функции делают `SET status='cancelled'`. Навешивание триггера
+  «как есть» уронило бы повторный INSERT на constraint. Нужен ALTER CHECK (Master §6.19
+  вообще велит DELETE, а не UPDATE — расхождение в дизайне, не только в SQL).
+- Payload: функция пишет `{profile_id, event_id}`, а `calendar-reminder/index.ts:27–31`
+  и `types/calendar.ts:55–59` ждут `{workspace_id, event_id, target_worker_id}`.
+
+**Второе: два типа `enrichment_queue` не имеют потребителя вообще.**
+`enrich-task/index.ts:434` берёт только `.eq('type','card')`. Для `duplicate_check`
+(сверка sql_anomalies §5.3) и `workspace_context_rebuild` обработчика нет **ни в одной**
+Edge Function. В очереди **114 pending старше суток**: 110 `duplicate_check`
+(oldest 2026-08-16) + 4 `workspace_context_rebuild` (oldest 2026-08-22).
+Следствия: дедупликация задач не работает; `workspace_context_cache` = **NULL во всех 4
+workspace**, `context_stale=true` — F-03/F-04 работают без оперативного контекста.
+Индексы дедупликации не помогают — они лишь удерживают бесконечный бэклог.
+→ новые задачи **F03-16** (воркер) и **F03-17** (деплой + pg_net-вызов).
+
+**Третье: F03-12 была помечена `[x]`, хотя конвейер не работал ни разу.** Исходник
+`rebuild-workspace-context/index.ts` (14 КБ) написан, но функции **нет в проде**
+(в списке 5: doc-process, enrich-task, calendar-sync, bot-notify, agent-runtime).
+Cron `workspace-context-fallback` (jobid 7) только ставит job в очередь; grep по миграциям
+не нашёл ни одного `http_post` на этот slug. → `[x]` снята, работа переведена в F03-16/17.
+
+**Чисто документационные правки (код не трогала):**
+- **BOT-02** → `[x]`. Резолвер реализован (4 приоритета). Отклонение от `bot_.md` §3
+  (last-used) **осознанное** — в коде комментарий «NO LAST-USED»; переименовала задачу
+  в «4 приоритета», last-used вынесла как продуктовое решение, а не хвост.
+- **CAL-03** → `[x]`. `calendar-sync/index.ts` (27 КБ) **задеплоен** (v25, ACTIVE).
+- **CAL-06** оставлена открытой **намеренно**. Шифрование есть, но через WebCrypto
+  `crypto.subtle` в Edge Function, а не `pgcrypto` в БД, как требует INV-17. Это
+  расхождение с источником истины — галочкой не закрывается, нужен ADR.
+- **AGENT-07** уточнена: отсутствует не только рендер, но и **доставка данных** —
+  `my-data/route.ts:113` делает `select('task_id, story_points')`, поэтому `ai_hint`
+  вообще не доходит до клиента (хотя агент его читает, `provider.ts:197`).
+
+**Нотация:** пробовал `[~]` для «частично» — **не годится**, dev-flow сканирует только
+`- [ ]`, а третья отметка молча выпала бы из подсчёта. F03-12 вернула в `[ ]`.
+
+**Итог файла:** 51 открытая / 158 закрытых (было 55/154), всего 1043 строки.
+**Побочный эффект:** TEST-CACHE-01.7 («graceful degradation при cache=null») описывает
+не деградацию, а **текущее постоянное состояние** прода — отдельный сигнал.
+
+---
+
 ## TASK-PERM: права на запись в задачу (2026-09-25) ✅
 
 **Баг (проверен на live-данных):** `kitamoru` (`9770a9dc-…`, tg 425693173) — member в «Булатове» (`cf9684bf-…`). Все 12 задач там чужие (`created_by` = truebulat, `assigned_to` = NULL), и он мог их все править и удалять.

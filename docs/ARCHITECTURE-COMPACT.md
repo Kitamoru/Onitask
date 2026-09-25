@@ -29,7 +29,7 @@ Master 0.13.4 · ai 0.10.1 · flow 3.6.0 · mcp_contract 0.7.1 · security 0.1.1
 | INV-11 | `workspaces.task_prefix` иммутабелен — `trg_prevent_task_prefix_update` | §6.12 | `#db` |
 | INV-12 | `assignment_history.snapshot_attention_risk` — только через `trg_record_assignment_snapshot` | §6.14 | `#db` |
 | INV-13 | `task_relations.workspace_id` — явно при каждом INSERT, авторезолюция запрещена | §6.16 | `#db` `#mcp` |
-| INV-14 | `workspace_context` (Admin-only, ручной) ≠ `workspace_context_cache` (system-only, derived) — никогда не пересекаются | §6.4 comment, A-12 | `#ai` |
+| INV-14 | `workspace_context` (Admin-only, ручной) никогда не пишется системой | §6.4 comment, A-12 | `#ai` |
 | INV-15 | `data_sharing_level='full'` — только Admin/Owner, RLS-enforced | §6.4 CHECK + RLS | `#db` |
 | INV-16 | `/api/init` — find-or-create только, без автообновления `display_name`/`avatar_url` | §6.17, dev_setup §7.1 | `#auth` |
 
@@ -104,7 +104,7 @@ workers (
 
 ## 5. Полная схема БД (высокоуровнево)
 
-**Идентичность / tenancy:** `workspaces`, `workspace_settings` (jsonb-конфиги — `workspace_context` и `workspace_context_cache` это **поля** этой таблицы, не отдельные сущности), `workspace_task_counters`, `profiles`, `workers`, `invite_links`
+**Идентичность / tenancy:** `workspaces`, `workspace_settings` (jsonb-конфиги; `workspace_context` — **поле** этой таблицы, не отдельная сущность), `workspace_task_counters`, `profiles`, `workers`, `invite_links`
 
 **Задачи:** `tasks`, `tracker.columns`, `sprints`, `task_column_history`, `task_relations` (+ RPC `get_task_subgraph`)
 
@@ -142,7 +142,10 @@ workers (
 
 > ⚠️ **CL-01 (2026-09-03):** поле `agent_duty_playbook` (и протокол Duty Mode long-poll) удалено из системы — duty-контур заменён на `ops_lease` + Realtime broadcast (Arch 0.9, спеки 12–14). Упоминание ниже — легаси.
 
-`enable_cognitive_budget` · `story_points_config` · `velocity_window_days` · `flow_config` (`stuck_threshold_hours`, `overload_threshold`, `wip_alert_multiplier`) · `realtime_subscription_level` · `workspace_context` (Admin, ≤800 симв) · `workspace_context_cache` (system, ≤500 симв) · `context_stale` · `standup_config` · `doc_kb_config` · `f04_config` · `quota_config` · `agent_duty_playbook` (Admin-overrides протокола Duty Mode per уровень: `{observer, tasks, full}`) · `data_sharing_level` (`minimal`/`standard`/`full`) · `mcp_api_keys` (allowed_tools per key, `{}` = legacy all)
+`enable_cognitive_budget` · `story_points_config` · `velocity_window_days` · `flow_config` (`stuck_threshold_hours`, `overload_threshold`, `wip_alert_multiplier`) · `realtime_subscription_level` · `workspace_context` (Admin, ≤800 симв) · `standup_config` · `doc_kb_config` · `f04_config` · `quota_config` · `agent_duty_playbook` (Admin-overrides протокола Duty Mode per уровень: `{observer, tasks, full}`) · `data_sharing_level` (`minimal`/`standard`/`full`) · `mcp_api_keys` (allowed_tools per key, `{}` = legacy all)
+
+> **Удалено 2026-09-25 (F03-16):** `workspace_context_cache` (LLM-кэш) и `context_stale`.
+> Оперативный контекст считается по требованию — `get_workspace_operational_context()`.
 
 ---
 

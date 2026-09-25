@@ -215,7 +215,7 @@ SQL-реализация — см. [onitask_sql_anomalies_.md §3](onitask_sql_a
 Снапшот для модели:
 - до 100 активных задач, сортировка по `updated_at DESC`
 - до 20 последних `agent_events` за час
-- `workspace_context_cache` (v3.6.0) — оперативный снапшот workspace (спринт, перегрузка, блокировки)
+- оперативный контекст workspace — спринт, перегрузка, блокеры (`get_workspace_operational_context`, Master §6.4a; v0.14.4)
 
 Примеры инсайтов:
 - «Два агента взяли смежные задачи — возможен конфликт»
@@ -365,7 +365,7 @@ full_id = ${workspace_prefix}-${task_number}
 | Operator Queue | Instant (SQL) | `pending_escalations` VIEW |
 | Blocker Chain (Task Sheet) | Instant (SQL JOIN) | `get_task_subgraph` RPC (Master §6.16) |
 | Cascade Unblock toast | Realtime (event-driven) | `trg_cascade_unblock` (Master §6.16) |
-| AI Flow Summary | Async (Cold Path) · NeuralDeep | F-03 + `workspace_context_cache` |
+| AI Flow Summary | Async (Cold Path) · NeuralDeep | F-03 + `get_workspace_operational_context` |
 | AI Alerts | Edge (60с кэш) | F-03 |
 | Workspace Manager | Edge (60–300с кэш) | `/api/workspaces/summary` |
 

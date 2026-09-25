@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Supabase Edge Function: enrich_task
  *
  * F-03 Card Enrichment Pipeline (onitask_ai_.md §2).
@@ -13,7 +13,7 @@
  * A-1: Vercel не участвует (Async Cold Path)
  * A-6: один вызов модели на задачу (без fallback chain)
  * INV-05: workspace_id передаётся явно
- * INV-14: workspace_context vs workspace_context_cache строго разделены
+ * INV-14: workspace_context (Admin, manual) никогда не пишется системой
  *
  * Behavior:
  * - Fetches pending card jobs from enrichment_queue
@@ -60,7 +60,6 @@ interface TaskRow {
 
 interface WorkspaceSettings {
   workspace_context: string | null;
-  workspace_context_cache: string | null;
   data_sharing_level: string | null;
   story_points_config: {
     enabled?: boolean;
@@ -120,6 +119,58 @@ const DATA_UUID = crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase
 
 function wrapData(label: string, content: string): string {
   return `<data-${DATA_UUID}-${label}>\n${content}\n</data-${DATA_UUID}-${label}>`;
+}
+
+/**
+ * Operational context block for the F-03 prompt.
+ *
+ * Replaces the LLM-generated `workspace_context_cache` (F03-16, migrations 114/115).
+ * The cache was never deployed and was NULL in every workspace; the LLM was being
+ * used as a JSON compressor for data that already lives in the database.
+ * Now computed deterministically in SQL via `get_workspace_operational_context`.
+ *
+ * No cache, no cron, no staleness flag — the data is read at enrichment time.
+ * `sharingLevel === 'minimal'` suppresses the block entirely: it contains
+ * participant display names (INV-15).
+ *
+ * Failure is non-fatal: on RPC error we omit the block and let enrichment
+ * proceed (A-6 — no fallback chain, UX must not block).
+ */
+async function buildOperationalContextBlock(
+  supabase: any,
+  workspaceId: string,
+  sharingLevel: string,
+): Promise<string> {
+  if (sharingLevel === 'minimal') return '';
+
+  try {
+    const { data, error } = await supabase.rpc('get_workspace_operational_context', {
+      p_workspace_id: workspaceId,
+    });
+
+    if (error || !data) {
+      console.error('enrich-task: operational context RPC failed', error);
+      return '';
+    }
+
+    // Nothing worth telling the model about (empty workspace / no activity).
+    const isEmpty =
+      !data.sprint &&
+      (data.overloaded_workers?.length ?? 0) === 0 &&
+      (data.escalations ?? 0) === 0 &&
+      (data.blockers ?? 0) === 0;
+    if (isEmpty) return '';
+
+    return wrapData(
+      'operational-context',
+      `ОПЕРАТИВНЫЙ КОНТЕКСТ (актуально на момент обогащения):\n${JSON.stringify(data)}\n\n` +
+        `Используй для оценки срочности, перегрузки и sprint capacity. ` +
+        `Приоритет выше чем у КОНТЕКСТ КОМАНДЫ при противоречии.`,
+    );
+  } catch (err) {
+    console.error('enrich-task: operational context unexpected error', err);
+    return '';
+  }
 }
 
 /**
@@ -475,7 +526,7 @@ serve(async (req: Request) => {
     // ── 4. Load workspace settings ──────────────────────────
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
-      .select('workspace_context, workspace_context_cache, data_sharing_level, story_points_config')
+      .select('workspace_context, data_sharing_level, story_points_config')
       .eq('workspace_id', task.workspace_id)
       .single() as { data: WorkspaceSettings | null; error: unknown };
 
@@ -548,13 +599,11 @@ serve(async (req: Request) => {
         `и декомпозиции. Не выходи за рамки управления задачами.`
       : `КОНТЕКСТ КОМАНДЫ: не указан. Опирайся только на текст задачи.`;
 
-    // INV-14: workspace_context_cache передаётся только если sharingLevel !== 'minimal'
-    const workspaceContextCacheBlock = (settings?.workspace_context_cache && sharingLevel !== 'minimal')
-      ? `ОПЕРАТИВНЫЙ КОНТЕКСТ (актуально на момент обогащения):\n` +
-        `${JSON.stringify(settings.workspace_context_cache)}\n\n` +
-        `Используй для оценки срочности, перегрузки и sprint capacity. ` +
-        `Приоритет выше чем у КОНТЕКСТ КОМАНДЫ при противоречии.`
-      : '';
+    // Оперативный контекст: детерминированный расчёт в SQL (F03-16, миграция 114/115).
+    // Заменяет LLM-кэш workspace_context_cache, который никогда не был задеплоен.
+    // Guard по sharingLevel сохранён: контекст содержит display_name участников,
+    // поэтому при 'minimal' наружу не уходит (INV-15 / CTX-гигиена).
+    const operationalContextBlock = await buildOperationalContextBlock(supabase, task.workspace_id, sharingLevel);
 
     const structuralContextBlock = rag.structural
       ? `СТРУКТУРНЫЕ ЗАВИСИМОСТИ ЗАДАЧИ (из графа relations):\n${rag.structural}\n\n` +
@@ -586,7 +635,7 @@ serve(async (req: Request) => {
 
 ${workspaceContextBlock}
 
-${workspaceContextCacheBlock}
+${operationalContextBlock}
 
 ${structuralContextBlock}
 

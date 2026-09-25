@@ -1,9 +1,14 @@
-/**
+﻿/**
  * F-04 Parse Prompt builder.
  *
  * Based on: onitask_ai_.md §3.4 (Parse Prompt for Groq llama-3.3-70b-versatile)
  * Security: JSON.stringify() for all dynamic strings (product_vision §8.4)
  */
+
+import {
+  isOperationalContextEmpty,
+  type OperationalContext,
+} from './operationalContext';
 
 interface WorkerInfo {
   id: string;
@@ -12,7 +17,7 @@ interface WorkerInfo {
 
 interface SettingsInfo {
   workspace_context: string | null;
-  workspace_context_cache: string | null;
+  operational_context: OperationalContext | null;
   data_sharing_level: string;
 }
 
@@ -36,11 +41,15 @@ export function buildParsePrompt(
       `Не выходи за рамки управления задачами.`
     : '';
 
-  // workspace_context_cache — operational snapshot (sprint, load, blockers)
-  // 'minimal': cache contains display_name → don't send to provider
-  const workspaceContextCacheBlock =
-    settings.workspace_context_cache && sharingLevel !== 'minimal'
-      ? `ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ:\n${JSON.stringify(settings.workspace_context_cache)}\n` +
+  // Оперативный контекст (спринт, перегрузка, эскалации, блокеры) — считается
+  // в SQL по требованию, миграция 114/115 (F03-16). Заменяет LLM-кэш
+  // workspace_context_cache, который не был задеплоен и всегда был NULL.
+  // 'minimal': контекст содержит display_name участников — наружу не отправляем.
+  const operationalContextBlock =
+    settings.operational_context &&
+    sharingLevel !== 'minimal' &&
+    !isOperationalContextEmpty(settings.operational_context)
+      ? `ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ:\n${JSON.stringify(settings.operational_context)}\n` +
         `Используй для уточнения assignee и priority если явно не указаны в запросе пользователя.`
       : '';
 
@@ -58,7 +67,7 @@ Today: ${new Date().toISOString().split('T')[0]}.
 
 <context>
 ${workspaceContextBlock}
-${workspaceContextCacheBlock}
+${operationalContextBlock}
 ${teamBlock}
 </context>
 

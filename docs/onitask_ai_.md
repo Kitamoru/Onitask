@@ -121,7 +121,7 @@ const mode = job.payload.mode ?? 'standard';
 // v0.10.0: добавлен data_sharing_level (Master §6.4, INV-15)
 const { data: settings } = await supabase
   .from('workspace_settings')
-  .select('workspace_context, workspace_context_cache, story_points_config, enable_cognitive_budget, doc_kb_config, data_sharing_level')
+  .select('workspace_context, story_points_config, enable_cognitive_budget, doc_kb_config, data_sharing_level')
   .eq('workspace_id', task.workspace_id)
   .single();
 
@@ -332,8 +332,7 @@ if (mode === 'standard' && sharingLevel !== 'minimal') {
 // Реализация: передавать { response_format: { type: 'json_object' } } в API-запрос.
 
 // workspace_context — ручной текст Admin (INV-14, неизменяем системой)
-// workspace_context_cache — derived cache второго уровня (A-12, §2.9)
-// Оба передаются через JSON.stringify() — базовая защита от инъекций (product_vision §8.4).
+// Передаётся через JSON.stringify() — базовая защита от инъекций (product_vision §8.4).
 // Дополнительно: данные оборачиваются UUID-тегами wrapData() из §2.2.
 const workspaceContextBlock = settings?.workspace_context
   ? `КОНТЕКСТ КОМАНДЫ И ПРОЕКТА:\n${JSON.stringify(settings.workspace_context)}\n\n` +
@@ -341,16 +340,12 @@ const workspaceContextBlock = settings?.workspace_context
     `и декомпозиции. Не выходи за рамки управления задачами.`
   : `КОНТЕКСТ КОМАНДЫ: не указан. Опирайся только на текст задачи.`;
 
-// workspace_context_cache — оперативный снапшот (спринт, блокировки, перегруженные).
-// NULL если кэш ещё не собран (новый workspace) или context_stale=true и rebuild в очереди.
-// 'minimal': кэш содержит display_name участников — не передаём провайдеру (sharingLevel guard).
-// При NULL или minimal — деградированный режим без оперативного контекста (не блокирует enrichment).
-const workspaceContextCacheBlock = (settings?.workspace_context_cache && sharingLevel !== 'minimal')
-  ? `ОПЕРАТИВНЫЙ КОНТЕКСТ (актуально на момент обогащения):\n` +
-    `${JSON.stringify(settings.workspace_context_cache)}\n\n` +
-    `Используй для оценки срочности, перегрузки и sprint capacity. ` +
-    `Приоритет выше чем у КОНТЕКСТ КОМАНДЫ при противоречии.`
-  : '';
+// Оперативный контекст (спринт, перегрузка, эскалации, блокеры) — §2.9.
+// Считается в SQL по требованию: get_workspace_operational_context(). Не кэш.
+// Содержит display_name участников → при 'minimal' наружу не уходит (sharingLevel guard).
+// Здесь data — настоящий объект из jsonb, поэтому JSON.stringify() корректен.
+// Ошибка RPC не блокирует обогащение: возвращается '' (A-6).
+const operationalContextBlock = await buildOperationalContextBlock(supabase, task.workspace_id, sharingLevel);
 
 // Структурный контекст из task_relations (шаг 1.5).
 // Формируется только при mode=standard и непустом subgraph.
@@ -394,7 +389,7 @@ const systemPrompt = `
 
 ${workspaceContextBlock}
 
-${workspaceContextCacheBlock}
+${operationalContextBlock}
 
 ${structuralContextBlock}
 
@@ -466,7 +461,7 @@ ${JSON.stringify(relatedWithHistory)}
 > 2. UUID-теги `wrapData()` — per-request разделители, неизвестные атакующему (§2.2)
 > 3. JSON mode (`response_format: { type: 'json_object' }`) — модель не выходит за схему
 >
-> При `workspace_context = null` и `workspace_context_cache = null` (или `sharingLevel='minimal'`)
+> При `workspace_context = null` и отсутствии оперативного контекста (или `sharingLevel='minimal'`)
 > промпт работает в degraded режиме без блоков контекста. Качество не нулевое — task content достаточен.
 
 ### 2.4 Двухконтурный парсинг оценок
@@ -519,7 +514,7 @@ suggested_tags:   string[]
 - `related_tasks`: top-5 из pgvector (cosine ≥ 0.75) + `avg_completion_days` из `assignment_history`
 - `subgraph`: рёбра `task_relations` глубиной 2 (только при mode=standard, только если непустые)
 - `workspace_context`: ручной текст Admin
-- `workspace_context_cache`: derived cache оперативного состояния workspace
+- оперативный контекст: `get_workspace_operational_context()` — спринт, перегруженные, эскалации, блокеры (§2.9)
 
 Шкала `cognitive_weight` — структурные критерии (домен-нейтральные, см. полное описание ниже).
 
@@ -652,146 +647,65 @@ try {
 }
 ```
 
-### 2.9 Workspace Context Rebuild Pipeline (v0.9.0)
+### 2.9 Оперативный контекст workspace (v0.14.4)
 
-**Цель:** автоматическое поддержание `workspace_context_cache` — derived cache второго уровня (A-12, INV-14).
-Работает полностью в фоне, невидим для пользователя.
+**Цель:** дать F-03 и F-04 срез состояния команды в момент вызова — спринт, перегрузка,
+эскалации, блокеры — без action со стороны пользователя и без промежуточного хранения.
 
-**Speed Tier:** Async Cold Path — NeuralDeep Hub · GPT-OSS-120B через enrichment_queue
+**Speed Tier:** Instant Tier. Чистый SQL, **без LLM**. Одна функция:
 
-**Триггеры инвалидации** (устанавливают `context_stale = true` через `trg_context_invalidate`, Master §6.16):
-- `tasks.needs_human = true` (эскалация)
-- `tasks.handoff_to IS NOT NULL` (handoff)
-- `tasks.priority = 'critical'` (критичная задача)
-- `sprints.status → 'active'` (спринт начался)
-- `sprints.status → 'completed'` (спринт завершён)
-
-**Дедупликация:** UNIQUE-индекс `idx_enrichment_queue_dedup_context_rebuild` гарантирует
-один pending rebuild на workspace (ON CONFLICT DO NOTHING в триггере). Hourly cron-fallback
-в Master §9 как страховка при пропущенных событиях.
-
-**Edge Function** (`supabase/functions/rebuild-workspace-context/index.ts`):
-
-```typescript
-export default async function handler(req: Request) {
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
-
-  // Взять задание из очереди (воркер, FOR UPDATE SKIP LOCKED)
-  const { data: job } = await supabase
-    .from('enrichment_queue')
-    .select('*')
-    .eq('type', 'workspace_context_rebuild')
-    .eq('status', 'pending')
-    .lte('scheduled_at', new Date().toISOString())
-    .order('scheduled_at', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (!job) return new Response('no_jobs', { status: 200 });
-
-  const workspaceId = job.payload.workspace_id;
-
-  // Пометить как processing
-  await supabase.from('enrichment_queue')
-    .update({ status: 'processing', locked_at: new Date().toISOString() })
-    .eq('id', job.id);
-
-  try {
-    // Собрать данные для компрессии (без LLM)
-    const [tasksRes, workersRes, sprintRes, escalationsRes, blockedRes] = await Promise.all([
-      supabase.from('tasks').select('title, column, priority, assigned_to, deadline_urgency')
-        .eq('workspace_id', workspaceId)
-        .in('column', ['in_progress', 'review', 'backlog'])
-        .order('priority', { ascending: false })
-        .limit(20),
-      supabase.from('workers').select('display_name, type')
-        .eq('workspace_id', workspaceId)
-        .eq('is_active', true),
-      supabase.from('sprints').select('name, start_date, end_date, capacity, status')
-        .eq('workspace_id', workspaceId)
-        .eq('status', 'active')
-        .single(),
-      supabase.from('tasks').select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspaceId)
-        .eq('needs_human', true)
-        .neq('column', 'done'),
-      supabase.from('tasks').select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspaceId)
-        .eq('is_blocked', true)
-        .neq('column', 'done')
-    ]);
-
-    // Компрессия через NeuralDeep GPT-OSS-120B (один вызов, ≤ 500 символов в ответе)
-    const snapshotData = JSON.stringify({
-      activeSprint:  sprintRes.data ?? null,
-      topTasks:      tasksRes.data?.slice(0, 10) ?? [],
-      workers:       workersRes.data ?? [],
-      escalations:   escalationsRes.count ?? 0,
-      blockedTasks:  blockedRes.count ?? 0
-    });
-
-    const compressionPrompt = `
-Сожми данные о состоянии команды в ≤ 500 символов на русском.
-Включи: активный спринт (если есть), топ приоритетные задачи, 
-количество эскалаций и заблокированных задач, перегруженных участников.
-Не добавляй выводов и рекомендаций — только факты текущего состояния.
-Формат: плотный нарратив без markdown.
-
-ДАННЫЕ:
-${snapshotData}
-`.trim();
-
-    const response = await fetch('https://api.neuraldeep.ru/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.NEURALDEEP_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model:       'gpt-oss-120b',
-        messages:    [{ role: 'user', content: compressionPrompt }],
-        max_tokens:  200,  // ≈ 500 символов
-        temperature: 0.1   // детерминированность важнее разнообразия
-      })
-    });
-
-    const cache = (await response.json()).choices?.[0]?.message?.content?.trim() ?? '';
-
-    // Обновить кэш и сбросить stale флаг (INV-14: workspace_context не трогаем)
-    await supabase.from('workspace_settings')
-      .update({
-        workspace_context_cache: cache.slice(0, 500), // hard limit
-        context_stale:           false
-      })
-      .eq('workspace_id', workspaceId);
-
-    // Пометить задание как done
-    await supabase.from('enrichment_queue')
-      .update({ status: 'done', processed_at: new Date().toISOString() })
-      .eq('id', job.id);
-
-  } catch (err) {
-    // При ошибке: пометить failed, context_stale остаётся true
-    // Hourly cron-fallback (Master §9) создаст новое задание
-    await supabase.from('enrichment_queue')
-      .update({ status: 'failed', processed_at: new Date().toISOString() })
-      .eq('id', job.id);
-  }
-
-  return new Response('OK', { status: 200 });
-}
+```sql
+SELECT public.get_workspace_operational_context('<workspace_id>');
+-- RETURNS jsonb: { sprint, overloaded_workers[], escalations, blockers, active_tasks }
 ```
 
-> **INV-14:** функция обновляет ТОЛЬКО `workspace_context_cache` и `context_stale`.
-> Поле `workspace_context` (ручной текст Admin) никогда не затрагивается.
+Полный контракт (состав полей, SECURITY INVOKER, ACL) — [Architecture Master §6.4a](onitask_Architecture_Master_.md).
 
-> **Latency:** rebuild занимает 3–8 секунд (один LLM-вызов Cold Path).
-> Пока rebuild идёт — F-03 и F-04 используют предыдущий кэш (может быть stale).
-> Stale кэш лучше отсутствия кэша: оперативность чуть снижена, качество промпта не деградирует.
+**Потребители:**
+- `supabase/functions/enrich-task/index.ts` → `buildOperationalContextBlock()`
+- `src/lib/ai/operationalContext.ts` → `getOperationalContext()` (F-04, draft-фаза)
 
+**Guard по `data_sharing_level`:** при `'minimal'` блок не формируется — он содержит
+`display_name` участников (INV-15). При `'standard'`/`'full'` передаётся полностью.
+
+**Отказоустойчивость:** ошибка RPC не пробрасывается — блок опускается, обогащение
+продолжается (A-6: UX не блокируется). Пустой контекст тоже не раздувает промпт
+(`isOperationalContextEmpty`).
+
+**Доступ:** `EXECUTE` только у `service_role`. Проверки membership внутри функции нет —
+роли клиента (`anon`/`authenticated`) получать доступ не должны (миграция 119).
+
+---
+
+#### История: что было до v0.14.4 и почему удалено
+
+В v0.9.0–v0.14.3 оперативный контекст хранился в поле `workspace_context_cache`:
+Edge Function `rebuild-workspace-context` собирала 5 источников и **сжимала их LLM-вызовом**
+(NeuralDeep GPT-OSS-120B, ≤200 токенов, hard limit 500 символов) в JSON-строку.
+Актуализация шла через `enrichment_queue` (`type='workspace_context_rebuild'`) при 5 типах
+событий (`trg_context_invalidate`) плюс cron-страховка `workspace-context-fallback`.
+
+**Удалено 2026-09-25 решением владельца (F03-16).** Причины:
+
+1. **Конвейер не отработал ни разу.** Edge Function не была задеплоена; вызывающей
+   стороны (pg_net/cron → функция) не существовало; `workspace_context_cache` был
+   `NULL` во всех 4 workspace.
+2. **LLM как JSON-компрессор.** Данные уже лежали в БД; сжатие их моделью — платная
+   недетерминированная потеря информации. Хуже: компрессия переписывала точные
+   названия задач и `display_name` в нарратив, тогда как потребитель использовал блок
+   для assignee matching по точным именам — требования к формату не совпадали.
+3. **Дублирование.** Те же величины (`buildFlowMetrics`) уже считались детерминированно
+   для `/api/flow/metrics` при каждом запросе.
+4. **Лишний класс отказов.** Кэш требовал staleness-флага, триггеров инвалидации,
+   дедупликации джоб и гонки за устареванием — на 15 активных задачах это не окупалось.
+5. **Дефекты, которые тихо портили бы промпт.** Оба RPC (`get_escalation_count`,
+   `get_blocker_count`) не существовали, колонки `sprints.title` в таблице нет — ошибки
+   глотались `try/catch` и игнорированием `error`, так что функция вернула бы `200`
+   с тремя мёртвыми источниками из пяти. Плюс `JSON.stringify()` применялся к `text`-полю,
+   что давало модели экранированную строку вместо JSON.
+
+**Итог:** цель сохранена, способ упрощён. Смысл «дать модели знать о перегрузке
+и спринте» теперь реализован детерминированно и без хранения.
 ---
 
 ## 3. F-04 · Instant Parse Engine
@@ -876,12 +790,13 @@ interface ParseResponseV2 {
 
 ```typescript
 // Параллельный fetch настроек и участников — один round-trip
-// v0.9.0: добавлен workspace_context_cache в SELECT
 // v0.10.0: добавлен data_sharing_level в SELECT (Master §6.4, INV-15)
+// v0.14.4: workspace_context_cache убран из SELECT; оперативный контекст
+//   приходит отдельным вызовом get_workspace_operational_context() (§2.9)
 const [settingsRes, workersRes] = await Promise.all([
   supabase
     .from('workspace_settings')
-    .select('workspace_context, workspace_context_cache, f04_config, enable_cognitive_budget, story_points_config, data_sharing_level')
+    .select('workspace_context, f04_config, enable_cognitive_budget, story_points_config, data_sharing_level')
     .eq('workspace_id', workspaceId)
     .single(),
   supabase
@@ -920,14 +835,16 @@ const workspaceContextBlock = settings?.workspace_context
     `Не выходи за рамки управления задачами.`
   : '';
 
-// workspace_context_cache — оперативный снапшот (спринт, загрузка, блокировки)
-// v0.9.0: передаётся в F-04 для точного assignee и приоритета.
-// Например: «Иван перегружен, лучше назначить на Андрея» — LLM учтёт при матчинге.
-// v0.10.0: 'minimal' — кэш содержит display_name участников → не передаём провайдеру.
+// Оперативный контекст (спринт, перегрузка, эскалации, блокеры) — §2.9.
+// Считается в SQL по требованию, не кэш. Точные display_name НЕ переписываются
+// нарративом, поэтому блог пригоден для assignee matching.
+// 'minimal': содержит display_name участников → не передаём провайдеру.
 // При 'minimal' F-04 опирается только на teamBlock (display_names для assignee matching)
 // и workspace_context (домен без оперативных данных). Assignee matching работает.
-const workspaceContextCacheBlock = (settings?.workspace_context_cache && sharingLevel !== 'minimal')
-  ? `ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ:\n${JSON.stringify(settings.workspace_context_cache)}\n` +
+const operationalContextBlock = (
+  operationalContext && sharingLevel !== 'minimal' && !isOperationalContextEmpty(operationalContext)
+)
+  ? `ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ:\n${JSON.stringify(operationalContext)}\n` +
     `Используй для уточнения assignee и priority если явно не указаны в запросе пользователя.`
   : '';
 
@@ -945,7 +862,7 @@ Today: ${new Date().toISOString().split('T')[0]}.
 
 <context>
 ${workspaceContextBlock}
-${workspaceContextCacheBlock}
+${operationalContextBlock}
 ${teamBlock}
 </context>
 
@@ -1477,6 +1394,17 @@ if (succeeded.length > 0) {
 **v0.8.1 — июнь 2026**
 - §1: scope-блок «Разграничение с A-11»
 
+**v0.14.4 — сентябрь 2026** (F03-16)
+- **§2.9 переписан:** «Workspace Context Rebuild Pipeline» → «Оперативный контекст workspace».
+  LLM-кэш `workspace_context_cache` заменён на детерминированный расчёт по требованию
+  `get_workspace_operational_context()` (Instant Tier, без хранения, без staleness).
+  Удалены: Edge Function `rebuild-workspace-context`, cron `workspace-context-fallback`,
+  поле `context_stale`, триггеры `trg_context_invalidate_*`, тип `workspace_context_rebuild`.
+- §2.1, §2.3, §3.4: из `SELECT` настроек убран `workspace_context_cache`;
+  `workspaceContextCacheBlock` переименован в `operationalContextBlock` и читает RPC.
+- §2.9 дополнен разделом «История» с причинами удаления (в т.ч. три несуществующих
+  RPC/колонки, которые глотались `try/catch`, и двойное JSON-экранирование).
+
 **v0.8.0 — июнь 2026**
 - §3.4 правило 9: rewritten_description структура «нарратив + список»
 - §2.3 правило 6: anchor-примеры ai_hint
@@ -1485,4 +1413,4 @@ if (succeeded.length > 0) {
 
 ---
 
-*onitask · AI Contract · v0.11.0 · август 2026*
+*onitask · AI Contract · v0.14.4 · сентябрь 2026*

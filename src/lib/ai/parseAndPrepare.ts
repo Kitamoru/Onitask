@@ -29,7 +29,7 @@ import {
   type ProviderUsed,
   type FallbackStep,
 } from './parseWithFallback';
-import { getWorkspaceContextCache } from './workspaceContextCache';
+import { getOperationalContext, type OperationalContext } from './operationalContext';
 
 type AppSupabase = SupabaseClient<Database>;
 
@@ -57,8 +57,12 @@ export interface DraftContext {
     workspace_context: string | null;
     data_sharing_level: string;
   } | null;
-  /** workspace_context_cache (draft-фаза) */
-  cacheResult: { workspace_context_cache: string | null } | null;
+  /**
+   * Оперативный контекст workspace, посчитанный в SQL (F03-16, миграция 114/115).
+   * Заменяет LLM-кэш `workspace_context_cache` — тот не был задеплоен и был
+   * NULL во всех workspace. null = RPC не дал данных, блок в промпте опускается.
+   */
+  operationalContext: OperationalContext | null;
   workers: { id: string; display_name: string }[];
 }
 
@@ -81,7 +85,7 @@ export async function prepareTaskDraft(
     input,
     {
       workspace_context: ctx.settings?.workspace_context ?? null,
-      workspace_context_cache: ctx.cacheResult?.workspace_context_cache ?? null,
+      operational_context: ctx.operationalContext,
       data_sharing_level: ctx.settings?.data_sharing_level ?? 'standard',
     },
     ctx.workers ?? [],
@@ -138,7 +142,9 @@ export async function loadDraftContext(
   }
 
   const config = parseF04Config(settings?.f04_config);
-  const cacheResult = await getWorkspaceContextCache(workspaceId);
+  const sharingLevel = settings?.data_sharing_level ?? 'standard';
+  const operationalContext =
+    sharingLevel === 'minimal' ? null : await getOperationalContext(supabase, workspaceId);
 
   const { data: workers, error: workersError } = await supabase
     .from('workers')
@@ -152,7 +158,7 @@ export async function loadDraftContext(
   return {
     config,
     settings,
-    cacheResult,
+    operationalContext,
     workers: workers ?? [],
   };
 }

@@ -48,11 +48,14 @@ INV-12  assignment_history.snapshot_attention_risk фиксируется иск
 INV-13  task_relations.workspace_id передаётся явно при каждом INSERT.
         Автоматическая резолюция через tasks.workspace_id запрещена —
         аналогично enrichment_queue (v0.7.4, INV применён в v0.12.0).
-INV-14  workspace_context (text, Admin-only) и workspace_context_cache (text, system-only)
-        — строго разные поля с разными владельцами.
-        workspace_context_cache НИКОГДА не записывается пользователем напрямую.
-        workspace_context НИКОГДА не перезаписывается системой автоматически.
+INV-14  workspace_context (text, Admin-only, ручной) НИКОГДА не пишется системой.
+        Пользовательский ввод имеет одного владельца — человека; никакой Edge
+        Function, Route Handler, триггер или фоновая задача не могут его перезаписать.
         Нарушение — архитектурная ошибка: пользователь теряет ручной контекст.
+        (Переформулировано 2026-09-25, F03-16: до этого инвариант разделял ручной
+        workspace_context и derived-кеш workspace_context_cache. Кэш удалён —
+        разделять больше нечего, но сама гарантия «система не пишет в ручной
+        контекст» остаётся в силе и проверяема.)
 INV-15  data_sharing_level = 'full' устанавливается только Admin/Owner осознанно.
         Смысл: уровень 'full' снимает порог similarity для Doc RAG — весь контент всех
         workspace-документов потенциально попадает в промпт LLM-провайдера (NeuralDeep Hub)
@@ -179,6 +182,12 @@ Worker Load — 60 сек, AI Alerts — 60 сек.
 Пересобирается асинхронно через `enrichment_queue` при 5 типах событий (§6.16).
 Невидим для пользователя. Улучшает качество F-03 и F-04 без action со стороны пользователя.
 Ручное поле `workspace_context` остаётся нетронутым (INV-14).
+
+> **Устарело 2026-09-25 (F03-16).** LLM-кэш `workspace_context_cache` и вся обвязка
+> (Edge Function, cron, `context_stale`, триггеры инвалидации) удалены: конвейер не
+> был задеплоен ни разу, кэш был `NULL` во всех workspace. На смену пришло
+> `get_workspace_operational_context()` (§6.4a) — детерминированный расчёт по
+> требованию, без хранения и без staleness. Ручной `workspace_context` не тронут.
 
 **Путь миграции к entity_registry:** при появлении cross-entity traversal (документы → задачи
 как структурные рёбра, workers → задачи через граф) `task_relations` мигрирует в
@@ -530,18 +539,16 @@ CREATE TABLE workspace_settings (
                                 CHECK (realtime_subscription_level IN ('own_tasks','all')),
   workspace_context             text    CHECK (char_length(workspace_context) <= 800),
   -- Ручной текст Admin/Owner: команда, домен, стек, специфика задач.
-  -- Редактируется ТОЛЬКО Admin/Owner. НЕ перезаписывается системой (INV-14).
-  workspace_context_cache       text    CHECK (char_length(workspace_context_cache) <= 500),
-  -- Derived cache второго уровня (A-12, INV-14).
-  -- Auto-generated: текущий спринт, топ блокировки, перегруженные, эскалации, тренд velocity.
-  -- Генерируется NeuralDeep GPT-OSS-120B через enrichment_queue (type='workspace_context_rebuild').
-  -- NULL = кэш ещё не собран (новый workspace или первый rebuild ещё в очереди).
-  -- НЕ редактируется пользователем. НЕ показывается в UI.
-  -- F-03 и F-04 получают ОБА поля: workspace_context + workspace_context_cache.
-  context_stale                 boolean DEFAULT false,
-  -- true = произошло значимое событие, кэш устарел, rebuild в очереди (trg_context_invalidate).
-  -- Сбрасывается в false после успешного rebuild Edge Function'ом.
-  -- Возвращается в MCP get_workspace_settings (context_stale: boolean).
+  -- Редактируется ТОЛЬКО Admin/Owner. НИКОГДА не пишется системой (INV-14).
+  --
+  -- Ранее здесь были ещё два поля (v0.12.0..v0.14.3):
+  --   workspace_context_cache text  — derived cache, наполнялся LLM через Edge Function
+  --                                   `rebuild-workspace-context` (enrichment_queue
+  --                                   type='workspace_context_rebuild');
+  --   context_stale           boolean — флаг устаревания кэша, ставился trg_context_invalidate.
+  -- Оба УДАЛЕНЫ 2026-09-25 (миграции 117/119): конвейер не был задеплоен ни разу,
+  -- кэш был NULL во всех workspace. Оперативный контекст теперь считается по требованию
+  -- функцией get_workspace_operational_context() — см. §6.4a. LLM-компрессия убрана.
   standup_config                jsonb   DEFAULT '{
     "enabled":  false,
     "time_utc": "07:00",
@@ -577,13 +584,14 @@ CREATE TABLE workspace_settings (
   -- 'minimal' — минимум данных для жизнеспособного результата:
   --   В промпт уходят: task.title/description, workspace_context, complexity/priority/tags,
   --   subgraph task_relations, top-3 related tasks (без avg_completion_days),
-  --   workspace_context_cache только агрегаты без display_name (например: «2 эскалации, 1 перегружен»),
+  --   оперативный контекст workspace агрегатами без display_name (например:
+  --   «2 эскалации, 1 перегружен»),
   --   worker display_names для F-04 assignee matching (функциональная необходимость).
   --   НЕ передаются: doc_chunks content, agent_memory summaries, assignment_history,
   --   avg_completion_days. Качество: хорошее (ai_hint доменный, SP без исторической калибровки).
   --
   -- 'standard' (DEFAULT) — максимум без ограничений, текущее поведение системы:
-  --   Всё из 'minimal' плюс: workspace_context_cache полный (с display_names как usernames),
+  --   Всё из 'minimal' плюс: оперативный контекст полный (с display_names как usernames),
   --   top-5 related tasks + avg_completion_days, assignment_history (псевдонимизированные UUID,
   --   GDPR Recital 26), doc_chunks content (similarity >= 0.68), agent_memory summaries.
   --   DPA не требуется. Backward compatible — все существующие workspace на этом уровне.
@@ -615,9 +623,7 @@ CREATE TABLE workspace_settings (
 ALTER TABLE workspace_settings
   ADD COLUMN workspace_context text
     CHECK (char_length(workspace_context) <= 800),
-  ADD COLUMN workspace_context_cache text
-    CHECK (char_length(workspace_context_cache) <= 500),
-  ADD COLUMN context_stale boolean DEFAULT false,
+  -- workspace_context_cache и context_stale больше не добавляются (удалены 2026-09-25)
   ADD COLUMN standup_config jsonb DEFAULT '{
     "enabled":  false,
     "time_utc": "07:00",
@@ -644,6 +650,56 @@ ALTER TABLE workspace_settings
   ADD COLUMN mcp_api_keys jsonb DEFAULT '{}';
 ```
 
+> Поля `workspace_context_cache` и `context_stale` из этого ALTER-блока **удалены**
+> 2026-09-25 (миграции 117/119). См. §6.4a — оперативный контекст теперь считается
+> по требованию, а не хранится.
+
+### 6.4a Оперативный контекст workspace — `get_workspace_operational_context()`
+
+**Назначение:** дать F-03 (enrich-task) и F-04 (parse-task) срез состояния команды
+прямо в момент вызова — детерминированно и без промежуточного хранения.
+
+**Заменяет** (удалено 2026-09-25): LLM-кэш `workspace_context_cache` + Edge Function
+`rebuild-workspace-context` + cron `workspace-context-fallback` + поле `context_stale` +
+`trg_context_invalidate`. Конвейер не был задеплоен ни разу, кэш был `NULL` во всех
+workspace. LLM использовался как JSON-компрессор для данных, уже лежащих в БД, —
+платная недетерминированная потеря информации.
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_workspace_operational_context(p_workspace_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$ ... $$;
+```
+
+| Ключ | Источник |
+|---|---|
+| `sprint` | `sprints` где `status='active'` (колонка `name`, **не** `title`) |
+| `overloaded_workers` | когнитивная нагрузка ≥ 3 (A-9 / F-01): `in_progress` → `assigned_to`, `review` → `reviewer_id`, `is_inbox` исключён |
+| `escalations` | счётчик `pending_escalations` |
+| `blockers` | счётчик `orphan_blockers` (фантомные блокировки) |
+| `active_tasks` | счётчик `in_progress` + `review`, не inbox |
+
+**Доступ:** `EXECUTE` только у `service_role` (миграция 119). Все вызовы идут из Edge
+Function и Route Handler'ов через service_role. Проверки membership внутри функции
+**нет** — выдавать EXECUTE ролям `anon`/`authenticated` нельзя, иначе любой
+аутентифицированный получил бы контекст чужого workspace. `SECURITY INVOKER` + RLS на
+`tasks`/`workers` отсекает прямые клиентские вызовы.
+
+**Известное расхождение (не унифицировано):** порог перегрузки здесь — шкала F-01
+(`>= 3`), согласованно с `buildFlowMetrics` и UI (PersonCard «Перегружен»). Вьюха
+`overloaded_workers` использует другой порог — `flow_config.overload_threshold`
+(default 6, сравнение `>`). Выбран вариант F-01, чтобы подсказка модели не
+противоречила видимой картине в UI. Унификация — отдельная задача.
+
+**Потребители:** `supabase/functions/enrich-task/index.ts` (`buildOperationalContextBlock`),
+`src/lib/ai/operationalContext.ts` + `src/lib/ai/prompts.ts` (F-04).
+При `data_sharing_level='minimal'` блок не формируется: он содержит `display_name`
+участников (INV-15).
+
 ### 6.5 Очередь Cold Path
 
 ```sql
@@ -656,8 +712,7 @@ CREATE TABLE enrichment_queue (
                  'flow_alert',
                  'bot_notify',
                  'duplicate_check',
-                 'doc_process',
-                 'workspace_context_rebuild'   -- добавлен в v0.12.0
+                 'doc_process'
                )),
   payload      jsonb,
   status       text DEFAULT 'pending'
@@ -682,29 +737,35 @@ CREATE UNIQUE INDEX idx_enrichment_queue_dedup_duplicate
   ON enrichment_queue (workspace_id, (payload->>'task_id'))
   WHERE type = 'duplicate_check' AND status = 'pending';
 
--- UNIQUE-индекс дедупликации workspace_context_rebuild (один pending на workspace):
--- Добавлен в v0.12.0
-CREATE UNIQUE INDEX idx_enrichment_queue_dedup_context_rebuild
-  ON enrichment_queue (workspace_id)
-  WHERE type = 'workspace_context_rebuild' AND status = 'pending';
+-- Тип 'workspace_context_rebuild' и его UNIQUE-индекс
+-- idx_enrichment_queue_dedup_context_rebuild УДАЛЕНЫ 2026-09-25 (миграция 117)
+-- вместе с LLM-кэшем workspace_context_cache.
 ```
 
-**Приоритет в воркере `enrichment_queue` (обновлён в v0.12.0):**
+> **Изменение 2026-09-25 (F03-16):** `workspace_context_rebuild` больше не
+> генерируется и не обрабатывается. Оперативный контекст для F-03/F-04 читается
+> по требованию через `get_workspace_operational_context()` — см. §6.4a.
+
+**Приоритет в воркере `enrichment_queue` (v0.12.0; упрощён 2026-09-25):**
 
 ```sql
 SELECT * FROM enrichment_queue
 WHERE status = 'pending' AND scheduled_at <= NOW()
 ORDER BY
   CASE
-    WHEN type = 'card'                       THEN 1  -- обогащение задач: наивысший приоритет
-    WHEN type = 'workspace_context_rebuild'  THEN 2  -- контекст команды: выше doc_process
-    WHEN type = 'doc_process'                THEN 3  -- чанкование документов: фоновый
-    ELSE 4
+    WHEN type = 'card'        THEN 1  -- обогащение задач: единственный обрабатываемый тип
+    WHEN type = 'doc_process'  THEN 2  -- чанкование документов: фоновый
+    ELSE 3
   END,
   created_at ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 ```
+
+> На 2026-09-25 воркер `enrich-task` обрабатывает **только** `type='card'`.
+> Типы `duplicate_check` (детект дублей) и `doc_process` имеют постановщиков
+> (`trg_enqueue_duplicate_check`, DOC-01) и SQL-функции, но потребителя в
+> `enrich-task` не имеют — это отдельные незакрытые задачи, не регрессия.
 
 ### 6.6 Обогащение задач (F-03 output)
 
@@ -1316,74 +1377,19 @@ EXECUTE FUNCTION cascade_unblock();
 
 
 -- ═══════════════════════════════════════════════════════
--- ТРИГГЕР: trg_context_invalidate
--- 5 типов событий → context_stale = true + rebuild в enrichment_queue.
--- Использует ON CONFLICT DO NOTHING + UNIQUE-индекс §6.5
--- для дедупликации (один pending rebuild на workspace).
+-- УДАЛЕНО 2026-09-25 (миграция 117), F03-16:
+--   функция context_invalidate() + триггеры
+--   trg_context_invalidate_tasks / trg_context_invalidate_sprints.
+--
+-- Они ставили context_stale = true и клали job
+-- 'workspace_context_rebuild' в enrichment_queue. Обе цели исчезли вместе с
+-- LLM-кэшем workspace_context_cache: оперативный контекст теперь читается по
+-- требованию (get_workspace_operational_context, §6.4a), поэтому инвалидировать
+-- нечего — staleness как класс проблем устранена.
+--
+-- Триггеры перечисляли 5 событий: tasks.needs_human=true, tasks.handoff_to,
+-- tasks.priority='critical', sprints.status in ('active','completed').
 -- ═══════════════════════════════════════════════════════
-
-CREATE OR REPLACE FUNCTION context_invalidate()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Событие на tasks: эскалация, handoff, критичная задача
-  IF TG_TABLE_NAME = 'tasks' THEN
-    IF (NEW.needs_human IS DISTINCT FROM OLD.needs_human AND NEW.needs_human = true)
-    OR (NEW.handoff_to  IS DISTINCT FROM OLD.handoff_to  AND NEW.handoff_to IS NOT NULL)
-    OR (NEW.priority    IS DISTINCT FROM OLD.priority    AND NEW.priority = 'critical')
-    THEN
-      UPDATE workspace_settings
-        SET context_stale = true
-        WHERE workspace_id = NEW.workspace_id;
-
-      INSERT INTO enrichment_queue (
-        workspace_id, type, payload, status, scheduled_at
-      ) VALUES (
-        NEW.workspace_id,
-        'workspace_context_rebuild',
-        jsonb_build_object('workspace_id', NEW.workspace_id),
-        'pending',
-        NOW()
-      )
-      ON CONFLICT DO NOTHING;
-      -- ON CONFLICT опирается на idx_enrichment_queue_dedup_context_rebuild (§6.5)
-    END IF;
-  END IF;
-
-  -- Событие на sprints: переход в active или completed
-  IF TG_TABLE_NAME = 'sprints' THEN
-    IF NEW.status IS DISTINCT FROM OLD.status
-       AND NEW.status IN ('active', 'completed')
-    THEN
-      UPDATE workspace_settings
-        SET context_stale = true
-        WHERE workspace_id = NEW.workspace_id;
-
-      INSERT INTO enrichment_queue (
-        workspace_id, type, payload, status, scheduled_at
-      ) VALUES (
-        NEW.workspace_id,
-        'workspace_context_rebuild',
-        jsonb_build_object('workspace_id', NEW.workspace_id),
-        'pending',
-        NOW()
-      )
-      ON CONFLICT DO NOTHING;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_context_invalidate_tasks
-AFTER UPDATE OF needs_human, handoff_to, priority ON tasks
-FOR EACH ROW
-EXECUTE FUNCTION context_invalidate();
-
-CREATE TRIGGER trg_context_invalidate_sprints
-AFTER UPDATE OF status ON sprints
-FOR EACH ROW
-EXECUTE FUNCTION context_invalidate();
 
 
 -- ═══════════════════════════════════════════════════════
@@ -1575,16 +1581,17 @@ Rate limit: 1 алерт на событие / 2 часа / workspace. Реал�
 
 Единственный источник правды для всех модулей. Читается в:
 - **F-01** — `enable_cognitive_budget`, `story_points_config`
-- **F-03** — `story_points_config`, `workspace_context`, `workspace_context_cache`,
-            `doc_kb_config`, `data_sharing_level`
-- **F-04** — `workspace_context`, `workspace_context_cache`, `f04_config`,
-            `enable_cognitive_budget`, `story_points_config`, `data_sharing_level`
+- **F-03** — `story_points_config`, `workspace_context`, `doc_kb_config`, `data_sharing_level`
+            (оперативный контекст — отдельной RPC `get_workspace_operational_context`, §6.4a)
+- **F-04** — `workspace_context`, `f04_config`, `enable_cognitive_budget`, `story_points_config`,
+            `data_sharing_level` (оперативный контекст — той же RPC)
 - **Flow Board** — `flow_config`
 - **Team Tab** — `velocity_window_days`
 - **Realtime** — `realtime_subscription_level`
 - **Bot** — `standup_config`
-- **MCP** — `workspace_context`, `workspace_context_cache`, `context_stale`,
-           `mcp_api_keys`, `data_sharing_level` (через `get_workspace_settings`)
+- **MCP** — `workspace_context`, `mcp_api_keys`, `data_sharing_level`
+           (через `get_workspace_settings`; поля `workspace_context_cache` и
+            `context_stale` удалены из ответа 2026-09-25)
 - **Doc KB** — `doc_kb_config`
 - **Atomic Quota RPC** — `quota_config`
 - **Security Layer** — `mcp_api_keys` (allowed_tools enforcement, rate limiting),
@@ -1745,21 +1752,24 @@ SELECT cron.schedule('standup-dispatcher', '* * * * *', $$
   )$$);
 
 -- Workspace Context fallback: каждый час (добавлен в v0.12.0)
--- Основной путь — триггеры trg_context_invalidate. Cron — страховка при пропущенных событиях.
-SELECT cron.schedule('workspace-context-fallback', '0 * * * *', $$
-  INSERT INTO enrichment_queue (
-    workspace_id, type, payload, status, scheduled_at
-  )
-  SELECT
-    workspace_id,
-    'workspace_context_rebuild',
-    jsonb_build_object('workspace_id', workspace_id),
-    'pending',
-    NOW()
-  FROM workspace_settings
-  WHERE context_stale = true
-  ON CONFLICT DO NOTHING;
-$$);
+-- УДАЛЁН 2026-09-25 (миграция 117). Клал job 'workspace_context_rebuild'
+-- для всех workspace с context_stale = true, но вызывающей стороны не
+-- существовало: Edge Function rebuild-workspace-context не была задеплоена.
+-- Вместе с кэшем исчез и сам смысл флага. См. §6.4a.
+-- SELECT cron.schedule('workspace-context-fallback', '0 * * * *', $$
+--   INSERT INTO enrichment_queue (
+--     workspace_id, type, payload, status, scheduled_at
+--   )
+--   SELECT
+--     workspace_id,
+--     'workspace_context_rebuild',
+--     jsonb_build_object('workspace_id', workspace_id),
+--     'pending',
+--     NOW()
+--   FROM workspace_settings
+--   WHERE context_stale = true
+--   ON CONFLICT DO NOTHING;
+-- $$);
 
 -- Мониторинг деградации NeuralDeep Cold Path: каждый час (добавлен в v0.13.0)
 -- Реализует Path A аксиомы A-6: fallback-цепочка не вводится, деградация видима через алерт.
@@ -2147,6 +2157,27 @@ onitask_Architecture_Master_.md       ← этот документ (единс�
 ---
 
 ## Changelog (кратко)
+
+**v0.14.4 — сентябрь 2026** (F03-16)
+- **§6.4a (новый):** `get_workspace_operational_context(uuid) RETURNS jsonb` — оперативный
+  контекст workspace для F-03/F-04, считается по требованию, детерминированно.
+  `STABLE`, `SET search_path=''`, `SECURITY INVOKER`; `EXECUTE` только у `service_role`.
+- **§6.4:** удалены поля `workspace_context_cache` (text, 500) и `context_stale` (boolean).
+  Ручной `workspace_context` (Admin, 800) сохранён без изменений.
+- **§6.5:** из `CHECK (type IN ...)` удалён тип `'workspace_context_rebuild'`;
+  удалён UNIQUE-индекс `idx_enrichment_queue_dedup_context_rebuild`;
+  упрощён `ORDER BY` приоритетов воркера.
+- **§6.16:** удалены `context_invalidate()` и триггеры `trg_context_invalidate_tasks`,
+  `trg_context_invalidate_sprints`.
+- **§9:** удалён cron `workspace-context-fallback`.
+- **§1:** INV-14 переформулирован — «`workspace_context` никогда не пишется системой»
+  (вместо разделения ручного поля и derived-кэша).
+- **Причина:** Edge Function `rebuild-workspace-context` не была задеплоена ни разу,
+  кэш был `NULL` во всех workspace. LLM использовался как JSON-компрессор для данных,
+  уже лежащих в БД, — платная недетерминированная потеря информации; кэш дублировал
+  `buildFlowMetrics`. Решение владельца: удалить контур, считать контекст в SQL.
+- Миграции: 114 (функция), 115 (fix декартова произведения в расчёте нагрузки),
+  116 (документирование семантики порога), 117 (удаление контура), 119 (ACL: только service_role).
 
 **v0.13.4 — июнь 2026**
 

@@ -111,7 +111,7 @@ describe('POST /api/ai/create-task — two-phase commit (parsed present)', () =>
         low_clarity_tag_threshold: 0.55,
       },
       settings: null,
-      cacheResult: null,
+      operationalContext: null,
       workers: [{ id: 'w1', display_name: 'Vadim' }],
     });
   });

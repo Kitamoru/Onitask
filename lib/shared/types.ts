@@ -70,8 +70,6 @@ export interface WorkspaceSettingsPayload {
   flow_config: Record<string, unknown>;
   realtime_subscription_level: 'own_tasks' | 'all';
   workspace_context: string | null;
-  workspace_context_cache: string | null;
-  context_stale: boolean;
   doc_kb_config: Record<string, unknown> | null;
   agent_active_tasks: TaskPreview[] | null;
 }

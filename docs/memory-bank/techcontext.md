@@ -102,7 +102,6 @@ supabase/functions/
 ├── flow-metrics/ # /api/flow/metrics Cold Path
 ├── consolidate/ # LTM Memory Consolidation
 ├── queue-monitor/ # Monitor stuck pending in enrichment_queue
-├── rebuild-workspace-context/ # Workspace Context Rebuild
 └── _shared/
 ├── supabase.ts # createClient for Deno
 ├── neuraldeep.ts # NeuralDeep Hub client

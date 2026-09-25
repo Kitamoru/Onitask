@@ -22,7 +22,7 @@ export async function getWorkspaceSettings(
   const { data: settings, error } = await supabase
     .from('workspace_settings')
     .select(
-      'enable_cognitive_budget, story_points_config, velocity_window_days, flow_config, realtime_subscription_level, workspace_context, workspace_context_cache, context_stale, doc_kb_config'
+      'enable_cognitive_budget, story_points_config, velocity_window_days, flow_config, realtime_subscription_level, workspace_context, doc_kb_config'
     )
     .eq('workspace_id', workspaceId)
     .maybeSingle();
@@ -81,9 +81,6 @@ export async function getWorkspaceSettings(
         (settings.realtime_subscription_level as 'own_tasks' | 'all') ??
         'own_tasks',
       workspace_context: (settings.workspace_context as string | null) ?? null,
-      workspace_context_cache:
-        (settings.workspace_context_cache as string | null) ?? null,
-      context_stale: (settings.context_stale as boolean) ?? false,
       doc_kb_config:
         (settings.doc_kb_config as Record<string, unknown> | null) ?? null,
       agent_active_tasks: agentActiveTasks,

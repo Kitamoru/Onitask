@@ -68,7 +68,7 @@
 | Создать таблицу task_relations (DDL) | ✅ 6.16 | — |
 | Реализовать get_task_subgraph RPC | ✅ 6.16 | ✅ mcp_contract §4 (get_task_context) |
 | Реализовать trg_cascade_unblock | ✅ 6.16 | ✅ sql_anomalies §5 (контракт триггеров) |
-| Реализовать trg_context_invalidate | ✅ 6.16 | ✅ ai §2.9 (Workspace Context Rebuild) |
+| ~~Реализовать trg_context_invalidate~~ | ❌ удалено 6.16 | Не нужно: контекст считается по требованию (ai §2.9) |
 | Построить Workspace Context Rebuild Pipeline | ✅ 6.4, 6.5, A-12 | ✅ ai §2.9 |
 | Реализовать Blocker Chain в Task Sheet | ✅ 6.16 | ✅ flow §22 — блок «Связанные задачи», только `blocks` |
 | Реализовать Cascade Unblock toast | ✅ 6.16 (trg_cascade_unblock) | ✅ flow §13 |
@@ -89,11 +89,11 @@
 | Написать F-03 Edge Function (enrichment) | ✅ 6.5, 6.6, 7.2 | ✅ ai §2 |
 | Реализовать retrieval через get_task_subgraph (структурный граф) | ✅ 6.16, A-12 | ✅ ai §2.2 шаг 1.5 |
 | Реализовать implicit calibration через assignment_history | ✅ 6.14 | ✅ ai §2.2 шаг 4 |
-| Реализовать workspace_context_cache в промпте F-03 | ✅ 6.4, INV-14 | ✅ ai §2.3 |
-| Реализовать workspace_context_cache в промпте F-04 | ✅ 6.4, INV-14 | ✅ ai §3.4 |
+| Оперативный контекст в промпте F-03 | ✅ 6.4a | ✅ ai §2.3 (`get_workspace_operational_context`) |
+| Оперативный контекст в промпте F-04 | ✅ 6.4a | ✅ ai §3.4 (`get_workspace_operational_context`) |
 | Реализовать retry / backoff для enrichment | ✅ 7.3 | ✅ ai §2.6 |
 | Реализовать версионную защиту tasks при enrichment | ✅ 7.2, A-5 | ✅ ai §2.7 |
-| Реализовать Workspace Context Rebuild Pipeline | ✅ 6.4, 6.5, 6.16 | ✅ ai §2.9 |
+| ~~Реализовать Workspace Context Rebuild Pipeline~~ | ❌ заменено 6.4a | ai §2.9 — расчёт по требованию, без кэша и LLM |
 | Реализовать F-04 Intelligent Ingress (голос/текст/рерайт) | ✅ A-1, A-5, 6.1, 6.4 | ✅ ai §3 |
 | Реализовать Gatekeeper (skip/light/standard) | ✅ A-5, INV-08 | ✅ ai §3.5 |
 | Реализовать Correction Sheet (TWA) | — | ✅ ai §3.7 |
@@ -197,9 +197,11 @@
 | Embeddings · F-03 RAG (tasks + docs + LTM) | bge-m3 | NeuralDeep Hub | 60 RPM (общий с Cold Path) |
 | Reranker (post-MVP, task count > 1000) | bge-reranker-v2-m3 | NeuralDeep Hub | — |
 
-> **Важно:** Cold Path, Workspace Context Rebuild и Embeddings делят 60 RPM NeuralDeep.
-> Все три идут через `enrichment_queue` с приоритетами: `card (1)` > `workspace_context_rebuild (2)` > `doc_process (3)`.
+> **Важно:** Cold Path и Embeddings делят 60 RPM NeuralDeep.
+> Они идут через `enrichment_queue` с приоритетами: `card (1)` > `doc_process (2)`.
 > Дросселирование автоматически снижает давление на лимит.
+> (До 2026-09-25 третьим был `workspace_context_rebuild` — LLM-контур оперативного
+> контекста; он удалён вместе с кэшем, F03-16.)
 
 ---
 
@@ -224,6 +226,17 @@
 ---
 
 ## Changelog (актуальный)
+
+**Master v0.14.4 / ai v0.14.4 / mcp_contract v0.8.3 — сентябрь 2026**
+
+*Удаление LLM-кэша оперативного контекста (F03-16):*
+- Master §6.4a (новый): `get_workspace_operational_context(uuid)` — детерминированный
+  расчёт по требованию вместо LLM-кэша; §6.4, §6.5, §6.16, §9, INV-14 обновлены
+- ai §2.9 переписан: «Workspace Context Rebuild Pipeline» → «Оперативный контекст»
+- mcp_contract §4: **breaking** — из `get_workspace_settings` удалены
+  `workspace_context_cache` и `context_stale`
+- Навигационные строки `trg_context_invalidate`, Rebuild Pipeline и промпт-блоков
+  F-03/F-04 переведены на новую схему; RPM-примечание исправлено (было «три пути», стало «два»)
 
 **Master v0.14.0 / bot v0.7.0 / calendar v0.1.0 / INDEX v2.8.0 — июль 2026**
 

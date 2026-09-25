@@ -50,60 +50,25 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] DB-14 `orphan_blockers` + `handoff_chain` вьюхи + `trg_handoff_chain_alert` + `trg_escalation_alert` + `trg_resolution_notify` + `trg_update_assignment_outcome` + `enqueue_duplicate_check` + `send_alert_immediate()` #db !med @blocked_by:DB-13,INV-13
       sql_anomalies §3.10–3.11, §5, §5.6. `trg_update_assignment_outcome` — обновляет `assignment_history.outcome_status` при завершении задачи (A-11).
       Резервный cron-канал для handoff_chain (§5.4) — требует верификации при настройке DB-16.
-- [ ] INV-14 Контрактная проверка: ни один Route Handler не пишет в `workspace_context_cache` напрямую (только Edge Function rebuild) #db !low @deferred
-       Master §6.4 comment, A-12, INV-14. **Deferred** — code-level invariant, проверяется при появлении Route Handler'ов на Stage 6.
-- [ ] TEST-CACHE-01 Интеграционное тестирование workspace_context_cache: end-to-end сценарий #test !high @blocked_by:F03-12,F04-11
-       ai_.md §2.9, INV-14, A-12. **Цель:** убедиться что кеш собирается, инвалидируется и используется в AI-промптах.
-       
-       **Подзадачи:**
-       
-       TEST-CACHE-01.1 Unit-тест `getWorkspaceContextCache()`: успешное чтение, null при отсутствии, null при DB error, graceful handling null cache #test !med
-              Файл: `tests/api/ai/workspaceContextCache.test.ts` (уже есть базовые тесты, добавить edge cases).
-              Проверки: возвращает корректный WorkspaceContextCacheResult, context_stale флаг, обработка ошибок.
-       
-       TEST-CACHE-01.2 Интеграционный тест rebuild pipeline: INSERT enrichment_queue → вызов Edge Function → UPDATE workspace_settings #test !high
-              Сценарий:
-              1. Создать workspace + workspace_settings (context_stale=true, cache=null)
-              2. INSERT enrichment_queue (type='workspace_context_rebuild', status='pending')
-              3. Вызвать rebuild-workspace-context Edge Function (mock NeuralDeep)
-              4. Проверить: workspace_context_cache ≤500 символов, context_stale=false, job status='done'
-              5. Валидировать JSON-формат кеша: {"sprint": "...|...", "top_tasks": [...], "overloaded_workers": [...], "escalations": N, "blockers": N}
-       
-       TEST-CACHE-01.3 Тест инвалидации кеша: триггеры устанавливают context_stale=true #test !high
-              Триггеры (Master §6.16):
-              - tasks.needs_human = true → context_stale = true
-              - tasks.handoff_to IS NOT NULL → context_stale = true
-              - tasks.priority = 'critical' → context_stale = true
-              - sprints.status → 'active' → context_stale = true
-              - sprints.status → 'completed' → context_stale = true
-              Проверка: после каждого события в enrichment_queue появляется pending job (type='workspace_context_rebuild').
-       
-       TEST-CACHE-01.4 E2E тест: кеш используется в F-03 (enrich-task) промпте #test !high
-              1. Создать workspace с workspace_context_cache (не null, не minimal sharing level)
-              2. Создать задачу → trigger enrichment_queue
-              3. Вызвать enrich-task Edge Function
-              4. Проверить что промпт содержит блок "ОПЕРАТИВНЫЙ КОНТЕКСТ" с данными из кеша
-              5. Проверить что при sharing_level='minimal' кеш НЕ передаётся в промпт
-       
-       TEST-CACHE-01.5 E2E тест: кеш используется в F-04 (parse-task) промпте #test !high
-              1. Создать workspace с workspace_context_cache
-              2. Вызвать POST /api/ai/parse-task с NL-вводом
-              3. Проверить что промпт содержит "ОПЕРАТИВНОЕ СОСТОЯНИЕ КОМАНДЫ" с кешем
-              4. Проверить что LLM использует кеш для уточнения assignee/priority
-       
-       TEST-CACHE-01.6 Тест лимита 500 символов: LLM возвращает >500 → обрезается #test !med
-              Mock NeuralDeep возвращает строку 600 символов → проверить что в workspace_settings записывается 500 символов.
-       
-       TEST-CACHE-01.7 Тест graceful degradation: cache=null или stale → AI работает без кеша #test !med
-              1. workspace_context_cache = null → F-03/F-04 работают, промпт без оперативного контекста
-              2. context_stale = true, rebuild в очереди → используется старый кеш (не блокирует enrichment)
-       
-       **DoD:**
-       - Все 7 подзадач завершены
-       - Покрытие: getWorkspaceContextCache (unit), rebuild pipeline (integration), invalidation triggers (DB), F-03/F-04 usage (E2E)
-       - Валидация: `npm run test -- tests/api/ai/workspaceContextCache.test.ts` + новые интеграционные тесты
-       - Кеш ≤500 символов, JSON-формат валиден
-       - INV-14 не нарушается (ни один Route Handler не пишет в кеш)
+ - [x] INV-14 ~~Контрактная проверка: ни один Route Handler не пишет в workspace_context_cache~~ ОТМЕНЕНА 2026-09-25 ✅
+       Master §6.4 comment, A-12, INV-14. **Предмет проверки удалён** вместе с кэшем
+       (F03-16): писать было некуда, поле `workspace_context_cache` больше не существует.
+       Сама гарантия INV-14 жива и переформулирована в Master §1: «workspace_context
+       (Admin, ручной) никогда не пишется системой». Проверяема корректно — её можно
+       держать как обычный code-review item, без отдельной задачи.
+ - [x] TEST-CACHE-01 ~~Интеграционное тестирование workspace_context_cache~~ ОТМЕНЕНА 2026-09-25 ✅
+       ai_.md §2.9, INV-14, A-12. **Все 7 подзадач сняты вместе с фичей** (F03-16):
+       тестировать нечего — кэша, Edge Function, триггеров инвалидации, cron и
+       поля `context_stale` больше не существует.
+       Замечу про подзадачу .7: она формулировала «graceful degradation при
+       cache=null» как редкий edge case, но это было **постоянное состояние прода**
+       (кэш = NULL во всех 4 workspace) — тест прошёл бы, не проверив ничего.
+       **Замена:** `tests/lib/ai/operationalContext.test.ts` (9 тестов) — unit-покрытие
+       `getOperationalContext` (успех, ошибка RPC без throw, не-объектный ответ,
+       дефолты при мусорных полях) и `isOperationalContextEmpty` (пустой контекст
+       не раздувает промпт). Плюс правки в `parseAndPrepare.test.ts`, `createTask.test.ts`.
+       Интеграционные сценарии (E2E промпта) появятся вместе с TEST-CACHE-01.4/.5
+       в новой формулировке, если владелец сочтёт их нужными.
 - [x] DB-15 `invite_links` #db !low @blocked_by:DB-01
       Master §6.18.
 - [x] INV-15 RLS-политики (`002_rls.sql`, 21 таблица) + ограничение записи `data_sharing_level` только Admin/Owner + `get_my_workspace_ids()` #db !high @blocked_by:DB-01,DB-02,DB-03,DB-04,DB-05,DB-06,DB-07,DB-08,DB-09,DB-10,DB-11,DB-12,DB-13,DB-14,DB-15,INV-04,INV-10,INV-11,INV-12,INV-13
@@ -120,10 +85,25 @@ format is deliberately compact so that agents can load the file quickly.
         security §4.2. `dangerouslySetInnerHTML` запрещён для LLM-полей (`ai_hint`, `rewritten_title`, `rewritten_description`, `suggested_action`, `handoff_notes`). Реализовано через `"react/no-danger": "off"` в `eslint.config.mjs`.
 - [x] US-03 AI-декомпозиция задачи — 🟢 Закрыто (сознательно не входит в MVP)
        Маршрут `POST /api/tasks/[id]/decompose` и `DecomposePanel.tsx` существовали в дереве проекта, но функционального контракта в `ai_.md` не было. Вопрос закрыт документом `onitask_batch_creation__3.md` v1.0.0 (Locked Final) — «Semantic Boundary Engine & Batch Task Creation». Oni-Engine Pipeline (`POST /api/ai/parse`) меняется не факт наличия контракта, а факт его применимости к MVP: контракт написан и заблокирован для изменений, просто эта функциональность сознательно выведена за пределы текущего цикла разработки. Документ не связан из `MOC-onitask.md` и не входит в обычную цепочку чтения. Если и когда Batch Creation войдёт в объём разработки — она появится в `TASKS.md` явными новыми задачами, а не будет выведена задним числом.
-- [ ] DB-20 `calendar_events` + `calendar_connections` + триггеры `trg_schedule_calendar_reminder`, `trg_cancel_calendar_reminder`, `trg_validate_calendar_times` #db !med @blocked_by:DB-01
-      Master §6.19. Миграция `009_calendar_events.sql` (календарный модуль) — **частична**: содержит таблицы + RLS + `trg_validate_calendar_times`,
-      но **отсутствуют** `trg_schedule_calendar_reminder` и `trg_cancel_calendar_reminder` (планирование/отмена напоминаний через enrichment_queue).
-      INV-17 шифрование токенов — см. CAL-06.
+- [ ] DB-20b Навесить триггеры календарных напоминаний: `trg_schedule_calendar_reminder`, `trg_cancel_calendar_reminder` #db !med @blocked_by:DB-01
+      Master §6.19, calendar_.md §5. **Сверка 2026-09-25 (live SQL):** функции в БД ЕСТЬ,
+      триггеров на `calendar_events` НЕТ — установлены только `trg_calendar_events_updated_at`
+      и `trg_validate_calendar_times`. Напоминания не планируются **никогда**: ни INSERT, ни
+      UPDATE события не порождают job. CAL-04 (`calendar-reminder`) читает пустую очередь.
+      Блокеры, найденные попутно (чинить в этой же задаче):
+      1. `enrichment_queue.status` CHECK = `('pending','processing','done','failed')` —
+         **без `'cancelled'`**, а обе функции делают `SET status='cancelled'` → любой
+         повторный INSERT события упал бы на constraint. Нужен `ALTER ... DROP/ADD CHECK`
+         с добавлением `'cancelled'`, либо DELETE вместо UPDATE (Master §6.19 велит DELETE).
+      2. `trg_cancel_calendar_reminder` в БД отсутствует как функция (в `025` — есть,
+         `027` переписывает только `schedule`; в live применена лишь `027`-версия `schedule`).
+      3. Расхождение с Master §6.19: функция пишет payload `{profile_id, event_id}`,
+         а `calendar-reminder/index.ts:27–31` и `types/calendar.ts:55–59` ждут
+         `{workspace_id, event_id, target_worker_id}`. Выбрать одну схему и синхронизировать.
+      Триггер `schedule` по Master — `AFTER INSERT OR UPDATE OF start_at, reminder_minutes_before`
+      (в `025` был `BEFORE INSERT OR UPDATE` — расхождение).
+      Валидация: synthetic INSERT события → job в `enrichment_queue`; повторный INSERT →
+      один job (не два); DELETE события → job снят; CHECK-констрейнт пропускает `'cancelled'`.
 - [x] DB-21 `profiles.last_active_workspace_id` (активная доска пользователя) #db !low @blocked_by:DB-01
       Master §6.20. Миграция `016_move_last_active_workspace_to_profiles.sql`. Перенесено из `workspace_settings.last_active_board_id`.
       API: `POST /api/workspaces/active-workspace`, `last_active_workspace_id` в InitResponse.
@@ -306,9 +286,43 @@ format is deliberately compact so that agents can load the file quickly.
       ai_.md §2.7, Master §7.2.
  - [x] F03-10 Retry backoff (0s → 60s → 5min → 30min, `markFailed` после 4-й) #ai !med @blocked_by:F03-09
       ai_.md §2.8, F03-10. Реализовано: `supabase/functions/enrich-task/index.ts` — `getBackoffDelay()`, `applyJitter()` (±10%), обновлённый `handleFailure()` с логированием и корректным расчётом `scheduled_at`.
+ - [x] F03-16 Оперативный контекст для F-03/F-04: детерминированный расчёт в SQL вместо LLM-кэша #ai !high ✅
+      ai_.md §2.9, Master §6.4/§6.5, A-12. **Закрыто 2026-09-25 решением владельца
+      (вариант b — «мёртвый функционал зачистить»), НЕ постройкой воркера.**
+      Исходная постановка (писать воркер для `duplicate_check` + деплой функции)
+      отменена — оказалось, что чинить нечего: конвейер не отработал ни разу.
+      **Что было мёртвым:** Edge Function `rebuild-workspace-context` написана, но
+      **не задеплоена ни разу**; `workspace_context_cache` = NULL во всех 4 workspace;
+      cron `workspace-context-fallback` ежечасно клеил джобы без потребителя.
+      LLM использовался как JSON-компрессор для данных, уже лежащих в БД, —
+      платная недетерминированная потеря информации. Те же величины уже считаются
+      детерминированно в `buildFlowMetrics` для `/api/flow/metrics`.
+      **Сделано:** миграции 114/115/116/117/119 — SQL-функция
+      `get_workspace_operational_context(uuid) RETURNS jsonb` (sprint, overloaded_workers,
+      escalations, blockers, active_tasks), вызывается по требованию из F-03 и F-04.
+      Нет кэша, нет cron, нет `context_stale`, нет staleness-гонки, нет LLM-вызова.
+      **Удалено:** Edge Function, поля `workspace_context_cache` + `context_stale`,
+      триггеры `trg_context_invalidate_*`, функция `context_invalidate()`, cron jobid 7,
+      тип `workspace_context_rebuild` из CHECK, UNIQUE-индекс дедупликации.
+      **Сохранено:** ручной `workspace_context` (Admin) — не трогал, он живой.
+      Потребители: `enrich-task` (задеплоен v11), `src/lib/ai/operationalContext.ts`,
+      `prompts.ts`, MCP `get_workspace_settings` (2 поля убраны из контракта).
+ - [x] F03-17 ~~Задеплоить Edge Function `rebuild-workspace-context`~~ ОТМЕНЕНА 2026-09-25 ✅
+      ai_.md §2.9, Master §9. **Не требуется:** функция удалена вместе с кэшем
+      (см. F03-16). Контекст теперь считается по требованию SQL-функцией, деплой
+      не нужен. Исходная формулировка «деплой + cron/pg_net-вызов» отменена
+      решением владельца.
  - [ ] F03-11 `EnrichmentBadge.tsx` (pending/done/failed) + `realtimePush` #ui !med @blocked_by:F03-09
- - [x] F03-12 Workspace Context Rebuild Pipeline (Edge Function `rebuild-workspace-context`, 5 источников, компрессия ≤500 симв, соблюдение INV-14) #ai !med @blocked_by:F03-01,INV-13
-      ai_.md §2.9.
+      **Сверка 2026-09-19:** файла `EnrichmentBadge.tsx` в дереве нет. Смежное: `ai_hint`
+      и `anomaly` вообще не выгружаются на клиент — `my-data/route.ts:113` делает
+      `select('task_id, story_points')`. Т.е. работа F-03 видна агентам
+      (`agent-runtime/provider.ts:197`), но не человеку. Частично покрывается AGENT-07.
+ - [x] F03-12 Workspace Context Rebuild Pipeline — ОТМЕНЕНА 2026-09-25, заменена F03-16 ✅
+      ai_.md §2.9. Задача закрывала написание кода конвейера на базе LLM-кэша.
+      Конвейер **не отработал ни разу** (функция не задеплоена, кэш = NULL везде).
+      Решением владельца заменена на детерминированный SQL-расчёт по требованию
+      (F03-16, миграции 114/115/116/117/119). Edge Function, кэш, cron и
+      `context_stale` удалены. Смысл сохранён, способ — упрощён.
  - [x] F03-13 Edge Function `doc_process` (чанкование + embedding + `source_origin` tag) #ai !med @blocked_by:DB-11
       ai_.md §2.2. Реализовано: supabase/functions/doc-process/index.ts.
       Graceful degradation: `docContext=''` при отсутствии данных.
@@ -390,8 +404,12 @@ format is deliberately compact so that agents can load the file quickly.
       `my-data` и `flow-metrics` используют один расчёт; Worker Load больше не содержит hardcoded
       `3.5/5.0`; Worker Sheet получает фактическое окно и скорость. 2 unit-теста velocity.
 - [ ] RISK-06 Поле «Контекст команды» (WorkspaceWizard + Settings, лимит 800 симв) #ui !med @blocked_by:WS-03
-      **Сверка 2026-09-25:** не реализовано — `workspace_context` пишет только Edge Function
-      `rebuild-workspace-context`. Канонический лимит — 800 символов (совпадает с DB CHECK и Master §6.4).
+      **Сверка 2026-09-25:** не реализовано — UI-поля для ручного `workspace_context`
+      нет ни в WorkspaceWizard, ни в Settings. (Прежняя запись утверждала, что поле
+      «пишет только Edge Function `rebuild-workspace-context`» — это было неверно:
+      функция писала в `workspace_context_cache`, а не в ручной `workspace_context`,
+      и с 2026-09-25 удалена вместе с кэшем, миграции 114–119.)
+      Канонический лимит — 800 символов (совпадает с DB CHECK и Master §6.4).
 - [x] RISK-07 Invite FAB + реферальная ссылка (`t.me/onitask_bot?start=ws_CODE`) #ui !med @blocked_by:DB-15
       **Сверка 2026-09-19:** реализовано — `InviteModal.tsx` + FAB (`src/app/flowboard/page.tsx:534,548`), ссылка из `GET/POST /api/workspaces/[id]/invite`. Фактический формат — `https://t.me/onitaskbot/onitask?startapp=<code>` (deep link в TWA), а не `?start=ws_CODE`.
 - [ ] RISK-08 Workspace Manager (вкладка «Доски»): карточки workspace, глобальные алерты, переключение #ui !med @blocked_by:WS-01
@@ -443,8 +461,17 @@ format is deliberately compact so that agents can load the file quickly.
 - [ ] AGENT-06 Pill «🔄 Цепочка ×N» для `handoff_chain` (Phase 1.1 — можно отложить за MVP) #ui !low @blocked_by:AGENT-01
       **Сверка 2026-09-19:** не реализовано (Phase 1.1, по описанию отложено).
 - [ ] AGENT-07 Task Sheet, вкладка «Детали» (`ai_hint`, описание, метаданные, кнопка «→ следующая колонка») #ui !high @blocked_by:AGENT-04
-      **Сверка 2026-09-19:** частично — `ai_hint` приходит в типах (`src/types/flowboard.ts:259`) и в `DataContext.tsx:53`, но в `TaskViewEdit.tsx` не отображается; кнопки «→ следующая колонка» нет.
-      flow_.md §22.
+      **Сверка 2026-09-25 (уточнено):** отсутствует не только рендер, но и **доставка
+      данных**. `my-data/route.ts:113` — `select('task_id, story_points')`, поэтому
+      `ai_hint` / `anomaly` / `enrichment_status` не доходят до клиента вообще;
+      в `TaskViewEdit.tsx` нет ни `✦`-блока, ни кнопки «→ следующая колонка».
+      При этом `ai_hint` **уже используется агентом** (`agent-runtime/provider.ts:197`
+      → `wrapUntrusted('task_ai_hint')`) — платный вызов F-03 работает, но результат
+      видит только машина. Тип `ai_hint: string | null` уже объявлен в
+      `src/types/flowboard.ts:370` (неиспользуемый). Требуется расширить select в
+      `my-data` + вывести блок по контракту `flow_.md` §22.
+      Кнопку показывать только при `canEdit` (иначе read-only задача получит действие,
+      которое сервер отклонит — паттерн TASK-PERM от 2026-09-25).
 - [x] AGENT-08 Task Sheet, вкладка «Комментарии» (фид: `task_comments` + `task_column_history` + `agent_events` через RPC `get_task_feed`; composer → POST `/api/tasks/:id/comments`; live через broadcast `task-comments-<task_id>`; ADR-2026-09-06, миг. 076) #ui !med
       flow_.md §22, Master §6.10.
 - [x] AGENT-09 Route Handler relations (`GET/POST/DELETE`, только `blocks`) #api !med @blocked_by:INV-13
@@ -462,9 +489,16 @@ format is deliberately compact so that agents can load the file quickly.
       **Сверка 2026-09-19:** реализовано — `src/app/api/bot/webhook/route.ts`, проверка `X-Telegram-Bot-Api-Secret-Token` (`route.ts:1901–1907`, `verifyTelegramWebhookSecret`); фактически secret-token, а не HMAC-подпись.
       bot_.md §6.1, product_vision SEC-03. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
       Зависимость исправлена: `INV-10` (workspace_telegram_chats) вместо ошибочной `DB-11`.
-- [ ] BOT-02 Workspace resolution (6 приоритетов, last-used SQL) #bot !high @blocked_by:BOT-01
-      **Сверка 2026-09-19:** частично — `src/lib/bot/workspaceResolver.ts` реализует 4 приоритета (explicit @workspace, linked chat bindings, единственный workspace, несколько → inline-кнопки); приоритеты с last-used (`profiles.last_active_workspace_id`) в коде не найдены.
-      bot_.md §3. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
+- [x] BOT-02 Workspace resolution (4 приоритета) #bot !high @blocked_by:BOT-01
+      **Сверка 2026-09-25:** реализовано — `src/lib/bot/workspaceResolver.ts`
+      (`resolveWorkspace`/`resolveProfileId`), вызывается из `webhook/route.ts:346`.
+      Приоритеты: 1) explicit `@workspace` → 2) linked chat binding → 3) единственный
+      workspace авто-выбор → 4) несколько workspace → null (UI показывает inline-кнопки).
+      **Отклонение от bot_.md §3 — зафиксировано осознанно:** last-used
+      (`profiles.last_active_workspace_id`, DB-21) НЕ используется, в коде комментарий
+      «NO LAST-USED: Мы не запоминаем последнюю доску — каждый раз спрашиваем, если у
+      пользователя несколько досок». Задача формулировала «6 приоритетов, last-used SQL».
+      Если last-used нужен — это отдельное продуктовое решение, а не хвост реализации.
 - [x] BOT-03 `/task` текст+голос, двухфазный ответ (typing+placeholder → editMessageText), duplicate guard (`message_id`) #bot !high @blocked_by:BOT-02,F04-03
       **Сверка 2026-09-19:** реализовано — `src/lib/bot/taskHandler.ts` (`handleTextTask`/`handleVoiceTask`: transcribe → parse → dedup → create → карточка подтверждения, `ephemeralMsgId` + edit); duplicate guard через `dedup_key` (§6.2a), а не `message_id`.
       bot_.md §5.1, §6.2. SEC-06: `BigInt(user.id)` вместо `Number()` для `telegram_id`.
@@ -582,14 +616,27 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] CAL-02 OAuth Flow: `connect/[provider]` + `callback/[provider]` Route Handlers (Yandex only) #infra !high @blocked_by:CAL-01
       calendar_.md §3. Исправлен callback handler: cookies() → cookies, исправлена обработка response. Connect handler верифицирован.
       **Removed:** Outlook provider removed from all files (types, route handlers, Edge Function, UI). Only Yandex CalDAV supported.
-- [ ] CAL-03 Edge Function `calendar-sync` (OAuth token exchange, encrypt/decrypt, refresh, sync событий) #infra !high @blocked_by:CAL-01
-      calendar_.md §4. Файл существует — требуется проверка/доработка до контракта.
+- [x] CAL-03 Edge Function `calendar-sync` (OAuth token exchange, encrypt/decrypt, refresh, sync событий) #infra !high @blocked_by:CAL-01
+      calendar_.md §4. **Сверка 2026-09-25:** `supabase/functions/calendar-sync/index.ts`
+      (27 КБ) реализован и **задеплоен в прод** (version 25, ACTIVE) — MCP
+      `list_edge_functions`. Функция читает `calendar_events`/`calendar_connections`.
+      Остаточная зависимость от CAL-01 (OAuth-креды) влияет только на возможность
+      подключить аккаунт, а не на наличие кода.
 - [x] CAL-04 Edge Function `calendar-reminder` (обработка pending job, резолюция `target_worker_id`, sendMessage) #infra !high @blocked_by:CAL-03
       calendar_.md §5, bot_.md §6.5.1. Файл существует — верифицирован. Добавлена миграция 025 для триггеров планирования напоминаний.
 - [x] CAL-05 UI календаря (страница настроек + виджет, подключение/отключение аккаунтов) #ui !med @blocked_by:CAL-02
       calendar_.md §6. Исправлены stub'ы в `page.tsx`, `CalendarView.tsx`. Создан `CalendarSettingsCard.tsx`, интегрирован в settings page.
-- [ ] CAL-06 INV-17: шифрование OAuth-токенов через pgcrypto AES-256-GCM (ENCRYPTION_KEY) #db !high @blocked_by:CAL-01
+- [ ] CAL-06 INV-17: шифрование OAuth-токенов — привести реализацию к инварианту #db !high @blocked_by:CAL-01
       Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
+      **Сверка 2026-09-25:** шифрование **реализовано**, но не тем механизмом, который
+      требует INV-17: `supabase/functions/calendar-sync/index.ts:80–107` — AES-256-GCM
+      через **WebCrypto `crypto.subtle`** в Edge Function, ключ из env `ENCRYPTION_KEY`
+      (≥32 байта), хранение — `calendar_connections.oauth_tokens_b64 text`.
+      `pgcrypto` в БД **не используется**; в схеме нет ни `pgp_sym_encrypt`, ни функции
+      дешифрования на стороне БД.
+      Требуется ADR (INV-17 в Master сформулирован как pgcrypto — либо инвариант
+      переформулировать под WebCrypto, либо перенести операции в БД). Правкой галочки
+      вопрос не закрывается: это расхождение с источником истины.
 - [x] DUTY-01 Autonomy levels + duty playbook (миграция 049) #mcp #ui !high ✅
       Master §6.4 (`agent_duty_playbook`), §6.19 (`autonomy_level`), mcp_contract v0.8.2.
       Реализовано: миграция `049_duty_mode_autonomy.sql`; `lib/shared/dutyPlaybook.ts`
@@ -924,6 +971,39 @@ format is deliberately compact so that agents can load the file quickly.
       Инфраструктурное плечо проверено (push/sweep → 200, пустые выборки → `processed: 0`).
       Осталось: боевой прогон на реальном ключе (расход ~13.5k prompt-токенов) и проверка
       возврата `ra:fix` → повторный прогон агентом.
+ - [ ] DUP-01 Воркер `duplicate_check`: потребителя нет, детект дублей не работает #ai !med
+       sql_anomalies §5.3, Master §6.5, DB-14. **Выделено 2026-09-25 из F03-16:**
+       при чистке мёртвого контура обнаружено, что тип `duplicate_check` тоже не
+       имеет потребителя — `enrich-task` берёт только `type='card'`.
+       **Инфраструктура рабочая, в отличие от кэша:** `trg_enqueue_duplicate_check`
+       кладёт джобу (с дебаунсом 5с), RPC `find_duplicate_tasks` существует и корректен
+       (pg_trgm, порог 0.7, `column != 'done'`, окно 30 дней) — проверен на 48 задачах.
+       **Что делать (рекомендация владельца от 2026-09-25 — достроить, не удалить):**
+       ценность реальна (двойные задачи у команды), цена теперь нулевая — детект на
+       триграммах, LLM не нужен. Вариант: чистая SQL-функция `process_duplicate_check()`
+       + вызов из cron, без новой Edge Function.
+       **Бэклог:** 48 pending-джоб по живым задачам (oldest 2026-08-19), 62 сироты
+       удалены миграцией 118. Важно: проверка «есть ли у задачи дубли» — это срез на
+       момент сейчас, поэтому старые джобы **бессмысленны** — при запуске воркера
+       переигрывать их нельзя, иначе возможен шквал бесполезных алертов. Удалить
+       перед стартом, воркер нужен только для новых джоб от триггера.
+       Валидация: новый INSERT задачи-дубликата (или близкого названия) → джоба
+       обработана → `bot_notify` с указанием дубликата; rate-limit по §5.1 соблюдён.
+ - [ ] DUP-02 Унификация порога перегрузки: view vs UI (предсуществующее расхождение) #db !med
+       Master §6.4a, sql_anomalies §3.2. **Найдено 2026-09-25 при работе над F03-16.**
+       В кодовой базе две несовместимые семантики:
+       - view `overloaded_workers` (DB-13): порог из `flow_config.overload_threshold`,
+         default **6**, сравнение `total_load > threshold`;
+       - `buildFlowMetrics` + UI (PersonCard «Перегружен», Risk Pulse): шкала F-01 0–3,
+         порог `cognitive_load >= 3`.
+       Сегодня расхождение не видно (все нагрузки малы), но при росте команды UI
+       покажет «Перегружен» тому, кого вьюха перегруженным не считает.
+       `get_workspace_operational_context` выбрана по шкала F-01 — чтобы подсказка
+       модели не спорила с тем, что видит пользователь; задокументировано в миграции 116.
+       **Решение (какую семантику считать канонической) — за владельцем.**
+
+
+
 - [ ] DS-08 Статусы и стоимость в UI: бейдж «Hosted», `usage` из `agent_runs`, лимиты, stop-cran (UC-10) #ui !med
 - [ ] DS-09 MCP-инъекция: read-only ключ коннектора + `mcp_servers` в запросе (INV-18) #ai !med
       Поле `mcp_allowlist` уже хранится и валидируется; осталось чеканить ключ и

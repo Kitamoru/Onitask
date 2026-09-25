@@ -83,7 +83,7 @@ export async function getTaskContext(
     }
   }
 
-  // --- Workspace context (A-12 / INV-14: read-only access to context fields) ------------
+  // --- Workspace context (A-12 / INV-14: read-only, никогда не пишется системой) ---
   let workspaceContext: string | null = null;
   if (includeWorkspaceContext) {
     try {

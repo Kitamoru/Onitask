@@ -163,7 +163,7 @@ Default `'standard'` = текущее поведение системы (backwar
 | workspace_context (Admin) | ✅ | ✅ | ✅ |
 | subgraph task_relations | ✅ | ✅ | ✅ |
 | worker display_names (F-04) | ✅ функц. | ✅ | ✅ |
-| workspace_context_cache | Агрегаты без имён | ✅ полный | ✅ |
+| оперативный контекст (спринт/перегрузка/блокеры) | Агрегаты без имён | ✅ полный | ✅ |
 | related tasks + avg_completion_days | top-3, без avg | ✅ top-5 + avg | ✅ |
 | assignment_history (псевдоним. UUID) | ❌ | ✅ | ✅ |
 | doc_chunks content (sim ≥ 0.68) | ❌ | ✅ | ✅ |
@@ -186,13 +186,15 @@ story_points без исторической калибровки, assignee matc
 (архитектура, контракты, спецификации) уходит NeuralDeep Hub без ограничений.
 Требует подписанного DPA с NeuralDeep Hub в части обработки IP-контента (INV-15).
 
-**Branching в коде:** ai_.md §2.2 (F-03 Doc RAG и LTM), ai_.md §2.3 (cache block F-03),
-ai_.md §3.4 (cache block F-04).
+**Branching в коде:** ai_.md §2.2 (F-03 Doc RAG и LTM), ai_.md §2.3 (operational context block F-03),
+ai_.md §3.4 (operational context block F-04).
 
 ### 2.2 Reversible Tokenization (minimal)
 
-При `data_sharing_level = 'minimal'` workspace_context_cache подавляется — кэш
-содержит display_name участников, передавать провайдеру не следует.
+При `data_sharing_level = 'minimal'` блок оперативного контекста **не формируется** —
+он содержит `display_name` перегруженных участников, передавать провайдеру не следует.
+(До 2026-09-25 здесь описывался LLM-кэш `workspace_context_cache`; он удалён вместе
+с контуром, guard перенесён на `get_workspace_operational_context`, Master §6.4a.)
 
 F-04 при `minimal` использует только:
 - `workspace_context` (домен без оперативных данных — имён нет)
