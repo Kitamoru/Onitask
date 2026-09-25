@@ -190,7 +190,7 @@ Pending invites (Admin only) — список выданных кодов без
 │ «Клиент хочет и dark mode и light mode              │
 │  одновременно — нужно уточнение приоритетов»        │
 │                                                     │
-│ [Разрешить]   [Открыть задачу →]                    │
+│ [Попробовать снова]  [Открыть задачу]                │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -198,8 +198,8 @@ Pending invites (Admin only) — список выданных кодов без
 - **Full ID** (ALPHA-N) + **название задачи** — primary элемент
 - **Иконка агента** (◆) + **имя агента** + **readable label причины** + **время с момента эскалации**
 - **`suggested_action`** — заметка агента (только если заполнена; макс. 2 строки, expand по тапу)
-- **[Разрешить]** — primary action: `UPDATE tasks SET needs_human = false`. После — карточка исчезает из очереди, `trg_resolution_notify` отправляет уведомление агенту
-- **[Открыть задачу →]** — secondary action: deep link в bottom sheet задачи с полным контекстом
+- **[Попробовать снова]** — atomic retry: очищает эскалацию и retry-диагностику, пишет system-аудит, создаёт `dispatch_outbox(attempt=1)` назначенному активному AI-агенту; история/комментарии/файлы сохраняются. Повторный запрос идемпотентен.
+- **[Открыть задачу]** — secondary action: Task Sheet с полным контекстом
 
 **Readable labels для `escalation_reason`:**
 
@@ -208,9 +208,11 @@ Pending invites (Admin only) — список выданных кодов без
 | `insufficient_context` | Недостаточно контекста |
 | `conflicting_requirements` | Конфликт требований |
 | `blocked_by` | Заблокирована |
-| `out_of_scope` | Вне области задачи |
+| `out_of_scope` | Задача выходит за рамки возможностей агента |
+| `max_attempts` | Не удалось выполнить задачу после трёх попыток |
+| `unsupported_task` | Агент не может выполнить эту задачу |
 
-**Пустое состояние:** «Все задачи в работе — эскалаций нет ✓»
+**Пустое состояние:** «Нет задач, ожидающих решения» / «Все задачи продолжают выполняться».
 
 **Входящий deep link из Telegram** (bot.md §5.8): если очередь открылась по deep link с `?task=ALPHA-45`, карточка ALPHA-45 подсвечивается и прокручивается в начало списка.
 
@@ -399,7 +401,7 @@ WHERE assigned_to = $agent_worker_id
 **v1.2.0 — май 2026**
 - §2.1: Risk Pulse — все три сигнала стали tappable с drill-down навигацией. Таблица расширена колонкой «Tap-действие». Закрывает P1-07
 - §2.1: добавлено предупреждение «· уведомления выключены» на сигнале «Эскалации» при отсутствии активного `workspace_telegram_chats`. Суффикс — tappable ссылка в настройки. Закрывает P1-10
-- §2.7 (новый): Operator Queue — flat-список всех `needs_human=true` задач по workspace. Oldest-first. Карточка: full_id, title, агент, readable reason label, suggested_action, [Разрешить] + [Открыть задачу →]. Deep link из Telegram-уведомления подсвечивает конкретную задачу. SQL-запрос с join на `workspaces.task_prefix`. Закрывает P1-08
+- §2.7 (обновлено 2026-09-25): Operator Queue — flat-список всех `needs_human=true` задач по workspace. Oldest-first. Карточка: full_id, title, агент, readable reason label, suggested_action, [Попробовать снова] + [Открыть задачу]. Retry атомарно создаёт новую попытку через dispatch_outbox; Telegram deep link подсвечивает конкретную задачу. Закрывает P1-08
 - §5: Risk Pulse drill-down и Operator Queue добавлены в тиры как MVP. Блок эскалаций в expanded sheet агента переименован и отделён от Operator Queue
 - §6: queue depth threshold alert задокументирован как P2 отложенное решение
 

@@ -49,7 +49,7 @@ function buildSupabase(bySelect: Record<string, QResult>) {
 
 const SELECT_USER_WORKERS = 'workspace_id';
 const SELECT_MEMBERS = 'workspace_id, type';
-const SELECT_TASKS = 'workspace_id, column, assigned_to, escalation_reason';
+const SELECT_TASKS = 'workspace_id, column, assigned_to, needs_human, is_inbox';
 const SELECT_SPRINTS = 'workspace_id, name, goal, status, start_date, end_date';
 
 describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
@@ -107,19 +107,19 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       },
       [SELECT_TASKS]: {
         data: [
-          // ws-1: 2 backlog, 1 in_progress (p1), 1 review, 3 done (1 с эскалацией)
-          { workspace_id: 'ws-1', column: 'backlog', assigned_to: null, escalation_reason: null },
-          { workspace_id: 'ws-1', column: 'backlog', assigned_to: null, escalation_reason: null },
-          { workspace_id: 'ws-1', column: 'in_progress', assigned_to: 'p1', escalation_reason: null },
-          { workspace_id: 'ws-1', column: 'review', assigned_to: 'p1', escalation_reason: null },
-          { workspace_id: 'ws-1', column: 'done', assigned_to: 'p2', escalation_reason: 'blocked' },
-          { workspace_id: 'ws-1', column: 'done', assigned_to: null, escalation_reason: null },
-          { workspace_id: 'ws-1', column: 'done', assigned_to: null, escalation_reason: null },
+          // ws-1: 2 backlog, 1 in_progress (p1), 1 review, 3 done
+          { workspace_id: 'ws-1', column: 'backlog', assigned_to: null, needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'backlog', assigned_to: null, needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'in_progress', assigned_to: 'p1', needs_human: true, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'review', assigned_to: 'p1', needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'done', assigned_to: 'p2', needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'done', assigned_to: null, needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-1', column: 'done', assigned_to: null, needs_human: false, is_inbox: false },
           // ws-2: 1 in_progress (p2 — тот же человек), 1 done
-          { workspace_id: 'ws-2', column: 'in_progress', assigned_to: 'p2', escalation_reason: null },
-          { workspace_id: 'ws-2', column: 'done', assigned_to: null, escalation_reason: null },
+          { workspace_id: 'ws-2', column: 'in_progress', assigned_to: 'p2', needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-2', column: 'done', assigned_to: null, needs_human: false, is_inbox: false },
           // неканоническая колонка → в counts не попадает
-          { workspace_id: 'ws-2', column: 'inbox', assigned_to: 'p3', escalation_reason: null },
+          { workspace_id: 'ws-2', column: 'inbox', assigned_to: 'p3', needs_human: false, is_inbox: false },
         ],
         error: null,
       },
@@ -144,8 +144,8 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       'ws-1': { inQueue: 2, inWork: 1, onReview: 1, done: 3 },
       'ws-2': { inQueue: 0, inWork: 1, onReview: 0, done: 1 },
     });
-    // people — distinct assignee (p1, p2, p3),
-    // processes — все in_progress, escalations — по наличию escalation_reason
+    // people — distinct assignee (p1, p2, p3), processes — все in_progress,
+    // escalations — только активные needs_human вне done/inbox.
     expect(json.data.riskData).toEqual({ people: 3, processes: 2, escalations: 1 });
     expect(json.data.members).toEqual({
       'ws-1': { humans: 2, agents: 1 },
@@ -159,8 +159,8 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       [SELECT_USER_WORKERS]: { data: [{ workspace_id: 'ws-1' }], error: null },
       [SELECT_TASKS]: {
         data: [
-          { workspace_id: 'ws-1', column: 'done', assigned_to: null, escalation_reason: null },
-          { workspace_id: 'ws-other', column: 'done', assigned_to: null, escalation_reason: null },
+          { workspace_id: 'ws-1', column: 'done', assigned_to: null, needs_human: false, is_inbox: false },
+          { workspace_id: 'ws-other', column: 'done', assigned_to: null, needs_human: false, is_inbox: false },
         ],
         error: null,
       },

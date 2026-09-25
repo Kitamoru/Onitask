@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet, AgentConnectorSheet } from '@/components/flowboard';
+import { FlowBoard, OnboardingModal, InviteModal, ColumnTasksSheet, TaskViewEdit, WorkerSheet, SwipeDebugPanel, ResultStepSheet, AgentConnectorSheet, OperatorQueueSheet } from '@/components/flowboard';
 import { StreamView } from '@/components/stream';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import type {
@@ -68,6 +68,7 @@ function FlowBoardPageContent() {
     }
   }, [isStreamView, router]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showEscalationQueue, setShowEscalationQueue] = useState(false);
   // Stage 15: «Добавить агента» открывает форму коннектора (endpoint + key),
   // а не страницу MCP-ключей — см. AgentConnectorSheet.
   const [showAgentSheet, setShowAgentSheet] = useState(false);
@@ -165,14 +166,16 @@ function FlowBoardPageContent() {
     } else {
       newSignals.push({ id: 'processes', label: 'Процессы', count: 0 });
     }
-    const escalationCount = metrics.alerts.filter(a => a.type === 'overloaded_member').length;
+    const escalationCount = tasks.filter(
+      (task) => task.needs_human && task.column !== 'done',
+    ).length;
     if (escalationCount > 0) {
       newSignals.push({ id: 'escalations', label: 'Эскалации', count: escalationCount });
     } else {
       newSignals.push({ id: 'escalations', label: 'Эскалации', count: 0 });
     }
     return newSignals;
-  }, [metrics]);
+  }, [metrics, tasks]);
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
     if (!metrics) return [];
@@ -343,6 +346,27 @@ function FlowBoardPageContent() {
       console.error('Refresh metrics error:', err);
     }
   }, [loadBoardsData, state.activeWorkspaceId, state.metrics.lastUpdated]);
+
+  const handleEscalationRetried = useCallback((taskId: string, version: number, updatedAt: string) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (task) {
+      dispatch({
+        type: 'PATCH_TASK',
+        payload: {
+          ...task,
+          needs_human: false,
+          escalation_reason: null,
+          version,
+          updated_at: updatedAt,
+        },
+      });
+    }
+    setSelectedTask((current) => current?.id === taskId
+      ? { ...current, needs_human: false, escalation_reason: null, version, updated_at: updatedAt }
+      : current);
+    invalidateBoardCounts();
+    void refreshMetrics({ force: true });
+  }, [dispatch, invalidateBoardCounts, refreshMetrics, tasks]);
 
   // Callback for after invite/boarding — forces a full metrics refresh so new colleagues appear
   const handleBoardCreate = useCallback(async () => {
@@ -602,9 +626,22 @@ function FlowBoardPageContent() {
           onBoardCreate={handleBoardCreate}
           initData={tgInitData}
           workspaceId={state.activeWorkspaceId ?? undefined}
-                    onColumnClick={handleColumnClick}
+          onColumnClick={handleColumnClick}
+          onSignalClick={(signalId) => {
+            if (signalId === 'escalations') setShowEscalationQueue(true);
+          }}
           onWorkerClick={handleWorkerClick}
           onToggleView={toggleView}
+        />
+      )}
+
+      {state.activeWorkspaceId && (
+        <OperatorQueueSheet
+          open={showEscalationQueue}
+          onClose={() => setShowEscalationQueue(false)}
+          workspaceId={state.activeWorkspaceId}
+          onOpenTask={handleTaskTap}
+          onRetried={handleEscalationRetried}
         />
       )}
 

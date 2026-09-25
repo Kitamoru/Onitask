@@ -392,8 +392,13 @@ format is deliberately compact so that agents can load the file quickly.
       flow_.md §20.
 - [ ] AGENT-02 Agent Card expanded (Interpretation hint, «Флоу · 7 дней») #ui !high @blocked_by:AGENT-01
       **Сверка 2026-09-19:** не реализовано — карточка агента открывает тот же `WorkerSheet` (табы «Статус»/«Доступы»), блока «Флоу · 7 дней» и Interpretation hint нет.
-- [ ] AGENT-03 Operator Queue (`pending_escalations`, [Разрешить]/[Открыть задачу→]) #ui !high @blocked_by:DB-13,MCP-04
-      **Сверка 2026-09-19:** не реализовано — вьюха готова (`supabase/migrations/001_init.sql:1448`), в `src/` единственное упоминание — тип `pending_escalations` (`src/types/flowboard.ts:219`); UI и экшена «Разрешить» нет.
+- [x] AGENT-03 Operator Queue (`pending_escalations`, «Попробовать снова» / «Открыть задачу») #ui !high @blocked_by:DB-13,MCP-04
+      **Реализовано 2026-09-25:** tappable Risk Pulse «Эскалации», workspace-scoped
+      oldest-first queue, readable reasons, suggested_action/nack diagnostics,
+      empty/error/loading states. Retry подтверждается и атомарно создаёт
+      `dispatch_outbox(attempt=1)` через миграцию 105; blocked/done/unassigned/
+      open-claim guards, idempotent replay, audit feed и existing resolution/push
+      triggers. GET/POST Route Handlers + 7 Vitest route-тестов.
       flow_.md §21, team_tab §2.7 (SQL-справочник).
 - [x] AGENT-04 Task Sheet, блок «Связанные задачи» (relations API, orphan repair) #ui !high @blocked_by:MCP-06
       **Реализовано 2026-09-24:** отдельная вкладка отменена по решению владельца;

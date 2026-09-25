@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     // 3. Column health
     const { data: columnCounts } = await supabase
       .from('tasks')
-      .select('column')
+      .select('column, needs_human, is_inbox')
       .eq('workspace_id', workspaceId)
       .eq('is_inbox', false);
 
@@ -187,6 +187,16 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+    if (((columnCounts ?? []) as TasksRow[]).filter(
+      (task) => task.needs_human && task.column !== 'done' && !task.is_inbox,
+    ).length > 0) {
+      alerts.push({
+        type: 'escalation',
+        severity: 'high',
+        message: 'Есть задачи, ожидающие решения',
+      });
+    }
+
     for (const col of columns) {
       if (col.health === 'red') {
         alerts.push({

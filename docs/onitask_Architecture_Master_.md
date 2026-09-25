@@ -1470,6 +1470,36 @@ UI использует только `blocks` и атомарные service-role
 контексте», не отдельная вкладка. Направления: входящие = «Ждёт завершения»,
 исходящие = «После завершения этой задачи».
 
+Каноническое действие — **[Попробовать снова]**, а не снятие флага «Разрешить». Оно
+сохраняет историю, комментарии, файлы и связи задачи, очищает retry-диагностику
+текущей попытки и запускает новый проход назначенного активного AI-агента.
+
+### 6.16.2 Operator retry escalation (AGENT-03)
+
+Атомарный service-only RPC:
+
+```text
+operator_retry_escalation(workspace_id, task_id, actor_worker_id)
+```
+
+RPC блокирует строку задачи, проверяет workspace, активного оператора,
+`needs_human=true`, активного AI-исполнителя, отсутствие open claim,
+`column <> 'done'` и `is_blocked=false`. Затем одной транзакцией:
+
+- снимает `needs_human` и `escalation_reason`;
+- удаляет `suggested_action`, `nack_reason`, `nack_detail`,
+  `max_attempts_exceeded` из metadata;
+- пишет system-комментарий о новой попытке;
+- вставляет `dispatch_outbox(attempt=1)` для активного назначенного агента;
+- позволяет существующим триггерам создать `escalation_resolved` и отправить
+  hosted-runtime push;
+- возвращает новую `version` и признаки `retry_started`, `dispatch_created`,
+  `already_resolved`.
+
+Partial unique index `uq_dispatch_outbox_one_pending_per_task` не допускает дубль.
+Повторный запрос после успеха — идемпотентный no-op. Прямой доступ клиентов к
+RPC закрыт; TWA вызывает resource-scoped Route Handler с server-owned actor.
+
 ---
 
 ## 7. Контракт конкурентности и идемпотентности

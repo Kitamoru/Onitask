@@ -75,6 +75,9 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 ### flowboard/ — Flow Board
 
 **TaskCard blocked state (2026-09-24):** при `tasks.is_blocked=true` общий `TaskCard` первым badge показывает compact pure-red бейдж «Заблокирована» (`TaskBlockedBadge.tsx`). Чистый красный `#FF0000` семантически отделён от кораллового приоритета «Высокий» (`#EF4444`) и destructive-красного (`#FF2B3A`). Без иконки, без изменения порядка и без дополнительного API-вызова; автоматически виден в `ColumnTasksSheet` и Stream.
+**Operator Queue (AGENT-03, 2026-09-25):** `OperatorQueueSheet.tsx` — tappable Risk Pulse «Эскалации», workspace-scoped oldest-first queue с readable reasons, `suggested_action`, `nack_*`, loading/error/empty states, подтверждением и атомарным «Попробовать снова». `FlowBoard` принимает `onSignalClick`; карточка открывает Task Sheet через callback страницы.
+
+
 
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|

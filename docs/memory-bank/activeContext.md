@@ -1,3 +1,26 @@
+## AGENT-03 Operator Queue · «Попробовать снова» (2026-09-25) ✅
+
+Основной сигнал Risk Pulse остаётся **«Эскалации»** и открывает
+`OperatorQueueSheet`: oldest-first карточки задач с agent name, readable reason,
+`suggested_action`, `nack_reason/detail`, loading/error/empty states. Primary action
+**«Попробовать снова»** подтверждается stacked-шторкой; blocked/done/unassigned/
+open-claim запрещены, «Открыть задачу» использует существующий Task Sheet.
+
+Миграция `105_operator_retry_escalation` применена (`20260925052808`):
+service-only `operator_retry_escalation(workspace,task,actor)` атомарно снимает
+`needs_human`, очищает retry metadata, пишет system-аудит и создаёт
+`dispatch_outbox(attempt=1)`; partial unique index исключает дубль, replay — no-op.
+GET/POST: `/api/tasks/escalations`, `/api/tasks/:id/escalations/retry`; счётчики
+Flow Board и board-counts считают реальные `needs_human=true`.
+
+Валидация: 7/7 API tests; полный Vitest 229/229; production build ✅;
+production rollback-smoke проверил audit/outbox/version/replay и откатился
+(2 эскалации сохранены, smoke rows=0); grants service-only; type-check/lint/
+diff-check зелёные. Advisors не показали новых замечаний для retry RPC.
+
+---
+
+
 ## FIX: агент вернул не-JSON-контракт → корень провала доезжает до эскалации (2026-09-24) ✅
 
 **Кейс.** Задача воркспейса Drift (воркер «Дрифт») трижды прогонялась hosted-рантаймом

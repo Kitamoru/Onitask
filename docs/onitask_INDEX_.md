@@ -405,6 +405,7 @@
 - §19: Risk Pulse «Процессы» расширен `orphan_blockers`; SQL обновлён
 - §20: pill «🔄 Цепочка ×N» (Phase 1.1)
 - §22: добавлен блок «Связанные задачи» в Task Sheet (AGENT-04/09). Источник: server-side relations API поверх `task_relations`; два направления, поиск, progress/impact, orphan repair, переход/назад.
+- §21: Operator Queue (AGENT-03) — tappable «Эскалации», карточка задачи, «Попробовать снова» через atomic retry RPC + dispatch_outbox; «Открыть задачу».
 
 ---
 

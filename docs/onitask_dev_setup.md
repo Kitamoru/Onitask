@@ -91,9 +91,11 @@ app/
     ├── init/route.ts               # POST /api/init
     ├── tasks/
     │   ├── route.ts                # GET / POST
+    │   ├── escalations/route.ts   # GET — Operator Queue
     │   └── [id]/
     │       ├── route.ts            # GET / PATCH / DELETE
     │       ├── decompose/route.ts
+    │       ├── escalations/retry/route.ts # POST — «Попробовать снова»
     │       └── relations/
     │           ├── route.ts                    # GET / POST — «Связанные задачи»
     │           └── [relationId]/route.ts       # DELETE — удаление связи

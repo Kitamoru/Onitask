@@ -122,7 +122,9 @@ export interface FlowBoardProps {
   workspaceId?: string;
   /** Called when a task status card (column) is clicked — opens task bottom sheet */
     onColumnClick?: (column: string, label: string, accentColor: string) => void;
-  /** Open the worker bottom sheet (Figma 622:29869) */
+  /** Called when a risk pulse signal is clicked. */
+  onSignalClick?: (signalId: string) => void;
+  /** Called when the worker bottom sheet should open. */
   onWorkerClick?: (worker: WorkerCardData) => void;
   /** Toggle between flowboard and stream views */
   onToggleView?: () => void;
@@ -383,8 +385,20 @@ export function SprintCompressedInfo({ sprint }: { sprint?: SprintInfo }) {
   );
 }
 
-function SignalCard({ signal }: { signal: SignalData }) {
+function SignalCard({ signal, onClick }: { signal: SignalData; onClick?: () => void }) {
   return (
+    <div
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onClick();
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Открыть сигнал ${signal.label}` : undefined}
+      className={onClick ? 'cursor-pointer transition-opacity hover:opacity-80 active:opacity-60' : undefined}
+    >
     <NotchedPanel
       corner="action"
       radius={4}
@@ -430,6 +444,7 @@ function SignalCard({ signal }: { signal: SignalData }) {
         </span>
       </div>
     </NotchedPanel>
+    </div>
   );
 }
 
@@ -681,6 +696,7 @@ export function FlowBoard({
   initData,
   workspaceId,
   onColumnClick,
+  onSignalClick,
   onWorkerClick,
   onToggleView,
 }: FlowBoardProps) {
@@ -963,7 +979,13 @@ export function FlowBoard({
              aria-label="Сигналы команды"
            >
             {signals.map((signal) => (
-              <SignalCard key={signal.id} signal={signal} />
+              <SignalCard
+                 key={signal.id}
+                 signal={signal}
+                 onClick={onSignalClick && signal.id === 'escalations'
+                  ? () => onSignalClick(signal.id)
+                  : undefined}
+               />
             ))}
           </div>
         </div>

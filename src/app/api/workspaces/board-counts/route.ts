@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const [taskResult, memberResult, sprintResult] = await Promise.all([
       supabase
         .from('tasks')
-        .select('workspace_id, column, assigned_to, escalation_reason')
+        .select('workspace_id, column, assigned_to, needs_human, is_inbox')
         .in('workspace_id', workspaceIds),
       supabase
         .from('workers')
@@ -90,6 +90,8 @@ export async function POST(req: NextRequest) {
       column: string | null;
       assigned_to: string | null;
       escalation_reason: string | null;
+      needs_human: boolean;
+      is_inbox: boolean;
     };
 
     const zeroStats = () => ({ inQueue: 0, inWork: 0, onReview: 0, done: 0 });
@@ -110,7 +112,7 @@ export async function POST(req: NextRequest) {
 
       if (t.assigned_to) peopleSet.add(t.assigned_to);
       if (t.column === 'in_progress') processes++;
-      if (t.escalation_reason) escalations++;
+      if (t.needs_human && t.column !== 'done' && !t.is_inbox) escalations++;
     }
 
     type MemberRow = { workspace_id: string | null; type: string | null };
