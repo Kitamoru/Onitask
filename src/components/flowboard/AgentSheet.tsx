@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button, Segments, TextInput } from '@/components/ui/desk-ui';
 import { listAgents, revokeAgent, updateAgent, type AgentConnector } from '@/lib/api/agents';
@@ -123,12 +124,64 @@ export function AgentSheet({
       setError(result.message ?? 'Не удалось удалить подключение.');
       return;
     }
+    setConfirmDelete(false);
     onSaved?.();
     onClose();
   };
 
+  const deleteConfirmModal =
+    confirmDelete &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-end justify-center px-4 pb-6 sm:items-center sm:pb-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+        onClick={() => {
+          if (!deleting) setConfirmDelete(false);
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-connection-title"
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-6"
+          style={{ backgroundColor: '#1A1A1A' }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p id="delete-connection-title" className="mb-2 text-center text-lg font-semibold" style={{ color: '#FAFAFA' }}>
+            Вы точно хотите удалить подключение?
+          </p>
+          <p className="mb-6 text-center text-sm" style={{ color: '#8B8B8B' }}>
+            Подключение агента «{connector?.agent_name ?? agent?.name}» будет отключено, а секрет удалён. История задач сохранится.
+          </p>
+          {error && <p className="mb-4 text-center text-sm" style={{ color: '#EF4444' }}>{error}</p>}
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="solid"
+              onClick={() => void remove()}
+              disabled={deleting}
+              fill="var(--color-danger)"
+              textColor="var(--color-text-primary)"
+            >
+              {deleting ? 'Удаляем…' : 'Да, удалить подключение'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              style={{ borderColor: '#333', color: '#8B8B8B' }}
+            >
+              Отмена
+            </Button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
-    <BottomSheet open={open} onClose={onClose}>
+    <>
+      <BottomSheet open={open} onClose={onClose}>
       {agent && (
         <div className="flex flex-col gap-5 px-4 pb-6">
           <div className="flex items-center gap-2">
@@ -222,18 +275,16 @@ export function AgentSheet({
                   )}
                   {editing && (
                     <div className="border-t border-line pt-4">
-                      {confirmDelete ? (
-                        <div className="flex flex-col gap-2">
-                          <p className="text-sm text-text-muted">Удалить подключение? Секрет будет удалён, история задач сохранится.</p>
-                          <Button variant="solid" fill="var(--color-danger)" textColor="var(--color-text-primary)" type="button" disabled={deleting} onClick={() => void remove()}>
-                            {deleting ? 'Удаляем…' : 'Да, удалить подключение'}
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button variant="solid" fill="var(--color-danger)" textColor="var(--color-text-primary)" type="button" disabled={saving} onClick={() => setConfirmDelete(true)}>
-                          Удалить подключение
-                        </Button>
-                      )}
+                      <Button
+                        variant="solid"
+                        fill="var(--color-danger)"
+                        textColor="var(--color-text-primary)"
+                        type="button"
+                        disabled={saving}
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        Удалить подключение
+                      </Button>
                     </div>
                   )}
                 </>
@@ -242,6 +293,8 @@ export function AgentSheet({
           )}
         </div>
       )}
-    </BottomSheet>
+      </BottomSheet>
+      {deleteConfirmModal}
+    </>
   );
 }
