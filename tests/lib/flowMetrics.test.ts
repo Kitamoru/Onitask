@@ -88,7 +88,7 @@ describe('buildFlowMetrics', () => {
       storyPointsEnabled: false,
       cognitiveWeightEnabled: true,
       storyPointValues: [1, 2, 3, 5, 8],
-      hoursPerSp: { '1': '2 часа' },
+      hoursPerSp: { '1': '2–2 часа' },
     });
     expect(result.workers[0].sp_per_day).toBeUndefined();
     expect(result.workers[0].completed_story_points).toBeUndefined();

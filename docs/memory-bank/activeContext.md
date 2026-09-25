@@ -10,6 +10,20 @@ fabricated fallback. Ручной SP сохраняется в `task_enrichments
 **Проверки:** type-check ✅; lint 0 errors (20 warnings, mostly pre-existing); целевые 25/25 ✅; полный Vitest 259/259 ✅; `git diff --check` ✅. Миграций не применялось.
 
 
+## Story Point calibration (2026-09-25) ✅
+
+Добавлены стандартные time ranges `1–2 / 2–4 / 4–8 / 8–16 / 16–32` и выбор одного
+`done`-эталона на SP. Настройки существующей доски показывают только завершённые задачи;
+сервер проверяет workspace/status/уникальность и сохраняет snapshot. F-03 получает ranges
+и эталоны через data-block. Миграций нет.
+
+Range validation работает на двух уровнях: UI показывает inline-error, API возвращает `400` и правило
+`0 < min ≤ max ≤ 720`; старые `N часов` нормализуются в `N–N часов`, а некорректные legacy-значения
+фильтруются перед F-03 prompt. Проверки: type-check ✅, lint 0 errors (19 warnings), целевые 17/17 ✅,
+полный Vitest 276/276 ✅. Edge Function обновлена до версии 10, статус ACTIVE, `verify_jwt=false`.
+
+---
+
 ## RISK-05 · Server-side velocity (2026-09-25) ✅
 
 **Сделано:** velocity теперь считается в общем `flowMetrics` по завершённым задачам,

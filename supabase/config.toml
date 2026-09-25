@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.bot-notify]
 verify_jwt = false
+
+[functions.enrich-task]
+verify_jwt = false

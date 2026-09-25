@@ -28,6 +28,7 @@
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { z } from 'https://esm.sh/zod@3';
+import { buildStoryPointCalibrationBlock } from './storyPointCalibration.ts';
 
 // ═══════════════════════════════════════════════════════
 // Types
@@ -64,6 +65,9 @@ interface WorkspaceSettings {
   story_points_config: {
     enabled?: boolean;
     estimation_type?: 'hours' | 'days' | 'abstract';
+    values?: number[];
+    hours_per_sp?: Record<string, string>;
+    reference_tasks?: Record<string, { task_id: string; full_id?: string | null; title?: string | null }>;
   } | null;
 }
 
@@ -488,7 +492,10 @@ serve(async (req: Request) => {
     }
 
     const sharingLevel = settings?.data_sharing_level ?? 'standard';
-    const storyPointsEnabled = settings?.story_points_config?.enabled ?? false;
+    const storyPointCalibrationBlock = wrapData(
+      'story-point-calibration',
+      buildStoryPointCalibrationBlock(settings?.story_points_config),
+    );
 
     // ── 4a. Load task_prefix for full_id resolution (v0.11.0) ──
     // RAG-контексты возвращают UUID; anchor-примеры промпта требуют ALPHA-N.
@@ -587,7 +594,9 @@ ${docContextBlock}
 
 ${memoryContextBlock}
 
-ЗАДАЧА:
+${storyPointCalibrationBlock}
+
+    ЗАДАЧА:
 title: ${JSON.stringify(task.title)}
 description: ${JSON.stringify(task.description ?? '')}
 deadline_urgency: ${task.deadline_urgency ?? 'null'}
@@ -616,7 +625,9 @@ ${rag.related || '[]'}
 5. anomaly.type может быть только 'duplicate' или 'stale'.
    Никогда не возвращай 'overscoped' — вычислено бэкендом через is_overscoped_heuristic.
    При is_overscoped_heuristic = true — учитывай в ai_hint, но не в anomaly.
-6. ai_hint — actionable микро-подсказка, не пересказ заголовка.
+6. Если Story Points включены, выбирай только значение из calibration values. Эталонные задачи и ranges помогают выбрать SP, но не заменяют анализ сложности.
+7. ai_hint — actionable микро-подсказка, не пересказ заголовка.
+
    null если задача простая и аномалий нет.
 
    ПЛОХО (пересказ):  «Задача связана с авторизацией» — нет новой информации

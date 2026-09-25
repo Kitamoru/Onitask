@@ -3,6 +3,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 import { createServerClient } from '../../../../lib/supabase';
+import {
+  defaultStoryPointHours,
+  normalizeStoryPointsConfig,
+  validateStoryPointHours,
+} from '@/lib/storyPoints';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
@@ -38,7 +43,7 @@ export async function PUT(req: NextRequest) {
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
-    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean; values?: number[]; hours_per_sp?: Record<string, string> } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean; values?: number[]; hours_per_sp?: Record<string, string>; reference_tasks?: Record<string, { task_id: string; full_id?: string | null; title?: string | null }> } | undefined;
     const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
     const doc_kb_enabled = body.doc_kb_enabled as boolean | undefined;
 
@@ -61,6 +66,17 @@ export async function PUT(req: NextRequest) {
         { success: false, error: 'missing_name' },
         { status: 400 },
       );
+    }
+
+    if (story_points_config) {
+      const allowedValues = story_points_config.values ?? [1, 2, 3, 5, 8];
+      const rangeError = validateStoryPointHours(story_points_config.hours_per_sp, allowedValues);
+      if (rangeError) {
+        return NextResponse.json(
+          { success: false, error: 'invalid_story_point_range', message: rangeError.message, sp: rangeError.sp, value: rangeError.value },
+          { status: 400 },
+        );
+      }
     }
 
     // 1. Verify Telegram initData
@@ -248,35 +264,68 @@ export async function PUT(req: NextRequest) {
     // 5. Update workspace_settings.story_points_config if provided
     if (story_points_config) {
       await ensureSettings();
-      
+
       const { data: existingSettings } = await anySupabase
         .from('workspace_settings')
         .select('story_points_config')
         .eq('workspace_id', workspace_id)
         .maybeSingle();
 
-      if (existingSettings) {
-        // Merge with existing story_points_config (preserves hours_per_sp etc.)
-        const existingConfig = (existingSettings as any).story_points_config || {};
-        const mergedConfig = { ...existingConfig, ...story_points_config };
-        
-        const { error: settingsError } = await anySupabase
-          .from('workspace_settings')
-          .update({ story_points_config: mergedConfig })
-          .eq('workspace_id', workspace_id);
-
-        if (settingsError) {
-          console.error('workspaces: story_points_config update error', settingsError);
+      const existingConfig = (existingSettings as any)?.story_points_config || {};
+      const mergedConfig = { ...existingConfig, ...story_points_config };
+      const normalizedConfig = normalizeStoryPointsConfig(mergedConfig);
+      const persistedReferenceTasks = story_points_config.reference_tasks !== undefined
+        ? normalizeStoryPointsConfig(story_points_config).referenceTasks
+        : normalizedConfig.referenceTasks;
+      const referenceIds = Object.values(persistedReferenceTasks).map((task) => task.task_id);
+      const validReferenceTasks: Record<string, { task_id: string; full_id: string; title: string }> = {};
+      if (referenceIds.length > 0) {
+        if (new Set(referenceIds).size !== referenceIds.length) {
+          return NextResponse.json({ success: false, error: 'reference_tasks_must_be_unique' }, { status: 400 });
         }
-      } else {
-        const { error: settingsError } = await anySupabase
-          .from('workspace_settings')
-          .update({ story_points_config })
-          .eq('workspace_id', workspace_id);
-
-        if (settingsError) {
-          console.error('workspaces: story_points_config update error', settingsError);
+        const { data: referenceRows, error: referenceError } = await anySupabase
+          .from('tasks')
+          .select('id, task_number, title')
+          .eq('workspace_id', workspace_id)
+          .eq('column', 'done')
+          .in('id', referenceIds);
+        if (referenceError) {
+          return NextResponse.json({ success: false, error: 'reference_tasks_validation_failed' }, { status: 400 });
         }
+        const rowsById = new Map((referenceRows ?? []).map((task: any) => [task.id, task]));
+        if (rowsById.size !== referenceIds.length) {
+          return NextResponse.json({ success: false, error: 'reference_tasks_must_be_done_in_workspace' }, { status: 400 });
+        }
+        for (const [sp, reference] of Object.entries(persistedReferenceTasks)) {
+          const row: any = rowsById.get(reference.task_id);
+          validReferenceTasks[sp] = {
+            task_id: reference.task_id,
+            full_id: row.task_number ? `${updatedWorkspace.task_prefix}-${row.task_number}` : reference.full_id ?? reference.task_id,
+            title: row.title,
+          };
+        }
+      }
+
+      const persistedConfig = {
+        ...mergedConfig,
+        values: normalizedConfig.values,
+        // Persist standard ranges only when SP is enabled. Turning the feature
+        // off preserves the last team calibration for the next re-enable.
+        hours_per_sp: normalizedConfig.enabled
+          ? { ...defaultStoryPointHours(), ...normalizedConfig.hoursPerSp }
+          : (story_points_config.hours_per_sp ?? existingConfig.hours_per_sp ?? {}),
+        ...(story_points_config.reference_tasks !== undefined
+          ? { reference_tasks: validReferenceTasks }
+          : {}),
+      };
+      const { error: settingsError } = await anySupabase
+        .from('workspace_settings')
+        .update({ story_points_config: persistedConfig })
+        .eq('workspace_id', workspace_id);
+
+      if (settingsError) {
+        console.error('workspaces: story_points_config update error', settingsError);
+        return NextResponse.json({ success: false, error: 'story_points_config_save_failed' }, { status: 500 });
       }
     }
 
@@ -481,7 +530,7 @@ export async function POST(req: NextRequest) {
     const init_data = body.init_data as string | undefined;
     const name = body.name as string | undefined;
     const slug = body.slug as string | undefined;
-    const story_points_config = body.story_points_config as { enabled?: boolean; values?: number[]; sprint_enabled?: boolean; hours_per_sp?: Record<string, string> } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; values?: number[]; sprint_enabled?: boolean; hours_per_sp?: Record<string, string>; reference_tasks?: Record<string, unknown> } | undefined;
     const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
@@ -501,6 +550,17 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'missing_name_or_slug' },
         { status: 400 },
       );
+    }
+
+    if (story_points_config) {
+      const allowedValues = story_points_config.values ?? [1, 2, 3, 5, 8];
+      const rangeError = validateStoryPointHours(story_points_config.hours_per_sp, allowedValues);
+      if (rangeError) {
+        return NextResponse.json(
+          { success: false, error: 'invalid_story_point_range', message: rangeError.message, sp: rangeError.sp, value: rangeError.value },
+          { status: 400 },
+        );
+      }
     }
 
     // 1. Verify Telegram initData
@@ -651,8 +711,9 @@ export async function POST(req: NextRequest) {
 
       // 5. Create workspace_settings with form-provided configuration
       const spConfig = story_points_config || { enabled: false };
+       const normalizedStoryPoints = normalizeStoryPointsConfig(spConfig);
 
-      // Upsert (not insert): the init_workspace_settings() trigger (migration
+       // Upsert (not insert): the init_workspace_settings() trigger (migration
       // 078) may have already created the row with defaults during the
       // workspaces INSERT. ON CONFLICT applies this workspace's real config
       // over those defaults. mcp_api_keys was dropped in 042 — do not re-add.
@@ -661,10 +722,13 @@ export async function POST(req: NextRequest) {
         .upsert({
           workspace_id: workspaceId,
           story_points_config: {
-            enabled: spConfig.enabled ?? false,
-            sprint_enabled: spConfig.sprint_enabled ?? false,
-            values: spConfig.values,
-            hours_per_sp: spConfig.hours_per_sp,
+            enabled: normalizedStoryPoints.enabled,
+            sprint_enabled: normalizedStoryPoints.sprintEnabled,
+            values: normalizedStoryPoints.values,
+            hours_per_sp: normalizedStoryPoints.enabled
+            ? { ...defaultStoryPointHours(), ...normalizedStoryPoints.hoursPerSp }
+            : (spConfig.hours_per_sp ?? {}),
+            reference_tasks: normalizedStoryPoints.referenceTasks,
           },
           enable_cognitive_budget: enable_cognitive_budget ?? false,
           workspace_context: workspace_context ?? null,

@@ -24,6 +24,19 @@
 ---
 
 
+## ADR-2026-09-25: Team Story Point calibration via time ranges and done-task references
+
+### Решение
+
+Story Points используют Фибоначчи `[1, 2, 3, 5, 8]` и стандартные ориентиры времени
+`1–2 / 2–4 / 4–8 / 8–16 / 16–32 часов`. Команда может переопределить каждый диапазон.
+Для каждого SP разрешён максимум один эталон; UI предлагает только `done` задачи этой workspace,
+сервер повторно проверяет tenant/status/уникальность и сохраняет snapshot `task_id/full_id/title`.
+F-03 получает калибровку в защищённом data-block: reference → range → generic anchors.
+JSONB-миграция не требуется.
+
+---
+
 ## ADR-2026-09-25: Workspace evaluation settings gate UI and user-facing metrics
 
 ### Решение

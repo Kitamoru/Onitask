@@ -63,7 +63,7 @@ export function WorkspaceWizard({ onSuccess }: WorkspaceWizardProps) {
 
         story_points_config: value.spCostEnabled
           ? { enabled: true, values: spValues, hours_per_sp: value.spHours, sprint_enabled: value.spSprintEnabled }
-          : { enabled: false, sprint_enabled: value.spSprintEnabled, values: spValues },
+          : { enabled: false, sprint_enabled: value.spSprintEnabled, values: spValues, hours_per_sp: value.spHours },
 
         enable_cognitive_budget: value.cognitiveWeightEnabled,
 
@@ -92,7 +92,7 @@ export function WorkspaceWizard({ onSuccess }: WorkspaceWizardProps) {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(errData.error || errData.message || res.statusText || 'Failed to create workspace');
+        throw new Error(errData.message || errData.error || res.statusText || 'Failed to create workspace');
       }
 
       const result = await res.json();

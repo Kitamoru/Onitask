@@ -17,11 +17,7 @@ import {
 } from "@/components/desk-create/ExternalLinksCard";
 import { TrafficLightCard } from "@/components/desk-create/TrafficLightCard";
 
-import { DEFAULT_STORY_POINT_VALUES } from '@/lib/storyPoints';
-
-const DEFAULT_SP_HOURS: Record<string, string> = Object.fromEntries(
-  [...DEFAULT_STORY_POINT_VALUES].map((value) => [String(value), '']),
-);
+import { defaultStoryPointHours } from '@/lib/storyPoints';
 
 export type CreateDeskFormValue = {
   name: string;
@@ -64,7 +60,7 @@ export function CreateDeskForm({
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [spCostEnabled, setSpCostEnabled] = useState(false);
-  const [spHours, setSpHours] = useState(DEFAULT_SP_HOURS);
+  const [spHours, setSpHours] = useState<Record<string, string>>(defaultStoryPointHours);
   const [spSprintEnabled, setSpSprintEnabled] = useState(false);
   const [cognitiveWeightEnabled, setCognitiveWeightEnabled] = useState(false);
   const [context, setContext] = useState("");
@@ -80,6 +76,11 @@ export function CreateDeskForm({
 
   // Build colleague IDs array from selected items
   const colleagueIds = selectedColleagues.map((c) => c.source_id);
+
+  const handleSpEnabledChange = (value: boolean) => {
+    setSpCostEnabled(value);
+    if (value) setSpHours((prev) => ({ ...defaultStoryPointHours(), ...prev }));
+  };
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -127,7 +128,7 @@ export function CreateDeskForm({
              />
               <StoryPointCostCard
                enabled={spCostEnabled}
-               onEnabledChange={setSpCostEnabled}
+               onEnabledChange={handleSpEnabledChange}
                hoursBySp={spHours}
                onHoursChange={(sp, value) =>
                  setSpHours((prev) => ({ ...prev, [String(sp)]: value }))

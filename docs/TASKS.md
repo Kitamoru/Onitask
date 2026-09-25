@@ -224,6 +224,9 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] FLOW-12 Feature gates Story Points / Cognitive Weight в Task/FlowBoard/Stream #ui !high ✅
       Реализовано 2026-09-25: `FlowMetricsResponse.evaluation`; отключённые контуры скрыты и исключены из пользовательских метрик; SP scale Фибоначчи; ручной SP в `task_enrichments`; A-11 и Sprint независимы. Regression: `tests/lib/storyPoints.test.ts`, `tests/lib/flowMetrics.test.ts`, `tests/api/tasks/evaluationSettings.test.ts`; type-check, lint 0 errors, Vitest 259/259.
 
+- [x] FLOW-13 Story Point calibration ranges + done-task references #ui !high ✅
+      Стандартные ориентиры `1–2 / 2–4 / 4–8 / 8–16 / 16–32`; максимум один уникальный `done`-эталон на SP; server tenant/status validation; F-03 data-block. Без SQL-миграции. Проверки: type-check, lint 0 errors, Vitest 269/269.
+
 ---
 
 ## Stage 5 · Voice / NL Input (F-04)

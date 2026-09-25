@@ -9,6 +9,11 @@ import type { ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import type { ServerDocument } from '@/components/desk-create/DocumentsCard';
 import type { ColleagueItem } from '@/components/desk-create/ColleagueSelectSheet';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
+import {
+  normalizeStoryPointsConfig,
+  type StoryPointReferenceTasks,
+  type StoryPointDoneTask,
+} from '@/lib/storyPoints';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -54,6 +59,7 @@ export default function BoardDetailPage() {
       spCostEnabled: boolean;
       spSprintEnabled: boolean;
       spHours?: Record<string, string>;
+       spReferenceTasks?: StoryPointReferenceTasks;
       cognitiveWeightEnabled: boolean;
       context: string;
       documentsEnabled: boolean;
@@ -64,7 +70,8 @@ export default function BoardDetailPage() {
       urgentDays: number;
     };
     serverDocuments: ServerDocument[];
-    availableColleagues: ColleagueItem[];
+    doneTasks: StoryPointDoneTask[];
+     availableColleagues: ColleagueItem[];
   } | null>(null);
 
   useEffect(() => {
@@ -95,7 +102,7 @@ export default function BoardDetailPage() {
           throw new Error(json.error || 'Failed to load board data');
         }
 
-        const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData } = json.data;
+        const { workers: workersData, allWorkspaceWorkers: allWorkersData, workspaces: wsData, tasks: tasksData } = json.data;
 
         // Find workspace by slug
         const ws = (wsData ?? []).find((w: any) => w.slug === slug);
@@ -175,6 +182,10 @@ export default function BoardDetailPage() {
           console.error('Board detail: failed to load colleagues', err);
         }
 
+        // Story point calibration is normalized so existing boards get
+        // Fibonacci defaults when they enable the feature.
+        const storyPointsConfig = normalizeStoryPointsConfig(settingsData?.story_points_config);
+
         // Parse deadline_signals with level field
         const signals = (settingsData?.deadline_signals ?? []) as any[];
         const hasSignals = signals.length > 0;
@@ -194,9 +205,10 @@ export default function BoardDetailPage() {
           initialData: {
             name: ws.name || '',
             slug: ws.slug || '',
-            spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
-            spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
-            spHours: (settingsData?.story_points_config?.hours_per_sp ?? {}) as Record<string, string>,
+            spCostEnabled: storyPointsConfig.enabled,
+            spSprintEnabled: storyPointsConfig.sprintEnabled,
+            spHours: storyPointsConfig.hoursPerSp,
+            spReferenceTasks: storyPointsConfig.referenceTasks,
             cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
             context: settingsData?.workspace_context || '',
             // Show documents section if feature was enabled OR if there are existing documents
@@ -211,6 +223,9 @@ export default function BoardDetailPage() {
             urgentDays: redSignal?.value ?? 1,
           },
           serverDocuments,
+          doneTasks: (tasksData ?? [])
+            .filter((task: any) => task.workspace_id === ws.id && task.column === 'done')
+            .map((task: any) => ({ id: task.id, full_id: task.full_id ?? task.id, title: task.title ?? 'Без названия' })),
           availableColleagues,
         });
       } catch (err) {
@@ -284,6 +299,7 @@ export default function BoardDetailPage() {
         workspaceId={renderData.workspaceId}
         initialData={renderData.initialData}
         serverDocuments={renderData.serverDocuments}
+         doneTasks={renderData.doneTasks}
         canEdit={renderData.canEdit}
         initialMode={initialMode}
         availableColleagues={renderData.availableColleagues}

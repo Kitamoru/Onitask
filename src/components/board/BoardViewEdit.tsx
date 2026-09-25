@@ -18,17 +18,18 @@ import {
 import { TrafficLightCard } from "@/components/desk-create/TrafficLightCard";
 import { ColleagueSelectSheet, type ColleagueItem } from "@/components/desk-create/ColleagueSelectSheet";
 
-import { DEFAULT_STORY_POINT_VALUES } from "@/lib/storyPoints";
-
-const DEFAULT_SP_HOURS: Record<string, string> = Object.fromEntries(
-  [...DEFAULT_STORY_POINT_VALUES].map((value) => [String(value), '']),
-);
+import {
+  defaultStoryPointHours,
+  type StoryPointReferenceTasks,
+  type StoryPointDoneTask,
+} from "@/lib/storyPoints";
 
 export interface BoardViewEditInitialData {
   name: string;
   slug: string;
   spCostEnabled: boolean;
   spHours?: Record<string, string>;
+  spReferenceTasks?: StoryPointReferenceTasks;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
   context: string;
@@ -48,6 +49,7 @@ export interface BoardViewEditProps {
   initialMode?: "view" | "edit";
   initialData: BoardViewEditInitialData;
   serverDocuments?: ServerDocument[];
+  doneTasks?: StoryPointDoneTask[];
   /** Коллеги для выбора в режиме edit (active + deleted этой доски). */
   availableColleagues?: ColleagueItem[];
   /** Кол-во активных участников (показывается в view-режиме). */
@@ -62,6 +64,7 @@ export function BoardViewEdit({
   initialMode = "view",
   initialData,
   serverDocuments = [],
+  doneTasks = [],
   availableColleagues = [],
   memberCount = 0,
   onModeChange,
@@ -98,7 +101,17 @@ export function BoardViewEdit({
   const [name, setName] = useState(initialData.name);
   const [slug, setSlug] = useState(initialData.slug);
   const [spCostEnabled, setSpCostEnabled] = useState(initialData.spCostEnabled);
-  const [spHours, setSpHours] = useState(initialData.spHours || DEFAULT_SP_HOURS);
+  const [spHours, setSpHours] = useState<Record<string, string>>(() => ({
+    ...defaultStoryPointHours(),
+    ...(initialData.spHours ?? {}),
+  }));
+  const [spReferenceTasks, setSpReferenceTasks] = useState<StoryPointReferenceTasks>(() =>
+    Object.fromEntries(
+      Object.entries(initialData.spReferenceTasks ?? {}).filter(([, reference]) =>
+        doneTasks.some((task) => task.id === reference.task_id),
+      ),
+    ),
+  );
   const [spSprintEnabled, setSpSprintEnabled] = useState(initialData.spSprintEnabled ?? false);
   const [cognitiveWeightEnabled, setCognitiveWeightEnabled] = useState(initialData.cognitiveWeightEnabled);
   const [context, setContext] = useState(initialData.context);
@@ -112,6 +125,14 @@ export function BoardViewEdit({
   const [trafficLightEnabled, setTrafficLightEnabled] = useState(initialData.trafficLightEnabled);
   const [warningDays, setWarningDays] = useState(initialData.warningDays);
   const [urgentDays, setUrgentDays] = useState(initialData.urgentDays);
+
+  // If the user re-enables the feature on an existing board, keep custom
+  // values but fill only missing ranges with the standard defaults.
+  const handleSpEnabledChange = (value: boolean) => {
+    setSpCostEnabled(value);
+    if (value) setSpHours((prev) => ({ ...defaultStoryPointHours(), ...prev }));
+    else setSpReferenceTasks({});
+  };
 
   // Coworking state
   const [selectedColleagues, setSelectedColleagues] = useState<Set<string>>(new Set());
@@ -291,7 +312,8 @@ export function BoardViewEdit({
             enabled: spCostEnabled,
             sprint_enabled: spSprintEnabled,
             values: [1, 2, 3, 5, 8],
-             hours_per_sp: spHours,
+            hours_per_sp: spHours,
+            reference_tasks: spCostEnabled ? spReferenceTasks : {},
           },
           doc_kb_enabled: documentsEnabled,
         }),
@@ -300,7 +322,7 @@ export function BoardViewEdit({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update workspace');
+        throw new Error(data.message || data.error || 'Failed to update workspace');
       }
 
       // After workspace update succeeds, add any staged colleagues
@@ -345,6 +367,8 @@ export function BoardViewEdit({
       setLinksEnabled(originalValuesRef.current.linksEnabled);
       setSpCostEnabled(originalValuesRef.current.spCostEnabled);
       setSpSprintEnabled(originalValuesRef.current.spSprintEnabled);
+      setSpHours(initialData.spHours ?? defaultStoryPointHours());
+      setSpReferenceTasks(initialData.spReferenceTasks ?? {});
       setCognitiveWeightEnabled(originalValuesRef.current.cognitiveWeightEnabled);
       setDocumentsEnabled(originalValuesRef.current.documentsEnabled);
       setTrafficLightEnabled(originalValuesRef.current.trafficLightEnabled);
@@ -398,8 +422,16 @@ export function BoardViewEdit({
             />
             <StoryPointCostCard
               enabled={spCostEnabled}
-              onEnabledChange={setSpCostEnabled}
+              onEnabledChange={handleSpEnabledChange}
               hoursBySp={spHours}
+              referenceTasks={spReferenceTasks}
+              doneTasks={doneTasks}
+              onReferenceTaskChange={(sp, task) => setSpReferenceTasks((prev) => {
+                const next = { ...prev };
+                if (task) next[String(sp)] = task;
+                else delete next[String(sp)];
+                return next;
+              })}
               onHoursChange={(sp, value) =>
                 setSpHours((prev) => ({ ...prev, [String(sp)]: value }))
               }
