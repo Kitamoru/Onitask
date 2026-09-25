@@ -3,8 +3,7 @@
 import { Card } from "@/components/ui/desk-ui/Card";
 import { TextInput } from "@/components/ui/desk-ui/TextInput";
 import { ToggleSwitch } from "@/components/ui/desk-ui/ToggleSwitch";
-
-const SP_VALUES = [1, 3, 5, 7, 13] as const;
+import { DEFAULT_STORY_POINT_VALUES } from "@/lib/storyPoints";
 
 export function StoryPointCostCard({
   enabled,
@@ -15,8 +14,8 @@ export function StoryPointCostCard({
 }: {
   enabled: boolean;
   onEnabledChange: (v: boolean) => void;
-  hoursBySp: Record<(typeof SP_VALUES)[number], string>;
-  onHoursChange: (sp: (typeof SP_VALUES)[number], value: string) => void;
+  hoursBySp: Record<string, string>;
+  onHoursChange: (sp: number, value: string) => void;
   disabled?: boolean;
 }) {
   return (
@@ -33,7 +32,7 @@ export function StoryPointCostCard({
         />
       </div>
       <p className="mb-4 text-[13px] leading-[1.45] text-text-muted">
-        По умолчанию сложность задачи считается в часах. Если ваша команда считает задачи в SP, активируйте переключатель. В появившейся форме укажите приблизительные значения SP в часах.
+        Если ваша команда считает задачи в SP, активируйте переключатель. В появившейся форме укажите приблизительное значение SP в часах.
       </p>
 
       <div
@@ -44,15 +43,15 @@ export function StoryPointCostCard({
         }`}
       >
         <div className="flex flex-col gap-3">
-          {SP_VALUES.map((sp) => (
+          {DEFAULT_STORY_POINT_VALUES.map((sp) => (
             <div key={sp}>
               <label className="mb-1 block text-[13px] text-text">
                 {sp} SP
               </label>
               <TextInput
-                value={hoursBySp[sp]}
+                value={hoursBySp[String(sp)] ?? ''}
                 onChange={(e) => onHoursChange(sp, e.target.value)}
-                placeholder="1 час"
+                placeholder="Не задана"
                 disabled={disabled || !enabled}
                 inputMode="text"
               />

@@ -26,6 +26,12 @@ type WorkersRow = Database['public']['Tables']['workers']['Row'];
 type SprintsRow = Database['public']['Tables']['sprints']['Row'];
 
 const EMPTY_METRICS = {
+  evaluation: {
+    storyPointsEnabled: false,
+    cognitiveWeightEnabled: false,
+    storyPointValues: [1, 2, 3, 5, 8],
+    hoursPerSp: {},
+  },
   sprintEnabled: false,
   sprint: null,
   columns: [],
@@ -107,7 +113,7 @@ export async function POST(req: NextRequest) {
       isActive: sprintRow.status === 'active',
       ...sprintTaskStats,
       } : null;
-    const settings = (settingsResult.data ?? {}) as { story_points_config?: { sprint_enabled?: boolean }; flow_config?: Record<string, unknown> | null; enable_cognitive_budget?: boolean; velocity_window_days?: number };
+    const settings = (settingsResult.data ?? {}) as { story_points_config?: { sprint_enabled?: boolean } | null; flow_config?: Record<string, unknown> | null; enable_cognitive_budget?: boolean; velocity_window_days?: number };
     const metrics = buildFlowMetrics({
       workspaceId,
       tasks,
@@ -121,6 +127,7 @@ export async function POST(req: NextRequest) {
       reworkRows: ((reworkRows ?? []) as Array<{ task_id: string; from_column: string; to_column: string; moved_at: string }>).map((row) => ({ ...row, worker_id: tasks.find((task) => task.id === row.task_id)?.assigned_to ?? '' })),
       velocityWindowDays: settings.velocity_window_days ?? 14,
       enableCognitiveBudget: settings.enable_cognitive_budget ?? true,
+      storyPointsConfig: settings.story_points_config,
       flowConfig: settings.flow_config ?? null,
       sprint,
       sprintEnabled: settings.story_points_config?.sprint_enabled ?? false,

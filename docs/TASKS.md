@@ -221,6 +221,9 @@ format is deliberately compact so that agents can load the file quickly.
       Реализовано в текущем уровне готовности: DELETE /api/sprints/[id] (complete), PATCH /api/sprints/[id]/activate.
       Sprint sheets: SprintViewSheet с кнопками Activate/Complete, SprintEditSheet.
 
+- [x] FLOW-12 Feature gates Story Points / Cognitive Weight в Task/FlowBoard/Stream #ui !high ✅
+      Реализовано 2026-09-25: `FlowMetricsResponse.evaluation`; отключённые контуры скрыты и исключены из пользовательских метрик; SP scale Фибоначчи; ручной SP в `task_enrichments`; A-11 и Sprint независимы. Regression: `tests/lib/storyPoints.test.ts`, `tests/lib/flowMetrics.test.ts`, `tests/api/tasks/evaluationSettings.test.ts`; type-check, lint 0 errors, Vitest 259/259.
+
 ---
 
 ## Stage 5 · Voice / NL Input (F-04)

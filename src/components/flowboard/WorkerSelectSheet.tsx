@@ -32,6 +32,8 @@ export interface WorkerSelectSheetProps {
   preflightEnabled?: boolean;
   /** Cognitive weight of the task being assigned */
   assignmentTaskWeight?: number;
+  /** Show F-01 load in the pre-flight block */
+  showCognitiveLoad?: boolean;
 }
 
 export function shouldConfirmAssignment(worker: WorkerCardData, enabled = true): boolean {
@@ -48,6 +50,7 @@ export function WorkerSelectSheet({
   stacked = false,
   preflightEnabled = false,
   assignmentTaskWeight = 1,
+  showCognitiveLoad = true,
 }: WorkerSelectSheetProps) {
   const [pendingWorker, setPendingWorker] = useState<WorkerCardData | null>(null);
   useEffect(() => {
@@ -84,9 +87,11 @@ export function WorkerSelectSheet({
           <Card notch={8}>
             <div className="flex flex-col gap-3">
               <SectionHeader title={`Назначить на ${pendingWorker.displayName}?`} />
-              <p className="text-sm text-text-muted">
-                Когнитивная нагрузка сейчас: {pendingWorker.cognitiveWeight}/3. Вес новой задачи: {assignmentTaskWeight}.
-              </p>
+              {showCognitiveLoad && (
+                <p className="text-sm text-text-muted">
+                  Когнитивная нагрузка сейчас: {pendingWorker.cognitiveWeight}/3. Вес новой задачи: {assignmentTaskWeight}.
+                </p>
+              )}
               <p className="text-sm text-text-muted">
                 Риск назначения: {pendingWorker.attentionRiskScore ?? 0}/100 · {pendingWorker.attentionRiskLevel ?? 'ok'}.
               </p>

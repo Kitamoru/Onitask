@@ -142,7 +142,7 @@ export default function CreateBoardPage() {
       }
 
       // Build the SP values array from the hours map (fall back to default)
-      const spValues: [number, number, number, number, number] = [1, 3, 5, 7, 13];
+      const spValues = [1, 2, 3, 5, 8];
 
       const payload: Record<string, unknown> = {
         init_data: getTelegramInitData(),
@@ -151,7 +151,7 @@ export default function CreateBoardPage() {
 
         story_points_config: value.spCostEnabled
           ? { enabled: true, values: spValues, hours_per_sp: value.spHours, sprint_enabled: value.spSprintEnabled }
-          : { enabled: false, sprint_enabled: value.spSprintEnabled },
+          : { enabled: false, sprint_enabled: value.spSprintEnabled, values: spValues },
 
         enable_cognitive_budget: value.cognitiveWeightEnabled,
 

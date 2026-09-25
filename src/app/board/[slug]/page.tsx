@@ -53,7 +53,7 @@ export default function BoardDetailPage() {
       slug: string;
       spCostEnabled: boolean;
       spSprintEnabled: boolean;
-      spHours?: { 1: string; 3: string; 5: string; 7: string; 13: string };
+      spHours?: Record<string, string>;
       cognitiveWeightEnabled: boolean;
       context: string;
       documentsEnabled: boolean;
@@ -196,9 +196,7 @@ export default function BoardDetailPage() {
             slug: ws.slug || '',
             spCostEnabled: (settingsData?.story_points_config?.enabled) ?? false,
             spSprintEnabled: (settingsData?.story_points_config?.sprint_enabled) ?? false,
-            spHours: (settingsData?.story_points_config?.hours_per_sp) as
-              | { 1: string; 3: string; 5: string; 7: string; 13: string }
-              | undefined,
+            spHours: (settingsData?.story_points_config?.hours_per_sp ?? {}) as Record<string, string>,
             cognitiveWeightEnabled: settingsData?.enable_cognitive_budget ?? false,
             context: settingsData?.workspace_context || '',
             // Show documents section if feature was enabled OR if there are existing documents

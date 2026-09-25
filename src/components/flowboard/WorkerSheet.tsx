@@ -26,8 +26,7 @@ import {
   CognitiveWeightIndicator,
   PriorityBadge,
 } from '@/components/flowboard/FlowBoard';
-import type { TaskEntity } from '@/types/flowboard';
-import type { WorkerCardData, SprintInfo } from '@/types/flowboard';
+import type { TaskEntity, WorkerCardData, SprintInfo, EvaluationConfig } from '@/types/flowboard';
 import { revokeWorkerAccess, saveWorkerAccess, transferWorkspaceOwnership, leaveWorkspace } from '@/lib/api/flow';
 import {
   EDITABLE_PRESETS,
@@ -55,6 +54,8 @@ export interface WorkerSheetProps {
   workspaceName?: string;
   /** Может ли текущий пользователь отзывать доступы (owner/admin) */
   canRevoke?: boolean;
+  /** Board evaluation settings */
+  evaluation: EvaluationConfig;
   /** Callback при успешном отзыве доступа */
   onRevokeSuccess?: () => void;
   /** ID воркера текущего пользователя — свою «Роль в доске» можно править всегда */
@@ -83,6 +84,7 @@ export function WorkerSheet({
   workspaceId,
   workspaceName,
   canRevoke,
+  evaluation,
   onRevokeSuccess,
   currentWorkerId,
   onSaveSuccess,
@@ -147,13 +149,15 @@ export function WorkerSheet({
 
   // Метрики приходят из server flow metrics.
   const metrics = useMemo(() => {
-    const velocity = worker?.spPerDay ?? 0; // SP/день из server flow metrics
+    const velocity = evaluation.storyPointsEnabled ? (worker?.spPerDay ?? 0) : 0; // SP/день из server flow metrics
     let daysLeft = worker?.velocityWindowDays ?? METRIC_WINDOW_DAYS;
     if (sprint && sprint.isActive) {
       daysLeft = Math.max(0, sprint.totalDays - sprint.daysElapsed);
     }
     const forecastSP = velocity * daysLeft;
-    const assignedSP = workingTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+    const assignedSP = evaluation.storyPointsEnabled
+      ? workingTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0)
+      : 0;
     const gap = assignedSP - forecastSP;
     return {
       velocity,
@@ -165,7 +169,7 @@ export function WorkerSheet({
       assignedSP,
       gap,
     };
-  }, [worker?.spPerDay, worker?.reworkRate, worker?.reworkCount, workingTasks, sprint]);
+  }, [worker?.spPerDay, worker?.reworkRate, worker?.reworkCount, worker?.velocityWindowDays, workingTasks, sprint, evaluation.storyPointsEnabled]);
 
   // ─── Revoke access ────────────────────────────────────────────────────────
 
@@ -492,7 +496,7 @@ export function WorkerSheet({
       {worker ? (
         <div className="flex flex-col gap-6 px-4 pb-6" aria-label="Воркер">
         {/* 1. Header — worker card (Figma 622:29872) */}
-        <WorkerHeader worker={worker} />
+        <WorkerHeader worker={worker} evaluation={evaluation} />
 
         {/* 2. Сегменты — Статус / Доступы */}
         <Segments<WorkerSheetTab>
@@ -504,7 +508,7 @@ export function WorkerSheet({
 
         {tab === 'status' && (
           <div className="flex flex-col gap-6">
-            <StatusMetrics metrics={metrics} />
+            <StatusMetrics metrics={metrics} evaluation={evaluation} />
             <TaskSection
               color="var(--color-accent-amber)"
               title="В работе"
@@ -549,8 +553,10 @@ export function WorkerSheet({
 
 function WorkerHeader({
   worker,
+  evaluation,
 }: {
   worker: WorkerCardData;
+  evaluation: EvaluationConfig;
 }) {
   return (
     <NotchedPanel
@@ -566,7 +572,7 @@ function WorkerHeader({
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-1">
           <UserAvatar displayName={worker.displayName} avatarUrl={worker.avatarUrl} />
-          <CognitiveWeightIndicator weight={worker.cognitiveWeight} />
+          {evaluation.cognitiveWeightEnabled && <CognitiveWeightIndicator weight={worker.cognitiveWeight} />}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
@@ -581,7 +587,7 @@ function WorkerHeader({
             >
               {worker.displayName}
             </span>
-            {worker.overloaded && <PriorityBadge label="Перегружен" color="red" />}
+            {evaluation.cognitiveWeightEnabled && worker.overloaded && <PriorityBadge label="Перегружен" color="red" />}
           </div>
           <p
             style={{
@@ -602,6 +608,7 @@ function WorkerHeader({
 // ─── Status: метрики ───────────────────────────────────────────────────────────
 
 interface StatusMetricsProps {
+  evaluation: EvaluationConfig;
   metrics: {
     velocity: number;
     periodDays: number;
@@ -659,35 +666,39 @@ function MetricCard({
   );
 }
 
-function StatusMetrics({ metrics }: StatusMetricsProps) {
+function StatusMetrics({ metrics, evaluation }: StatusMetricsProps) {
   return (
     <div className="grid grid-cols-2 gap-2">
-      <MetricCard
-        value={String(metrics.velocity)}
-        sub={`${metrics.velocity} SP/день · ${metrics.periodDays}д`}
-        caption="Скорость"
-      />
+      {evaluation.storyPointsEnabled ? (
+        <MetricCard
+          value={String(metrics.velocity)}
+          sub={`${metrics.velocity} SP/день · ${metrics.periodDays}д`}
+          caption="Скорость"
+        />
+      ) : null}
       <MetricCard
         value={String(metrics.reworkCount)}
         sub={`${Math.round(metrics.rework * 100)}% возвратов · ${metrics.periodDays}д`}
         caption="Возвраты"
       />
 
-      <div className="col-span-2 flex flex-col gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
-        <MetricRow label="Прогноз" value={`${metrics.forecastSP.toFixed(1)} SP`} muted />
-        <MetricRow label="Назначено" value={`${metrics.assignedSP} SP`} accent />
-        {metrics.gap > 0 && (
-          <span
-            style={{
-              fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-sm)',
-              lineHeight: '18px',
-              fontWeight: 500,
-              color: '#EF4444',
-            }}
-          >{`Gap +${metrics.gap.toFixed(1)} SP → риск`}</span>
-        )}
-      </div>
+      {evaluation.storyPointsEnabled && (
+        <div className="col-span-2 flex flex-col gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+          <MetricRow label="Прогноз" value={`${metrics.forecastSP.toFixed(1)} SP`} muted />
+          <MetricRow label="Назначено" value={`${metrics.assignedSP} SP`} accent />
+          {metrics.gap > 0 && (
+            <span
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-sm)',
+                lineHeight: '18px',
+                fontWeight: 500,
+                color: '#EF4444',
+              }}
+            >{`Gap +${metrics.gap.toFixed(1)} SP → риск`}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

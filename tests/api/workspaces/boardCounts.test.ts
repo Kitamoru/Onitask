@@ -99,6 +99,7 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
       counts: {},
       members: {},
       riskData: { people: 0, processes: 0, escalations: 0 },
+      cognitiveWeightEnabledByWorkspace: {},
       sprintsByWorkspace: {},
     });
     expect(supabase.from).toHaveBeenCalledTimes(1);
@@ -138,7 +139,7 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
         error: null,
       },
       [SELECT_SPRINTS]: { data: [], error: null },
-      [SELECT_SETTINGS]: { data: [{ workspace_id: 'ws-1', enable_cognitive_budget: true }, { workspace_id: 'ws-2', enable_cognitive_budget: true }], error: null },
+      [SELECT_SETTINGS]: { data: [{ workspace_id: 'ws-1', enable_cognitive_budget: false }, { workspace_id: 'ws-2', enable_cognitive_budget: false }], error: null },
       [SELECT_REVIEW]: { data: [{ workspace_id: 'ws-1', reviewer_id: 'h1' }], error: null },
       [SELECT_STUCK]: { data: [{ workspace_id: 'ws-1', id: 's1' }], error: null },
       [SELECT_ORPHAN]: { data: [{ workspace_id: 'ws-2', id: 'o1' }], error: null },
@@ -156,6 +157,7 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
     });
     // People: F-01 overloaded humans. Processes: review backlog + stuck + orphan.
     expect(json.data.riskData).toEqual({ people: 0, processes: 3, escalations: 1 });
+    expect(json.data.cognitiveWeightEnabledByWorkspace).toEqual({ 'ws-1': false, 'ws-2': false });
     expect(json.data.members).toEqual({
       'ws-1': { humans: 2, agents: 1 },
       'ws-2': { humans: 1, agents: 0 },

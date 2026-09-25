@@ -17,13 +17,17 @@ import {
 } from "@/components/desk-create/ExternalLinksCard";
 import { TrafficLightCard } from "@/components/desk-create/TrafficLightCard";
 
-const DEFAULT_SP_HOURS = { 1: "1 час", 3: "1 час", 5: "1 час", 7: "1 час", 13: "1 час" };
+import { DEFAULT_STORY_POINT_VALUES } from '@/lib/storyPoints';
+
+const DEFAULT_SP_HOURS: Record<string, string> = Object.fromEntries(
+  [...DEFAULT_STORY_POINT_VALUES].map((value) => [String(value), '']),
+);
 
 export type CreateDeskFormValue = {
   name: string;
   slug: string;
   spCostEnabled: boolean;
-  spHours: typeof DEFAULT_SP_HOURS;
+  spHours: Record<string, string>;
   spSprintEnabled: boolean;
   cognitiveWeightEnabled: boolean;
   /** Selected colleagues' source_ids to add as members */
@@ -121,16 +125,14 @@ export function CreateDeskForm({
                enabled={spSprintEnabled}
                onEnabledChange={setSpSprintEnabled}
              />
-              {spSprintEnabled && (
-                <StoryPointCostCard
-                  enabled={spCostEnabled}
-                  onEnabledChange={setSpCostEnabled}
-                  hoursBySp={spHours}
-                  onHoursChange={(sp, value) =>
-                    setSpHours((prev) => ({ ...prev, [sp]: value }))
-                  }
-                />
-              )}
+              <StoryPointCostCard
+               enabled={spCostEnabled}
+               onEnabledChange={setSpCostEnabled}
+               hoursBySp={spHours}
+               onHoursChange={(sp, value) =>
+                 setSpHours((prev) => ({ ...prev, [String(sp)]: value }))
+               }
+              />
              <CognitiveWeightCard
               enabled={cognitiveWeightEnabled}
               onEnabledChange={setCognitiveWeightEnabled}

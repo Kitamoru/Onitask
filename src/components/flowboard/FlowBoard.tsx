@@ -9,6 +9,7 @@ import { SprintEditSheet } from '@/components/sprint/SprintEditSheet';
 import { SprintViewSheet } from '@/components/sprint/SprintViewSheet';
 import type { SprintFormValue, SprintStats } from '@/components/sprint/types';
 import { formatDateRange, computeDaysLeft, toISODate } from '@/lib/date';
+import type { EvaluationConfig } from '@/types/flowboard';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /**
@@ -121,6 +122,8 @@ export interface FlowBoardProps {
   /** Whether sprints are enabled for this workspace */
   sprintEnabled?: boolean;
   sprint?: SprintInfo;
+  /** Board evaluation settings */
+  evaluation: EvaluationConfig;
   signals: SignalData[];
   taskStatuses: TaskStatusData[];
   workers: WorkerCardData[];
@@ -592,9 +595,11 @@ export function UserAvatar({ displayName, avatarUrl, size = 'md' }: { displayNam
 export function PersonCard({
   person,
   type = 'worker',
+  evaluation,
   onClick,
 }: {
   person: WorkerCardData | AgentCardData;
+  evaluation: EvaluationConfig;
   type?: 'worker' | 'agent';
   /** Click opens the worker bottom sheet */
   onClick?: () => void;
@@ -643,7 +648,7 @@ export function PersonCard({
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-1">
           <UserAvatar displayName={displayName} avatarUrl={avatarUrl} />
-          {type !== 'agent' && <CognitiveWeightIndicator weight={cognitiveWeight} />}
+          {type !== 'agent' && evaluation.cognitiveWeightEnabled && <CognitiveWeightIndicator weight={cognitiveWeight} />}
         </div>
         <div className="flex flex-col flex-1 gap-1">
           <div className="flex items-center justify-between">
@@ -658,7 +663,7 @@ export function PersonCard({
             >
               {displayName}
             </span>
-             {overloaded && <PriorityBadge label="Перегружен" color="red" />}
+           {evaluation.cognitiveWeightEnabled && overloaded && <PriorityBadge label="Перегружен" color="red" />}
              {attentionRiskScore >= 60 && (
                <PriorityBadge
                  label={`⚠ Риск ${attentionRiskScore}`}
@@ -678,10 +683,14 @@ export function PersonCard({
             {roleLabel}
           </p>
           <div className="flex items-center gap-1">
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? agentThroughput : spPerDay}</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{type === 'agent' ? 'задач/д' : 'SP/д'}</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>•</span>
-            <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? '7д' : `${activeDays}д`}</span>
+            {type === 'agent' || evaluation.storyPointsEnabled ? (
+              <>
+                <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? agentThroughput : spPerDay}</span>
+                <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>{type === 'agent' ? 'задач/д' : 'SP/д'}</span>
+                <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-muted)' }}>•</span>
+                <span style={{ fontFamily: 'var(--font-family-display)', fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }}>{type === 'agent' ? '7д' : `${activeDays}д`}</span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -724,6 +733,7 @@ export function FlowBoard({
   onRefresh,
   initData,
   workspaceId,
+  evaluation,
   onColumnClick,
   onSignalClick,
   onWorkerClick,
@@ -1001,7 +1011,7 @@ export function FlowBoard({
            <div
              className="grid w-full"
              style={{
-               gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+               gridTemplateColumns: `repeat(${signals.length}, minmax(0, 1fr))`,
                gap: 'var(--spacing-2)',
                // Ensure cards don't overflow on small screens
                minWidth: 0,
@@ -1052,6 +1062,7 @@ export function FlowBoard({
               key={worker.id}
               person={worker}
               type="worker"
+              evaluation={evaluation}
               onClick={onWorkerClick ? () => onWorkerClick(worker) : undefined}
             />
           ))}
@@ -1066,7 +1077,7 @@ export function FlowBoard({
         <DeskSectionHeader title="Агенты" />
         <div className="flex flex-col gap-3">
           {agents.map((agent) => (
-            <PersonCard key={agent.id} person={agent} type="agent" onClick={onAgentClick ? () => onAgentClick(agent) : undefined} />
+            <PersonCard key={agent.id} person={agent} type="agent" evaluation={evaluation} onClick={onAgentClick ? () => onAgentClick(agent) : undefined} />
           ))}
         </div>
         <Button variant="outline" onClick={onAddAgent} aria-label="Добавить агента" type="button">

@@ -53,7 +53,7 @@ function toTaskEntity(
     full_id: fullId,
     workspace_prefix: prefix,
     ai_hint: (raw as any).ai_hint ?? null,
-    story_points: (raw as any).story_points ?? null,
+    story_points: (raw as any).story_points === undefined ? null : (raw as any).story_points,
   } as TaskEntity;
 }
 
@@ -478,6 +478,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [loadBoardsData],
   );
 
+  const tasksRef = useRef(state.tasks.items);
+  useEffect(() => {
+    tasksRef.current = state.tasks.items;
+  }, [state.tasks.items]);
+
   const workspacesRef = useRef(state.workspaces.items);
   useEffect(() => {
     workspacesRef.current = state.workspaces.items;
@@ -535,7 +540,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (raw.workspace_id && raw.workspace_id !== workspaceId) {
           return;
         }
-        const taskEntity = toTaskEntity(raw as any, prefix);
+        const previousTask = tasksRef.current.find((task) => task.id === raw.id);
+        const taskEntity = toTaskEntity({ ...(raw as any), story_points: (raw as any).story_points ?? previousTask?.story_points }, prefix);
         dispatch({ type: 'PATCH_TASK', payload: taskEntity });
         invalidateCountsThrottled();
       } else if (payload.eventType === 'DELETE') {

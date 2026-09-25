@@ -12,17 +12,34 @@ export function Stepper({
   onChange,
   borderGradient,
   disabled = false,
+  values,
 }: {
   value: number;
   unitLabel: (n: number) => string;
   min?: number;
   max?: number;
+  /** Values accepted by the stepper; Fibonacci by default. */
+  values?: readonly number[];
   onChange: (next: number) => void;
   borderGradient: [string, string];
   disabled?: boolean;
 }) {
-  const dec = () => onChange(Math.max(min, value - 1));
-  const inc = () => onChange(Math.min(max, value + 1));
+  const dec = () => {
+    if (values) {
+      const index = values.indexOf(value);
+      if (index > 0) onChange(values[index - 1]);
+      return;
+    }
+    onChange(Math.max(min, value - 1));
+  };
+  const inc = () => {
+    if (values) {
+      const index = values.indexOf(value);
+      if (index >= 0 && index < values.length - 1) onChange(values[index + 1]);
+      return;
+    }
+    onChange(Math.min(max, value + 1));
+  };
 
   return (
     <NotchedPanel
@@ -34,7 +51,7 @@ export function Stepper({
       contentClassName="flex h-10 items-center justify-between px-2"
       className={cn('h-full', disabled && 'opacity-40')}
     >
-      <StepperButton onClick={dec} disabled={disabled || value <= min} label="Уменьшить">
+      <StepperButton onClick={dec} disabled={disabled || (values ? values.indexOf(value) <= 0 : value <= min)} label="Уменьшить">
         <Minus className="h-4 w-4" />
       </StepperButton>
 
@@ -42,7 +59,7 @@ export function Stepper({
         {unitLabel(value)}
       </span>
 
-      <StepperButton onClick={inc} disabled={disabled || value >= max} label="Увеличить">
+      <StepperButton onClick={inc} disabled={disabled || (values ? values.indexOf(value) >= values.length - 1 : value >= max)} label="Увеличить">
         <Plus className="h-4 w-4" />
       </StepperButton>
     </NotchedPanel>

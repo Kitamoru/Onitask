@@ -29,6 +29,10 @@ export function StoryPointCostCard({
           label="Стоимость сторипоинта"
         />
       </div>
+      <p className="mb-4 text-[13px] leading-[1.45] text-text-muted">
+        Если ваша команда считает задачи в SP, активируйте переключатель. В появившейся форме укажите приблизительное значение SP в часах.
+      </p>
+
 
       <div className="flex flex-col gap-3">
         {SP_VALUES.map((sp) => (

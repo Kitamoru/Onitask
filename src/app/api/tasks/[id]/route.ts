@@ -25,6 +25,11 @@ import {
 } from '../../../../../lib/api-auth';
 import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
+import {
+  isAllowedStoryPoint,
+  isValidCognitiveWeight,
+  normalizeStoryPointsConfig,
+} from '@/lib/storyPoints';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 
@@ -90,6 +95,30 @@ export async function PATCH(
       return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
     }
 
+    const { data: settingsRow } = await supabase
+      .from('workspace_settings')
+      .select('enable_cognitive_budget, story_points_config')
+      .eq('workspace_id', taskRow.workspace_id)
+      .maybeSingle();
+    const evaluation = {
+      cognitiveWeightEnabled: (settingsRow as any)?.enable_cognitive_budget !== false,
+      storyPoints: normalizeStoryPointsConfig((settingsRow as any)?.story_points_config),
+    };
+
+    if (!evaluation.cognitiveWeightEnabled && body.cognitive_weight !== undefined) {
+      return NextResponse.json({ error: 'Когнитивный вес отключён для этой доски' }, { status: 400 });
+    }
+    if (!evaluation.storyPoints.enabled && body.story_points !== undefined) {
+      return NextResponse.json({ error: 'Story Points отключены для этой доски' }, { status: 400 });
+    }
+
+    if (evaluation.cognitiveWeightEnabled && body.cognitive_weight !== undefined && !isValidCognitiveWeight(body.cognitive_weight)) {
+      return NextResponse.json({ error: 'Когнитивный вес должен быть от 0 до 3' }, { status: 400 });
+    }
+    if (evaluation.storyPoints.enabled && body.story_points !== undefined && !isAllowedStoryPoint(body.story_points, evaluation.storyPoints.values)) {
+      return NextResponse.json({ error: 'Story point должен входить в настроенную шкалу доски' }, { status: 400 });
+    }
+    if (!evaluation.cognitiveWeightEnabled) delete update.cognitive_weight;
     const currentTask = taskRow;
 
     // Optimistic concurrency: if the client sent expected_version and it doesn't
@@ -168,6 +197,28 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    if (evaluation.storyPoints.enabled && body.story_points !== undefined) {
+      const { error: enrichmentError } = await supabase
+        .from('task_enrichments')
+        .upsert({
+          task_id: taskId,
+          workspace_id: taskRow.workspace_id,
+          story_points: body.story_points,
+          sp_estimation_type: 'abstract',
+          enrichment_status: 'done',
+          model_used: 'manual',
+          enriched_at: new Date().toISOString(),
+        });
+      if (enrichmentError) {
+        return NextResponse.json({ error: enrichmentError.message }, { status: 500 });
+      }
+    }
+
+    const responseTask = await enrichTaskRow(data as TasksRow);
+    if (evaluation.storyPoints.enabled && body.story_points !== undefined) {
+      responseTask.story_points = body.story_points;
+    }
+
     // Broadcast task_changed event for flow metrics cache invalidation
     try {
       await supabase
@@ -182,7 +233,7 @@ export async function PATCH(
     }
 
     return NextResponse.json({
-      task: await enrichTaskRow(data as TasksRow),
+      task: responseTask,
       ...(versionWarning ? { warning: versionWarning } : {}),
     });
   } catch (err) {

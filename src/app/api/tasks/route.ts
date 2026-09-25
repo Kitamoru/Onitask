@@ -23,6 +23,11 @@ import {
 } from '../../../../lib/api-auth';
 import { enrichTaskRow, enrichTaskRowsBatch } from '../../../../lib/taskEnrichment';
 import type { Database } from '../../../../types/supabase';
+import {
+  isAllowedStoryPoint,
+  isValidCognitiveWeight,
+  normalizeStoryPointsConfig,
+} from '@/lib/storyPoints';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
 
@@ -117,6 +122,7 @@ export async function POST(request: NextRequest) {
       column,
       priority,
       cognitive_weight,
+      story_points,
       deadline,
       is_blocked,
       needs_human,
@@ -159,6 +165,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: settingsRow } = await supabase
+      .from('workspace_settings')
+      .select('enable_cognitive_budget, story_points_config')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    const evaluation = {
+      cognitiveWeightEnabled: (settingsRow as any)?.enable_cognitive_budget !== false,
+      storyPoints: normalizeStoryPointsConfig((settingsRow as any)?.story_points_config),
+    };
+
+    if (!evaluation.cognitiveWeightEnabled && cognitive_weight !== undefined) {
+      return NextResponse.json({ error: 'Когнитивный вес отключён для этой доски' }, { status: 400 });
+    }
+    if (!evaluation.storyPoints.enabled && story_points !== undefined) {
+      return NextResponse.json({ error: 'Story Points отключены для этой доски' }, { status: 400 });
+    }
+
+    if (evaluation.cognitiveWeightEnabled && cognitive_weight !== undefined && !isValidCognitiveWeight(cognitive_weight)) {
+      return NextResponse.json({ error: 'Когнитивный вес должен быть от 0 до 3' }, { status: 400 });
+    }
+    if (evaluation.storyPoints.enabled && story_points !== undefined && !isAllowedStoryPoint(story_points, evaluation.storyPoints.values)) {
+      return NextResponse.json({ error: 'Story point должен входить в настроенную шкалу доски' }, { status: 400 });
+    }
+
     // Build insert payload with only known columns
     // Note: created_by is temporarily cast until types are regenerated after migration 023
     const insertPayload = {
@@ -167,7 +197,7 @@ export async function POST(request: NextRequest) {
       description: description ?? null,
       column: column ?? 'backlog',
       priority: priority ?? 'medium',
-      cognitive_weight: cognitive_weight ?? 1,
+      cognitive_weight: evaluation.cognitiveWeightEnabled ? (cognitive_weight ?? 1) : 1,
       deadline: deadline ?? null,
       is_blocked: is_blocked ?? false,
       needs_human: needs_human ?? false,
@@ -190,6 +220,24 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (evaluation.storyPoints.enabled && story_points !== undefined) {
+      const { error: enrichmentError } = await supabase
+        .from('task_enrichments')
+        .upsert({
+          task_id: data.id,
+          workspace_id: workspaceId,
+          story_points: story_points,
+          sp_estimation_type: 'abstract',
+          enrichment_status: 'done',
+          model_used: 'manual',
+          enriched_at: new Date().toISOString(),
+        });
+      if (enrichmentError) {
+        return NextResponse.json({ error: enrichmentError.message }, { status: 500 });
+      }
+      (data as TasksRow & { story_points: number }).story_points = story_points;
     }
 
     return NextResponse.json({ task: await enrichTaskRow(data as TasksRow) }, { status: 201 });

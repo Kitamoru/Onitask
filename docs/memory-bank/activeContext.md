@@ -1,3 +1,15 @@
+## Evaluation settings integration (2026-09-25) ✅
+
+**Сделано:** добавлен единый `FlowMetricsResponse.evaluation` из `workspace_settings`.
+Отключённые Story Points и Cognitive Weight скрываются в Task/FlowBoard/Stream/Worker Sheet
+и не участвуют в пользовательских агрегатах. SP scale нормализована к Фибоначчи
+`[1, 2, 3, 5, 8]`; `hours_per_sp` остаётся необязательной team-specific стоимостью без
+fabricated fallback. Ручной SP сохраняется в `task_enrichments`; скрытые значения не
+принимаются API. A-11 и sprint gate остаются независимыми.
+
+**Проверки:** type-check ✅; lint 0 errors (20 warnings, mostly pre-existing); целевые 25/25 ✅; полный Vitest 259/259 ✅; `git diff --check` ✅. Миграций не применялось.
+
+
 ## RISK-05 · Server-side velocity (2026-09-25) ✅
 
 **Сделано:** velocity теперь считается в общем `flowMetrics` по завершённым задачам,

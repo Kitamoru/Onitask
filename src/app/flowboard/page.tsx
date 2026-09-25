@@ -161,11 +161,13 @@ function FlowBoardPageContent() {
   const signals = useMemo<SignalData[]>(() => {
     if (!metrics) return [];
     const risk = metrics.risk;
-    return [
-      { id: 'people', label: 'Люди', count: risk.people },
+    const baseSignals: SignalData[] = [
       { id: 'processes', label: 'Процессы', count: risk.processes },
       { id: 'escalations', label: 'Эскалации', count: risk.escalations },
     ];
+    return metrics.evaluation.cognitiveWeightEnabled
+      ? [{ id: 'people', label: 'Люди', count: risk.people }, ...baseSignals]
+      : baseSignals;
   }, [metrics]);
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
@@ -605,8 +607,14 @@ function FlowBoardPageContent() {
           key={state.activeWorkspaceId || 'default'}
           tasks={streamTasks}
           currentDate={currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
-          cognitiveWeight={0}
-          loadStatus="Свободен"
+          evaluation={metrics?.evaluation ?? {
+            storyPointsEnabled: false,
+            cognitiveWeightEnabled: false,
+            storyPointValues: [1, 2, 3, 5, 8],
+            hoursPerSp: {},
+          }}
+          cognitiveWeight={metrics?.evaluation.cognitiveWeightEnabled ? (metrics.workers.find((worker) => worker.id === currentUserId)?.cognitive_load ?? 0) : 0}
+          loadStatus={metrics?.evaluation.cognitiveWeightEnabled && (metrics.workers.find((worker) => worker.id === currentUserId)?.cognitive_load ?? 0) >= 3 ? 'Перегружен' : 'Свободен'}
           loading={isSwitchingWorkspace}
           error={dataError}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
@@ -626,7 +634,13 @@ function FlowBoardPageContent() {
           signals={signals}
           taskStatuses={taskStatuses}
           workers={workers}
-          agents={agents}
+          evaluation={metrics?.evaluation ?? {
+             storyPointsEnabled: false,
+             cognitiveWeightEnabled: false,
+             storyPointValues: [1, 2, 3, 5, 8],
+             hoursPerSp: {},
+           }}
+           agents={agents}
           loading={isSwitchingWorkspace}
           error={dataError}
           onAddWorker={() => setShowInviteModal(true)}
@@ -756,6 +770,12 @@ function FlowBoardPageContent() {
             invalidateBoardCounts();
             handleTaskSheetClose();
           }}
+          evaluation={metrics?.evaluation ?? {
+            storyPointsEnabled: false,
+            cognitiveWeightEnabled: false,
+            storyPointValues: [1, 2, 3, 5, 8],
+            hoursPerSp: {},
+          }}
           currentUserId={authData?.worker?.id}
         />
 
@@ -780,7 +800,13 @@ function FlowBoardPageContent() {
           open={!!selectedWorker}
           onClose={() => setSelectedWorker(null)}
           worker={selectedWorker}
-          tasks={tasks}
+          evaluation={metrics?.evaluation ?? {
+             storyPointsEnabled: false,
+             cognitiveWeightEnabled: false,
+             storyPointValues: [1, 2, 3, 5, 8],
+             hoursPerSp: {},
+           }}
+           tasks={tasks}
           sprint={sprint}
           workspaceId={state.activeWorkspaceId ?? undefined}
           workspaceName={workspaceName}

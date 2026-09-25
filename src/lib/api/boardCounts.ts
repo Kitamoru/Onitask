@@ -37,6 +37,8 @@ export interface BoardCountsData {
   counts: Record<string, BoardCountStats>;
   members: Record<string, BoardMemberCounts>;
   riskData: BoardRiskData;
+  /** Whether F-01 is enabled per workspace; all false lets UI hide People. */
+  cognitiveWeightEnabledByWorkspace: Record<string, boolean>;
   sprintsByWorkspace: Record<string, BoardSprintSummaryLite>;
 }
 

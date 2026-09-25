@@ -47,7 +47,12 @@ import {
 } from '@/components/ui/desk-ui';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
-import type { TaskEntity, WorkerCardData, LatestTaskSubmission } from '@/types/flowboard';
+import {
+  COGNITIVE_WEIGHT_VALUES,
+  storyPointCostLabel,
+  type StoryPointHours,
+} from '@/lib/storyPoints';
+import type { TaskEntity, WorkerCardData, LatestTaskSubmission, EvaluationConfig } from '@/types/flowboard';
 import {
   getTaskAttachments,
   uploadTaskAttachments,
@@ -91,6 +96,8 @@ export interface TaskViewEditProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** REV-01: вызывается после approve/fix с обогащённой задачей (для sync store) */
   onReviewResolved?: (task: TaskEntity) => void;
+  /** Current board evaluation settings */
+  evaluation: EvaluationConfig;
   /** Current user's worker ID (for highlighting own comments on the right) */
   currentUserId?: string;
   /** All tasks on the active board — used by the related-task picker. */
@@ -176,37 +183,48 @@ const CostSection = memo(function CostSection({
   storyPoints,
   cognitiveWeight,
   isView,
+  evaluation,
   onStoryPointsChange,
   onCognitiveWeightChange,
 }: {
   storyPoints: number;
   cognitiveWeight: number;
   isView: boolean;
+  evaluation: EvaluationConfig;
   onStoryPointsChange: (v: number) => void;
   onCognitiveWeightChange: (v: number) => void;
 }) {
+  const storyPointValues = evaluation.storyPointValues.includes(storyPoints)
+    ? evaluation.storyPointValues
+    : [...evaluation.storyPointValues, storyPoints].sort((a, b) => a - b);
+
+  if (!evaluation.storyPointsEnabled && !evaluation.cognitiveWeightEnabled) return null;
   return (
     <section>
       <SectionHeader title="Стоимость" />
       <div className="flex flex-col gap-3">
-        <Stepper
-          value={storyPoints}
-          unitLabel={(n) => `${n} SP`}
-          min={1}
-          max={30}
-          onChange={onStoryPointsChange}
-          borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-          disabled={isView}
-        />
-        <Stepper
-          value={cognitiveWeight}
-          unitLabel={(n) => `${n} CW`}
-          min={1}
-          max={10}
-          onChange={onCognitiveWeightChange}
-          borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
-          disabled={isView}
-        />
+        {evaluation.storyPointsEnabled && (
+          <Stepper
+            value={storyPoints}
+            unitLabel={(n) => storyPointCostLabel(n, evaluation.hoursPerSp as StoryPointHours) ?? `${n} SP`}
+            values={storyPointValues}
+            onChange={onStoryPointsChange}
+            borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+            disabled={isView}
+          />
+        )}
+        {evaluation.cognitiveWeightEnabled && (
+          <Stepper
+            value={cognitiveWeight}
+            unitLabel={(n) => `${n} CW`}
+            min={0}
+            max={3}
+            values={COGNITIVE_WEIGHT_VALUES}
+            onChange={onCognitiveWeightChange}
+            borderGradient={['var(--color-grad-add-from)', 'var(--color-grad-add-to)']}
+            disabled={isView}
+          />
+        )}
       </div>
     </section>
   );
@@ -545,6 +563,7 @@ export function TaskViewEdit({
   onDelete,
      onMoveTask,
   onReviewResolved,
+  evaluation,
   currentUserId,
   availableTasks = [],
   onOpenTask,
@@ -830,8 +849,8 @@ export function TaskViewEdit({
           title: title.trim(),
           description: description || undefined,
           column: 'backlog',
-          story_points: storyPoints,
-          cognitive_weight: cognitiveWeight,
+          story_points: evaluation.storyPointsEnabled && storyPoints !== task?.story_points ? storyPoints : undefined,
+          cognitive_weight: evaluation.cognitiveWeightEnabled ? cognitiveWeight : undefined,
           deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
         });
@@ -847,8 +866,8 @@ export function TaskViewEdit({
         const patch: Parameters<typeof patchTask>[1] = {
           title: title.trim(),
           description: description || undefined,
-          story_points: storyPoints,
-          cognitive_weight: cognitiveWeight,
+          story_points: evaluation.storyPointsEnabled && storyPoints !== task?.story_points ? storyPoints : undefined,
+          cognitive_weight: evaluation.cognitiveWeightEnabled ? cognitiveWeight : undefined,
           deadline: deadline ? deadline.toISOString() : undefined,
           metadata,
         };
@@ -876,6 +895,8 @@ export function TaskViewEdit({
     description,
     storyPoints,
     cognitiveWeight,
+    evaluation.storyPointsEnabled,
+    evaluation.cognitiveWeightEnabled,
     deadline,
     checklistEnabled,
     linksEnabled,
@@ -1105,6 +1126,7 @@ export function TaskViewEdit({
                 storyPoints={storyPoints}
                 cognitiveWeight={cognitiveWeight}
                 isView={isView}
+                evaluation={evaluation}
                 onStoryPointsChange={handleStoryPointsChange}
                 onCognitiveWeightChange={handleCognitiveWeightChange}
               />
@@ -1274,6 +1296,7 @@ export function TaskViewEdit({
         stacked
         preflightEnabled
         assignmentTaskWeight={cognitiveWeight}
+         showCognitiveLoad={evaluation.cognitiveWeightEnabled}
       />
       <WorkerSelectSheet
         open={reviewerSheetOpen}

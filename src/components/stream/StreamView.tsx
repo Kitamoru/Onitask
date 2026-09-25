@@ -7,7 +7,7 @@ import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/
 import { TaskBlockedBadge } from '@/components/flowboard/TaskBlockedBadge';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
-import type { TaskEntity } from '@/types/flowboard';
+import type { TaskEntity, EvaluationConfig } from '@/types/flowboard';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import {
   DEFAULT_DEADLINE_THRESHOLDS,
@@ -105,6 +105,8 @@ export interface StreamViewProps {
   onMoveTask?: (taskId: string, newColumn: string) => void;
   /** Callback when a task card is tapped */
   onTaskTap?: (taskId: string) => void;
+  /** Board evaluation settings */
+  evaluation?: EvaluationConfig;
   /** Toggle between flowboard and stream views */
   onToggleView?: () => void;
   /** Активный workspace — для ленивой загрузки порогов светофора (BOT-11). */
@@ -172,11 +174,13 @@ export function TaskCard({
   task,
   onClick,
   thresholds = DEFAULT_DEADLINE_THRESHOLDS,
+  cognitiveWeightEnabled = true,
 }: {
   task: TaskEntity;
   onClick?: () => void;
   /** Пороги светофора из настроек доски (BOT-11); дефолт — миграция 007. */
   thresholds?: DeadlineThresholds;
+  cognitiveWeightEnabled?: boolean;
 }) {
   const priorityColor =
     task.priority === 'critical' || task.priority === 'high'
@@ -251,7 +255,7 @@ export function TaskCard({
           {task.title}
         </span>
         {/* Cognitive weight — 3 squares for counting (filled = amber, empty = gray border) */}
-        {task.cognitive_weight > 0 && (
+        {task.cognitive_weight > 0 && cognitiveWeightEnabled && (
           <div className="flex shrink-0 items-center gap-[3px]" aria-label={`Cognitive weight: ${task.cognitive_weight}`}>
             {[1, 2, 3].map((i) => (
               <div
@@ -454,6 +458,7 @@ export function StreamView({
   onRefresh,
   onMoveTask,
   onTaskTap,
+  evaluation,
   onToggleView,
   workspaceId,
   initData,
@@ -613,42 +618,44 @@ export function StreamView({
       </div>
 
       {/* Cognitive weight summary — Figma "cognitive-weight-container" */}
-      <NotchedPanel
-        corner="action"
-        radius={4}
-        notch={8}
-        borderWidth={1}
-        border="var(--color-line)"
-        fill="var(--color-surface)"
-        contentClassName="flex w-full items-center justify-between gap-2 p-3"
-        aria-label="Нагрузка"
-      >
-        <div className="flex items-center gap-2">
+      {evaluation?.cognitiveWeightEnabled !== false && (
+        <NotchedPanel
+          corner="action"
+          radius={4}
+          notch={8}
+          borderWidth={1}
+          border="var(--color-line)"
+          fill="var(--color-surface)"
+          contentClassName="flex w-full items-center justify-between gap-2 p-3"
+          aria-label="Нагрузка"
+        >
+          <div className="flex items-center gap-2">
+            <span
+              style={{
+                fontFamily: 'var(--font-family-display)',
+                fontSize: 'var(--text-body-md)',
+                lineHeight: 'var(--text-body-md-line)',
+                fontWeight: 'var(--font-weight-medium)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              Нагрузка
+            </span>
+            <CognitiveWeightIndicator weight={cognitiveWeight} />
+          </div>
           <span
             style={{
               fontFamily: 'var(--font-family-display)',
-              fontSize: 'var(--text-body-md)',
-              lineHeight: 'var(--text-body-md-line)',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
               fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)',
+              color: 'var(--color-text-muted)',
             }}
           >
-            Нагрузка
+            {loadStatus}
           </span>
-          <CognitiveWeightIndicator weight={cognitiveWeight} />
-        </div>
-        <span
-          style={{
-            fontFamily: 'var(--font-family-display)',
-            fontSize: 'var(--text-body-sm)',
-            lineHeight: 'var(--text-body-sm-line)',
-            fontWeight: 'var(--font-weight-medium)',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          {loadStatus}
-        </span>
-      </NotchedPanel>
+        </NotchedPanel>
+      )}
 
       {/* Columns — accordion sections */}
       <AccordionSection
@@ -659,7 +666,7 @@ export function StreamView({
         accentColor={COLUMN_ACCENTS.in_progress}
       >
         {inProgressTasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} />
+          <TaskCard key={task.id} task={task} onClick={() => onTaskTap?.(task.id)} thresholds={thresholds} cognitiveWeightEnabled={evaluation?.cognitiveWeightEnabled !== false} />
         ))}
       </AccordionSection>
 

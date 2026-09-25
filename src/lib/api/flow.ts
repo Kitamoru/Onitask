@@ -60,7 +60,7 @@ function mapTaskRow(row: any): TaskEntity {
     handoff_to: row.handoff_to ?? null,
     handoff_notes: row.handoff_notes ?? null,
     sprint_id: row.sprint_id,
-    story_points: null,
+    story_points: row.story_points ?? null,
     cognitive_weight: row.cognitive_weight,
     raw_input: row.raw_input ?? null,
     clarity_score: row.clarity_score ?? null,
@@ -505,6 +505,7 @@ export async function getFlowMetrics(workspaceId?: string): Promise<{
     if (!initData) {
       return {
         metrics: {
+          evaluation: { storyPointsEnabled: false, cognitiveWeightEnabled: false, storyPointValues: [1, 2, 3, 5, 8], hoursPerSp: {} },
           sprintEnabled: false,
           sprint: null,
           columns: [],
@@ -532,6 +533,7 @@ export async function getFlowMetrics(workspaceId?: string): Promise<{
       const errData = await res.json().catch(() => ({ error: res.statusText }));
       return {
         metrics: {
+          evaluation: { storyPointsEnabled: false, cognitiveWeightEnabled: false, storyPointValues: [1, 2, 3, 5, 8], hoursPerSp: {} },
           sprintEnabled: false,
           sprint: null,
           columns: [],
@@ -550,6 +552,7 @@ export async function getFlowMetrics(workspaceId?: string): Promise<{
     if (!json.success) {
       return {
         metrics: {
+          evaluation: { storyPointsEnabled: false, cognitiveWeightEnabled: false, storyPointValues: [1, 2, 3, 5, 8], hoursPerSp: {} },
           sprintEnabled: false,
           sprint: null,
           columns: [],
@@ -568,6 +571,7 @@ export async function getFlowMetrics(workspaceId?: string): Promise<{
   } catch (err) {
     return {
       metrics: {
+        evaluation: { storyPointsEnabled: false, cognitiveWeightEnabled: false, storyPointValues: [1, 2, 3, 5, 8], hoursPerSp: {} },
         sprintEnabled: false,
         sprint: null,
         columns: [],

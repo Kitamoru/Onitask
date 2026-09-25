@@ -226,6 +226,7 @@ export async function POST(req: NextRequest) {
       orphanBlockerRows: (orphanResult.data ?? []) as OrphanBlockerRow[],
       pendingEscalationRows: (escalationResult.data ?? []) as PendingEscalationRow[],
       enableCognitiveBudget: (settingsResult.data as any)?.enable_cognitive_budget ?? true,
+      storyPointsConfig: (settingsResult.data as any)?.story_points_config,
       enrichmentRows: (enrichmentResult.data ?? []) as { task_id: string; story_points: number | null }[],
       reworkRows: ((reworkRows ?? []) as Array<{ task_id: string; from_column: string; to_column: string; moved_at: string }>).map((row) => ({ ...row, worker_id: relevantTasks.find((task) => task.id === row.task_id)?.assigned_to ?? '' })),
       velocityWindowDays: (settingsResult.data as any)?.velocity_window_days ?? 14,
@@ -246,7 +247,7 @@ export async function POST(req: NextRequest) {
         isActive: sprintsForMetrics[0].status === 'active',
         ...sprintTaskStats,
       } : null,
-      sprintEnabled: (settingsResult.data as any)?.story_points_config?.sprint_enabled ?? false,
+      sprintEnabled: (settingsResult.data as any)?.story_points_config?.sprint_enabled === true,
     });
 
     // Per-workspace sprint summaries Р В РўвЂР В Р’В»Р РЋР РЏ BoardCard

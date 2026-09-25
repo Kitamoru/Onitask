@@ -12,6 +12,7 @@ function baseInput(overrides: Partial<BuildFlowMetricsInput> = {}): BuildFlowMet
     orphanBlockerRows: [],
     pendingEscalationRows: [],
     enableCognitiveBudget: true,
+    storyPointsConfig: { enabled: true, values: [1, 2, 3, 5, 8] },
     flowConfig: {},
     ...overrides,
   };
@@ -73,6 +74,39 @@ describe('buildFlowMetrics', () => {
 
     expect(result.workers[0].cognitive_load).toBe(0);
     expect(result.risk.people).toBe(0);
+  });
+
+  it('returns the normalized evaluation contract and hides SP metrics when disabled', () => {
+    const result = buildFlowMetrics(baseInput({
+      storyPointsConfig: { enabled: false, values: [1, 2, 3, 5, 8], hours_per_sp: { 1: '2 часа' } },
+      workers: [{ id: 'w-1', workspace_id: 'ws-1', type: 'human', display_name: 'Vadim', role: 'member', role_title: null }],
+      tasks: [{ ...task({ id: 't-done', column: 'done', moved_to_column_at: new Date().toISOString() }) }],
+      enrichmentRows: [{ task_id: 't-done', story_points: 8 }],
+    }));
+
+    expect(result.evaluation).toEqual({
+      storyPointsEnabled: false,
+      cognitiveWeightEnabled: true,
+      storyPointValues: [1, 2, 3, 5, 8],
+      hoursPerSp: { '1': '2 часа' },
+    });
+    expect(result.workers[0].sp_per_day).toBeUndefined();
+    expect(result.workers[0].completed_story_points).toBeUndefined();
+  });
+
+  it('keeps SP metrics enabled independently from cognitive load', () => {
+    const result = buildFlowMetrics(baseInput({
+      enableCognitiveBudget: false,
+      storyPointsConfig: { enabled: true, values: [1, 2, 3, 5, 8] },
+      workers: [{ id: 'w-1', workspace_id: 'ws-1', type: 'human', display_name: 'Vadim', role: 'member', role_title: null }],
+      tasks: [{ ...task({ id: 't-done', column: 'done', moved_to_column_at: new Date().toISOString() }) }],
+      enrichmentRows: [{ task_id: 't-done', story_points: 5 }],
+    }));
+
+    expect(result.evaluation.storyPointsEnabled).toBe(true);
+    expect(result.evaluation.cognitiveWeightEnabled).toBe(false);
+    expect(result.workers[0].sp_per_day).toBe(0.4);
+    expect(result.workers[0].cognitive_load).toBe(0);
   });
 
   it('does not use A-11 attention score as the F-01 people count', () => {

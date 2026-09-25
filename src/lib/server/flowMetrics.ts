@@ -6,6 +6,7 @@ import type {
   SprintInfo,
   WorkerMetricData,
 } from '@/types/flowboard';
+import { normalizeStoryPointsConfig } from '@/lib/storyPoints';
 
 export interface FlowMetricsTask {
   id: string;
@@ -122,6 +123,7 @@ export interface BuildFlowMetricsInput {
   reworkRows?: FlowMetricsReworkRow[];
   velocityWindowDays?: number;
   enableCognitiveBudget: boolean;
+  storyPointsConfig?: unknown;
   flowConfig?: Record<string, unknown> | null;
   sprint?: SprintInfo | null;
   sprintEnabled?: boolean;
@@ -184,6 +186,13 @@ function makeColumns(tasks: FlowMetricsTask[]): ColumnHealthData[] {
 }
 
 export function buildFlowMetrics(input: BuildFlowMetricsInput): FlowMetricsResponse & { risk: FlowRiskData; riskBreakdown: FlowRiskBreakdown } {
+  const evaluationConfig = normalizeStoryPointsConfig(input.storyPointsConfig);
+  const evaluation = {
+    storyPointsEnabled: evaluationConfig.enabled,
+    cognitiveWeightEnabled: input.enableCognitiveBudget,
+    storyPointValues: evaluationConfig.values,
+    hoursPerSp: evaluationConfig.hoursPerSp,
+  };
   const scopedTasks = input.workspaceId
     ? input.tasks.filter((task) => task.workspace_id === input.workspaceId)
     : input.tasks;
@@ -208,12 +217,16 @@ export function buildFlowMetrics(input: BuildFlowMetricsInput): FlowMetricsRespo
   const workerMetrics: WorkerMetricData[] = scopedWorkers.map((worker) => {
     const cognitiveLoad = cognitiveLoadForWorker(worker.id, scopedTasks, input.enableCognitiveBudget);
     const attention = attentionByWorker.get(worker.id);
-    const completedSP = scopedTasks.reduce((sum, task) => {
-      if (task.assigned_to !== worker.id || task.column !== 'done') return sum;
-      if (!task.moved_to_column_at || new Date(task.moved_to_column_at) < velocityCutoff) return sum;
-      return sum + Math.max(0, numberValue(enrichmentByTask.get(task.id) ?? task.story_points));
-    }, 0);
-    const spPerDay = Math.round((completedSP / Math.max(1, velocityWindowDays)) * 10) / 10;
+    const completedSP = evaluation.storyPointsEnabled
+      ? scopedTasks.reduce((sum, task) => {
+          if (task.assigned_to !== worker.id || task.column !== 'done') return sum;
+          if (!task.moved_to_column_at || new Date(task.moved_to_column_at) < velocityCutoff) return sum;
+          return sum + Math.max(0, numberValue(enrichmentByTask.get(task.id) ?? task.story_points));
+        }, 0)
+      : undefined;
+    const spPerDay = completedSP === undefined
+      ? undefined
+      : Math.round((completedSP / Math.max(1, velocityWindowDays)) * 10) / 10;
     const completedTaskCount = scopedTasks.filter((task) => task.assigned_to === worker.id && task.column === 'done' && task.moved_to_column_at && new Date(task.moved_to_column_at) >= velocityCutoff).length;
     const reworkCount = reworkTasksByWorker.get(worker.id)?.size ?? 0;
     const reworkRate = completedTaskCount > 0 ? Math.round((reworkCount / completedTaskCount) * 100) / 100 : 0;
@@ -278,6 +291,7 @@ export function buildFlowMetrics(input: BuildFlowMetricsInput): FlowMetricsRespo
   ];
 
   return {
+    evaluation,
     sprintEnabled: input.sprintEnabled ?? false,
     sprint: input.sprint ?? null,
     columns,

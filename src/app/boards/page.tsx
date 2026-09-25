@@ -200,7 +200,8 @@ export default function BoardsPage() {
           <RiskPulse
             data={riskData}
             loading={statsLoading}
-            onSignalClick={(signal) => {
+            hidePeople={Object.values(counts?.cognitiveWeightEnabledByWorkspace ?? {}).length > 0 && Object.values(counts?.cognitiveWeightEnabledByWorkspace ?? {}).every((enabled) => !enabled)}
+             onSignalClick={(signal) => {
               if (signal === 'escalations') setShowEscalationQueue(true);
             }}
           />

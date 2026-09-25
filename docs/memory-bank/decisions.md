@@ -24,7 +24,31 @@
 ---
 
 
-# Architectural Decisions (ADR log)
+## ADR-2026-09-25: Workspace evaluation settings gate UI and user-facing metrics
+
+### Решение
+
+`story_points_config.enabled` и `workspace_settings.enable_cognitive_budget` являются
+независимыми feature gates. При выключенном контуре его значения не участвуют в
+пользовательских метриках и скрыты в Task/FlowBoard/Stream/Worker Sheet.
+
+- Story Points: шкала по умолчанию `[1, 2, 3, 5, 8]`; `hours_per_sp` — необязательная
+  team-specific стоимость. Без неё UI показывает только `N SP`, без выдуманных часов.
+- Cognitive Weight: F-01 и overload UI скрываются; A-11 attention risk остаётся отдельной
+  и рабочей метрикой.
+- Sprint gate (`sprint_enabled`) не зависит от SP gate.
+- Оценки могут оставаться в БД для аудита и быстрого повторного включения; API не принимает
+  скрытые значения от клиента, а read model не использует их в пользовательских агрегатах.
+
+### Последствия
+
+- Story Points не переключаются неявно на часы.
+- F-03 может продолжать сохранять обе оценки независимо от видимости.
+- `FlowMetricsResponse.evaluation` — единый feature contract для FlowBoard, Stream и Task Sheet.
+- Ручной SP сохраняется в `task_enrichments`, а не в `tasks`.
+
+---
+
 
 ## ADR-2026-09-25: Unified task navigation и cross-workspace launch (NAV-01)
 

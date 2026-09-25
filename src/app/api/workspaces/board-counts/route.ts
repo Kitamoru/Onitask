@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
           counts: {},
           members: {},
           riskData: { people: 0, processes: 0, escalations: 0 },
+          cognitiveWeightEnabledByWorkspace: {},
           sprintsByWorkspace: {},
         },
       });
@@ -192,6 +193,9 @@ export async function POST(req: NextRequest) {
         counts,
         members,
         riskData: { people: riskPeople.size, processes: riskProcesses, escalations: riskEscalations },
+        cognitiveWeightEnabledByWorkspace: Object.fromEntries(
+          workspaceIds.map((workspaceId) => [workspaceId, cognitiveBudgetEnabled.get(workspaceId) !== false]),
+        ),
         sprintsByWorkspace: buildSprintsByWorkspace(sprintResult.data || []),
       },
     });

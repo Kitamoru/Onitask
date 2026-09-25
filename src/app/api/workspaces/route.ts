@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest) {
     const workspace_context = body.workspace_context as string | undefined;
     const external_links = body.external_links as Array<{ name: string; url: string }> | undefined;
     const deadline_signals = body.deadline_signals as Array<{ value: number; label: string }> | undefined;
-    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean; hours_per_sp?: Record<string, string> } | undefined;
+    const story_points_config = body.story_points_config as { enabled?: boolean; sprint_enabled?: boolean; values?: number[]; hours_per_sp?: Record<string, string> } | undefined;
     const enable_cognitive_budget = body.enable_cognitive_budget as boolean | undefined;
     const doc_kb_enabled = body.doc_kb_enabled as boolean | undefined;
 

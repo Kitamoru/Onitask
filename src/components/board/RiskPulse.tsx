@@ -25,6 +25,8 @@ export interface RiskPulseProps {
   /** BOARD-AGG: агрегаты не пришли — блюр-заглушки вместо цифр. */
   loading?: boolean;
   onSignalClick?: (signal: 'people' | 'processes' | 'escalations') => void;
+  /** Hide the People signal when every visible workspace has F-01 disabled. */
+  hidePeople?: boolean;
 }
 
 const pulseCards = [
@@ -33,7 +35,8 @@ const pulseCards = [
   { label: "Эскалации", key: "escalations" as const },
 ];
 
-export function RiskPulse({ data, loading, onSignalClick }: RiskPulseProps) {
+export function RiskPulse({ data, loading, onSignalClick, hidePeople = false }: RiskPulseProps) {
+  const visiblePulseCards = pulseCards.filter(({ key }) => key !== 'people' || !hidePeople);
   return (
     <div className="flex flex-col w-full gap-4">
       {/* Summary label */}
@@ -50,8 +53,8 @@ export function RiskPulse({ data, loading, onSignalClick }: RiskPulseProps) {
       </p>
 
       {/* Summary cards grid — 3-col, gap=8px */}
-      <div className="grid w-full grid-cols-3 gap-2">
-        {pulseCards.map(({ label, key }) => {
+      <div className="grid w-full gap-2" style={{ gridTemplateColumns: `repeat(${pulseCards.length}, minmax(0, 1fr))` }}>
+        {visiblePulseCards.map(({ label, key }) => {
           const clickable = key === 'escalations' && Boolean(onSignalClick);
           return (
             <button

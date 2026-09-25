@@ -192,7 +192,16 @@ export interface FlowBoardProps {
 // ─── API Response Types ──────────────────────────────────────────────────────
 
 /** Response from POST /api/flow/metrics — server-side Flow Board read model */
+export interface EvaluationConfig {
+  storyPointsEnabled: boolean;
+  cognitiveWeightEnabled: boolean;
+  storyPointValues: number[];
+  hoursPerSp: Record<string, string>;
+}
+
 export interface FlowMetricsResponse {
+  /** UI/backend feature contract derived from workspace settings. */
+  evaluation: EvaluationConfig;
   /** Whether sprint is enabled for this workspace */
   sprintEnabled: boolean;
   /** Sprint information */
