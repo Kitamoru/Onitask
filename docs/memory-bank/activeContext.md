@@ -1,3 +1,25 @@
+## NAV-01 · Unified task navigation resolver (2026-09-25) ✅
+
+**Решение:** `start_param` разбирается в `src/lib/taskLaunch.ts` как `task`,
+`flow` или `invite`; task/flow не вызывают invite redemption. `/api/init`
+server-side резолвит full_id в task UUID + workspace UUID, проверяет активное
+membership и возвращает `launch_context`. Root переходит на
+`/flowboard?open_task_id=<UUID>&tab=comments|general`; legacy `open_task=<full_id>`
+поддержан в FlowBoard для старых ссылок. Удалён старый 500-мс
+`TelegramDeepLinkRouter`; `useTaskNavigator` единым путём переключает workspace,
+дожидается загрузки и открывает задачу. `DataContext` получил generation guard
+от stale workspace-load race, а `setActiveWorkspace` теперь awaitable.
+
+**Operator Queue scopes:** `/boards` показывает `scope=all` по всем активным
+workspace пользователя, Flow Board — только текущий workspace. Карточка глобальной
+очереди содержит `workspace_id`/`workspace_name` и открывает задачу через тот же
+navigator. Tenancy и membership проверяются server-side на каждом scope.
+
+**Проверки:** полный Vitest 237/237; production build ✅; type-check/lint/diff-check ✅.
+Production read-only cross-workspace smoke подтвердил: у профиля last-active workspace отличается от workspace задачи `ONIT-37`, `find_task_by_full_id` возвращает тот же task UUID, активное membership=true. Дополнительно закрыт tenant edge `POST /api/workspaces/my-data`: чужой `workspace_id` отклоняется 404 до scoped queries. Invite regression подтверждает переход существующего пользователя в workspace после redemption. Legacy `/board?task=` в bot confirmation заменён на Direct Link Mini App.
+
+---
+
 ## AGENT-03 Operator Queue · «Попробовать снова» (2026-09-25) ✅
 
 Основной сигнал Risk Pulse остаётся **«Эскалации»** и открывает

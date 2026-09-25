@@ -21,7 +21,7 @@ import {
   setMessageReaction,
   setBotCommands,
   buildCommandReplyKeyboard,
-  miniAppDeepLink,
+  taskCommentsUrl,
   TaskCardData,
 } from '../../../../../lib/bot';
 import { handleStartCommand } from '../../../../../src/lib/bot/onboarding';
@@ -1336,7 +1336,7 @@ async function handleReviewAction(
             [
               {
                 text: 'Открыть в приложении',
-                url: miniAppDeepLink(`task_${fullIdStr}`),
+                url: taskCommentsUrl(fullIdStr),
               },
             ],
           ],

@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockValidateTelegramInitData = vi.hoisted(() => vi.fn());
 const mockCreateServerClient = vi.hoisted(() => vi.fn());
+const mockResolveTaskLaunchTarget = vi.hoisted(() => vi.fn());
+const mockResolveFlowLaunchTarget = vi.hoisted(() => vi.fn());
 vi.hoisted(() => {
   process.env.TELEGRAM_BOT_TOKEN = 'test-token';
 });
@@ -22,6 +24,11 @@ vi.mock('../../lib/supabase', () => ({
   createServerClient: (...args: any[]) => mockCreateServerClient(...args),
 }));
 
+vi.mock('../../src/lib/server/taskLaunch', () => ({
+  resolveTaskLaunchTarget: (...args: any[]) => mockResolveTaskLaunchTarget(...args),
+  resolveFlowLaunchTarget: (...args: any[]) => mockResolveFlowLaunchTarget(...args),
+}));
+
 // Helper to create a mock NextRequest
 function createMockRequest(body: Record<string, unknown>) {
   return {
@@ -32,12 +39,13 @@ function createMockRequest(body: Record<string, unknown>) {
 
 function createThenable<T>(value: T) {
   const chain: Record<string, any> = {};
-  for (const method of ['eq', 'select', 'upsert', 'insert']) {
+  for (const method of ['eq', 'select', 'upsert', 'insert', 'in']) {
     chain[method] = vi.fn(() => chain);
   }
   chain.maybeSingle = vi.fn(async () => ({ data: value, error: null }));
   chain.single = vi.fn(async () => ({ data: value, error: null }));
-  chain.then = (resolve: (value: any) => unknown) => Promise.resolve(resolve(chain));
+  chain.then = (resolve: (value: unknown) => unknown, reject?: (reason?: unknown) => unknown) =>
+    Promise.resolve({ data: value, error: null }).then(resolve, reject);
   return chain;
 }
 
@@ -45,6 +53,8 @@ describe('POST /api/init', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    mockResolveTaskLaunchTarget.mockResolvedValue(null);
+    mockResolveFlowLaunchTarget.mockResolvedValue(null);
   });
 
   // Тест 1: Missing init_data → 400
@@ -126,6 +136,84 @@ describe('POST /api/init', () => {
     expect(data.success).toBe(true);
     expect(data.data.is_new_user).toBe(true);
     expect(data.data.worker.display_name).toBe('testuser');
+  });
+
+  it('task deep link returns launch context without invite redemption', async () => {
+    mockValidateTelegramInitData.mockResolvedValue({
+      valid: true,
+      user: { id: '987654321', is_bot: false, first_name: 'Test', username: 'testuser' },
+    });
+    const profileQuery = createThenable({
+      id: 'profile-uuid', telegram_id: 987654321, display_name: 'testuser',
+      avatar_url: null, last_active_workspace_id: 'ws-a',
+    });
+    const workersQuery = createThenable([
+      { id: 'worker-a', workspace_id: 'ws-a', role: 'member' },
+    ]);
+    const workspacesQuery = createThenable([
+      { id: 'ws-a', name: 'Alpha', slug: 'alpha', task_prefix: 'ALPHA' },
+    ]);
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') return profileQuery;
+        if (table === 'workers') return workersQuery;
+        if (table === 'workspaces') return workspacesQuery;
+        throw new Error(`unexpected table ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: 'unexpected invite redemption' } })),
+    };
+    mockCreateServerClient.mockReturnValue(supabase);
+    mockResolveTaskLaunchTarget.mockResolvedValue({
+      kind: 'task', taskId: 'task-b', workspaceId: 'ws-b', workspaceSlug: 'beta',
+      fullId: 'BETA-42', tab: 'comments',
+    });
+    const response = await POST(createMockRequest({ init_data: 'valid', start_param: 'task_BETA-42_comments' }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        launch_context: expect.objectContaining({ task_id: 'task-b', workspace_id: 'ws-b', tab: 'comments' }),
+      }),
+    }));
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+
+  it('existing user invite selects redeemed workspace for this launch', async () => {
+    mockValidateTelegramInitData.mockResolvedValue({
+      valid: true,
+      user: { id: '987654321', is_bot: false, first_name: 'Test', username: 'testuser' },
+    });
+    const profileQuery = createThenable({
+      id: 'profile-uuid', telegram_id: 987654321, display_name: 'testuser',
+      avatar_url: null, last_active_workspace_id: 'ws-a',
+    });
+    const workersQuery = createThenable([
+      { id: 'worker-a', workspace_id: 'ws-a', role: 'member' },
+      { id: 'worker-b', workspace_id: 'ws-b', role: 'member' },
+    ]);
+    const workspacesQuery = createThenable([
+      { id: 'ws-a', name: 'Alpha', slug: 'alpha', task_prefix: 'ALPHA' },
+      { id: 'ws-b', name: 'Beta', slug: 'beta', task_prefix: 'BETA' },
+    ]);
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') return profileQuery;
+        if (table === 'workers') return workersQuery;
+        if (table === 'workspaces') return workspacesQuery;
+        throw new Error(`unexpected table ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: [{ workspace_id: 'ws-b' }], error: null })),
+    };
+    mockCreateServerClient.mockReturnValue(supabase);
+
+    const response = await POST(createMockRequest({ init_data: 'valid', start_param: 'invite_CODE' }));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.last_active_workspace_id).toBe('ws-b');
+    expect(payload.data.worker.workspace_id).toBe('ws-b');
+    expect(supabase.rpc).toHaveBeenCalledWith('accept_invite_link', expect.objectContaining({
+      p_code: 'CODE', p_source_id: 'profile-uuid',
+    }));
   });
 
   it('returns 500 when invite acceptance RPC fails', async () => {

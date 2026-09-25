@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getPreferredView } from '@/lib/viewPreference';
 import { markPerf } from '@/lib/perf/timings';
-import { flowboardQueryFromStartParam } from '@/lib/telegramSdk';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
@@ -30,7 +29,9 @@ const PAGE_TOP_PADDING = 'max(64px, var(--tg-content-safe-top, 0px))';
 export default function HomePage() {
   useScrollReset();
   const router = useRouter();
-  const { isLoading, error, data, startParam } = useTelegramAuth();
+  const { isLoading, error, data } = useTelegramAuth();
+  const launchContext = data?.launch_context;
+  const launchError = data?.launch_error;
 
   // Guard: once redirected, NEVER redirect again.
   // Fixes board creation issue where refresh() flips is_new_user to false
@@ -41,6 +42,7 @@ export default function HomePage() {
     if (isLoading) return;
     if (hasNavigatedRef.current) return;
 
+    if (launchError) return;
     if (data?.is_new_user === true) {
       hasNavigatedRef.current = true;
       markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
@@ -49,17 +51,17 @@ export default function HomePage() {
       hasNavigatedRef.current = true;
       markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       const preferred = getPreferredView();
-      // Deep link «Открыть в приложении»: если start_param указывает на задачу,
-      // пробрасываем open_task в редирект — иначе гонка «редирект корневой
-      // страницы vs TelegramDeepLinkRouter» затирала параметр, и задача не
-      // открывалась (пользователь попадал просто на flowboard).
-      const deepLinkQuery = flowboardQueryFromStartParam(startParam ?? '');
       const preferredTarget = preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard';
-      const target = deepLinkQuery ?? preferredTarget;
+      const launch = launchContext;
+      const target = launch?.kind === 'task'
+        ? `/flowboard?open_task_id=${encodeURIComponent(launch.task_id)}${launch.tab === 'comments' ? '&tab=comments' : ''}`
+        : launch?.kind === 'flow'
+          ? `/flowboard?workspace_id=${encodeURIComponent(launch.workspace_id)}`
+          : preferredTarget;
       router.replace(target);
     }
     // If error or no data, stay on this page and show error below
-  }, [isLoading, data?.is_new_user, router]);
+  }, [isLoading, data?.is_new_user, launchContext, launchError, router]);
 
   // Loading state
   if (isLoading) {
@@ -69,6 +71,14 @@ export default function HomePage() {
         style={{ backgroundColor: '#0A0A0A' }}
       >
         <OrbitLoader />
+      </div>
+    );
+  }
+
+  if (launchError) {
+    return (
+      <div className="flex items-center justify-center h-tg-screen p-4" style={{ backgroundColor: '#0A0A0A' }}>
+        <p className="text-center max-w-sm text-base text-text">Задача не найдена или нет доступа</p>
       </div>
     );
   }

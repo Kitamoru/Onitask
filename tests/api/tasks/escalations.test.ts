@@ -25,6 +25,10 @@ const getRequest = (workspaceId: string) => ({
   headers: { get: () => 'init-data' },
   nextUrl: { searchParams: new Map([['workspace_id', workspaceId]]) },
 }) as unknown as NextRequest;
+const getAllRequest = () => ({
+  headers: { get: () => 'init-data' },
+  nextUrl: { searchParams: new Map([['scope', 'all']]) },
+}) as unknown as NextRequest;
 
 function successResult() {
   return {
@@ -47,10 +51,12 @@ function makeGetSupabase(options: {
 } = {}) {
   const queue = options.queue ?? [];
   const taskRows = options.tasks ?? [];
+  let workerQueryCount = 0;
   return {
     from: vi.fn((table: string) => {
       if (table === 'pending_escalations') {
         const chain: Record<string, unknown> = {
+          in: vi.fn(() => chain),
           eq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: queue, error: null })),
         };
@@ -59,22 +65,29 @@ function makeGetSupabase(options: {
       if (table === 'workspaces') {
         return {
           select: vi.fn(() => ({
-            eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: { task_prefix: 'ALPHA' }, error: null })) })),
+            in: vi.fn(async () => ({ data: [{ id: 'ws-1', name: 'Alpha', task_prefix: 'ALPHA' }], error: null })),
+            eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: { id: 'ws-1', name: 'Alpha', task_prefix: 'ALPHA' }, error: null })) })),
           })),
         };
       }
       if (table === 'tasks') {
         const chain: Record<string, unknown> = {
+          in: vi.fn(() => chain),
           eq: vi.fn(() => chain),
-          in: vi.fn(async () => ({ data: taskRows, error: null })),
+          then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve({ data: taskRows, error: null })),
         };
         return { select: vi.fn(() => chain) };
       }
       if (table === 'workers') {
+        workerQueryCount += 1;
+        if (workerQueryCount === 1) {
+          return { select: vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(async () => ({ data: [{ workspace_id: 'ws-1' }], error: null })) })) })) };
+        }
         const chain: Record<string, unknown> = {
           in: vi.fn(() => chain),
           like: vi.fn(() => Promise.resolve({ data: [{ id: 'agent-1' }], error: null })),
           eq: vi.fn(() => chain),
+          then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve({ data: [{ id: 'agent-1' }], error: null })),
         };
         return { select: vi.fn(() => chain) };
       }
@@ -103,10 +116,10 @@ describe('/api/tasks/escalations', () => {
     vi.clearAllMocks();
     vi.mocked(extractInitData).mockResolvedValue('init-data');
     vi.mocked(authenticateRequest).mockResolvedValue({ authenticated: true, profileId: 'profile-1' });
-    vi.mocked(isWorkspaceMember).mockResolvedValue(true);
     vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue({
       id: 'worker-1', workspace_id: 'ws-1', source_id: 'profile-1', type: 'human', role: 'member',
     });
+    vi.mocked(isWorkspaceMember).mockResolvedValue(true);
   });
 
   it('GET returns 401 without authentication', async () => {
@@ -122,7 +135,7 @@ describe('/api/tasks/escalations', () => {
         moved_to_column_at: '2026-01-01T00:00:00Z', hours_pending: 2,
       }],
       tasks: [{
-        id: 'task-1', task_number: 42, column: 'in_progress', is_blocked: false,
+        id: 'task-1', workspace_id: 'ws-1', task_number: 42, column: 'in_progress', is_blocked: false,
         active_claim_id: null, assigned_to: 'agent-1',
         metadata: { nack_reason: 'bad_response', nack_detail: 'invalid JSON' },
       }],
@@ -136,10 +149,31 @@ describe('/api/tasks/escalations', () => {
     })] });
   });
 
-  it('GET hides foreign workspace as 404', async () => {
+  it('GET returns 404 for a workspace the user is not a member of', async () => {
     vi.mocked(isWorkspaceMember).mockResolvedValue(false);
+    const supabase = makeGetSupabase();
+    vi.mocked(createServerClient).mockReturnValue(supabase);
     expect((await GET(getRequest('foreign-ws'))).status).toBe(404);
   });
+  it('GET includes all member workspaces with scope=all', async () => {
+    const supabase = makeGetSupabase({
+      queue: [{
+        id: 'task-1', title: 'Prepare note', escalation_reason: 'max_attempts',
+        workspace_id: 'ws-1', assigned_agent: 'Drift',
+        moved_to_column_at: '2026-01-01T00:00:00Z', hours_pending: 2,
+      }],
+      tasks: [{
+        id: 'task-1', workspace_id: 'ws-1', task_number: 42, column: 'in_progress', is_blocked: false,
+        active_claim_id: null, assigned_to: 'agent-1', metadata: {},
+      }],
+    });
+    vi.mocked(createServerClient).mockReturnValue(supabase);
+    const res = await GET(getAllRequest());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ items: [expect.objectContaining({ workspace_id: 'ws-1' })] });
+  });
+
+
 
   it('POST returns 401 without authentication', async () => {
     vi.mocked(authenticateRequest).mockResolvedValue({ authenticated: false, error: 'missing_init_data', status: 401 });

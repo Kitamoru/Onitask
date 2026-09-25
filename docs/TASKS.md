@@ -381,6 +381,10 @@ format is deliberately compact so that agents can load the file quickly.
       **Сверка 2026-09-19:** не реализовано — вьюхи `orphan_blockers`/`handoff_chain` в UI не используются.
       flow_.md §19 (v3.6.0). Drill-down по трём группам: ревью-блок / stuck / orphan.
 
+- [x] NAV-01 Unified task navigation resolver: task/flow/invite namespace, cross-workspace launch, `open_task_id`, global/local Operator Queue scopes #api !high @blocked_by:INV-13
+      **Реализовано 2026-09-25:** `/api/init` server-side резолвит task `full_id` в UUID задачи и workspace с проверкой membership; root/FlowBoard/useTaskNavigator используют единый путь; `comments` tab сохраняется; legacy `open_task` и invite поддержаны; `TelegramDeepLinkRouter` удалён; `DataContext` получил stale-load generation guard; `/boards` открывает `scope=all` Operator Queue. Regression: parser, resolver, init, queue, SDK tests.
+
+
 ---
 
 ## Stage 9 · Agent Cards + Escalations
@@ -749,7 +753,7 @@ format is deliberately compact so that agents can load the file quickly.
 - [x] FILE-03 `send_message_to_chat` + attachments + task_id + inline-кнопка «Обсудить задачу» #mcp #bot !high
       `SendMessageToChatParams` расширен (`attachments`, `task_id`); metadata.full_id →
       deep-link `task_<full_id>_comments`; доставка через очередь (consumer FILE-01).
-      Deep-link: `TelegramDeepLinkRouter` + `/flowboard?tab=comments` → TaskViewEdit вкладка «Комментарии».
+      Deep-link: unified namespace → `/api/init` launch_context → `/flowboard?open_task_id=<UUID>&tab=comments` (NAV-01).
 - [x] FILE-04 Входящие файлы в TG: `/attach`, reply+файл, файл+caption, pending full_id #bot !med
       `src/lib/bot/attachments.ts` + `bot_attach_pending` (TTL 15 мин, purge-cron).
       Сценарии: reply→attach; `/attach`+файл→спросить full_id; файл+caption→задача+attach;

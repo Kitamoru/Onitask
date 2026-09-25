@@ -1,7 +1,7 @@
 // Tests for lib/bot.ts renderTaskCardBody — unified task card (§6.2d).
 // Covers the Постановщик (assignedByName) / Проверяющий (reviewerName) lines.
 import { describe, it, expect } from 'vitest';
-import { renderTaskCardBody, type TaskCardData } from '../../lib/bot';
+import { flowUrl, renderTaskCardBody, taskCommentsUrl, type TaskCardData } from '../../lib/bot';
 
 const makeCard = (over: Partial<TaskCardData> = {}): TaskCardData => ({
   fullId: 'ONI-42',
@@ -15,6 +15,20 @@ const makeCard = (over: Partial<TaskCardData> = {}): TaskCardData => ({
   workspaceHandle: 'acme',
   clarityScore: null,
   ...over,
+});
+
+describe('lib/bot link builders', () => {
+  it('flowUrl uses the flow namespace', () => {
+    expect(flowUrl('acme')).toBe(
+      'https://t.me/onitaskbot/onitask?startapp=flow_acme',
+    );
+  });
+
+  it('taskCommentsUrl uses the comments namespace', () => {
+    expect(taskCommentsUrl('ONI-42')).toBe(
+      'https://t.me/onitaskbot/onitask?startapp=task_ONI-42_comments',
+    );
+  });
 });
 
 describe('lib/bot renderTaskCardBody: названия колонок', () => {

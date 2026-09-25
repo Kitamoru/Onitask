@@ -11,7 +11,6 @@ import { TelegramThemeProvider } from "@/components/shared/TelegramThemeProvider
 import { TelegramProvider } from "@/components/shared/TelegramProvider";
 import { AuthLoader } from "@/components/shared/AuthLoader";
 import { DataProvider } from "@/contexts/DataContext";
-import { TelegramDeepLinkRouter } from "./TelegramDeepLinkRouter";
 import { QueryProviders } from "./providers";
 
 // PERF-01: Geist Sans убран. UI-шрифт — Inter (--font-family-base), класс
@@ -72,10 +71,6 @@ export default function RootLayout({
           <TelegramProvider>
             <TelegramThemeProvider>
               <DataProvider>
-                {/* Deep link router — монтируется СРАЗУ, не ждёт авторизацию.
-                    Должен быть ВНУТРИ провайдеров (Telegram, Data), но ВНЕ AuthLoader. */}
-                <TelegramDeepLinkRouter />
-
                 <AuthLoader>
                   {children}
                 </AuthLoader>

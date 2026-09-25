@@ -4,7 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTaskNotifyCard,
+  flowDeepLink,
   taskDeepLink,
+  taskCommentsDeepLink,
   CARD_CONFIG,
   type NotifyContext,
   type TaskCardData,
@@ -194,6 +196,12 @@ describe('bot-notify card: deep-link', () => {
     const btn = res.replyMarkup.inline_keyboard.flat().find((b) => b.url);
     expect(btn?.url).toBe(
       'https://t.me/onitaskbot/onitask?startapp=task_ONI-42_comments',
+    );
+  });
+
+  it('flow link использует namespace flow_<workspace slug>', () => {
+    expect(flowDeepLink('acme')).toBe(
+      'https://t.me/onitaskbot/onitask?startapp=flow_acme',
     );
   });
 

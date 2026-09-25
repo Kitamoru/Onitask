@@ -16,6 +16,7 @@ import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { buildFullId } from '@/lib/realtime/tasks';
 import { BOARD_COUNTS_QUERY_KEY, fetchBoardCounts } from '@/lib/api/boardCounts';
+import { createLatestLoadGuard } from '@/lib/latestLoadGuard';
 
 /**
  * Defensive helper: гарантирует наличие full_id/workspace_prefix в TaskEntity.
@@ -285,6 +286,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     initDataRef.current = initData;
   }, [initData]);
 
+  const loadGuardRef = useRef(createLatestLoadGuard());
+  const activeWorkspaceSaveRef = useRef<Promise<void>>(Promise.resolve());
   const activeWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeWorkspaceIdRef.current = state.activeWorkspaceId;
@@ -327,6 +330,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const isPartial = options?.partial ?? false;
+      const generation = loadGuardRef.current.begin();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -352,6 +356,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (!json.success) {
           throw new Error(json.error || 'Failed to load board data');
         }
+
+        if (!loadGuardRef.current.isCurrent(generation)) return;
 
         const {
           workers: workersData,
@@ -400,6 +406,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setDataError(null);
       } catch (err) {
         clearTimeout(timeoutId);
+        if (!loadGuardRef.current.isCurrent(generation)) return;
         const isAbort =
           (err instanceof DOMException && err.name === 'AbortError') ||
           (err instanceof Error && err.name === 'AbortError');
@@ -456,7 +463,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SET_WORKSPACES', payload: workspaces });
     }
 
-    const activeWsId = (authData as any).last_active_workspace_id ?? null;
+    const activeWsId = authData.launch_context?.workspace_id ?? authData.last_active_workspace_id ?? null;
     const targetWorkspaceId = activeWsId || authData.worker.workspace_id;
 
     if (targetWorkspaceId) {
@@ -470,7 +477,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // forever — infinite loading for every new user (fixes onboarding bug).
       dispatch({ type: 'SET_FIRST_LOAD_DONE', payload: true });
     }
-  }, [authData?.worker?.id, workspacesKey, loadBoardsData]);
+  }, [authData?.worker?.id, authData?.launch_context?.workspace_id, workspacesKey, loadBoardsData]);
 
   const setActiveWorkspace = useCallback(
     async (workspaceId: string) => {
@@ -485,13 +492,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SET_TASKS', payload: [] });
       setIsSwitchingWorkspace(true);
 
-      fetch('/api/workspaces/active-workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
-      }).catch((err) =>
-        console.error('[DataContext] Failed to save active workspace:', err),
-      );
+      activeWorkspaceSaveRef.current = activeWorkspaceSaveRef.current.then(async () => {
+        try {
+          const saveResponse = await fetch('/api/workspaces/active-workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ init_data: currentInitData, workspace_id: workspaceId }),
+          });
+          if (!saveResponse.ok) {
+            console.error('[DataContext] Failed to save active workspace:', saveResponse.status);
+          }
+        } catch (err) {
+          console.error('[DataContext] Failed to save active workspace:', err);
+        }
+      });
+      void activeWorkspaceSaveRef.current;
 
       try {
         await loadBoardsData(workspaceId, { partial: true });

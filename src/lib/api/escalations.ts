@@ -20,11 +20,16 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export async function getEscalations(workspaceId: string): Promise<EscalationsResponse> {
+  return getEscalationQueue(`/api/tasks/escalations?workspace_id=${encodeURIComponent(workspaceId)}`);
+}
+
+export async function getAllEscalations(): Promise<EscalationsResponse> {
+  return getEscalationQueue('/api/tasks/escalations?scope=all');
+}
+
+async function getEscalationQueue(url: string): Promise<EscalationsResponse> {
   const initData = getTelegramInitData();
-  const response = await fetch(
-    `/api/tasks/escalations?workspace_id=${encodeURIComponent(workspaceId)}`,
-    { headers: { 'x-init-data': initData } },
-  );
+  const response = await fetch(url, { headers: { 'x-init-data': initData } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(getErrorMessage(payload, 'Не удалось загрузить эскалации'));

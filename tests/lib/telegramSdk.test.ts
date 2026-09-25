@@ -3,12 +3,8 @@
 // TelegramDeepLinkRouter read window.Telegram synchronously on mount and
 // silently died, so «Открыть в приложении» just landed on the plain flowboard.
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  waitForTelegramWebApp,
-  shouldUseCachedInit,
-  parseTaskStartParam,
-  flowboardQueryFromStartParam,
-} from '../../src/lib/telegramSdk';
+import { waitForTelegramWebApp, shouldUseCachedInit } from '../../src/lib/telegramSdk';
+import { inviteDeepLink, parseStartParam } from '../../src/lib/taskLaunch';
 
 describe('shouldUseCachedInit', () => {
   it('обычный запуск использует cache', () => {
@@ -24,65 +20,38 @@ describe('shouldUseCachedInit', () => {
   });
 });
 
-describe('parseTaskStartParam', () => {
+describe('parseStartParam', () => {
   it('task_ONI-42 → fullId + вкладка «Общее»', () => {
-    expect(parseTaskStartParam('task_ONI-42')).toEqual({
-      fullId: 'ONI-42',
-      tab: 'general',
-    });
+    expect(parseStartParam('task_ONI-42')).toEqual({ kind: 'task', fullId: 'ONI-42', tab: 'general' });
   });
 
-  it('task_ONI-42_comments → fullId + вкладка «Комментарии» (FILE-03)', () => {
-    expect(parseTaskStartParam('task_ONI-42_comments')).toEqual({
-      fullId: 'ONI-42',
-      tab: 'comments',
-    });
+  it('task_ONI-42_comments → fullId + вкладка «Комментарии»', () => {
+    expect(parseStartParam('task_ONI-42_comments')).toEqual({ kind: 'task', fullId: 'ONI-42', tab: 'comments' });
   });
 
-  it('регистр префикса не важен, номер нормализуется как есть', () => {
-    expect(parseTaskStartParam('task_boop-39')).toEqual({
-      fullId: 'boop-39',
-      tab: 'general',
-    });
+  it('flow_acme → flow target', () => {
+    expect(parseStartParam('flow_acme')).toEqual({ kind: 'flow', slug: 'acme' });
   });
 
-  it('perf-режим (PERF-06) не является задачей', () => {
-    expect(parseTaskStartParam('perf')).toBeNull();
-  });
-
-  it('referral-код (WS-06) не является задачей', () => {
-    expect(parseTaskStartParam('ws_INVITE_CODE')).toBeNull();
-  });
-
-  it('мусор / пустота / отсутствие start_param → null', () => {
-    expect(parseTaskStartParam('')).toBeNull();
-    expect(parseTaskStartParam(undefined)).toBeNull();
-    expect(parseTaskStartParam(null)).toBeNull();
-    expect(parseTaskStartParam('task_')).toBeNull();
-    expect(parseTaskStartParam('task_ONI-42_extra')).toBeNull();
-    expect(parseTaskStartParam('тask_ONI-42')).toBeNull(); // кириллическая «т»
-  });
-});
-
-describe('flowboardQueryFromStartParam', () => {
-  it('задача → /flowboard?open_task=<fullId>', () => {
-    expect(flowboardQueryFromStartParam('task_ONI-42')).toBe(
-      '/flowboard?open_task=ONI-42',
+  it('builds namespaced invite links and keeps base configurable', () => {
+    expect(inviteDeepLink('abc123')).toBe(
+      'https://t.me/onitaskbot/onitask?startapp=invite_abc123',
+    );
+    expect(inviteDeepLink('abc123', 'https://example.test/app')).toBe(
+      'https://example.test/app?startapp=invite_abc123',
     );
   });
 
-  it('задача + comments → /flowboard?open_task=<fullId>&tab=comments', () => {
-    expect(flowboardQueryFromStartParam('task_ONI-42_comments')).toBe(
-      '/flowboard?open_task=ONI-42&tab=comments',
-    );
+  it('accepts legacy invite code and namespaced invite code identically', () => {
+    expect(parseStartParam('abc123')).toEqual({ kind: 'invite', code: 'abc123' });
+    expect(parseStartParam('invite_abc123')).toEqual({ kind: 'invite', code: 'abc123' });
   });
 
-  it('flow_<handle> → /workspace/<handle> (§6.2d, задел на будущее)', () => {
-    expect(flowboardQueryFromStartParam('flow_acme')).toBe('/workspace/acme');
-  });
-
-  it('неизвестный start_param → null', () => {
-    expect(flowboardQueryFromStartParam('perf')).toBeNull();
+  it('reserved namespaces и мусор не становятся invite', () => {
+    expect(parseStartParam('task_ONI-42_extra')).toBeNull();
+    expect(parseStartParam('тask_ONI-42')).toBeNull();
+    expect(parseStartParam('')).toBeNull();
+    expect(parseStartParam(undefined)).toBeNull();
   });
 });
 

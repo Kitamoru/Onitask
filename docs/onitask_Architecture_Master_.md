@@ -2065,18 +2065,25 @@ CREATE INDEX IF NOT EXISTS idx_profiles_last_active_workspace
   WHERE last_active_workspace_id IS NOT NULL;
 ```
 
-**API контракты:**
-- `POST /api/init` — возвращает `last_active_workspace_id` в `InitResponse`
-- `POST /api/workspaces/active-workspace` — сохраняет выбранную доску в `profiles.last_active_workspace_id`
+**API контракты (NAV-01):**
+- `POST /api/init` возвращает `last_active_workspace_id` и опциональный `launch_context`
+- `POST /api/workspaces/active-workspace` сохраняет выбранную доску в `profiles.last_active_workspace_id`
 - **Удалён:** `POST /api/workspaces/active-board` (старый endpoint, писал в workspace_settings)
+
+**Unified task navigation:**
+- Telegram `task_<FULL_ID>[_comments]` и `flow_<slug>` разбираются как namespaces; только invite-код вызывает `accept_invite_link`
+- `/api/init` резолвит task `full_id` через `find_task_by_full_id`, определяет `tasks.workspace_id` и проверяет активное membership
+- Внутренний TWA target: `/flowboard?open_task_id=<UUID>&tab=comments|general`; legacy `open_task=<FULL_ID>` поддерживается
+- `useTaskNavigator` переключает активную доску через `setActiveWorkspace`, дожидается загрузки и только затем открывает задачу
+- `profiles.last_active_workspace_id` — fallback при обычном запуске, но не источник истины для task deep link
 
 **Frontend паттерн:**
 - DataContext хранит `activeWorkspaceId` как единый источник истины
-- При смене доски: `setActiveWorkspace(workspaceId)` → оптимистичное обновление → API call → перегрузка метрик
-- При повторном входе: `authData.last_active_workspace_id` → инициализация `activeWorkspaceId`
+- При смене доски: `setActiveWorkspace(workspaceId)` → сохранение → `loadBoardsData(..., partial)`
+- Generation guard игнорирует поздний ответ старой доски, если уже начата загрузка новой
+- При повторном входе: `launch_context.workspace_id` → `last_active_workspace_id` → первый доступный workspace
 
-**INV:** Нет новых инвариантов. Изменение существующих:
-- `/api/init` теперь возвращает дополнительное поле `last_active_workspace_id`
+**INV:** tenant membership проверяется server-side до возврата task target; несуществующая и недоступная задача дают нейтральный `launch_error`.
 
 ---
 

@@ -1,6 +1,8 @@
 // Request / Response типы для Route Handlers
 // Centralized API types for all Next.js API routes
 
+import type { TaskLaunchTab } from '../src/lib/taskLaunch';
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -85,6 +87,19 @@ export interface InitResponse {
   is_new_user: boolean;
   /** UUID of the user's most recently selected workspace/board (null = never selected) */
   last_active_workspace_id: string | null;
+  launch_context?: {
+    kind: 'task';
+    task_id: string;
+    workspace_id: string;
+    workspace_slug: string;
+    full_id: string;
+    tab: TaskLaunchTab;
+  } | {
+    kind: 'flow';
+    workspace_id: string;
+    workspace_slug: string;
+  };
+  launch_error?: 'task_not_found' | 'task_forbidden';
 }
 
 export interface InitRequest {

@@ -88,15 +88,15 @@ app/
 │   └── invite/[slug]/      # Принятие инвайта
 │
 └── api/
-    ├── init/route.ts               # POST /api/init
+    ├── init/route.ts               # POST /api/init + task/flow launch_context
     ├── tasks/
     │   ├── route.ts                # GET / POST
-    │   ├── escalations/route.ts   # GET — Operator Queue
+    │   ├── escalations/route.ts   # GET — Operator Queue (`scope=workspace|all`)
     │   └── [id]/
     │       ├── route.ts            # GET / PATCH / DELETE
     │       ├── decompose/route.ts
     │       ├── escalations/retry/route.ts # POST — «Попробовать снова»
-    │       └── relations/
+    │       ├── relations/
     │           ├── route.ts                    # GET / POST — «Связанные задачи»
     │           └── [relationId]/route.ts       # DELETE — удаление связи
     ├── flow/

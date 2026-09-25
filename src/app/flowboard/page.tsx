@@ -18,6 +18,7 @@ import { uploadTaskAttachments, submitTask } from '@/lib/api/flow';
 import { useQueryClient } from '@tanstack/react-query';
 import { BOARD_COUNTS_QUERY_KEY } from '@/lib/api/boardCounts';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { useTaskNavigator } from '@/hooks/useTaskNavigator';
 import { useData } from '@/contexts/DataContext';
 import { setPreferredView } from '@/lib/viewPreference';
 import { filterTasksForUser } from '@/lib/streamFilter';
@@ -47,10 +48,13 @@ function FlowBoardPageContent() {
   const searchParams = useSearchParams();
   const view = searchParams.get('view');
   const isStreamView = view === 'stream';
+  const openTaskIdParam = searchParams.get('open_task_id');
   const openTaskParam = searchParams.get('open_task');
+  const requestedWorkspaceId = searchParams.get('workspace_id');
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
-  const { state, dispatch, loadBoardsData, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+  const { state, dispatch, loadBoardsData, setActiveWorkspace, firstLoadDone, dataError, isSwitchingWorkspace } = useData();
+  const { openTask } = useTaskNavigator();
   // BOARD-AGG: мутации задач (move/submit/review/delete) → агрегаты «Стола» протухают
   const queryClient = useQueryClient();
   const invalidateBoardCounts = useCallback(() => {
@@ -112,36 +116,42 @@ function FlowBoardPageContent() {
     [tasks, currentUserId],
   );
 
-  // Open task from Telegram deep link: ?open_task=TASK-42
-  // After data loads, find the task by full_id and open TaskViewEdit sheet, then clean URL.
   useEffect(() => {
-    if (!openTaskParam || !firstLoadDone || dataError) return;
+    if (!requestedWorkspaceId || authLoading || dataError) return;
+    const isMember = authData?.workspaces.some((workspace) => workspace.id === requestedWorkspaceId);
+    if (!isMember) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('workspace_id');
+    const cleanQuery = params.toString();
+    router.replace(`/flowboard${cleanQuery ? '?' + cleanQuery : ''}`, { scroll: false });
+    if (state.activeWorkspaceId !== requestedWorkspaceId) {
+      void setActiveWorkspace(requestedWorkspaceId);
+    }
+  }, [authData?.workspaces, authLoading, dataError, requestedWorkspaceId, router, searchParams, setActiveWorkspace, state.activeWorkspaceId]);
 
-    const matchTask = (t: TaskEntity) => {
-      if (t.full_id === openTaskParam) return true;
-      const computed = t.workspace_prefix && t.task_number
-        ? `${t.workspace_prefix}-${t.task_number}`
-        : null;
-      if (computed === openTaskParam) return true;
-      return false;
-    };
+  useEffect(() => {
+    if ((!openTaskIdParam && !openTaskParam) || !firstLoadDone || dataError) return;
 
-    const task = tasks.find(matchTask);
+    const task = openTaskIdParam
+      ? tasks.find((item) => item.id === openTaskIdParam)
+      : tasks.find((item) => item.full_id === openTaskParam
+        || (item.workspace_prefix && item.task_number
+          ? `${item.workspace_prefix}-${item.task_number}`
+          : null) === openTaskParam);
+
     if (task) {
       setSelectedTask(task);
       setTaskSheetHistory([]);
-      // FILE-03: ?tab=comments → открыть вкладку «Комментарии»
-      const tabParam = searchParams.get('tab');
-      setOpenTaskTab(tabParam === 'comments' ? 'comments' : 'general');
-      // Clean URL: remove ?open_task=
+      setOpenTaskTab(searchParams.get('tab') === 'comments' ? 'comments' : 'general');
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open_task');
+      params.delete('open_task_id');
       params.delete('tab');
+      params.delete('source');
       const cleanQuery = params.toString();
       router.replace(`/flowboard${cleanQuery ? '?' + cleanQuery : ''}`, { scroll: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTaskParam, firstLoadDone, dataError, tasks]);
+  }, [openTaskIdParam, openTaskParam, firstLoadDone, dataError, tasks, searchParams, router]);
 
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
@@ -640,7 +650,14 @@ function FlowBoardPageContent() {
           open={showEscalationQueue}
           onClose={() => setShowEscalationQueue(false)}
           workspaceId={state.activeWorkspaceId}
-          onOpenTask={handleTaskTap}
+           onOpenTask={(item) => {
+             void openTask({
+               taskId: item.id,
+               workspaceId: item.workspace_id,
+               source: 'operator_queue',
+             });
+           }}
+
           onRetried={handleEscalationRetried}
         />
       )}

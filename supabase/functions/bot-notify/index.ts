@@ -10,6 +10,7 @@ import {
   buildTaskNotifyCard,
   escapeHtml,
   miniAppDeepLink,
+  flowDeepLink,
   taskCommentsDeepLink,
   taskDeepLink,
   CARD_CONFIG,
@@ -211,10 +212,18 @@ async function processPersonalNotification(
       taskCard.replyMarkup
     );
   } else {
+    const { data: workspace } = await supabase
+      .from('workspaces')
+      .select('slug')
+      .eq('id', job.workspace_id)
+      .maybeSingle();
     const html = buildMemberAddedHTML(job.payload);
     await sendTelegramMessage(profile.telegram_id, html, {
       inline_keyboard: [
-        [{ text: 'Открыть доску', url: miniAppDeepLink() }],
+        [{
+          text: 'Открыть доску',
+          url: workspace?.slug ? flowDeepLink(workspace.slug) : miniAppDeepLink(),
+        }],
       ],
     });
   }

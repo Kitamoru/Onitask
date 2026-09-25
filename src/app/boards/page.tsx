@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
 import { useBoardCounts } from "@/hooks/useBoardCounts";
 import { BOARD_COUNTS_QUERY_KEY } from "@/lib/api/boardCounts";
+import { OperatorQueueSheet } from "@/components/flowboard";
+import { useTaskNavigator } from "@/hooks/useTaskNavigator";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
 import type { RiskPulseData, BoardCardData } from "@/components/board";
@@ -41,6 +43,7 @@ export default function BoardsPage() {
   const queryClient = useQueryClient();
   const { isLoading: authLoading, error: authError } = useTelegramAuth();
   const { state, setActiveWorkspace, loadBoardsData } = useData();
+  const { openTask } = useTaskNavigator();
   const countsQuery = useBoardCounts(!authLoading && !authError);
   const counts = countsQuery.data;
 
@@ -76,6 +79,8 @@ export default function BoardsPage() {
     stats: counts?.counts[ws.id] ?? zeroStats,
     sprint: counts?.sprintsByWorkspace[ws.id],
   }));
+
+  const [showEscalationQueue, setShowEscalationQueue] = useState(false);
 
   const riskData: RiskPulseData =
     counts?.riskData ?? { people: 0, processes: 0, escalations: 0 };
@@ -192,7 +197,13 @@ export default function BoardsPage() {
         </p>
 
         <div className="mt-6 flex flex-col gap-5">
-          <RiskPulse data={riskData} loading={statsLoading} />
+          <RiskPulse
+            data={riskData}
+            loading={statsLoading}
+            onSignalClick={(signal) => {
+              if (signal === 'escalations') setShowEscalationQueue(true);
+            }}
+          />
 
           {/* Empty state */}
           {boardCards.length === 0 ? (
@@ -245,6 +256,21 @@ export default function BoardsPage() {
 
         <div className="h-20" />
       </div>
+      <OperatorQueueSheet
+        open={showEscalationQueue}
+        onClose={() => setShowEscalationQueue(false)}
+        scope="all"
+        onOpenTask={(item) => {
+          void openTask({
+            taskId: item.id,
+            workspaceId: item.workspace_id,
+            source: 'global_escalation_queue',
+          });
+        }}
+        onRetried={() => {
+          void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
+        }}
+      />
     </main>
   );
 }

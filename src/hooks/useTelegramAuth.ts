@@ -116,8 +116,8 @@ const NOT_IN_TWA = 'not_in_twa';
 type InitOutcome = { ok: true; data: InitResponse } | { ok: false; error: string };
 
 // PERF-03: ожидание загрузки Telegram SDK (waitForTelegramWebApp) вынесено в
-// src/lib/telegramSdk.ts — оно нужно и здесь, и в TelegramDeepLinkRouter
-// (deep links «Открыть в приложении» грузятся тем же afterInteractive SDK).
+// src/lib/telegramSdk.ts; boot-цепочка авторизации использует его до запуска
+// /api/init, который разрешает task/flow/invite launch context.
 
 let initInFlight: Promise<InitOutcome> | null = null;
 

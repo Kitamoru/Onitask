@@ -24,6 +24,7 @@ export interface RiskPulseProps {
   data: RiskPulseData;
   /** BOARD-AGG: агрегаты не пришли — блюр-заглушки вместо цифр. */
   loading?: boolean;
+  onSignalClick?: (signal: 'people' | 'processes' | 'escalations') => void;
 }
 
 const pulseCards = [
@@ -32,7 +33,7 @@ const pulseCards = [
   { label: "Эскалации", key: "escalations" as const },
 ];
 
-export function RiskPulse({ data, loading }: RiskPulseProps) {
+export function RiskPulse({ data, loading, onSignalClick }: RiskPulseProps) {
   return (
     <div className="flex flex-col w-full gap-4">
       {/* Summary label */}
@@ -50,50 +51,61 @@ export function RiskPulse({ data, loading }: RiskPulseProps) {
 
       {/* Summary cards grid — 3-col, gap=8px */}
       <div className="grid w-full grid-cols-3 gap-2">
-        {pulseCards.map(({ label, key }) => (
-          <NotchedPanel
-            key={key}
-            corner="action"
-            radius={4}
-            notch={8}
-            borderWidth={1}
-            border="var(--color-line)"
-            fill="var(--color-surface)"
-            contentClassName="flex flex-col gap-2 p-3"
-          >
-            <span
-              style={{
-                fontFamily: "Inter Display, system-ui, sans-serif",
-                fontSize: "12px",
-                lineHeight: "14px",
-                fontWeight: 500,
-                color: "#8B8B8B",
-              }}
+        {pulseCards.map(({ label, key }) => {
+          const clickable = key === 'escalations' && Boolean(onSignalClick);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={clickable ? () => onSignalClick?.(key) : undefined}
+              aria-label={clickable ? `Открыть: ${label}` : label}
+              className="block w-full text-left disabled:cursor-default"
+              disabled={!clickable}
             >
-              {label}
-            </span>
-            {loading ? (
-              <span
-                aria-hidden
-                className="inline-block h-5 w-6 animate-pulse blur-[2px]"
-                style={{ background: "var(--color-surface-strong, rgba(255,255,255,0.12))" }}
-              />
-            ) : (
-              <span
-                className="tabular-nums"
-                style={{
-                  fontFamily: "Inter Display, system-ui, sans-serif",
-                  fontSize: "16px",
-                  lineHeight: "20px",
-                  fontWeight: 500,
-                  color: data[key] > 1 && key === "processes" ? "#EF4444" : "#FAFAFA",
-                }}
+              <NotchedPanel
+                corner="action"
+                radius={4}
+                notch={8}
+                borderWidth={1}
+                border="var(--color-line)"
+                fill="var(--color-surface)"
+                contentClassName="flex flex-col gap-2 p-3"
               >
-                <AnimatedNumber value={data[key]} />
-              </span>
-            )}
-          </NotchedPanel>
-        ))}
+                <span
+                  style={{
+                    fontFamily: "Inter Display, system-ui, sans-serif",
+                    fontSize: "12px",
+                    lineHeight: "14px",
+                    fontWeight: 500,
+                    color: "#8B8B8B",
+                  }}
+                >
+                  {label}
+                </span>
+                {loading ? (
+                  <span
+                    aria-hidden
+                    className="inline-block h-5 w-6 animate-pulse blur-[2px]"
+                    style={{ background: "var(--color-surface-strong, rgba(255,255,255,0.12))" }}
+                  />
+                ) : (
+                  <span
+                    className="tabular-nums"
+                    style={{
+                      fontFamily: "Inter Display, system-ui, sans-serif",
+                      fontSize: "16px",
+                      lineHeight: "20px",
+                      fontWeight: 500,
+                      color: data[key] > 1 && key === "processes" ? "#EF4444" : "#FAFAFA",
+                    }}
+                  >
+                    <AnimatedNumber value={data[key]} />
+                  </span>
+                )}
+              </NotchedPanel>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

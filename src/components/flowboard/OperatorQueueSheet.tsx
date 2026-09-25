@@ -5,30 +5,31 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button, Card, SectionHeader } from '@/components/ui/desk-ui';
-import { getEscalations, retryEscalation } from '@/lib/api/escalations';
+import { getAllEscalations, getEscalations, retryEscalation } from '@/lib/api/escalations';
 import { formatEscalationAge } from '@/lib/escalations';
 import type { EscalationQueueItem } from '@/types/escalations';
 
 export interface OperatorQueueSheetProps {
   open: boolean;
   onClose: () => void;
-  workspaceId: string;
-  onOpenTask: (taskId: string) => void;
+  workspaceId?: string;
+  scope?: 'workspace' | 'all';
+  onOpenTask: (item: EscalationQueueItem) => void;
   onRetried: (taskId: string, version: number, updatedAt: string) => void;
 }
 
-export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onRetried }: OperatorQueueSheetProps) {
+export function OperatorQueueSheet({ open, onClose, workspaceId, scope = 'workspace', onOpenTask, onRetried }: OperatorQueueSheetProps) {
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => ['escalations', workspaceId] as const, [workspaceId]);
+  const queryKey = useMemo(() => ['escalations', scope, workspaceId ?? 'all'] as const, [scope, workspaceId]);
   const [retryItem, setRetryItem] = useState<EscalationQueueItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const query = useQuery({
     queryKey,
-    queryFn: () => getEscalations(workspaceId),
+    queryFn: () => scope === 'all' ? getAllEscalations() : getEscalations(workspaceId!),
     // Keep the queue warm while the active board is mounted. The bottom sheet
     // can then render cached cards immediately instead of replacing its title,
     // loader and empty content after the first API response.
-    enabled: Boolean(workspaceId),
+    enabled: scope === 'all' || Boolean(workspaceId),
     staleTime: 15_000,
   });
   const retryMutation = useMutation({
@@ -47,9 +48,9 @@ export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onR
   const items = query.data?.items ?? [];
   const isRetrying = (taskId: string) => retryMutation.isPending && retryMutation.variables === taskId;
 
-  const handleOpenTask = (taskId: string) => {
+  const handleOpenTask = (item: EscalationQueueItem) => {
     onClose();
-    onOpenTask(taskId);
+    onOpenTask(item);
   };
   const confirmRetry = () => {
     if (retryItem?.can_retry) retryMutation.mutate(retryItem.id);
@@ -59,7 +60,7 @@ export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onR
     <>
       <BottomSheet open={open} onClose={onClose}>
         <div className="flex flex-col gap-4 px-4 pb-6">
-          <SectionHeader title={`Эскалации${items.length > 0 ? ` · ${items.length}` : ''}`} />
+          <SectionHeader title={`${scope === 'all' ? 'Все эскалации' : 'Эскалации'}${items.length > 0 ? ` · ${items.length}` : ''}`} />
           {query.isLoading && (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-muted" role="status">
               <Loader2 className="h-4 w-4 animate-spin" />Загружаем эскалации
@@ -83,7 +84,9 @@ export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onR
             <Card key={item.id} notch={8}>
               <article className="flex flex-col gap-3 p-4" aria-label={`Эскалация ${item.full_id}: ${item.title}`}>
                 <div className="flex flex-col gap-1">
-                  <span className="font-mono text-xs text-text-muted">{item.full_id}</span>
+                  <span className="font-mono text-xs text-text-muted">
+                    {scope === 'all' ? `${item.workspace_name} · ${item.full_id}` : item.full_id}
+                  </span>
                   <h3 className="text-[15px] font-medium text-text">{item.title}</h3>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -104,7 +107,7 @@ export function OperatorQueueSheet({ open, onClose, workspaceId, onOpenTask, onR
                 <Button variant="solid" disabled={!item.can_retry || retryMutation.isPending} onClick={() => { setActionError(null); setRetryItem(item); }}>
                   {isRetrying(item.id) && <Loader2 className="h-4 w-4 animate-spin" />}Попробовать снова
                 </Button>
-                <Button variant="outline" onClick={() => handleOpenTask(item.id)}>Открыть задачу</Button>
+                <Button variant="outline" onClick={() => handleOpenTask(item)}>Открыть задачу</Button>
               </article>
             </Card>
           ))}

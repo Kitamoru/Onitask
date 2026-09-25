@@ -1,4 +1,29 @@
 # Architectural Decisions (ADR log)
+
+## ADR-2026-09-25: Unified task navigation и cross-workspace launch (NAV-01)
+
+### Решение
+
+Telegram `start_param` имеет namespaces `task_`, `flow_` и legacy invite-коды.
+Task/flow ссылки резолвятся server-side в `/api/init` с проверкой membership;
+`last_active_workspace_id` остаётся fallback, но не определяет task target.
+Внутренняя навигация использует UUID (`open_task_id`), а `full_id` — только
+внешний Telegram-контракт. `useTaskNavigator` и `DataContext` являются единственными
+владельцами переключения workspace и открытия задачи.
+
+### Последствия
+
+- Активная A, задача в B: target B загружается и задача открывается в B.
+- `task_*_comments` сразу открывает комментарии.
+- Старые `open_task=<full_id>` и invite-ссылки продолжают работать.
+- Старый root router удалён, чтобы не было двух владельцев deep-link routing.
+- Workspace-load generation guard не допускает stale response A после B.
+- Общий Operator Queue на `/boards` и локальный на FlowBoard используют один API,
+  но разные scopes: `all` и `workspace_id`.
+- Проверки parser/resolver/init/queue/SDK добавлены в Vitest.
+
+---
+
 ## ADR-2026-09-25: «Попробовать снова» вместо «Разрешить» (AGENT-03)
 
 ### Решение

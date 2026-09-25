@@ -500,8 +500,10 @@ Tappable → настройки workspace → «Telegram-чаты».
 
 ### Operator Queue
 
-Tappable из основной карточки «Эскалации» в Risk Pulse. Workspace-scoped
-`pending_escalations`, oldest-first. Карточка показывает `full_id`, название,
+Tappable из карточки «Эскалации» в Risk Pulse. На Flow Board — `scope=workspace`
+(только текущая доска), на `/boards` — `scope=all` по всем активным workspace
+пользователя. В global scope карточка дополнительно показывает название доски.
+Очередь `pending_escalations`, oldest-first. Карточка показывает `full_id`, название,
 AI-агента, понятную пользователю причину, время ожидания, `suggested_action`
 и диагностику последней попытки (`nack_reason` / `nack_detail`).
 
@@ -526,7 +528,8 @@ ALPHA-45 · Настроить pgvector-индексы
 выполняться». Ошибка загрузки предлагает «Попробовать ещё раз» без перезагрузки
 страницы.
 
-API: `GET /api/tasks/escalations?workspace_id=...` и
+API: `GET /api/tasks/escalations?workspace_id=...`,
+`GET /api/tasks/escalations?scope=all` и
 `POST /api/tasks/:id/escalations/retry`; DB RPC —
 `operator_retry_escalation(workspace_id, task_id, actor_worker_id)`.
 

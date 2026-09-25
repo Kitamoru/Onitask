@@ -336,7 +336,12 @@ export function taskDeepLink(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}`);
 }
 
-/** FILE-01/03: deep-link сразу на вкладку «Комментарии» задачи */
+/** Mini App link to a workspace Flow Board. */
+export function flowDeepLink(workspaceHandle: string): string {
+  return miniAppDeepLink(`flow_${workspaceHandle}`);
+}
+
+  /** FILE-01/03: deep-link сразу на вкладку «Комментарии» задачи */
 export function taskCommentsDeepLink(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}_comments`);
 }

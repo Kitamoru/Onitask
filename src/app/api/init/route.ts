@@ -11,24 +11,19 @@
  * If user followed a referral link — creates worker in target workspace.
  * Works for BOTH new and existing users (Scenario 3: existing user joins new workspace).
  *
- * Algorithm:
  * 1. Verify Telegram initData (timingSafeEqual, A-2)
- * 2. If start_param present — call atomic RPC accept_invite_link
- *    - RPC increments used_count + returns workspace_id (or 0 rows if invalid)
- * 3. Find profile by telegram_id
- * 4. If profile found:
- *    a. If invitedWorkspaceId — find-or-create worker in that workspace
- *    b. Return profile + all workspaces + is_new_user=false
- * 5. If profile not found:
- *    a. Create profile from Telegram data
- *    b. If invitedWorkspaceId — create worker with role='member'
- *    c. Return profile + workspaces + is_new_user flag
+ * 2. Parse start_param into task / flow / invite namespaces.
+ * 3. Find profile by telegram_id.
+ * 4. For an existing user, redeem only invite links and resolve authorized task/flow targets.
+ * 5. Return profile + all workspaces + optional launch_context.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateTelegramInitData } from '../../../../src/lib/telegram/validate';
 import { createServerClient } from '../../../../lib/supabase';
 import type { InitResponse } from '../../../../types/api';
+import { parseStartParam } from '../../../../src/lib/taskLaunch';
+import { resolveFlowLaunchTarget, resolveTaskLaunchTarget } from '../../../../src/lib/server/taskLaunch';
 
 interface WorkspaceInfo {
   id: string;
@@ -63,6 +58,10 @@ export async function POST(req: NextRequest) {
     // Accept both camelCase (initData) and snake_case (init_data) for backward compatibility
     const initData = (body.initData || body.init_data) as string | undefined;
     const start_param = body.start_param as string | undefined;
+    const parsedStartParam = parseStartParam(start_param);
+    const taskParam = parsedStartParam?.kind === 'task' ? parsedStartParam : null;
+    const flowParam = parsedStartParam?.kind === 'flow' ? parsedStartParam : null;
+    const inviteCode = parsedStartParam?.kind === 'invite' ? parsedStartParam.code : null;
 
     // Server-side logging for deep link debugging (Vercel Logs)
     console.info('[INIT] request received', {
@@ -113,13 +112,14 @@ export async function POST(req: NextRequest) {
       const displayName = profile.display_name;
       const lastActiveWorkspaceId = (profile as any).last_active_workspace_id ?? null;
 
-      // Redeem an invite atomically. Existing active membership is idempotent;
-      // reactivation or first-time membership consumes exactly one use.
-      if (start_param) {
+      let invitedWorkspaceId: string | null = null;
+
+      // Redeem an invite atomically. Task/flow deep links are not invite codes.
+      if (inviteCode) {
         const { data: inviteData, error: inviteError } = await supabase.rpc(
           'accept_invite_link',
           {
-            p_code: start_param,
+            p_code: inviteCode,
             p_source_id: profileId,
             p_display_name: displayName,
           },
@@ -131,6 +131,10 @@ export async function POST(req: NextRequest) {
             { success: false, error: 'invite_acceptance_failed' },
             { status: 500 },
           );
+        }
+        const accepted = Array.isArray(inviteData) ? inviteData[0] : inviteData;
+        if (accepted && typeof accepted === 'object' && 'workspace_id' in accepted) {
+          invitedWorkspaceId = String(accepted.workspace_id);
         }
       }
 
@@ -167,8 +171,51 @@ export async function POST(req: NextRequest) {
         }));
       }
 
-      // Return worker for the active workspace (fallback to first if no active ws)
+      // Resolve task launch only after membership is known. This prevents a
+      // cross-workspace full_id from being opened in the current board.
+      const flowTarget = flowParam
+        ? await resolveFlowLaunchTarget(supabase as never, profileId, flowParam.slug)
+        : null;
+      const launchTarget = taskParam
+        ? await resolveTaskLaunchTarget(
+            supabase as never,
+            profileId,
+            taskParam.fullId,
+            taskParam.tab,
+          )
+        : flowTarget
+          ? {
+              kind: 'flow' as const,
+              taskId: '',
+              workspaceId: flowTarget.workspaceId,
+              workspaceSlug: flowTarget.workspaceSlug,
+              fullId: '',
+              tab: 'general' as const,
+            }
+          : null;
+
+      const launchContext = launchTarget?.kind === 'task'
+        ? {
+            kind: 'task' as const,
+            task_id: launchTarget.taskId,
+            workspace_id: launchTarget.workspaceId,
+            workspace_slug: launchTarget.workspaceSlug,
+            full_id: launchTarget.fullId,
+            tab: launchTarget.tab,
+          }
+        : launchTarget?.kind === 'flow'
+          ? {
+              kind: 'flow' as const,
+              workspace_id: launchTarget.workspaceId,
+              workspace_slug: launchTarget.workspaceSlug,
+            }
+          : undefined;
+
+      const effectiveWorkspaceId = launchContext?.workspace_id ?? invitedWorkspaceId ?? lastActiveWorkspaceId;
+
+      // Return worker for the active workspace (or the deep-link/invite workspace).
       const primaryWorker =
+        workers?.find((w) => w.workspace_id === effectiveWorkspaceId) ||
         workers?.find((w) => w.workspace_id === lastActiveWorkspaceId) ||
         workers?.[0] ||
         null;
@@ -183,7 +230,9 @@ export async function POST(req: NextRequest) {
         profile_id: profileId,
         workspaces,
         is_new_user: false,
-        last_active_workspace_id: lastActiveWorkspaceId,
+        last_active_workspace_id: effectiveWorkspaceId,
+        ...(launchContext ? { launch_context: launchContext } : {}),
+        ...(taskParam && !launchContext ? { launch_error: 'task_forbidden' as const } : {}),
       };
 
       return NextResponse.json({ success: true, data: response });
@@ -226,11 +275,11 @@ export async function POST(req: NextRequest) {
     let role: string | null = null;
     let isNewUserFlag = true;
 
-    if (start_param) {
+    if (inviteCode) {
       const { data: inviteData, error: inviteError } = await supabase.rpc(
         'accept_invite_link',
         {
-          p_code: start_param,
+          p_code: inviteCode,
           p_source_id: userId,
           p_display_name: newDisplayName,
         },
@@ -258,18 +307,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response: InitResponse = {
-      worker: {
-        id: userId,
-        display_name: newDisplayName,
-        workspace_id: workspaceId,
-        role,
-      },
-      profile_id: userId,
-      workspaces,
-      is_new_user: isNewUserFlag,
-      last_active_workspace_id: (newProfileData as any)?.last_active_workspace_id ?? null,
-    };
+      const response: InitResponse = {
+        worker: {
+          id: userId,
+          display_name: newDisplayName,
+          workspace_id: workspaceId,
+          role,
+        },
+        profile_id: userId,
+        workspaces,
+        is_new_user: isNewUserFlag,
+        last_active_workspace_id: workspaceId || (newProfileData as any)?.last_active_workspace_id || null,
+      };
 
     return NextResponse.json({ success: true, data: response });
   } catch (err) {

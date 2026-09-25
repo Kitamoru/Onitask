@@ -103,6 +103,9 @@ export async function POST(req: NextRequest) {
 
     const userWorkers = userWorkersData || [];
     const workspaceIds = userWorkers.map((w: any) => w.workspace_id).filter(Boolean);
+    if (requestedWorkspaceId && !workspaceIds.includes(requestedWorkspaceId)) {
+      return NextResponse.json({ error: 'workspace_not_found' }, { status: 404 });
+    }
     const metricsWorkspaceId = requestedWorkspaceId || workspaceIds[0] || null;
 
     const taskWorkspaceIds =

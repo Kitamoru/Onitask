@@ -399,6 +399,14 @@ export function miniAppDeepLink(startParam?: string): string {
  * Build task URL for Mini App.
  * Prefixes full_id with "task_" for start_param routing.
  */
+export function taskCommentsUrl(fullId: string): string {
+  return miniAppDeepLink(`task_${fullId}_comments`);
+}
+
+export function flowUrl(workspaceHandle: string): string {
+  return miniAppDeepLink(`flow_${workspaceHandle}`);
+}
+
 export function taskUrl(fullId: string): string {
   return miniAppDeepLink(`task_${fullId}`);
 }
@@ -611,7 +619,7 @@ export function buildTaskCardHTML(task: {
  */
 export function buildTaskConfirmationKeyboard(taskFullId: string): InlineKeyboardMarkup {
   return buildInlineKeyboard([
-    { text: '📋 Открыть в TWA →', url: `/board?task=${taskFullId}` },
+    { text: '📋 Открыть в TWA →', url: taskUrl(taskFullId) },
   ]);
 }
 /**

@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { createServerClient } from '../../../../../../lib/supabase';
+import { inviteDeepLink } from '@/lib/taskLaunch';
 import { authenticateRequest } from '../../../../../../lib/api-auth';
 
 /**
@@ -98,7 +99,7 @@ export async function GET(
       });
     }
 
-    const inviteUrl = `https://t.me/onitaskbot/onitask?startapp=${invite.code}`;
+    const inviteUrl = inviteDeepLink(invite.code);
 
     return NextResponse.json({
       success: true,
@@ -196,7 +197,7 @@ export async function POST(
 
     // 6. Build startapp URL
     // Bot username configured in BotFather with Mini App short name
-    const inviteUrl = `https://t.me/onitaskbot/onitask?startapp=${code}`;
+    const inviteUrl = inviteDeepLink(code);
 
     return NextResponse.json({
       success: true,

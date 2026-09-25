@@ -10,6 +10,8 @@ export type EscalationReason =
 
 export interface EscalationQueueItem {
   id: string;
+  workspace_id: string;
+  workspace_name: string;
   full_id: string;
   title: string;
   agent_name: string | null;

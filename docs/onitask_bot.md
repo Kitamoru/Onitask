@@ -20,6 +20,8 @@
 
 Изменения из предыдущих версий — см. [Changelog v0.6.4](#v064--август-2026) и далее.
 
+> **Unified launch (NAV-01, 2026-09-25):** task/flow/invite параметры разделены namespace-парсером. `POST /api/init` server-side резолвит `task_<full_id>[_comments]` через `find_task_by_full_id`, проверяет активное membership и возвращает UUID задачи + UUID workspace. TWA открывает `open_task_id`; при активной другой доске `useTaskNavigator` переключает workspace и дожидается загрузки. Старый 500-мс `TelegramDeepLinkRouter` удалён.
+
 ---
 
 ## 1. Концепция
