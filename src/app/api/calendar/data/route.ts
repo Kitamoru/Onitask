@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         // response is built.
         const { data, error } = await supabase
           .from('calendar_connections')
-          .select('id, profile_id, provider, provider_account_email, token_expires_at, is_active, connected_at, last_sync_at, caldav_password_b64')
+          .select('id, profile_id, provider, provider_account_email, token_expires_at, is_active, connected_at, last_sync_at, caldav_password_b64, color_index')
           .eq('profile_id', targetProfile)
           .eq('is_active', true)
           .order('connected_at', { ascending: false }) as {
@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
           profile_id: row.profile_id,
           provider: row.provider,
           provider_account_email: row.provider_account_email,
+          color_index: row.color_index,
           token_expires_at: row.token_expires_at,
           is_active: row.is_active,
           connected_at: row.connected_at,

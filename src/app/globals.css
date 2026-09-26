@@ -71,6 +71,24 @@
   --color-signal-red: #EF4444;
   --color-signal-green: #4ADE80;
   --color-signal-cyan: #22D3EE;
+  --color-signal-yellow: #F59E0B;
+  --color-signal-red: #EF4444;
+  --color-signal-green: #4ADE80;
+  --color-signal-cyan: #22D3EE;
+
+  /* Per-account calendar colours.
+     Spread around the hue wheel rather than reusing the signal tokens: the
+     presence dots are 4-5px, and neighbouring hues at that size read as the
+     same colour -- --color-signal-yellow and --color-accent-amber are close
+     enough to be one colour on screen. Order matters: consecutive slots must
+     be far apart in hue. Index past the last slot renders neutral instead of
+     wrapping, so two accounts never share a colour. */
+  --color-calendar-1: #F5A524;  /* amber   */
+  --color-calendar-2: #34D399;  /* emerald */
+  --color-calendar-3: #38BDF8;  /* sky    */
+  --color-calendar-4: #A78BFA;  /* violet  */
+  --color-calendar-5: #F472B6;  /* pink    */
+  --color-calendar-6: #94A3B8;  /* slate: the neutral overflow */
 
   /* Priority badge colors */
   --color-priority-green-bg: rgba(74, 222, 128, 0.2);

@@ -40,6 +40,8 @@ export interface CalendarConnection {
   profile_id: string;
   provider: CalendarProvider;
   provider_account_email: string;
+  /** Palette slot identifying this account by colour. */
+  color_index: number;
   token_expires_at: string | null;
   is_active: boolean;
   connected_at: string;

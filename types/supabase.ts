@@ -615,6 +615,7 @@ export type Database = {
           id: string
           is_active: boolean
           caldav_password_b64: string | null
+          color_index: number
           last_sync_at: string | null
           oauth_tokens_b64: string
           profile_id: string | null
@@ -627,6 +628,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           caldav_password_b64?: string | null
+          color_index?: number
           last_sync_at?: string | null
           oauth_tokens_b64: string
           profile_id?: string | null
@@ -639,6 +641,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           caldav_password_b64?: string | null
+          color_index?: number
           last_sync_at?: string | null
           oauth_tokens_b64?: string
           profile_id?: string | null

@@ -137,4 +137,25 @@ export function layoutDayEvents(events: CalendarEvent[]): Positioned[] {
 
   return positioned;
 }
+// ─── Account colours ─────────────────────────────────────────────────────────
 
+/**
+ * Palette token for a calendar account's slot.
+ *
+ * Colour identifies the account, not the provider -- with several mailboxes the
+ * question people ask is which one an event came from, and the provider is the
+ * same for all of them.
+ *
+ * Slots 1-5 are distinct. Past that the slot renders neutral instead of
+ * wrapping, because wrapping would hand two accounts a colour already in use,
+ * which is the one thing this exists to prevent. Two accounts beyond the
+ * palette are therefore not individually distinguishable -- unavoidable with a
+ * fixed palette, and stated rather than papered over.
+ */
+export function calendarAccountColor(colorIndex: number | null | undefined): string {
+  const slot =
+    typeof colorIndex === 'number' && Number.isInteger(colorIndex) && colorIndex >= 0
+      ? colorIndex
+      : 0;
+  return slot < 5 ? `var(--color-calendar-${slot + 1})` : 'var(--color-calendar-6)';
+}

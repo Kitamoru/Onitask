@@ -15,6 +15,7 @@ import React, { useEffect, useState } from 'react';
 import { IconRefresh, IconTrash } from '@tabler/icons-react';
 import type { CalendarConnection } from '@/types/calendar';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { calendarAccountColor } from '@/lib/calendar';
 
 interface CalendarConnectionSheetProps {
   connection: CalendarConnection | null;
@@ -31,9 +32,6 @@ const PROVIDER_LABEL: Record<CalendarConnection['provider'], string> = {
   yandex: 'Яндекс',
 };
 
-const PROVIDER_COLOR: Record<CalendarConnection['provider'], string> = {
-  yandex: 'var(--color-signal-yellow)',
-};
 
 export function CalendarConnectionSheet({
   connection,
@@ -80,7 +78,7 @@ export function CalendarConnectionSheet({
         <div className="flex items-center gap-2 pb-1">
           <span
             className="flex h-2.5 w-2.5 rounded-full flex-none"
-            style={{ backgroundColor: PROVIDER_COLOR[connection.provider] }}
+            style={{ backgroundColor: calendarAccountColor(connection.color_index) }}
             aria-hidden="true"
           />
           <span

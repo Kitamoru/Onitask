@@ -79,6 +79,15 @@ duplicated the same provider-colour logic five times. `react-day-picker` stays i
 | | AllDayRow | AllDayRow.tsx | events, onEventClick | Whole-day events for the selected day, shown above the hour axis |
 | | EventDetailSheet | EventDetailSheet.tsx | event, onClose, onEditReminder | Event details on the shared `BottomSheet`; wires up the tap that previously did nothing. URLs in the description are split out and opened via `Telegram.WebApp.openLink` |
 
+**Account colour.** `--color-calendar-1..6` in `globals.css`, resolved by
+`calendarAccountColor(color_index)` in `lib/calendar`. The slot belongs to the
+calendar *account*, not the provider — with two Yandex accounts the provider is
+identical, which is why both pills were amber. Slots 1–5 are distinct and ordered
+so neighbours sit far apart around the hue wheel; the presence dots are 4–5px, and
+`--color-signal-yellow` next to `--color-accent-amber` is one colour at that size.
+Past the palette the slot renders neutral rather than wrapping, since wrapping
+would repeat a colour already in use. Covered by `tests/lib/calendarAccountColor.test.ts`.
+
 **All-day events are not instants.** `calendar_events.is_all_day` (migration 124) marks iCal
 `VALUE=DATE` entries, whose `start_at` is a UTC midnight marker rather than a clock time. They are
 rendered in `AllDayRow` above the axis, never placed on it — otherwise they land at 00:00–03:00 for

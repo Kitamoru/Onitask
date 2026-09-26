@@ -10,7 +10,7 @@ import { CalendarConnectionSheet } from '@/components/calendar/CalendarConnectio
 import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
-import { groupEventsByDate } from '@/lib/calendar';
+import { groupEventsByDate, calendarAccountColor } from '@/lib/calendar';
 import type {
   CalendarEvent,
   CalendarConnection,
@@ -580,7 +580,7 @@ function CalendarContent() {
               >
                 <span
                   className="flex h-2 w-2 rounded-full flex-none"
-                  style={{ backgroundColor: conn.provider === 'yandex' ? 'var(--color-signal-yellow)' : 'var(--color-signal-cyan)' }}
+                  style={{ backgroundColor: calendarAccountColor(conn.color_index) }}
                 />
                 <span className="text-body-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
                   {conn.provider_account_email}
