@@ -6,6 +6,7 @@ import { DayView } from '@/components/calendar/DayView';
 import { MonthView } from '@/components/calendar/MonthView';
 import { WeekStrip } from '@/components/calendar/WeekStrip';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
+import { CalendarConnectionSheet } from '@/components/calendar/CalendarConnectionSheet';
 import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
@@ -22,6 +23,7 @@ import {
   IconCalendarOff,
   IconCalendarWeek,
   IconKey,
+  IconPlus,
 } from '@tabler/icons-react';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
@@ -56,6 +58,8 @@ function CalendarContent() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  // Which account the action sheet is open for.
+  const [activeConnection, setActiveConnection] = useState<CalendarConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // OAuth code modal state
@@ -138,7 +142,7 @@ function CalendarContent() {
     if (Number.isFinite(age) && age <= AUTO_SYNC_STALE_MS) return;
 
     autoSyncRef.current = true;
-    handleSync(connection.provider, { silent: true });
+    handleSync(connection, { silent: true });
   }, [connections, connectionsLoaded, isLoading]);
 
   /**
@@ -276,7 +280,11 @@ function CalendarContent() {
    * Saves the CalDAV app password and immediately attempts a sync, so the user
    * sees whether the password actually works instead of a silent no-op.
    */
-  async function handleSavePassword() {
+  async function handleSavePassword(connection: CalendarConnection | null) {
+    if (!connection) {
+      setPasswordError('Уётная запись календаря не найдена');
+      return;
+    }
     const password = caldavPassword.trim();
     if (!password) {
       setPasswordError('Введите пароль приложения');
@@ -292,7 +300,7 @@ function CalendarContent() {
 
     try {
       const { setCalDavPassword } = await import('@/lib/api/calendar');
-      const result = await setCalDavPassword(password, initData);
+      const result = await setCalDavPassword(password, connection.id, initData);
 
       if (!result.success) {
         setPasswordError(
@@ -314,7 +322,12 @@ function CalendarContent() {
         setSyncStatus('syncing');
         try {
           const syncResult = await syncCalendar(
-            { profile_id: authData.profile_id, provider: 'yandex', action: 'sync' },
+            {
+              profile_id: authData.profile_id,
+              provider: connection.provider,
+              action: 'sync',
+              connection_id: connection.id,
+            },
             initData
           );
           const synced = (syncResult as { synced?: number } | undefined)?.synced ?? 0;
@@ -343,12 +356,17 @@ function CalendarContent() {
     }
   }
 
+  /**
+   * Syncs one account. Addressed by connection id rather than (profile, provider)
+   * because several accounts of the same provider can exist.
+   */
   async function handleSync(
-    provider: CalendarProvider,
+    connection: CalendarConnection,
     opts: { silent?: boolean } = {}
   ) {
     if (!workspaceId || !authData?.profile_id) return;
     const silent = opts.silent ?? false;
+    const provider = connection.provider;
     
     console.log('[Calendar/handleSync] START', {
       provider,
@@ -361,7 +379,12 @@ function CalendarContent() {
 
     try {
       const result = await syncCalendar(
-        { profile_id: authData.profile_id, provider, action: 'sync' },
+        {
+          profile_id: authData.profile_id,
+          provider,
+          action: 'sync',
+          connection_id: connection.id,
+        },
         initData
       );
       
@@ -391,6 +414,38 @@ function CalendarContent() {
     }
   }
 
+  /**
+   * Removes one account.
+   *
+   * The Edge Function clears events by (profile, provider), which is exact while
+   * one account exists but would take a second account's events with it, so the
+   * survivors are re-synced straight after. Their data lives in Yandex, so
+   * nothing is lost — only re-fetched.
+   */
+  async function handleDeleteConnection(connection: CalendarConnection) {
+    const profileId = authData?.profile_id;
+    if (!profileId) throw new Error('Нет данных авторизации');
+
+    const { disconnectCalendar } = await import('@/lib/api/calendar');
+    const result = await disconnectCalendar(
+      connection.id,
+      profileId,
+      connection.provider,
+      initData,
+    );
+    if (!result.success) {
+      throw new Error(result.error ?? 'Не удалось удалить интеграцию');
+    }
+
+    setActiveConnection(null);
+    await loadData();
+
+    for (const other of connections) {
+      if (other.id === connection.id) continue;
+      await handleSync(other, { silent: true });
+    }
+  }
+
   async function handleReminderUpdate(eventId: string, minutes: number | null) {
     try {
       const { updateReminderSettings } = await import('@/lib/api/calendar');
@@ -403,6 +458,10 @@ function CalendarContent() {
       console.error('Failed to update reminder:', err);
     }
   }
+
+  // The account the password modal acts on: whichever still lacks one.
+  const passwordTargetConnection =
+    connections.find((c) => c.has_caldav_password === false) ?? null;
 
   // Per-day presence counts, keyed by local day so the strip dots and the
   // month grid agree with what the day view will show.
@@ -502,37 +561,36 @@ function CalendarContent() {
         >
           <div className="flex items-center gap-2 overflow-x-auto">
             {connections.map((conn) => (
-              <div
+              <button
                 key={conn.id}
-                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 shrink-0"
+                type="button"
+                onClick={() => setActiveConnection(conn)}
+                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
                 style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border-white-subtle)' }}
+                aria-label={`${conn.provider_account_email}, действия интеграции`}
               >
                 <span
-                  className="flex h-2 w-2 rounded-full"
+                  className="flex h-2 w-2 rounded-full flex-none"
                   style={{ backgroundColor: conn.provider === 'yandex' ? 'var(--color-signal-yellow)' : 'var(--color-signal-cyan)' }}
                 />
                 <span className="text-body-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
                   {conn.provider_account_email}
                 </span>
-                <button
-                  onClick={() => handleSync(conn.provider)}
-                  disabled={isSyncing || conn.has_caldav_password === false}
-                  className="rounded-full p-0.5 transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
-                  aria-label={`Синхронизировать ${conn.provider}`}
-                  title={`Синхронизировать ${conn.provider}`}
-                >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L11 8h6V2l-3.35 3.35z"
-                    stroke="var(--color-text-muted)"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
               </button>
-            </div>
-          ))}
+            ))}
+
+            <button
+              type="button"
+              onClick={() => void handleConnect('yandex')}
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
+              style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px dashed var(--color-border-default)' }}
+              aria-label="Добавить календарь"
+            >
+              <IconPlus size={12} stroke={2} className="flex-none" aria-hidden="true" />
+              <span className="text-body-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                Добавить
+              </span>
+            </button>
           </div>
 
           {/* CalDAV app password (CAL-08): without it the OAuth token cannot read
@@ -667,6 +725,16 @@ function CalendarContent() {
         event={selectedEvent}
         onClose={() => setSelectedEvent(null)}
         onEditReminder={handleReminderUpdate}
+      />
+
+      <CalendarConnectionSheet
+        connection={activeConnection}
+        onClose={() => setActiveConnection(null)}
+        onSync={handleSync}
+        onDelete={handleDeleteConnection}
+        isSyncing={isSyncing}
+        eventCount={events.length}
+        hasOtherAccounts={connections.length > 1}
       />
 
       {/* Authorization code modal */}
@@ -893,7 +961,7 @@ function CalendarContent() {
                     type={showPassword ? 'text' : 'password'}
                     value={caldavPassword}
                     onChange={(e) => setCaldavPassword(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !passwordSubmitting) handleSavePassword(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !passwordSubmitting) void handleSavePassword(passwordTargetConnection); }}
                     disabled={passwordSubmitting}
                     autoComplete="off"
                     placeholder="Вставьте пароль приложения"
@@ -923,7 +991,7 @@ function CalendarContent() {
               )}
 
               <button
-                onClick={handleSavePassword}
+                onClick={() => void handleSavePassword(passwordTargetConnection)}
                 disabled={passwordSubmitting || !caldavPassword.trim()}
                 className="w-full rounded-card px-4 py-2 text-body-sm font-medium transition-all duration-fast hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
                 style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000' }}

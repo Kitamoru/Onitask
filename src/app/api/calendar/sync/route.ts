@@ -21,12 +21,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'invalid_json' }, { status: 400 });
   }
 
-  const { init_data, profile_id, provider, action, code } = body as {
+  const { init_data, profile_id, provider, action, code, connection_id } = body as {
     init_data?: string;
     profile_id?: string;
     provider?: string;
     action?: string;
     code?: string;
+    // Which account to act on. Several accounts of the same provider can
+    // exist, so the action is addressed by id; the Edge Function verifies it
+    // belongs to the authenticated profile before touching anything.
+    connection_id?: string;
   };
 
   // Debug logging
@@ -79,6 +83,7 @@ export async function POST(req: NextRequest) {
         provider,
         action,
         code,
+        connection_id,
       }),
     });
 

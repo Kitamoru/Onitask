@@ -176,6 +176,7 @@ export async function updateReminderSettings(
  */
 export async function setCalDavPassword(
   password: string,
+  connectionId: string,
   initData?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -184,6 +185,7 @@ export async function setCalDavPassword(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         provider: 'yandex',
+        connection_id: connectionId,
         caldav_password: password,
         init_data: initData,
       }),
@@ -210,6 +212,9 @@ export interface SyncCalendarParams {
   provider: CalendarProvider;
   action?: 'sync' | 'connect' | 'disconnect';
   code?: string;
+  /** Which account to act on. Several of the same provider can exist, so the
+   * action is addressed by id rather than by (profile, provider). */
+  connection_id?: string;
 }
 
 /**
@@ -263,20 +268,23 @@ export async function syncCalendar(
  * Disconnects a calendar account.
  */
 export async function disconnectCalendar(
+  connectionId: string,
   profileId: string,
-  provider: CalendarProvider
-): Promise<{ success: boolean; error: string | null }> {
+  provider: CalendarProvider,
+  initData?: string
+): Promise<{ success: boolean; error: string | null; deletedEvents: number }> {
   try {
-    await syncCalendar({
-      profile_id: profileId,
-      provider,
-      action: 'disconnect',
-    });
-    return { success: true, error: null };
+    const result = await syncCalendar(
+      { profile_id: profileId, provider, action: 'disconnect', connection_id: connectionId },
+      initData,
+    );
+    const deletedEvents = Number((result as { deleted_events?: number }).deleted_events ?? 0);
+    return { success: true, error: null, deletedEvents };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Disconnect failed',
+      deletedEvents: 0,
     };
   }
 }

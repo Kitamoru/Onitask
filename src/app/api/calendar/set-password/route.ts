@@ -20,7 +20,17 @@ export async function POST(req: NextRequest) {
       provider?: string;
       caldav_password?: string;
       init_data?: string;
+      // The account to attach the password to. Ownership is checked inside
+      // the Edge Function, which refuses a connection_id from another profile.
+      connection_id?: string;
     };
+
+    if (!body.connection_id) {
+      return NextResponse.json(
+        { success: false, error: 'missing_connection_id' },
+        { status: 400 }
+      );
+    }
 
     if (body.provider && body.provider !== 'yandex') {
       return NextResponse.json(
@@ -63,6 +73,7 @@ export async function POST(req: NextRequest) {
         profile_id: auth.profileId,
         provider: 'yandex',
         action: 'set_password',
+        connection_id: body.connection_id,
         caldav_password: password,
       }),
     });

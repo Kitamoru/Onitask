@@ -144,6 +144,34 @@ const SYNC_WINDOW_DAYS = 90;
 const REMINDER_DEFAULT_MINUTES = 15;
 const CALDAV_HOST = 'https://caldav.yandex.ru';
 
+/**
+ * Loads a connection by id and refuses it when it belongs to another profile.
+ *
+ * With one account per provider the (profile_id, provider) lookup was
+ * unambiguous. Two accounts of the same provider make it ambiguous, and maybeSingle
+ * would then either error or pick one arbitrarily -- so every action that touches
+ * a specific connection addresses it by id and checks ownership here.
+ */
+async function loadOwnedConnection(
+  supabase: ReturnType<typeof createClient>,
+  connectionId: string,
+  profileId: string,
+): Promise<{ data: CalendarConnection | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from('calendar_connections')
+    .select('id,profile_id,provider,provider_account_email,oauth_tokens_b64,caldav_password_b64,token_expires_at,is_active,last_sync_at')
+    .eq('id', connectionId)
+    .maybeSingle();
+
+  if (error) return { data: null, error };
+  if (!data) return { data: null, error: null };
+  if ((data as { profile_id: string }).profile_id !== profileId) {
+    return { data: null, error: 'not_owner' };
+  }
+  return { data: data as CalendarConnection, error: null };
+}
+
+
 function formatDateForQuery(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
@@ -513,19 +541,17 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: 'access_token or code required for connect action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
       
-      const { data: existingConnection } = await supabase
-        .from('calendar_connections')
-        .select('id, provider_account_email')
-        .eq('profile_id', profile_id)
-        .eq('provider', provider)
-        .maybeSingle();
-      
-      // Resolve the account. Never fall back to a placeholder: a fake login
-      // silently produced an invalid CalDAV URL and a confusing 401.
+      // Resolve the account FIRST, then look the row up by it.
+      //
+      // The lookup used to run before this and key on (profile, provider), which
+      // was only unambiguous because one account per provider was enforced. A second
+      // Yandex login makes that ambiguous, and a new account would overwrite the
+      // existing one. The account login is the real key: re-authorising the same
+      // address updates its row, a different address adds another.
+      //
+      // Never fall back to a placeholder login: a fake one silently produced an
+      // invalid CalDAV URL and a confusing 401.
       let accountEmail = provider_account_email;
-      if (!accountEmail && existingConnection && existingConnection.provider_account_email !== 'yandex_user') {
-        accountEmail = existingConnection.provider_account_email;
-      }
       if (!accountEmail) {
         try { accountEmail = await getYandexAccountLogin(tokens.access_token); }
         catch (err) {
@@ -536,6 +562,14 @@ serve(async (req: Request) => {
           }), { status: 502, headers: { 'Content-Type': 'application/json' } });
         }
       }
+
+      const { data: existingConnection } = await supabase
+        .from('calendar_connections')
+        .select('id, provider_account_email')
+        .eq('profile_id', profile_id)
+        .eq('provider', provider)
+        .eq('provider_account_email', accountEmail)
+        .maybeSingle();
       
       const encryptedB64 = await encryptOauthTokens(tokens, encryptionKey);
       const now = new Date().toISOString();
@@ -610,12 +644,50 @@ serve(async (req: Request) => {
 
     // ═══ Disconnect action ═══
     if (action === 'disconnect') {
-      const { error: updateError } = await supabase.from('calendar_connections')
-        .update({ is_active: false })
+      const { connection_id: targetId } = body as { connection_id?: string };
+      if (!targetId) {
+        return new Response(JSON.stringify({ error: 'missing_connection_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const { data: target, error: loadErr } = await loadOwnedConnection(supabase, targetId, profile_id);
+      if (loadErr === 'not_owner') {
+        return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (loadErr) {
+        return new Response(JSON.stringify({ error: 'connection_fetch_failed', details: loadErr }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (!target) {
+        return new Response(JSON.stringify({ error: 'no_connection' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // Removing an integration removes what it imported. The user asked for
+      // this explicitly and there is no undo, so the client confirms first and
+      // the count comes back for that confirmation to name.
+      const { error: eventsErr, count: removed } = await supabase
+        .from('calendar_events')
+        .delete({ count: 'exact' })
         .eq('profile_id', profile_id)
-        .eq('provider', provider);
-      if (updateError) return new Response(JSON.stringify({ error: 'disconnect_failed', details: updateError }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-      return new Response(JSON.stringify({ message: 'Calendar disconnected' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        .eq('provider', target.provider);
+
+      if (eventsErr) {
+        console.error('calendar_sync: event delete error', eventsErr);
+        return new Response(JSON.stringify({ error: 'events_delete_failed', details: eventsErr }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const { error: delErr } = await supabase
+        .from('calendar_connections')
+        .delete()
+        .eq('id', target.id);
+
+      if (delErr) {
+        return new Response(JSON.stringify({ error: 'disconnect_failed', details: delErr }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      console.log('calendar_sync: disconnected', target.id, 'events removed =', removed ?? 0);
+      return new Response(
+        JSON.stringify({ message: 'Calendar disconnected', deleted_events: removed ?? 0 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
     }
 
     // ═══ Set CalDAV app password (CAL-07) ═══
@@ -627,13 +699,16 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: 'missing_caldav_password' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      const { data: target, error: targetErr } = await supabase
-        .from('calendar_connections')
-        .select('id')
-        .eq('profile_id', profile_id)
-        .eq('provider', provider)
-        .maybeSingle();
+      const { connection_id: targetId } = body as { connection_id?: string };
+      if (!targetId) {
+        return new Response(JSON.stringify({ error: 'missing_connection_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
 
+      const { data: target, error: targetErr } = await loadOwnedConnection(supabase, targetId, profile_id);
+
+      if (targetErr === 'not_owner') {
+        return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
       if (targetErr || !target) {
         return new Response(JSON.stringify({ error: 'no_connection' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
       }
@@ -653,19 +728,20 @@ serve(async (req: Request) => {
     }
 
     // ═══ Sync action ═══
-    const { data: connection, error: connError } = await supabase
-      .from('calendar_connections')
-      .select('id,profile_id,provider,provider_account_email,oauth_tokens_b64,caldav_password_b64,token_expires_at,is_active,last_sync_at')
-      .eq('profile_id', profile_id)
-      .eq('provider', provider)
-      .eq('is_active', true)
-      .maybeSingle() as { data: CalendarConnection | null; error: unknown };
-    
-    if (connError) { 
-      console.error('calendar_sync: connection fetch error', connError); 
-      return new Response(JSON.stringify({ error: 'connection_fetch_failed', details: connError }), { status: 500, headers: { 'Content-Type': 'application/json' } }); 
+    const { connection_id: syncTargetId } = body as { connection_id?: string };
+    if (!syncTargetId) {
+      return new Response(JSON.stringify({ error: 'missing_connection_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
-    if (!connection) {
+
+    const { data: connection, error: connError } = await loadOwnedConnection(supabase, syncTargetId, profile_id) as { data: CalendarConnection | null; error: unknown };
+    if (connError === 'not_owner') {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (connError) {
+      console.error('calendar_sync: connection fetch error', connError);
+      return new Response(JSON.stringify({ error: 'connection_fetch_failed', details: connError }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (!connection || !connection.is_active) {
       return new Response(JSON.stringify({ error: 'no_active_connection', hint: 'Connect calendar first via OAuth flow' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
 
