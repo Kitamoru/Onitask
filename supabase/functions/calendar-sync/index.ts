@@ -56,6 +56,7 @@ interface CalendarEventPayload {
   description: string | null;
   start_at: string;
   end_at: string;
+  calendar_id: string;
   is_all_day: boolean;
   reminder_minutes_before: number;
 }
@@ -141,6 +142,45 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 const SYNC_WINDOW_DAYS = 90;
+
+/** Decodes the handful of entities a CalDAV server emits in a name. */
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .trim();
+}
+
+/**
+ * href -> displayname from a multistatus body.
+ *
+ * Yandex fills the prop only if the server chooses to return it, so a missing
+ * name is a normal outcome rather than an error: callers fall back to the ref.
+ */
+function parseDisplayNames(xml: string): Map<string, string> {
+  const names = new Map<string, string>();
+  const tag = '[A-Za-z0-9]*:?';
+  const responses = xml.match(new RegExp('<' + tag + 'response[\\s\\S]*?</' + tag + 'response>', 'g')) || [];
+  for (const block of responses) {
+    const href = block.match(new RegExp('<' + tag + 'href[^>]*>([^<]+)</' + tag + 'href>'))?.[1]?.trim();
+    const name = block.match(new RegExp('<' + tag + 'displayname[^>]*>([^<]*)</' + tag + 'displayname>'))?.[1];
+    if (href && name) names.set(href, decodeXmlText(name));
+  }
+  return names;
+}
+/** The event UID is the .ics filename in the collection href. */
+function uidFromEventHref(href: string): string | null {
+  const last = href.split('/').filter(Boolean).pop();
+  if (!last || !/\.ics$/i.test(last)) return null;
+  try {
+    return decodeURIComponent(last.replace(/\.ics$/i, ''));
+  } catch {
+    return null;
+  }
+}
 const REMINDER_DEFAULT_MINUTES = 15;
 const CALDAV_HOST = 'https://caldav.yandex.ru';
 
@@ -153,6 +193,7 @@ async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, pa
     profile_id: payload.profile_id, provider: payload.provider, remote_event_id: payload.remote_event_id,
     title: payload.title.slice(0, 500), description: payload.description?.slice(0, 5000) ?? null,
     start_at: payload.start_at, end_at: payload.end_at,
+    calendar_id: payload.calendar_id,
     is_all_day: payload.is_all_day,
     reminder_minutes_before: payload.reminder_minutes_before, source_synced_at: new Date().toISOString(),
   }, { onConflict: 'profile_id,provider,remote_event_id', ignoreDuplicates: false });
@@ -254,16 +295,6 @@ async function syncYandex(
 
     const listXml = await listRes.text();
     const hrefs = [...listXml.matchAll(hrefPattern)].map((m) => m[1]);
-    // TEMPORARY PROBE (CAL-13): ask for displayname so we can find out whether
-    // Yandex returns calendar names at all, and under which prop element.
-    // Writes the listing body to the function log -- delete this block once the
-    // question is answered.
-    console.log(
-      'CALDAV_PROBE hrefs=' + hrefs.length +
-      ' has_displayname=' + /displayname/i.test(listXml) +
-      ' prop_names=' + (listXml.match(/<[A-Za-z0-9]*:?[A-Za-z-]*(?:name|calendar|color)[A-Za-z-]*/gi) || []).join(',').slice(0, 400) +
-      ' body=' + listXml.slice(0, 1500)
-    );
     const homePath = new URL(homeUrl).pathname;
 
     // Per-calendar subcollections look like ".../events-123/" or ".../todos-1/".
@@ -283,9 +314,42 @@ async function syncYandex(
     // Collect every event href first, then fetch in bounded parallel batches.
     // Sequential GETs timed the function out (503) on a calendar with 18
     // events; the wall clock is dominated by round trips, not by bandwidth.
-    const allEventUrls: string[] = [];
+    // Register every collection as a calendar. Until now the source of an event
+    // was discarded here, which is what blocked per-calendar visibility,
+    // per-account colouring and de-duplication across collections.
+    const displayNames = parseDisplayNames(listXml);
+    const calendarIds = new Map<string, string>();
 
     for (const path of calendarPaths) {
+      const { data: calRow, error: calErr } = await supabase
+        .from('profile_calendars')
+        .upsert(
+          { connection_id: connection.id, ref: path, name: displayNames.get(path) ?? null },
+          { onConflict: 'connection_id,ref' },
+        )
+        .select('id')
+        .maybeSingle();
+
+      if (calErr || !calRow) {
+        errors.push(`calendar_upsert_failed: ${path}`);
+        continue;
+      }
+      calendarIds.set(path, (calRow as { id: string }).id);
+    }
+
+    console.log('calendar_sync: registered', calendarIds.size, 'of', calendarPaths.length, 'calendars', 'named', displayNames.size);
+
+    // Collect every event href first, then fetch in bounded parallel batches.
+    // Sequential GETs timed the function out (503) on a calendar with 18
+    // events; the wall clock is dominated by round trips, not by bandwidth.
+    // uidToCalendar carries the source: the UID is the .ics filename.
+    const allEventUrls: string[] = [];
+    const uidToCalendar = new Map<string, string>();
+
+    for (const path of calendarPaths) {
+      const calendarId = calendarIds.get(path);
+      if (!calendarId) continue;
+
       const calUrl = path.startsWith('http') ? path : `${CALDAV_HOST}${path}`;
 
       const childrenRes = await fetch(calUrl, {
@@ -302,6 +366,8 @@ async function syncYandex(
       for (const eventPath of [...childrenXml.matchAll(hrefPattern)]
         .map((m) => m[1])
         .filter((h) => !h.endsWith('/'))) {
+        const uid = uidFromEventHref(eventPath);
+        if (uid) uidToCalendar.set(uid, calendarId);
         allEventUrls.push(eventPath.startsWith('http') ? eventPath : `${CALDAV_HOST}${eventPath}`);
       }
     }
@@ -338,11 +404,39 @@ async function syncYandex(
     const skipped = all.length - events.length;
     console.log('calendar_sync: parsed', all.length, 'VEVENTs, in window', events.length, ', skipped', skipped);
 
+    // An event whose href did not yield a UID goes to a catch-all bucket rather
+    // than being dropped: silently losing events is worse than a visible oddity.
+    let fallbackCalendarId: string | null = null;
+
     for (const ev of events) {
+      let calendarId = uidToCalendar.get(ev.uid) ?? null;
+
+      if (!calendarId) {
+        if (!fallbackCalendarId) {
+          const { data: fb } = await supabase
+            .from('profile_calendars')
+            .upsert(
+              { connection_id: connection.id, ref: 'unmapped', name: null },
+              { onConflict: 'connection_id,ref' },
+            )
+            .select('id')
+            .maybeSingle();
+          fallbackCalendarId = fb ? (fb as { id: string }).id : null;
+        }
+        calendarId = fallbackCalendarId;
+        if (calendarId) errors.push(`unmapped_event: ${ev.uid}`);
+      }
+
+      if (!calendarId) {
+        errors.push(`event_without_calendar: ${ev.uid}`);
+        continue;
+      }
+
       try {
         await upsertCalendarEvent(supabase, {
           profile_id: connection.profile_id,
           provider: 'yandex',
+          calendar_id: calendarId,
           remote_event_id: ev.uid,
           title: ev.title,
           description: ev.description,
@@ -355,6 +449,17 @@ async function syncYandex(
       } catch (upsertErr) {
         errors.push(`upsert_error: ${upsertErr instanceof Error ? upsertErr.message : 'unknown'}`);
       }
+    }
+
+    // The pre-migration synthetic bucket has done its job: its events now sit
+    // under their real collection, and its row cascades away with them.
+    if (calendarIds.size > 0) {
+      const { error: legacyErr } = await supabase
+        .from('profile_calendars')
+        .delete()
+        .eq('connection_id', connection.id)
+        .eq('ref', 'legacy');
+      if (legacyErr) errors.push('legacy_cleanup_failed');
     }
 
     console.log('calendar_sync: sync complete. synced =', synced, 'errors =', errors.length);
