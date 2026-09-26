@@ -15,6 +15,9 @@ function CalendarContent() {
   const { state, loadBoardsData } = useData();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [connections, setConnections] = useState<CalendarConnection[]>([]);
+  // Distinguishes "loaded and there is none" from "not loaded yet / failed" —
+  // without it a failed load renders the "not connected" empty state.
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
@@ -51,6 +54,12 @@ function CalendarContent() {
   useEffect(() => {
     // Skip if already loading or already loaded for this profile
     if (loadingRef.current || !workspaceId || authLoading) return;
+    // `initData` is separate state in useTelegramAuth and is filled only after
+    // the Telegram SDK loads, so profile_id can be ready before it. Loading
+    // without it gets a 401, and the "already loaded" latch below would then
+    // block every retry for the rest of the session — the calendar stayed
+    // "not connected" on every open.
+    if (!initData) return;
     if (!authData?.profile_id) {
       if (!authLoading && !workspaceId) {
         setIsLoading(false);
@@ -62,16 +71,19 @@ function CalendarContent() {
     if (loadedProfileRef.current === authData.profile_id) return;
 
     loadingRef.current = true;
-    loadedProfileRef.current = authData.profile_id;
+    loadData()
+      .then((loaded) => {
+        // Latch only on success, otherwise a transient failure is permanent.
+        if (loaded) loadedProfileRef.current = authData.profile_id;
+      })
+      .finally(() => {
+        loadingRef.current = false;
+      });
+  }, [workspaceId, authLoading, initData, authData?.profile_id]);
 
-    loadData().finally(() => {
-      loadingRef.current = false;
-    });
-  }, [workspaceId, authLoading, authData?.profile_id]);
+  async function loadData(): Promise<boolean> {
+    if (!workspaceId) return false;
 
-  async function loadData() {
-    if (!workspaceId) return;
-    
     setIsLoading(true);
     setError(null);
 
@@ -87,9 +99,13 @@ function CalendarContent() {
 
       if (connectionsRes.error) {
         console.error('Failed to load calendar connections:', connectionsRes.error);
-      } else {
-        setConnections(connectionsRes.data ?? []);
+        // Surface the failure instead of falling through to the empty state,
+        // which would claim the calendar is not connected.
+        setError('Не удалось загрузить подключения календаря');
+        return false;
       }
+      setConnections(connectionsRes.data ?? []);
+      setConnectionsLoaded(true);
 
       if (eventsRes.error && (connectionsRes.data?.length ?? 0) > 0) {
         console.error('Failed to load calendar events:', eventsRes.error);
@@ -97,9 +113,11 @@ function CalendarContent() {
       } else {
         setEvents(eventsRes.data ?? []);
       }
+      return true;
     } catch (err) {
       console.error('Calendar page error:', err);
       setError('Произошла ошибка при загрузке данных');
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -444,8 +462,9 @@ function CalendarContent() {
         </div>
       )}
 
-      {/* No connections state — show connect button */}
-      {connections.length === 0 && !isLoading && (
+      {/* No connections state — show connect button. Only once a load actually
+          succeeded, so a failed request is not reported as "not connected". */}
+      {connectionsLoaded && connections.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
           <span className="mb-3 text-5xl">📭</span>
           <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>

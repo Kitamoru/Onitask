@@ -124,8 +124,10 @@ export async function getCalendarConnections(
   profileId: string,
   initData?: string
 ): Promise<{ data: CalendarConnection[] | null; error: string | null }> {
+  // Returning an empty array with no error here used to render the "not
+  // connected" empty state, hiding the real cause (missing profile/auth).
   if (!profileId || profileId.trim() === '') {
-    return { data: [], error: null };
+    return { data: null, error: 'missing_profile_id' };
   }
 
   const result = await callCalendarApi('get_connections', { profile_id: profileId }, initData);
