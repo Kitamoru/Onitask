@@ -103,6 +103,58 @@ describe('bot-notify card: deadline форматирование (BOT-11)', () =
   });
 });
 
+describe('bot-notify card: детект дублей (DUP-01)', () => {
+  it('заголовок + строка «Похожа на …» с процентом совпадения', () => {
+    const res = buildTaskNotifyCard(
+      makeCard({ column: 'backlog' }),
+      'duplicate',
+      { duplicateOfFullId: 'ONI-7', similarity: 0.82 },
+    );
+    expect(res.text).toContain('👯 Похоже на дубликат · <b>ONI-42</b>');
+    expect(res.text).toContain('Похожа на задачу ONI-7 (совпадение 82%)');
+    expect(res.text).toContain('закрой одну из задач');
+  });
+
+  it('без similarity процент не показывается (нет «NaN%» / «undefined»)', () => {
+    const res = buildTaskNotifyCard(
+      makeCard({ column: 'backlog' }),
+      'duplicate',
+      { duplicateOfFullId: 'ONI-7' },
+    );
+    expect(res.text).toContain('Похожа на задачу ONI-7');
+    expect(res.text).not.toContain('совпадение');
+    expect(res.text).not.toContain('undefined');
+  });
+
+  it('full_id дубля экранируется (HTML-инъекция невозможна)', () => {
+    const res = buildTaskNotifyCard(
+      makeCard({ column: 'backlog' }),
+      'duplicate',
+      { duplicateOfFullId: '<b>hack</b>', similarity: 0.9 },
+    );
+    expect(res.text).toContain('Похожа на задачу &lt;b&gt;hack&lt;/b&gt;');
+  });
+
+  it('без duplicateOfFullId подсказка про дубль не выводится', () => {
+    const res = buildTaskNotifyCard(makeCard({ column: 'backlog' }), 'duplicate');
+    expect(res.text).toContain('👯 Похоже на дубликат · <b>ONI-42</b>');
+    expect(res.text).not.toContain('Похожа на задачу');
+  });
+
+  it('кнопок согласования нет — это алерт, а не запрос ревью', () => {
+    const res = buildTaskNotifyCard(
+      makeCard({ column: 'backlog' }),
+      'duplicate',
+      { duplicateOfFullId: 'ONI-7', similarity: 0.82 },
+    );
+    const callbacks = res.replyMarkup.inline_keyboard
+      .flat()
+      .map((b) => b.callback_data)
+      .filter(Boolean);
+    expect(callbacks.some((c) => c.startsWith('ra:'))).toBe(false);
+  });
+});
+
 describe('bot-notify card: регрессии контекстов', () => {
   it('review: клавиатура согласовать/вернуть + подсказка', () => {
     const res = buildTaskNotifyCard(

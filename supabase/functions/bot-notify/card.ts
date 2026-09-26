@@ -40,7 +40,9 @@ export type NotifyContext =
   | 'deadline_overdue'
   | 'unblocked'
   | 'cascade'
-  | 'handoff';
+  | 'handoff'
+  /** DUP-01: возможный дубликат задачи (process_duplicate_check, §5.3). */
+  | 'duplicate';
 
 export const STATUS_LABELS: Record<string, string> = {
   backlog: 'В очереди',
@@ -186,6 +188,8 @@ export function buildHeader(context: NotifyContext, fullId: string): string {
       return `🔗 Цепочка разблокирована · <b>${id}</b>`;
     case 'handoff':
       return `🤝 Задача <b>${id}</b> передана`;
+    case 'duplicate':
+      return `👯 Похоже на дубликат · <b>${id}</b>`;
     default:
       return `📋 Задача <b>${id}</b>`;
   }
@@ -228,6 +232,10 @@ export function buildTaskNotifyCard(
     nackDetail?: string;
     /** Детали результата агента доступны в комментариях задачи. */
     hasDetails?: boolean;
+    /** DUP-01: full_id задачи-дубля («Похожа на …»). */
+    duplicateOfFullId?: string;
+    /** DUP-01: similarity 0..1 от find_duplicate_tasks. */
+    similarity?: number;
   }
 ): {
   text: string;
@@ -282,6 +290,18 @@ export function buildTaskNotifyCard(
   if (context === 'done_approved') {
     extraLines.push('');
     extraLines.push('Задача перенесена в Сделано.');
+  }
+  if (context === 'duplicate' && extras?.duplicateOfFullId) {
+    extraLines.push('');
+    extraLines.push(
+      `Похожа на задачу ${escapeHtml(extras.duplicateOfFullId)}` +
+        (extras.similarity != null
+          ? ` (совпадение ${Math.round(extras.similarity * 100)}%)`
+          : ''),
+    );
+    extraLines.push(
+      'Если это действительно дубль — закрой одну из задач, чтобы не расползлись в работу дважды.',
+    );
   }
 
   const header = buildHeader(context, card.fullId);

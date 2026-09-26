@@ -482,6 +482,14 @@ async function buildBroadcastCard(job: {
           return buildTaskNotifyCard(card, 'cascade');
     case 'handoff_chain_alert':
       return buildTaskNotifyCard(card, 'handoff');
+    case 'duplicate':
+      // DUP-01: алерт ставит process_duplicate_check (миграция 122) в
+      // enrichment_queue типом 'bot_notify'. Поля приходят из его payload:
+      // duplicate_of_full_id + similarity.
+      return buildTaskNotifyCard(card, 'duplicate', {
+        duplicateOfFullId: job.payload.duplicate_of_full_id as string | undefined,
+        similarity: job.payload.similarity as number | undefined,
+      });
     default:
       return {
         text: `<b>📢 Уведомление</b>\n\nНеизвестный тип: ${escapeHtml(alertType)}`,
