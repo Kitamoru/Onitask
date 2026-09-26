@@ -57,6 +57,9 @@ interface CalendarEventPayload {
   start_at: string;
   end_at: string;
   is_all_day: boolean;
+  /** Which account this event came from. Nullable: rows written before
+   * migration 129 have none, and they keep syncing. */
+  connection_id?: string | null;
   reminder_minutes_before: number;
 }
 
@@ -177,13 +180,19 @@ function formatDateForQuery(date: Date): string {
 }
 
 async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, payload: CalendarEventPayload): Promise<void> {
-  await supabase.from('calendar_events').upsert({
+  // supabase-js resolves with { error } instead of throwing, so an unchecked
+  // upsert writes nothing while the caller still counts a success. That is how
+  // a broken sync reported "synced" over an empty calendar.
+  const { error } = await supabase.from('calendar_events').upsert({
     profile_id: payload.profile_id, provider: payload.provider, remote_event_id: payload.remote_event_id,
     title: payload.title.slice(0, 500), description: payload.description?.slice(0, 5000) ?? null,
     start_at: payload.start_at, end_at: payload.end_at,
     is_all_day: payload.is_all_day,
+    connection_id: payload.connection_id ?? null,
     reminder_minutes_before: payload.reminder_minutes_before, source_synced_at: new Date().toISOString(),
   }, { onConflict: 'profile_id,provider,remote_event_id', ignoreDuplicates: false });
+
+  if (error) throw new Error(`event_upsert_failed: ${error.message}`);
 }
 
 /**
@@ -367,6 +376,7 @@ async function syncYandex(
           start_at: ev.startAt,
           end_at: ev.endAt,
           is_all_day: ev.isAllDay,
+          connection_id: connection.id,
           reminder_minutes_before: REMINDER_DEFAULT_MINUTES,
         });
         synced++;

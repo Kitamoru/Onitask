@@ -39,11 +39,17 @@ interface DayViewProps {
   /** Full event set; filtered to `date` here by local day key. */
   events: CalendarEvent[];
   onEventClick?: (event: CalendarEvent) => void;
+  /** Colour for an event, resolved from the account it was synced from. */
+  colorFor?: (event: CalendarEvent) => string;
   isLoading?: boolean;
 }
 
-export function DayView({ date, events, onEventClick, isLoading }: DayViewProps) {
+export function DayView({ date, events, onEventClick, colorFor, isLoading }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Rows written before migration 129 have no connection_id and fall back to the
+  // provider colour, so an old event keeps a mark instead of losing one.
+  const colorOf = colorFor ?? (() => 'var(--color-signal-yellow)');
 
   const dayEvents = useMemo(
     () => events.filter((e) => localDateKey(e.start_at) === localDateKey(date)),
@@ -90,7 +96,7 @@ export function DayView({ date, events, onEventClick, isLoading }: DayViewProps)
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <AllDayRow events={allDay} onEventClick={onEventClick} />
+      <AllDayRow events={allDay} onEventClick={onEventClick} colorFor={colorOf} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         <div className="flex" style={{ height: 24 * HOUR_HEIGHT + TAIL_PADDING }}>
@@ -161,7 +167,7 @@ export function DayView({ date, events, onEventClick, isLoading }: DayViewProps)
                     left: `calc(${lane * width}% + 2px)`,
                     width: `calc(${width}% - 4px)`,
                     backgroundColor: 'var(--color-bg-surface)',
-                    borderLeft: '3px solid var(--color-signal-yellow)',
+                    borderLeft: '3px solid ' + colorOf(event),
                     padding: isShort ? '2px 6px' : '4px 6px',
                   }}
                   aria-label={`${event.title}, ${formatTimeShort(event.start_at)} — ${formatTimeShort(event.end_at)}`}

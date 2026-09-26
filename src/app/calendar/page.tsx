@@ -130,19 +130,22 @@ function CalendarContent() {
     if (autoSyncRef.current) return;
     if (!connectionsLoaded || isLoading) return;
 
-    const connection = connections.find((c) => c.is_active);
-    // No app password means Yandex would reject the sync outright.
-    if (!connection?.has_caldav_password) return;
-
-    const lastSyncAt = connection.last_sync_at
-      ? Date.parse(connection.last_sync_at)
-      : NaN;
-    const age = Date.now() - lastSyncAt;
-    // Never synced (null) counts as stale.
-    if (Number.isFinite(age) && age <= AUTO_SYNC_STALE_MS) return;
+    // Every active account is synced, not just the first: with two connected
+    // accounts the second would otherwise never be refreshed, and since
+    // migration 129 it is the sync that fills in each event's connection_id.
+    const stale = connections.filter((c) => {
+      if (!c.is_active || !c.has_caldav_password) return false;
+      const last = c.last_sync_at ? Date.parse(c.last_sync_at) : NaN;
+      const age = Date.now() - last;
+      // Never synced (null) counts as stale.
+      return !Number.isFinite(age) || age > AUTO_SYNC_STALE_MS;
+    });
+    if (stale.length === 0) return;
 
     autoSyncRef.current = true;
-    handleSync(connection, { silent: true });
+    for (const connection of stale) {
+      void handleSync(connection, { silent: true });
+    }
   }, [connections, connectionsLoaded, isLoading]);
 
   /**
@@ -472,6 +475,19 @@ function CalendarContent() {
   const passwordTargetConnection =
     connections.find((c) => c.has_caldav_password === false) ?? null;
 
+  // Event colour follows the account the event was synced from. Rows not yet
+  // re-attributed after migration 129 keep the provider colour rather than
+  // losing their mark.
+  const eventColorFor = React.useMemo(() => {
+    const byId = new Map(connections.map((c) => [c.id, c.color_index]));
+    return (event: CalendarEvent): string => {
+      const index = event.connection_id ? byId.get(event.connection_id) : undefined;
+      return index === undefined
+        ? 'var(--color-signal-yellow)'
+        : calendarAccountColor(index);
+    };
+  }, [connections]);
+
   // Per-day presence counts, keyed by local day so the strip dots and the
   // month grid agree with what the day view will show.
   const eventCounts = React.useMemo(() => {
@@ -709,6 +725,7 @@ function CalendarContent() {
                   date={selectedDate}
                   events={events}
                   onEventClick={setSelectedEvent}
+                  colorFor={eventColorFor}
                   isLoading={isLoading}
                 />
               </div>

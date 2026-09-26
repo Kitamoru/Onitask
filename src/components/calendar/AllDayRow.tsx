@@ -14,9 +14,12 @@ import type { CalendarEvent } from '@/types/calendar';
 interface AllDayRowProps {
   events: CalendarEvent[];
   onEventClick?: (event: CalendarEvent) => void;
+  /** Colour from the account the event was synced from. */
+  colorFor?: (event: CalendarEvent) => string;
 }
 
-export function AllDayRow({ events, onEventClick }: AllDayRowProps) {
+export function AllDayRow({ events, onEventClick, colorFor }: AllDayRowProps) {
+  const colorOf = colorFor ?? (() => 'var(--color-signal-yellow)');
   if (events.length === 0) return null;
 
   return (
@@ -32,7 +35,7 @@ export function AllDayRow({ events, onEventClick }: AllDayRowProps) {
           className="w-full text-left rounded-sm px-2 py-1 truncate transition-opacity duration-fast active:opacity-70"
           style={{
             backgroundColor: 'var(--color-bg-surface)',
-            borderLeft: '3px solid var(--color-signal-cyan)',
+            borderLeft: '3px solid ' + colorOf(event),
             fontSize: 'var(--text-body-sm)',
             color: 'var(--color-text-primary)',
           }}

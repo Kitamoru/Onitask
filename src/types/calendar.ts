@@ -27,6 +27,9 @@ export interface CalendarEvent {
   /** iCal VALUE=DATE: a whole date. start_at is a UTC midnight marker, not
    * an instant, so it must not be placed on the hourly axis. */
   is_all_day?: boolean;
+  /** Account this event was synced from; drives its colour. NULL for rows
+   * not yet re-synced since migration 129. */
+  connection_id?: string | null;
   reminder_minutes_before: number | null;
   created_by: string | null;
   updated_by: string | null;
