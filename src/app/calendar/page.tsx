@@ -17,6 +17,7 @@ import type {
   CalendarViewMode,
 } from '@/types/calendar';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
+import { IconCalendarWeek } from '@tabler/icons-react';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -447,9 +448,21 @@ function CalendarContent() {
         className="flex items-center justify-between px-4 py-3 border-b"
         style={{ borderColor: 'var(--color-border-default)' }}
       >
-        <h1 className="text-heading-md font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-          📅 Календарь
-        </h1>
+        <div className="flex items-center gap-2">
+          <IconCalendarWeek size={20} stroke={1.5} className="flex-none" aria-hidden="true" />
+          <h1
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: '20px',
+              lineHeight: '24px',
+              fontWeight: 500,
+              letterSpacing: '-0.025em',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            Календарь
+          </h1>
+        </div>
 
         <div className="flex items-center gap-2">
           {syncStatus === 'syncing' && (

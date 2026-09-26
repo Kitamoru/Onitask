@@ -6,6 +6,10 @@
  * inside CalendarView. It is rebuilt here on the shared BottomSheet so it
  * inherits the swipe-to-dismiss and safe-area handling the rest of the app
  * already relies on, instead of the hand-rolled overlay it grew from.
+ *
+ * Type scale follows the app: 20/24/500 for the title (same as the «Стол» and
+ * «Настройки» headers) and `--text-body-md` (14px) for content, rather than the
+ * 12px `--text-body-sm` this first shipped with.
  */
 
 'use client';
@@ -29,7 +33,59 @@ const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: 60, label: 'За 1 час' },
 ];
 
-/** "среда, 14 августа" */
+/** Matches bare http(s) URLs. Yandex puts the call link in the description. */
+const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+
+/** Punctuation that ends a sentence rather than belonging to the URL. */
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/;
+
+/**
+ * External links open through Telegram so the Mini App is not replaced by the
+ * target page; the window.open fallback matches InviteModal and the settings
+ * support link.
+ */
+function openExternal(url: string) {
+  const tg = (window as unknown as {
+    Telegram?: { WebApp?: { openLink?: (u: string) => void } };
+  }).Telegram?.WebApp;
+
+  if (tg?.openLink) {
+    try {
+      tg.openLink(url);
+      return;
+    } catch {
+      // fall through to the browser
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Splits description text into plain runs and links. Trailing sentence
+ * punctuation is pushed back out of the URL so "встреча (https://x.co/a)."
+ * does not link the closing dot.
+ */
+function splitLinks(text: string): { url: string | null; value: string }[] {
+  const parts: { url: string | null; value: string }[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(URL_RE)) {
+    const start = match.index ?? 0;
+    let raw = match[1];
+
+    const trailing = raw.match(TRAILING_PUNCTUATION)?.[0] ?? '';
+    if (trailing) raw = raw.slice(0, -trailing.length);
+
+    if (start > cursor) parts.push({ url: null, value: text.slice(cursor, start) });
+    if (raw) parts.push({ url: raw, value: raw });
+    if (trailing) parts.push({ url: null, value: trailing });
+    cursor = start + match[1].length;
+  }
+
+  if (cursor < text.length) parts.push({ url: null, value: text.slice(cursor) });
+  return parts;
+}
+
 function formatDay(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
     weekday: 'long',
@@ -58,15 +114,54 @@ function formatDuration(startIso: string, endIso: string): string {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex items-center justify-between gap-3 rounded-md px-3 py-2"
+      className="flex items-baseline justify-between gap-4 rounded-md px-3 py-2.5"
       style={{ backgroundColor: 'var(--color-bg-surface)' }}
     >
-      <span className="text-body-sm shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+      <span className="text-body-md shrink-0" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </span>
-      <span className="text-body-sm font-medium text-right" style={{ color: 'var(--color-text-primary)' }}>
+      <span
+        className="text-body-md font-medium text-right"
+        style={{ color: 'var(--color-text-primary)' }}
+      >
         {value}
       </span>
+    </div>
+  );
+}
+
+/** Description with its URLs turned into tappable links. */
+function Description({ text }: { text: string }) {
+  const parts = splitLinks(text);
+
+  return (
+    <div
+      className="rounded-md px-3 py-2.5 whitespace-pre-wrap break-words"
+      style={{
+        backgroundColor: 'var(--color-bg-surface)',
+        color: 'var(--color-text-primary)',
+        fontSize: 'var(--text-body-md)',
+        lineHeight: 'var(--text-body-md-line)',
+      }}
+    >
+      {parts.map((part, index) =>
+        part.url ? (
+          <a
+            key={index}
+            href={part.url}
+            onClick={(e) => {
+              e.preventDefault();
+              openExternal(part.url as string);
+            }}
+            className="underline underline-offset-2 active:opacity-70"
+            style={{ color: 'var(--color-accent-amber)', wordBreak: 'break-all' }}
+          >
+            {part.value}
+          </a>
+        ) : (
+          <React.Fragment key={index}>{part.value}</React.Fragment>
+        )
+      )}
     </div>
   );
 }
@@ -96,28 +191,33 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
     }
   };
 
-  const reminderLabel = (minutes: number | null) => {
-    const option = REMINDER_OPTIONS.find((o) => o.value === minutes);
-    return option?.label ?? 'Без напоминания';
-  };
+  const reminderLabel = (minutes: number | null) =>
+    REMINDER_OPTIONS.find((o) => o.value === minutes)?.label ?? 'Без напоминания';
 
   return (
     <BottomSheet open onClose={onClose}>
       <div className="px-4 pb-4 space-y-3">
         <h2
-          className="text-heading-sm font-semibold pr-2"
-          style={{ color: 'var(--color-text-primary)' }}
+          className="pr-2"
+          style={{
+            fontFamily: 'var(--font-family-display)',
+            fontSize: '20px',
+            lineHeight: '24px',
+            fontWeight: 500,
+            letterSpacing: '-0.025em',
+            color: 'var(--color-text-primary)',
+          }}
         >
           {event.title}
         </h2>
 
         <div className="flex items-center gap-2">
           <span
-            className="inline-flex h-2 w-2 rounded-full"
+            className="inline-flex h-2 w-2 rounded-full flex-none"
             style={{ backgroundColor: 'var(--color-signal-yellow)' }}
             aria-hidden="true"
           />
-          <span className="text-body-sm" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="text-body-md" style={{ color: 'var(--color-text-muted)' }}>
             Yandex Календарь
           </span>
         </div>
@@ -127,30 +227,16 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
             label="Когда"
             value={`${formatDay(event.start_at)}, ${formatClock(event.start_at)}`}
           />
-          <Row
-            label="Длительность"
-            value={formatDuration(event.start_at, event.end_at)}
-          />
+          <Row label="Длительность" value={formatDuration(event.start_at, event.end_at)} />
         </div>
 
-        {event.description && (
-          <div
-            className="rounded-md px-3 py-2 whitespace-pre-wrap"
-            style={{
-              backgroundColor: 'var(--color-bg-surface)',
-              color: 'var(--color-text-primary)',
-              fontSize: 'var(--text-body-sm)',
-            }}
-          >
-            {event.description}
-          </div>
-        )}
+        {event.description && <Description text={event.description} />}
 
         <div
-          className="flex items-center justify-between gap-3 rounded-md px-3 py-2"
+          className="flex items-center justify-between gap-3 rounded-md px-3 py-2.5"
           style={{ backgroundColor: 'var(--color-bg-surface)' }}
         >
-          <span className="text-body-sm shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="text-body-md shrink-0" style={{ color: 'var(--color-text-muted)' }}>
             Напоминание
           </span>
 
@@ -158,20 +244,20 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
             <button
               type="button"
               onClick={() => setEditingReminder(true)}
-              className="text-body-sm font-medium transition-opacity duration-fast active:opacity-70"
+              className="text-body-md font-medium transition-opacity duration-fast active:opacity-70"
               style={{ color: 'var(--color-accent-amber)' }}
             >
               {reminderLabel(event.reminder_minutes_before)}
             </button>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <select
                 value={reminderValue === null ? '' : String(reminderValue)}
                 onChange={(e) =>
                   setReminderValue(e.target.value === '' ? null : Number(e.target.value))
                 }
                 disabled={saving}
-                className="rounded-sm px-2 py-1 text-body-sm disabled:opacity-50"
+                className="rounded-sm px-2 py-1.5 text-body-md disabled:opacity-50"
                 style={{
                   color: 'var(--color-text-primary)',
                   backgroundColor: 'var(--color-bg-surface-hover)',
@@ -190,7 +276,7 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="text-body-sm font-medium disabled:opacity-50"
+                className="text-body-md font-medium disabled:opacity-50"
                 style={{ color: 'var(--color-signal-green)' }}
               >
                 {saving ? '…' : 'ОК'}
@@ -199,7 +285,7 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
                 type="button"
                 onClick={() => setEditingReminder(false)}
                 disabled={saving}
-                className="text-body-sm"
+                className="text-body-md"
                 style={{ color: 'var(--color-text-muted)' }}
               >
                 Отмена
