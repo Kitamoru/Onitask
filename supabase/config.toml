@@ -9,3 +9,9 @@ verify_jwt = false
 
 [functions.enrich-task]
 verify_jwt = false
+
+# calendar-sync walks the whole Yandex calendar over CalDAV (no server-side
+# time-range filter is supported by Yandex), so it needs more headroom than the
+# default. It was timing out with 503 on an 18-event calendar.
+[functions.calendar-sync]
+verify_jwt = false

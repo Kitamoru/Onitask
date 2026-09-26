@@ -229,47 +229,149 @@ async function syncYandex(
 
     const authHeader = `Basic ${btoa(`${login}:${caldavPassword}`)}`;
 
-    // Discover the calendar home set so we query the real collection rather
-    // than guessing a path shape.
-    const propfindBody = `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><C:calendar-home-set xmlns:C="urn:ietf:params:xml:ns:caldav"/></D:prop></D:propfind>`;
-    const principalUrl = `${CALDAV_HOST}/principals/users/${encodeURIComponent(login)}/`;
+    // Yandex CalDAV layout, established by probing the live server 2026-09-26:
+    //  - the principal must be discovered (a bare login 404s; the server hands
+    //    back /principals/users/<login>%40<domain>/);
+    //  - calendar-query REPORT is NOT supported and answers
+    //    <D:error><supported-report/></D:error>;
+    //  - events live in per-calendar subcollections, e.g.
+    //    /calendars/<login>/events-9527465/, not directly under the home set.
+    // So: discover -> list subcollections -> GET each .ics child.
+    // The two PROPFINDs need different props: the root advertises
+    // current-user-principal, the principal collection advertises
+    // calendar-home-set. Reusing one body silently returned an empty home set
+    // and the sync stopped with caldav_calendar_home_not_found.
+    const rootPropfind = `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:current-user-principal/></D:prop></D:propfind>`;
+    const principalPropfind = `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><C:calendar-home-set/></D:prop></D:propfind>`;
 
-    const discovery = await fetch(principalUrl, {
+    // Yandex uses two different spellings in the same response:
+    //   <current-user-principal><D:href>...</D:href>   (inside D: props)
+    //   <href xmlns="DAV:">...</href>                   (top-level responses)
+    // One regex for both is what made the home set look missing.
+    const hrefPattern = /<(?:D:)?href(?:\s[^>]*)?>([^<]+)<\/(?:D:)?href>/g;
+    const innerHref = (xml: string, tag: string) => {
+      const re = new RegExp(`<[^>]*${tag}[^>]*>\\s*<(?:D:)?href(?:\\s[^>]*)?>([^<]+)<\\/(?:D:)?href>`, 'i');
+      return xml.match(re)?.[1]?.trim();
+    };
+
+    const rootRes = await fetch(`${CALDAV_HOST}/`, {
       method: 'PROPFIND',
       headers: { Authorization: authHeader, 'Content-Type': 'application/xml; charset=utf-8', Depth: '0' },
-      body: propfindBody,
+      body: rootPropfind,
     });
 
-    if (!discovery.ok) {
-      console.error('calendar_sync: principal discovery failed', discovery.status);
-      return { synced: 0, errors: [`caldav_auth_failed_${discovery.status}`] };
+    if (!rootRes.ok) {
+      if (rootRes.status === 401) return { synced: 0, errors: ['caldav_auth_failed_401'] };
+      return { synced: 0, errors: [`caldav_discovery_failed_${rootRes.status}`] };
     }
 
-    const discoveryXml = await discovery.text();
-    const homeHref = discoveryXml.match(/<[a-zA-Z0-9]*:?calendar-home-set[^>]*>\s*<[^>]*href>([^<]+)</)?.[1]?.trim();
-    const calendarUrl = homeHref
-      ? (homeHref.startsWith('http') ? homeHref : `${CALDAV_HOST}${homeHref}`)
-      : `${CALDAV_HOST}/calendars/${encodeURIComponent(login)}/`;
+    const rootXml = await rootRes.text();
+    const principalHref = innerHref(rootXml, 'current-user-principal');
+    if (!principalHref) return { synced: 0, errors: ['caldav_principal_not_found'] };
 
-    console.log('calendar_sync: calendar home =', calendarUrl);
+    const principalUrl = principalHref.startsWith('http') ? principalHref : `${CALDAV_HOST}${principalHref}`;
 
-    const reportXml = `<?xml version="1.0" encoding="utf-8" ?><C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop xmlns:D="DAV:"><C:calendar-data/></D:prop><C:filter><C:time-range start="${formatDateForQuery(since)}" end="${formatDateForQuery(until)}"/></C:filter></C:calendar-query>`;
+    const principalRes = await fetch(principalUrl, {
+      method: 'PROPFIND',
+      headers: { Authorization: authHeader, 'Content-Type': 'application/xml; charset=utf-8', Depth: '0' },
+      body: principalPropfind,
+    });
+    if (!principalRes.ok) {
+      if (principalRes.status === 401) return { synced: 0, errors: ['caldav_auth_failed_401'] };
+      return { synced: 0, errors: [`caldav_principal_failed_${principalRes.status}`] };
+    }
 
-    const report = await fetch(calendarUrl, {
-      method: 'REPORT',
+    const principalXml = await principalRes.text();
+    const homeHref = innerHref(principalXml, 'calendar-home-set');
+    if (!homeHref) return { synced: 0, errors: ['caldav_calendar_home_not_found'] };
+
+    const homeUrl = homeHref.startsWith('http') ? homeHref : `${CALDAV_HOST}${homeHref}`;
+
+    const listRes = await fetch(homeUrl, {
+      method: 'PROPFIND',
       headers: { Authorization: authHeader, 'Content-Type': 'application/xml; charset=utf-8', Depth: '1' },
-      body: reportXml,
+      body: `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>`,
     });
-
-    if (!report.ok) {
-      const body = await report.text();
-      console.error('calendar_sync: REPORT failed', report.status, body.slice(0, 300));
-      return { synced: 0, errors: [`caldav_report_failed_${report.status}`] };
+    if (!listRes.ok) {
+      if (listRes.status === 401) return { synced: 0, errors: ['caldav_auth_failed_401'] };
+      return { synced: 0, errors: [`caldav_list_failed_${listRes.status}`] };
     }
 
-    const responseXml = await report.text();
-    const events = parseVEvents(responseXml);
-    console.log('calendar_sync: parsed', events.length, 'VEVENTs');
+    const listXml = await listRes.text();
+    const hrefs = [...listXml.matchAll(hrefPattern)].map((m) => m[1]);
+    const homePath = new URL(homeUrl).pathname;
+
+    // Per-calendar subcollections look like ".../events-123/" or ".../todos-1/".
+    const calendarPaths = hrefs.filter((h) => {
+      if (h === homePath) return false;
+      if (/\/(inbox|outbox)\/?$/.test(h)) return false;
+      return h.endsWith('/');
+    });
+
+    if (calendarPaths.length === 0) {
+      console.log('calendar_sync: no calendar subcollections under', homeUrl);
+      return { synced: 0, errors: [] };
+    }
+
+    console.log('calendar_sync: found', calendarPaths.length, 'calendar collections');
+
+    // Collect every event href first, then fetch in bounded parallel batches.
+    // Sequential GETs timed the function out (503) on a calendar with 18
+    // events; the wall clock is dominated by round trips, not by bandwidth.
+    const allEventUrls: string[] = [];
+
+    for (const path of calendarPaths) {
+      const calUrl = path.startsWith('http') ? path : `${CALDAV_HOST}${path}`;
+
+      const childrenRes = await fetch(calUrl, {
+        method: 'PROPFIND',
+        headers: { Authorization: authHeader, 'Content-Type': 'application/xml; charset=utf-8', Depth: '1' },
+        body: `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>`,
+      });
+      if (!childrenRes.ok) {
+        errors.push(`list_failed_${childrenRes.status}: ${path}`);
+        continue;
+      }
+
+      const childrenXml = await childrenRes.text();
+      for (const eventPath of [...childrenXml.matchAll(hrefPattern)]
+        .map((m) => m[1])
+        .filter((h) => !h.endsWith('/'))) {
+        allEventUrls.push(eventPath.startsWith('http') ? eventPath : `${CALDAV_HOST}${eventPath}`);
+      }
+    }
+
+    console.log('calendar_sync: fetching', allEventUrls.length, 'events');
+
+    const BATCH = 8;
+    let ics = '';
+    for (let i = 0; i < allEventUrls.length; i += BATCH) {
+      const batch = allEventUrls.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async (url) => {
+        try {
+          const res = await fetch(url, { method: 'GET', headers: { Authorization: authHeader } });
+          if (!res.ok) return null;
+          return await res.text();
+        } catch {
+          return null;
+        }
+      }));
+      for (const body of results) {
+        if (body) ics += `${body}\n`;
+      }
+    }
+
+    // GET-ing every .ics means no server-side time-range filter, so the window
+    // is applied here instead of losing far-past and far-future events.
+    const inWindow = (ev: ParsedEvent) => {
+      const t = new Date(ev.startAt).getTime();
+      return t >= since.getTime() && t <= until.getTime();
+    };
+
+    const all = parseVEvents(ics);
+    const events = all.filter(inWindow);
+    const skipped = all.length - events.length;
+    console.log('calendar_sync: parsed', all.length, 'VEVENTs, in window', events.length, ', skipped', skipped);
 
     for (const ev of events) {
       try {
