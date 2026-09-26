@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import { useTelegramContext } from '@/components/shared/TelegramProvider';
@@ -211,18 +211,22 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
 
 function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegramPhotoUrl?: string }) {
   const initial = username.replace('@', '').charAt(0).toUpperCase();
-  const [loaded, setLoaded] = useState(false);
+  // Единственное состояние — «картинка не загрузилась». Видимость аватара от
+  // него НЕ зависит: раньше был `opacity: loaded ? 1 : 0` с `loaded` из onLoad,
+  // и кэшированная картинка (повторный заход на страницу) монтировалась с
+  // complete === true, из-за чего load уже прошёл и обработчик не срабатывал —
+  // `loaded` навсегда оставался false, и аватар был не виден (регрессия после
+  // b6ab131). Поэтому fade убран: картинка либо есть, либо сорвалась, а
+  // кэшированная отрисуется сразу, без ожидания события.
+  const [failed, setFailed] = useState(false);
 
   // Аватар приходит с CDN Telegram (t.me/i/userpic/...) и грузится строго
   // через <img src>: это no-cors загрузка, для которой CDN не обязан слать
   // Access-Control-Allow-Origin. fetch() здесь неприменим — он работает в
   // CORS-режиме, на этом CDN всегда падает, и аватар не рендерился вовсе
-  // (регрессия c313cb6). Отсюда же следует, что кэшировать байты на клиенте
-  // нельзя: прочитать их можно только с CORS или через свой same-origin
-  // прокси, поэтому прошлый localStorage-кэш пришлось убрать.
-  useEffect(() => {
-    setLoaded(false);
-  }, [telegramPhotoUrl]);
+  // (регрессия c313cb6). Отсюда же — кэшировать байты на клиенте нельзя:
+  // прочитать их можно только с CORS или через свой same-origin прокси.
+  const showPhoto = Boolean(telegramPhotoUrl) && !failed;
 
   return (
     <div
@@ -235,16 +239,16 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
       }}
     >
       {/* Буква-заглушка рисуется ВСЕГДА базовым слоем: пока едет сеть (или если
-          она не пришла вовсе) пользователь видит букву, а не пустой чёрный
+          картинки нет вовсе) пользователь видит букву, а не пустой чёрный
           квадрат. Раньше img рисовался один, а onError делал display:none —
           бокс 104×104 оставался пустым навсегда. */}
       <div
         className="absolute inset-0 flex items-center justify-center text-white text-3xl font-medium"
-        aria-hidden={loaded}
+        aria-hidden={showPhoto}
       >
         {initial}
       </div>
-      {telegramPhotoUrl && (
+      {showPhoto && (
         <img
           src={telegramPhotoUrl}
           alt={username}
@@ -252,17 +256,16 @@ function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegram
           height={104}
           decoding="async"
           fetchPriority="high"
+          onError={() => setFailed(true)}
           onLoad={() => {
-            setLoaded(true);
-            // Аватар — фаза ПОСЛЕ снятия лоадера, а дедуп-метка reportPerf
-            // к этому моменту уже стоит (её ставит AuthLoader на boot), поэтому
-            // отчёт шлём с force — иначе марка молча потерялась бы.
+            // Только метрика, на видимость не влияет. Аватар — фаза ПОСЛЕ
+            // снятия лоадера, а дедуп-метка reportPerf к этому моменту уже
+            // стоит (её ставит AuthLoader на boot), поэтому отчёт шлём с
+            // force — иначе марка молча потерялась бы.
             markPerf('avatar:load');
             reportPerf({ force: true });
           }}
-          onError={() => setLoaded(false)}
-          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200"
-          style={{ opacity: loaded ? 1 : 0 }}
+          className="absolute inset-0 h-full w-full object-cover"
         />
       )}
     </div>
