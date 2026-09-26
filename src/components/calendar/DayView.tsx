@@ -16,7 +16,12 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import type { CalendarEvent } from '@/types/calendar';
-import { localDateKey, isSameLocalDay, formatTimeShort } from '@/lib/calendar';
+import {
+  localDateKey,
+  isSameLocalDay,
+  formatTimeShort,
+  layoutDayEvents,
+} from '@/lib/calendar';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /** Height of one hour row. 24 × this is the full axis height. */
@@ -38,71 +43,6 @@ interface DayViewProps {
   isLoading?: boolean;
 }
 
-interface Positioned {
-  event: CalendarEvent;
-  startMinutes: number;
-  endMinutes: number;
-  /** Index of the overlap lane, and how many lanes the cluster uses. */
-  lane: number;
-  lanes: number;
-}
-
-/** Local minutes since midnight, clamped into the day. */
-function minutesOfDay(iso: string): number {
-  const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
-}
-
-/**
- * Assigns each event a lane so that overlapping events sit side by side
- * instead of on top of each other. Events are clustered: anything transitively
- * overlapping shares the lane count of its cluster.
- */
-function layout(events: CalendarEvent[]): Positioned[] {
-  const items = events
-    .map((event) => {
-      const startMinutes = minutesOfDay(event.start_at);
-      const rawEnd = minutesOfDay(event.end_at);
-      // A zero-length or inverted range still deserves a block.
-      const endMinutes = rawEnd > startMinutes ? rawEnd : startMinutes + 30;
-      return { event, startMinutes, endMinutes };
-    })
-    .sort((a, b) => a.startMinutes - b.startMinutes);
-
-  const positioned: Positioned[] = [];
-  let cluster: typeof items = [];
-  let clusterEnd = -1;
-
-  const flush = () => {
-    if (cluster.length === 0) return;
-    const laneEnds: number[] = [];
-    const assigned = cluster.map((item) => {
-      let lane = laneEnds.findIndex((end) => end <= item.startMinutes);
-      if (lane === -1) {
-        lane = laneEnds.length;
-        laneEnds.push(item.endMinutes);
-      } else {
-        laneEnds[lane] = item.endMinutes;
-      }
-      return { ...item, lane };
-    });
-    for (const item of assigned) {
-      positioned.push({ ...item, lanes: laneEnds.length });
-    }
-    cluster = [];
-    clusterEnd = -1;
-  };
-
-  for (const item of items) {
-    if (cluster.length > 0 && item.startMinutes >= clusterEnd) flush();
-    cluster.push(item);
-    clusterEnd = Math.max(clusterEnd, item.endMinutes);
-  }
-  flush();
-
-  return positioned;
-}
-
 export function DayView({ date, events, onEventClick, onDateSelect, isLoading }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +51,7 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
     [events, date]
   );
 
-  const positioned = useMemo(() => layout(dayEvents), [dayEvents]);
+  const positioned = useMemo(() => layoutDayEvents(dayEvents), [dayEvents]);
   const isToday = isSameLocalDay(date, new Date());
   const now = new Date();
 
