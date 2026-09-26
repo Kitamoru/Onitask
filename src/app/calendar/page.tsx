@@ -642,7 +642,6 @@ function CalendarContent() {
                   date={selectedDate}
                   events={events}
                   onEventClick={setSelectedEvent}
-                  onDateSelect={setSelectedDate}
                   isLoading={isLoading}
                 />
               </div>

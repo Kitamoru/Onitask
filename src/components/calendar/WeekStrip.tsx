@@ -55,10 +55,15 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
   const weekEnd = days[6];
   const today = new Date();
 
+  // ru-RU appends a "year" suffix ("December 2026 g."), which is noise in a
+  // narrow strip. Escapes keep this line pure ASCII.
+  const monthYear = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+    d.toLocaleDateString('ru-RU', opts).replace(/\s*\u0433\.\s*$/, '');
+
   const monthSpan =
     weekStart.getMonth() === weekEnd.getMonth()
-      ? weekStart.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
-      : `${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} — ${weekEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      ? monthYear(weekStart, { month: 'long', year: 'numeric' })
+      : `${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}\u2014${monthYear(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   return (
     <div
@@ -80,7 +85,7 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
 
         <span
           className="text-body-sm font-semibold capitalize"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: 'var(--color-text-primary)' }}
         >
           {monthSpan}
         </span>

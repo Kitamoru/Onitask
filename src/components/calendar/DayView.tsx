@@ -39,12 +39,10 @@ interface DayViewProps {
   /** Full event set; filtered to `date` here by local day key. */
   events: CalendarEvent[];
   onEventClick?: (event: CalendarEvent) => void;
-  /** Used by the empty state to jump to the nearest day that has something. */
-  onDateSelect?: (date: Date) => void;
   isLoading?: boolean;
 }
 
-export function DayView({ date, events, onEventClick, onDateSelect, isLoading }: DayViewProps) {
+export function DayView({ date, events, onEventClick, isLoading }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const dayEvents = useMemo(
@@ -80,27 +78,6 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
     container.scrollTop = Math.max(0, (focusMinutes / 60) * HOUR_HEIGHT - HOUR_HEIGHT * 1.5);
   }, [date, isToday, isLoading, positioned.length]);
 
-  // An empty day should still be useful rather than a blank grid: point at the
-  // closest day that actually holds something. On a sparse calendar most days
-  // are empty, and "nothing here" on its own reads as a broken screen.
-  const nextPopulated = useMemo(() => {
-    if (dayEvents.length > 0) return null;
-    const key = localDateKey(date);
-    const upcoming = events
-      .filter((e) => localDateKey(e.start_at) >= key)
-      .sort((a, b) => a.start_at.localeCompare(b.start_at))[0];
-    if (!upcoming) return null;
-    const d = new Date(upcoming.start_at);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, [dayEvents.length, events, date]);
-
-  const nextPopulatedCount = useMemo(() => {
-    if (!nextPopulated) return 0;
-    const key = localDateKey(nextPopulated);
-    return events.filter((e) => localDateKey(e.start_at) === key).length;
-  }, [nextPopulated, events]);
-
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   if (isLoading) {
@@ -112,7 +89,7 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
   }
 
   return (
-    <div className="relative flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0">
       <AllDayRow events={allDay} onEventClick={onEventClick} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
@@ -212,44 +189,6 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
           </div>
         </div>
       </div>
-
-      {dayEvents.length === 0 && (
-        <div
-          className="absolute left-0 right-0 bottom-0 px-4 pb-4 pointer-events-none"
-          aria-live="polite"
-        >
-          <div
-            className="rounded-card px-3 py-2.5 pointer-events-auto"
-            style={{
-              backgroundColor: 'var(--color-bg-surface)',
-              border: '1px solid var(--color-border-white-subtle)',
-            }}
-          >
-            <p className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
-              {isToday
-                ? 'Сегодня ничего не запланировано'
-                : 'В этот день ничего не запланировано'}
-            </p>
-
-            {nextPopulated && onDateSelect && (
-              <button
-                type="button"
-                onClick={() => onDateSelect(nextPopulated)}
-                className="mt-1 text-body-sm font-medium text-left transition-opacity duration-fast active:opacity-70"
-                style={{ color: 'var(--color-accent-amber)' }}
-              >
-                Ближайшее:{' '}
-                {nextPopulated.toLocaleDateString('ru-RU', {
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'long',
-                })}{' '}
-                · {nextPopulatedCount} событий
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
