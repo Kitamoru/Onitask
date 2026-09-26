@@ -330,17 +330,26 @@ function CalendarContent() {
             },
             initData
           );
-          const synced = (syncResult as { synced?: number } | undefined)?.synced ?? 0;
-          if (synced > 0) {
-            setSyncStatus('success');
-            setTimeout(() => setSyncStatus('idle'), 2000);
-            await loadData();
-          } else {
+          const { errors } = (syncResult ?? {}) as { errors?: string[] };
+
+          // Only an actual error means the password was refused. The Edge
+          // Function answers 200 with an `errors` array when CalDAV failed, so
+          // an empty array plus zero events means the password was accepted and
+          // the account simply has nothing in the window -- which is not a
+          // password problem and must not be reported as one.
+          if (errors && errors.length > 0) {
             setPasswordError(
-              'Пароль сохранён, но Яндекс его не принял. Проверьте, что создан пароль типа «Календарь».'
+              errors[0] === 'caldav_auth_failed_401'
+                ? 'Пароль сохранён, но Яндекс его не принял. Проверьте, что создан пароль типа «Календарь».'
+                : `Пароль сохранён, но синхронизация не удалась: ${errors[0]}`,
             );
             setShowPasswordModal(true);
+            return;
           }
+
+          setSyncStatus('success');
+          setTimeout(() => setSyncStatus('idle'), 2000);
+          await loadData();
         } catch {
           setPasswordError('Пароль сохранён, но синхронизация не удалась');
           setShowPasswordModal(true);
