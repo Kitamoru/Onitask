@@ -245,7 +245,7 @@ async function syncYandex(
     const listRes = await fetch(homeUrl, {
       method: 'PROPFIND',
       headers: { Authorization: authHeader, 'Content-Type': 'application/xml; charset=utf-8', Depth: '1' },
-      body: `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>`,
+      body: `<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/><D:displayname/></D:prop></D:propfind>`,
     });
     if (!listRes.ok) {
       if (listRes.status === 401) return { synced: 0, errors: ['caldav_auth_failed_401'] };
@@ -254,6 +254,16 @@ async function syncYandex(
 
     const listXml = await listRes.text();
     const hrefs = [...listXml.matchAll(hrefPattern)].map((m) => m[1]);
+    // TEMPORARY PROBE (CAL-13): ask for displayname so we can find out whether
+    // Yandex returns calendar names at all, and under which prop element.
+    // Writes the listing body to the function log -- delete this block once the
+    // question is answered.
+    console.log(
+      'CALDAV_PROBE hrefs=' + hrefs.length +
+      ' has_displayname=' + /displayname/i.test(listXml) +
+      ' prop_names=' + (listXml.match(/<[A-Za-z0-9]*:?[A-Za-z-]*(?:name|calendar|color)[A-Za-z-]*/gi) || []).join(',').slice(0, 400) +
+      ' body=' + listXml.slice(0, 1500)
+    );
     const homePath = new URL(homeUrl).pathname;
 
     // Per-calendar subcollections look like ".../events-123/" or ".../todos-1/".
