@@ -61,14 +61,27 @@ All components use design tokens from `src/styles/tokens.css` (no hardcoded hex 
 
 ### calendar/ — Calendar
 
+**Screen shape (2026-09-26):** a Telegram Mini App lives in a draggable BottomSheet, so the
+calendar is two views on one scale — «День» and «Месяц» — not a four-way switcher. The month grid
+is an orientation aid (day number, presence dots, count) and hands off to the day view on a tap;
+it is not a surface for event titles. The previous `CalendarView` (react-day-picker month grid with
+20-character truncated chips), `ListView`, `MonthListView`, `ThreeDaysView` and the unused
+`month-list` / `list` / `three-days` view modes were removed — they were either unreachable or
+duplicated the same provider-colour logic five times. `react-day-picker` stays in the project for
+`SingleDateSheet` / `DateRangeSheet`.
+
 | Component | File | Key Props | Purpose |
 |-----------|------|-----------|---------|
-| | CalendarView | CalendarView.tsx | — | Main calendar view |
-| | CalendarTabs | CalendarTabs.tsx | — | Calendar tab navigation |
-| | DayView | DayView.tsx | — | Day view |
-| | ThreeDaysView | ThreeDaysView.tsx | — | 3-day view |
-| | MonthListView | MonthListView.tsx | — | Month list view |
-| | ListView | ListView.tsx | — | List view |
+| | CalendarTabs | CalendarTabs.tsx | activeMode, onModeChange | «День» / «Месяц» switcher; 2 segments, `CalendarViewMode = 'day' \| 'month'` |
+| | WeekStrip | WeekStrip.tsx | selectedDate, onDateSelect, eventCounts | iOS-style Monday-first week strip; a dot marks a day that has events, the count is in the accessible name |
+| | DayView | DayView.tsx | date, events, onEventClick, onDateSelect, isLoading | One day on a proportional time axis (44px per hour). Blocks are placed by real start and duration, overlapping events split into lanes, current-time marker on today. Opens scrolled to now, else to the first event. An empty day shows a tappable nearest-populated hint rather than a blank grid |
+| | MonthView | MonthView.tsx | month, onMonthChange, selectedDate, onDateSelect, events | Month grid for orientation; readable dots and an overflow count. Selecting a day switches to the day view |
+| | EventDetailSheet | EventDetailSheet.tsx | event, onClose, onEditReminder | Event details on the shared `BottomSheet`; wires up the tap that previously did nothing |
+
+**Day keys are local, not UTC.** `localDateKey` in `lib/calendar` is the single source of truth;
+`toISOString().split('T')[0]` files a 00:30 event under the previous day east of Greenwich. Covered
+by `tests/lib/calendar.test.ts`, which pins `TZ=Europe/Moscow` because the failure is invisible on a
+UTC runner.
 
 ---
 

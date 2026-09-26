@@ -6,12 +6,14 @@ export type CalendarProvider = 'yandex';
 
 /**
  * Calendar view mode for the TWA mobile interface.
- * - month-list: Month grid + agenda list below (default)
- * - day: Single day detail view with hourly breakdown
- * - three-days: Horizontal 3-day compact grid
- * - list: Infinite vertical scroll of all upcoming events
+ * - day: the selected day on a proportional time axis
+ * - month: month grid for orientation, handing off to 'day' on a tap
+ *
+ * The single-day list and 3-day timeline modes existed as components but were
+ * never wired up, and the height of a Telegram BottomSheet does not leave room
+ * for a four-way switcher either.
  */
-export type CalendarViewMode = 'month-list' | 'day' | 'three-days' | 'list';
+export type CalendarViewMode = 'day' | 'month';
 
 export interface CalendarEvent {
   id: string;

@@ -1,11 +1,21 @@
 'use client';
 
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { CalendarView } from '@/components/calendar/CalendarView';
+import { CalendarTabs } from '@/components/calendar/CalendarTabs';
+import { DayView } from '@/components/calendar/DayView';
+import { MonthView } from '@/components/calendar/MonthView';
+import { WeekStrip } from '@/components/calendar/WeekStrip';
+import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
 import { getCalendarEvents, getCalendarConnections, syncCalendar } from '@/lib/api/calendar';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { useData } from '@/contexts/DataContext';
-import type { CalendarEvent, CalendarConnection, CalendarProvider } from '@/types/calendar';
+import { groupEventsByDate } from '@/lib/calendar';
+import type {
+  CalendarEvent,
+  CalendarConnection,
+  CalendarProvider,
+  CalendarViewMode,
+} from '@/types/calendar';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
@@ -33,6 +43,13 @@ function CalendarContent() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Day/Month are two ends of one scale, so the day is the default landing.
+  const [viewMode, setViewMode] = useState<CalendarViewMode>('day');
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // OAuth code modal state
@@ -381,6 +398,16 @@ function CalendarContent() {
     }
   }
 
+  // Per-day presence counts, keyed by local day so the strip dots and the
+  // month grid agree with what the day view will show.
+  const eventCounts = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [key, list] of groupEventsByDate(events)) {
+      map.set(key, list.length);
+    }
+    return map;
+  }, [events]);
+
   const bgStyle = { background: 'var(--color-bg-primary-dark, #0A0A0A)' };
 
   // Loading state while auth or workspace is loading
@@ -570,17 +597,48 @@ function CalendarContent() {
       )}
 
       {(connections.length > 0 || isLoading) && (
-        <div className="flex-1 overflow-hidden">
-          <CalendarView
-            events={events}
-            selectedDate={selectedDate}
-            onDateSelect={setSelectedDate}
-            onSyncClick={() => connections.length > 0 && handleSync('yandex')}
-            isLoading={isLoading}
-            onEventClick={() => {}}
-          />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <CalendarTabs activeMode={viewMode} onModeChange={setViewMode} />
+
+          {viewMode === 'day' ? (
+            <>
+              <WeekStrip
+                selectedDate={selectedDate}
+                onDateSelect={setSelectedDate}
+                eventCounts={eventCounts}
+              />
+              <div className="flex-1 min-h-0">
+                <DayView
+                  date={selectedDate}
+                  events={events}
+                  onEventClick={setSelectedEvent}
+                  onDateSelect={setSelectedDate}
+                  isLoading={isLoading}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 min-h-0">
+              <MonthView
+                month={viewMonth}
+                onMonthChange={setViewMonth}
+                selectedDate={selectedDate}
+                onDateSelect={(date) => {
+                  setSelectedDate(date);
+                  setViewMode('day');
+                }}
+                events={events}
+              />
+            </div>
+          )}
         </div>
       )}
+
+      <EventDetailSheet
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onEditReminder={handleReminderUpdate}
+      />
 
       {/* Authorization code modal */}
       {showTokenModal && (

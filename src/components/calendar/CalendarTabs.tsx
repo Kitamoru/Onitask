@@ -1,8 +1,9 @@
 /**
- * CalendarTabs — View mode switcher (mobile-friendly)
- * 
- * Pattern from /boards: inline styles, maxWidth 390px, padding 16px
- * Mobile pattern: horizontal scrollable pill buttons with active indicator
+ * CalendarTabs — День / Месяц switcher.
+ *
+ * Pattern from /boards: inline styles on the shared tokens. Two segments only:
+ * a Telegram Mini App lives in a draggable BottomSheet, and a four-way
+ * switcher does not fit the height it opens at.
  */
 
 'use client';
@@ -16,9 +17,8 @@ interface CalendarTabsProps {
 }
 
 const TABS: { key: CalendarViewMode; label: string }[] = [
-  { key: 'month-list', label: 'Месяц' },
   { key: 'day', label: 'День' },
-  { key: 'list', label: 'Список' },
+  { key: 'month', label: 'Месяц' },
 ];
 
 export function CalendarTabs({ activeMode, onModeChange }: CalendarTabsProps) {
