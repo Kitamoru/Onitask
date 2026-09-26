@@ -92,26 +92,40 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
         }
 
-        // Explicit column list, never `select('*')`: the row also carries
-        // oauth_tokens_b64 and caldav_password_b64, and INV-17 keeps those
-        // inside the Edge Function. has_caldav_password is a derived boolean so
-        // the UI can show the "password required" state without the secret.
+        // Never `select('*')`: the row also carries oauth_tokens_b64 and
+        // caldav_password_b64, and INV-17 keeps those inside the Edge Function.
+        // PostgREST cannot compute a column inline (PGRST100 on
+        // "(caldav_password_b64 IS NOT NULL) AS ..."), so the flag is derived
+        // here on the server and the secret itself is dropped before the
+        // response is built.
         const { data, error } = await supabase
           .from('calendar_connections')
-          .select('id, profile_id, provider, provider_account_email, token_expires_at, is_active, connected_at, last_sync_at, (caldav_password_b64 IS NOT NULL) AS has_caldav_password')
+          .select('id, profile_id, provider, provider_account_email, token_expires_at, is_active, connected_at, last_sync_at, caldav_password_b64')
           .eq('profile_id', targetProfile)
           .eq('is_active', true)
           .order('connected_at', { ascending: false }) as {
-            data: (Omit<CalendarConnectionRow, 'oauth_tokens_b64' | 'caldav_password_b64'> & {
-              has_caldav_password: boolean;
-            })[] | null;
+            data: CalendarConnectionRow[] | null;
             error: unknown;
           };
 
         if (error) {
+          console.error('[Calendar] get_connections failed:', error);
           return NextResponse.json({ success: false, error: 'database_error', details: error }, { status: 500 });
         }
-        return NextResponse.json({ success: true, data });
+
+        const safe = (data ?? []).map((row) => ({
+          id: row.id,
+          profile_id: row.profile_id,
+          provider: row.provider,
+          provider_account_email: row.provider_account_email,
+          token_expires_at: row.token_expires_at,
+          is_active: row.is_active,
+          connected_at: row.connected_at,
+          last_sync_at: row.last_sync_at,
+          has_caldav_password: row.caldav_password_b64 !== null && row.caldav_password_b64 !== undefined,
+        }));
+
+        return NextResponse.json({ success: true, data: safe });
       }
 
       case 'update_reminder': {
