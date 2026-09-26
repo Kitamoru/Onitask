@@ -47,9 +47,10 @@ interface DayViewProps {
 export function DayView({ date, events, onEventClick, colorFor, isLoading }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Rows written before migration 129 have no connection_id and fall back to the
-  // provider colour, so an old event keeps a mark instead of losing one.
-  const colorOf = colorFor ?? (() => 'var(--color-signal-yellow)');
+  // A row with no connection_id falls back to the neutral slot, not to the
+  // provider's yellow. Yellow is close enough to slot 0 that unattributed events
+  // read as the first account -- which is how a colour bug hid as a working one.
+  const colorOf = colorFor ?? (() => 'var(--color-calendar-6)');
 
   const dayEvents = useMemo(
     () => events.filter((e) => localDateKey(e.start_at) === localDateKey(date)),

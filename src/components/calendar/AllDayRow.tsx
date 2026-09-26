@@ -19,7 +19,7 @@ interface AllDayRowProps {
 }
 
 export function AllDayRow({ events, onEventClick, colorFor }: AllDayRowProps) {
-  const colorOf = colorFor ?? (() => 'var(--color-signal-yellow)');
+  const colorOf = colorFor ?? (() => 'var(--color-calendar-6)');
   if (events.length === 0) return null;
 
   return (
