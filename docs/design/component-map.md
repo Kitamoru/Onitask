@@ -76,7 +76,19 @@ duplicated the same provider-colour logic five times. `react-day-picker` stays i
 | | WeekStrip | WeekStrip.tsx | selectedDate, onDateSelect, eventCounts | iOS-style Monday-first week strip; a dot marks a day that has events, the count is in the accessible name |
 | | DayView | DayView.tsx | date, events, onEventClick, onDateSelect, isLoading | One day on a proportional time axis (44px per hour). Blocks are placed by real start and duration, overlapping events split into lanes, current-time marker on today. Opens scrolled to now, else to the first event. An empty day shows a tappable nearest-populated hint rather than a blank grid |
 | | MonthView | MonthView.tsx | month, onMonthChange, selectedDate, onDateSelect, events | Month grid for orientation; readable dots and an overflow count. Selecting a day switches to the day view |
-| | EventDetailSheet | EventDetailSheet.tsx | event, onClose, onEditReminder | Event details on the shared `BottomSheet`; wires up the tap that previously did nothing |
+| | AllDayRow | AllDayRow.tsx | events, onEventClick | Whole-day events for the selected day, shown above the hour axis |
+| | EventDetailSheet | EventDetailSheet.tsx | event, onClose, onEditReminder | Event details on the shared `BottomSheet`; wires up the tap that previously did nothing. URLs in the description are split out and opened via `Telegram.WebApp.openLink` |
+
+**All-day events are not instants.** `calendar_events.is_all_day` (migration 124) marks iCal
+`VALUE=DATE` entries, whose `start_at` is a UTC midnight marker rather than a clock time. They are
+rendered in `AllDayRow` above the axis, never placed on it — otherwise they land at 00:00–03:00 for
+any user east of Greenwich. `parseVEvents` flags both explicit `VALUE=DATE` and a bare 8-character
+date.
+
+**Type scale.** Page and sheet titles are 20/24/500 (same as the «Стол» and «Настройки» headers) with
+a 20px `@tabler/icons-react` glyph, not an emoji. Sheet content is `--text-body-md` (14px). Day and
+month cells carry their accessible name in text — date, current-month state, today, event count —
+never colour alone.
 
 **Day keys are local, not UTC.** `localDateKey` in `lib/calendar` is the single source of truth;
 `toISOString().split('T')[0]` files a 00:30 event under the previous day east of Greenwich. Covered

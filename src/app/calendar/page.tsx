@@ -17,7 +17,12 @@ import type {
   CalendarViewMode,
 } from '@/types/calendar';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
-import { IconCalendarWeek } from '@tabler/icons-react';
+import {
+  IconBuildingSkyscraper,
+  IconCalendarOff,
+  IconCalendarWeek,
+  IconKey,
+} from '@tabler/icons-react';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -424,7 +429,13 @@ function CalendarContent() {
   if (!workspaceId) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-dvh px-4" style={bgStyle}>
-        <span className="mb-3 text-5xl">🏢</span>
+        <IconBuildingSkyscraper
+          size={48}
+          stroke={1.25}
+          className="mb-3 flex-none"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-hidden="true"
+        />
         <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
           Рабочая область не выбрана
         </p>
@@ -569,7 +580,13 @@ function CalendarContent() {
           succeeded, so a failed request is not reported as "not connected". */}
       {connectionsLoaded && connections.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-          <span className="mb-3 text-5xl">📭</span>
+          <IconCalendarOff
+            size={48}
+            stroke={1.25}
+            className="mb-3 flex-none"
+            style={{ color: 'var(--color-text-muted)' }}
+            aria-hidden="true"
+          />
           <p className="text-heading-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
             Календари не подключены
           </p>
@@ -843,9 +860,16 @@ function CalendarContent() {
             }}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border-default)' }}>
-              <h2 className="text-heading-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                🔑 Пароль приложения
-              </h2>
+              <h2 className="flex items-center gap-2 text-heading-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                <IconKey
+                  size={16}
+                  stroke={1.75}
+                  className="flex-none"
+                  style={{ color: 'var(--color-accent-amber)' }}
+                  aria-hidden="true"
+                />
+                Пароль приложения
+</h2>
               <button
                 onClick={() => !passwordSubmitting && setShowPasswordModal(false)}
                 className="rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
