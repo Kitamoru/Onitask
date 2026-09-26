@@ -52,14 +52,25 @@ function lastMark(name: string): number | null {
   return Math.round(list[list.length - 1].startTime);
 }
 
-/** Отправить разовый отчёт (marks + navigation timing) в /api/debug/timings. */
-export function reportPerf(): void {
+/**
+ * Отправить разовый отчёт (marks + navigation timing) в /api/debug/timings.
+ *
+ * По умолчанию — один раз за сессию (дедуп по sessionStorage). Фазы boot
+ * закрываются AuthLoader, который зовёт reportPerf() сам.
+ *
+ * `force` нужен для фаз, которые наступают ПОСЛЕ снятия лоадера: например
+ * аватар на /settings догружается уже во время навигации, когда дедуп-метка
+ * давно стоит — без force марка проставилась бы и молча потерялась.
+ */
+export function reportPerf(options: { force?: boolean } = {}): void {
   if (!perfEnabled() || typeof performance === 'undefined') return;
-  try {
-    if (sessionStorage.getItem(SENT_KEY)) return;
-    sessionStorage.setItem(SENT_KEY, '1');
-  } catch {
-    /* приватный режим — просто отправляем без дедупа */
+  if (!options.force) {
+    try {
+      if (sessionStorage.getItem(SENT_KEY)) return;
+      sessionStorage.setItem(SENT_KEY, '1');
+    } catch {
+      /* приватный режим — просто отправляем без дедупа */
+    }
   }
 
   const phases = [
@@ -70,6 +81,9 @@ export function reportPerf(): void {
     'route:flowboard',
     'data:done',
     'ui:ready',
+    // Аватар в /settings: кэш в localStorage рисуется мгновенно, сеть — только
+    // на холодном кэше. Сравнение mark'ов показывает эффект кэша (PERF-15).
+    'avatar:load',
   ];
   const timings: Record<string, number> = {};
   for (const phase of phases) {

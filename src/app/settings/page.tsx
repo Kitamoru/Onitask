@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
+import { useTelegramContext } from '@/components/shared/TelegramProvider';
+import { fetchAvatarAsDataUrl, readCachedAvatar, writeCachedAvatar } from '@/lib/avatarCache';
+import { markPerf, reportPerf } from '@/lib/perf/timings';
 
 /**
  * Settings page — Figma node 65:14537 "settings".
@@ -207,34 +210,101 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
 
 // ─── Avatar Component ──────────────────────────────────────────────────────
 
-function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegramPhotoUrl?: string }) {
+function UserAvatar({
+  username,
+  telegramPhotoUrl,
+  telegramId,
+}: {
+  username: string;
+  telegramPhotoUrl?: string;
+  telegramId?: string;
+}) {
   const initial = username.replace('@', '').charAt(0).toUpperCase();
+  const [src, setSrc] = useState<string | undefined>();
+  const [loaded, setLoaded] = useState(false);
+
+  // Аватар — фаза ПОСЛЕ снятия лоадера, а дедуп-метка reportPerf к этому
+  // моменту уже стоит (её ставит AuthLoader на boot). Поэтому отчёт шлём
+  // с force, иначе марка проставилась бы и молча потерялась.
+  const markAvatarLoaded = () => {
+    markPerf('avatar:load');
+    reportPerf({ force: true });
+  };
+
+  // Аватар приходит с CDN Telegram, где в URL зашит случайный хеш, который
+  // меняется на каждой сессии → HTTP-кэш браузера не попадает НИКОГДА, и
+  // картинка грузится заново при каждом запуске Mini App. Поэтому байты
+  // кэшируем у себя в localStorage (см. lib/avatarCache): первый запуск тянет
+  // сеть, все последующие рисуются мгновенно и без запроса.
+  useEffect(() => {
+    if (!telegramPhotoUrl) {
+      setSrc(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    if (telegramId) {
+      const cached = readCachedAvatar(telegramId);
+      if (cached) {
+        setSrc(cached);
+        setLoaded(true);
+        markAvatarLoaded();
+        return;
+      }
+    }
+
+    void fetchAvatarAsDataUrl(telegramPhotoUrl).then((dataUrl) => {
+      if (cancelled) return;
+      if (!dataUrl) return; // сеть/размер не дали — остаётся буква-заглушка
+      if (telegramId) writeCachedAvatar(telegramId, dataUrl);
+      setSrc(dataUrl);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [telegramPhotoUrl, telegramId]);
 
   return (
     <div
-      className="overflow-hidden"
+      className="relative overflow-hidden"
       style={{
         width: '104px',
         height: '104px',
         borderRadius: '4px',
+        backgroundColor: 'var(--color-bg-secondary, #1A1A1A)',
       }}
     >
-      {telegramPhotoUrl ? (
+      {/* Буква-заглушка рисуется ВСЕГДА базовым слоем: пока едет сеть (или если
+          она не пришла вовсе) пользователь видит букву, а не пустой чёрный
+          квадрат. Раньше img рисовался один, а onError делал display:none —
+          бокс 104×104 оставался пустым навсегда. */}
+      <div
+        className="absolute inset-0 flex items-center justify-center text-white text-3xl font-medium"
+        aria-hidden={!!src}
+      >
+        {initial}
+      </div>
+      {src && (
         <img
-          src={telegramPhotoUrl}
+          src={src}
           alt={username}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
+          width={104}
+          height={104}
+          decoding="async"
+          fetchPriority="high"
+          onLoad={() => {
+            setLoaded(true);
+            markAvatarLoaded();
           }}
+          onError={() => {
+            setSrc(undefined);
+            setLoaded(false);
+          }}
+          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200"
+          style={{ opacity: loaded ? 1 : 0 }}
         />
-      ) : (
-        <div
-          className="w-full h-full flex items-center justify-center text-white text-3xl font-medium"
-          style={{ backgroundColor: 'var(--color-bg-secondary, #1A1A1A)' }}
-        >
-          {initial}
-        </div>
       )}
     </div>
   );
@@ -274,26 +344,11 @@ function SettingsContent() {
   const workspaceId = searchParams.get('workspace_id') ?? '';
   const router = useRouter();
 
-  const [username, setUsername] = useState('@kitamoru');
-  const [telegramPhotoUrl, setTelegramPhotoUrl] = useState<string | undefined>();
-  const [loading, setLoading] = useState(true);
+  const { user } = useTelegramContext();
 
-  // PERF-08: Supabase Auth в проекте не используется — аутентификация идёт через
-  // Telegram initData → /api/init (INV-16), сессии Supabase нет, поэтому
-  // supabase.auth.getUser() всегда возвращал null, но тянул GoTrue-клиент в бандл
-  // страницы и держал экран под OrbitLoader. Данные для шапки берём из Telegram
-  // initData — локально, без сети.
-  useEffect(() => {
-    const tgUser = (
-      window as unknown as {
-        Telegram?: { WebApp?: { initDataUnsafe?: { user?: { username?: string; photo_url?: string } } } };
-      }
-    ).Telegram?.WebApp?.initDataUnsafe?.user;
-
-    if (tgUser?.username) setUsername('@' + tgUser.username);
-    if (tgUser?.photo_url) setTelegramPhotoUrl(tgUser.photo_url);
-    setLoading(false);
-  }, []);
+  const username = typeof user?.username === 'string' ? '@' + user.username : '@kitamoru';
+  const telegramPhotoUrl = typeof user?.photo_url === 'string' ? user.photo_url : undefined;
+  const telegramId = user?.id != null ? String(user.id) : undefined;
 
   const handleMcpClick = () => {
     router.push('/settings/mcp');
@@ -318,20 +373,6 @@ function SettingsContent() {
     window.open('https://t.me/onitask_support', '_blank');
   };
 
-  if (loading) {
-    return (
-      <div
-        className="min-h-[var(--tg-viewport-stable-height,100dvh)] flex items-center justify-center"
-        style={{
-          background: 'var(--color-bg-primary-dark, #0A0A0A)',
-          paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
-        }}
-      >
-        <OrbitLoader />
-      </div>
-    );
-  }
-
   return (
     <main
       className="min-h-[var(--tg-viewport-stable-height,100dvh)]"
@@ -344,7 +385,11 @@ function SettingsContent() {
       <div className="flex flex-col gap-6 px-4 pb-[64px] pt-6">
         {/* ═══ PERSONAL SECTION ═══ */}
         <div className="flex flex-col items-center gap-4 w-full">
-          <UserAvatar username={username} telegramPhotoUrl={telegramPhotoUrl} />
+          <UserAvatar
+            username={username}
+            telegramPhotoUrl={telegramPhotoUrl}
+            telegramId={telegramId}
+          />
           <div className="flex items-center gap-2 w-full justify-center flex-wrap">
             <span
               className="font-display font-medium truncate"

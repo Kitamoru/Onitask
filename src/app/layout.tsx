@@ -57,6 +57,15 @@ export default function RootLayout({
             синхронно на пути загрузки SDK. Viewport задан через
             `export const viewport` выше — дублирующий <meta> убран. */}
         <link rel="preconnect" href="https://telegram.org" crossOrigin="anonymous" />
+        {/* Аватар в /settings приходит с CDN Telegram (t.me/i/userpic/...) —
+            это ДРУГОЙ origin, чем telegram.org выше, поэтому соединение к
+            нему открывалось только в момент mount <img>: DNS+TCP+TLS
+            синхронно на критическом пути (+100…400 мс из РФ). Без
+            crossOrigin — картинка грузится в режиме no-cors, и preconnect с
+            crossOrigin="anonymous" открыл бы второе соединение вместо
+            переиспользования первого. */}
+        <link rel="preconnect" href="https://t.me" />
+        <link rel="dns-prefetch" href="https://t.me" />
       </head>
       {/* PERF-03: SDK грузится afterInteractive — не блокирует рендер и гидратацию.
           Готовность SDK/initData теперь ожидается явно (waitForInitData в
