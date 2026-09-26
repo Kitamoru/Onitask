@@ -39,6 +39,12 @@ export interface CalendarConnection {
   is_active: boolean;
   connected_at: string;
   last_sync_at: string | null;
+  /**
+   * Whether a CalDAV app password is stored. Yandex CalDAV rejects the OAuth
+   * token, so without this the connection cannot sync (CAL-07/CAL-08).
+   * The password itself never leaves the Edge Function (INV-17).
+   */
+  has_caldav_password?: boolean;
 }
 
 export interface CalendarSyncResponse {
@@ -46,6 +52,8 @@ export interface CalendarSyncResponse {
   provider: CalendarProvider;
   synced: number;
   errors?: string[];
+  error?: string;
+  hint?: string;
 }
 
 export interface CalendarReminderJob {

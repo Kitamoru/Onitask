@@ -162,6 +162,44 @@ export async function updateReminderSettings(
 }
 
 // ═══════════════════════════════════════════════════════
+// CalDAV app password (CAL-08)
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Stores the Yandex app password required by CalDAV.
+ *
+ * Yandex CalDAV only accepts HTTP Basic (login + app password) — the OAuth
+ * token cannot read a calendar (verified 2026-09-26). The password is sent to
+ * our server, encrypted there with AES-256-GCM, and never returned.
+ */
+export async function setCalDavPassword(
+  password: string,
+  initData?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch('/api/calendar/set-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'yandex',
+        caldav_password: password,
+        init_data: initData,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${response.status}` };
+    }
+
+    return { success: true };
+  } catch {
+    return { success: false, error: 'network_error' };
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // Sync & Disconnect (Edge Functions fallback)
 // ═══════════════════════════════════════════════════════
 

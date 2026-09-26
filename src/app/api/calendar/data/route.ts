@@ -92,13 +92,19 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
         }
 
+        // Explicit column list, never `select('*')`: the row also carries
+        // oauth_tokens_b64 and caldav_password_b64, and INV-17 keeps those
+        // inside the Edge Function. has_caldav_password is a derived boolean so
+        // the UI can show the "password required" state without the secret.
         const { data, error } = await supabase
           .from('calendar_connections')
-          .select('*')
+          .select('id, profile_id, provider, provider_account_email, token_expires_at, is_active, connected_at, last_sync_at, (caldav_password_b64 IS NOT NULL) AS has_caldav_password')
           .eq('profile_id', targetProfile)
           .eq('is_active', true)
           .order('connected_at', { ascending: false }) as {
-            data: CalendarConnectionRow[] | null;
+            data: (Omit<CalendarConnectionRow, 'oauth_tokens_b64' | 'caldav_password_b64'> & {
+              has_caldav_password: boolean;
+            })[] | null;
             error: unknown;
           };
 

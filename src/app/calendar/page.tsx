@@ -21,11 +21,19 @@ function CalendarContent() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
 
-  // OAuth token modal state
+  // OAuth code modal state
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [oauthToken, setOauthToken] = useState('');
   const [tokenSubmitting, setTokenSubmitting] = useState(false);
   const [oauthInstructions, setOauthInstructions] = useState('');
+
+  // CalDAV app password modal state (CAL-08). Yandex CalDAV rejects the OAuth
+  // token, so a password is required before any event can be synced.
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [caldavPassword, setCaldavPassword] = useState('');
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Use active workspace from DataContext (like flowboard does)
   const workspaceId = state.activeWorkspaceId;
@@ -176,6 +184,77 @@ function CalendarContent() {
     }
   }
 
+  /**
+   * Saves the CalDAV app password and immediately attempts a sync, so the user
+   * sees whether the password actually works instead of a silent no-op.
+   */
+  async function handleSavePassword() {
+    const password = caldavPassword.trim();
+    if (!password) {
+      setPasswordError('Введите пароль приложения');
+      return;
+    }
+    if (!initData) {
+      setPasswordError('Нет данных авторизации Telegram');
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    setPasswordError(null);
+
+    try {
+      const { setCalDavPassword } = await import('@/lib/api/calendar');
+      const result = await setCalDavPassword(password, initData);
+
+      if (!result.success) {
+        setPasswordError(
+          result.error === 'missing_caldav_password'
+            ? 'Введите пароль приложения'
+            : 'Не удалось сохранить пароль'
+        );
+        return;
+      }
+
+      setShowPasswordModal(false);
+      setCaldavPassword('');
+      setShowPassword(false);
+      await loadData();
+
+      // Try a sync right away: a wrong password only shows up here.
+      if (authData?.profile_id) {
+        setIsSyncing(true);
+        setSyncStatus('syncing');
+        try {
+          const syncResult = await syncCalendar(
+            { profile_id: authData.profile_id, provider: 'yandex', action: 'sync' },
+            initData
+          );
+          const synced = (syncResult as { synced?: number } | undefined)?.synced ?? 0;
+          if (synced > 0) {
+            setSyncStatus('success');
+            setTimeout(() => setSyncStatus('idle'), 2000);
+            await loadData();
+          } else {
+            setPasswordError(
+              'Пароль сохранён, но Яндекс его не принял. Проверьте, что создан пароль типа «Календарь».'
+            );
+            setShowPasswordModal(true);
+          }
+        } catch {
+          setPasswordError('Пароль сохранён, но синхронизация не удалась');
+          setShowPasswordModal(true);
+        } finally {
+          setIsSyncing(false);
+          setSyncStatus('idle');
+        }
+      }
+    } catch {
+      setPasswordError('Что-то пошло не так. Попробуйте ещё раз');
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  }
+
   async function handleSync(provider: CalendarProvider) {
     if (!workspaceId || !authData?.profile_id) return;
     
@@ -286,29 +365,30 @@ function CalendarContent() {
       {/* Connections bar with sync buttons */}
       {connections.length > 0 && (
         <div
-          className="flex items-center gap-2 px-4 py-2 border-b overflow-x-auto"
+          className="flex flex-col gap-2 px-4 py-2 border-b"
           style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-bg-dark)' }}
         >
-          {connections.map((conn) => (
-            <div
-              key={conn.id}
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 shrink-0"
-              style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border-white-subtle)' }}
-            >
-              <span
-                className="flex h-2 w-2 rounded-full"
-                style={{ backgroundColor: conn.provider === 'yandex' ? 'var(--color-signal-yellow)' : 'var(--color-signal-cyan)' }}
-              />
-              <span className="text-body-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
-                {conn.provider_account_email}
-              </span>
-              <button
-                onClick={() => handleSync(conn.provider)}
-                disabled={isSyncing}
-                className="rounded-full p-0.5 transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
-                aria-label={`Синхронизировать ${conn.provider}`}
-                title={`Синхронизировать ${conn.provider}`}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {connections.map((conn) => (
+              <div
+                key={conn.id}
+                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 shrink-0"
+                style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border-white-subtle)' }}
               >
+                <span
+                  className="flex h-2 w-2 rounded-full"
+                  style={{ backgroundColor: conn.provider === 'yandex' ? 'var(--color-signal-yellow)' : 'var(--color-signal-cyan)' }}
+                />
+                <span className="text-body-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                  {conn.provider_account_email}
+                </span>
+                <button
+                  onClick={() => handleSync(conn.provider)}
+                  disabled={isSyncing || conn.has_caldav_password === false}
+                  className="rounded-full p-0.5 transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
+                  aria-label={`Синхронизировать ${conn.provider}`}
+                  title={`Синхронизировать ${conn.provider}`}
+                >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                   <path
                     d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L11 8h6V2l-3.35 3.35z"
@@ -321,6 +401,46 @@ function CalendarContent() {
               </button>
             </div>
           ))}
+          </div>
+
+          {/* CalDAV app password (CAL-08): without it the OAuth token cannot read
+              the calendar, so this is a blocking state, not a nicety. */}
+          {connections.some((c) => c.has_caldav_password === false) && (
+            <div
+              className="flex flex-col gap-2 rounded-md px-3 py-2.5 border"
+              style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--color-accent-amber)' }}
+            >
+              <p className="text-body-xs" style={{ color: 'var(--color-text-primary)' }}>
+                Чтобы события появились, нужен пароль приложения Яндекс
+              </p>
+              <button
+                onClick={() => {
+                  setPasswordError(null);
+                  setShowPasswordModal(true);
+                }}
+                className="
+                  self-start rounded-card px-3 py-1.5
+                  text-body-xs font-medium
+                  transition-all duration-fast
+                  hover:opacity-90 active:scale-95
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber
+                "
+                style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000' }}
+              >
+                Добавить пароль
+              </button>
+            </div>
+          )}
+
+          {/* Freshness — only shown once a sync has actually succeeded. */}
+          {connections.some((c) => c.last_sync_at) && (
+            <p className="text-body-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Синхронизировано{' '}
+              {new Date(
+                Math.max(...connections.map((c) => new Date(c.last_sync_at ?? 0).getTime()))
+              ).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
       )}
 
@@ -540,6 +660,112 @@ function CalendarContent() {
                 style={{ color: 'var(--color-accent-amber)' }}
               >
                 Открыть страницу с кодом →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CalDAV app password modal (CAL-08) */}
+      {showPasswordModal && (
+        <div
+          className="fixed inset-x-0 z-modal flex items-end justify-center sm:items-center pb-safe-bottom pt-safe-top"
+          style={{ paddingBottom: Math.max(0, 16) + 'px' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Пароль приложения Яндекс"
+        >
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={!passwordSubmitting ? () => setShowPasswordModal(false) : undefined}
+            aria-hidden="true"
+          />
+          <div
+            className="relative w-full max-w-md rounded-t-card sm:rounded-card border animate-slide-up"
+            style={{
+              maxHeight: 'calc(var(--tg-viewport-stable-height, 100dvh) - 16px)',
+              overflowY: 'auto',
+              background: 'var(--color-bg-primary-dark, #0A0A0A)',
+              borderColor: 'var(--color-border-default)',
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border-default)' }}>
+              <h2 className="text-heading-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                🔑 Пароль приложения
+              </h2>
+              <button
+                onClick={() => !passwordSubmitting && setShowPasswordModal(false)}
+                className="rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                aria-label="Закрыть"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 4L12 12M12 4L4 12" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              <div className="rounded-md px-3 py-2" style={{ backgroundColor: 'var(--color-bg-surface)' }}>
+                <p className="text-body-sm whitespace-pre-line" style={{ color: 'var(--color-text-primary)' }}>
+                  {'Яндекс не даёт читать календарь по OAuth-токену — нужен отдельный пароль.\n\n1. Откройте Яндекс ID → Пароли приложений\n2. Создайте пароль типа «Календарь»\n3. Вставьте его сюда — пароль показывается один раз'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-body-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                  Пароль приложения
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={caldavPassword}
+                    onChange={(e) => setCaldavPassword(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !passwordSubmitting) handleSavePassword(); }}
+                    disabled={passwordSubmitting}
+                    autoComplete="off"
+                    placeholder="Вставьте пароль приложения"
+                    className="w-full rounded-md px-3 py-2 pr-10 border text-body-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                    style={{
+                      color: 'var(--color-text-primary)',
+                      borderColor: 'var(--color-border-default)',
+                      backgroundColor: 'var(--color-bg-surface)',
+                    }}
+                    aria-label="Пароль приложения Яндекс"
+                  />
+                  <button
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber"
+                    aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z" stroke="var(--color-text-muted)" strokeWidth="1.2" />
+                      <circle cx="8" cy="8" r="2" stroke="var(--color-text-muted)" strokeWidth="1.2" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {passwordError && (
+                <p className="text-body-xs" style={{ color: 'var(--color-error)' }}>{passwordError}</p>
+              )}
+
+              <button
+                onClick={handleSavePassword}
+                disabled={passwordSubmitting || !caldavPassword.trim()}
+                className="w-full rounded-card px-4 py-2 text-body-sm font-medium transition-all duration-fast hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber disabled:opacity-50"
+                style={{ backgroundColor: 'var(--color-accent-amber)', color: '#000' }}
+                aria-label="Сохранить пароль"
+              >
+                {passwordSubmitting ? 'Сохранение...' : '✓ Сохранить и синхронизировать'}
+              </button>
+
+              <a
+                href="https://id.yandex.ru/security/apppasswords"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-body-sm transition-colors duration-fast hover:underline"
+                style={{ color: 'var(--color-accent-amber)' }}
+              >
+                Открыть пароли приложений →
               </a>
             </div>
           </div>

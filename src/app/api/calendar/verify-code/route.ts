@@ -74,23 +74,31 @@ async function exchangeYandexTokens(code: string): Promise<{
   };
 }
 
-async function getYandexAccountEmail(accessToken: string): Promise<string> {
+/**
+ * Resolves the Yandex account login.
+ *
+ * Yandex returns `login` for a token without the login:email scope and `email`
+ * when that scope is granted, so accept both. The old version expected `email`
+ * only, failed, and fell through to a 'yandex_user' placeholder that then
+ * produced an invalid CalDAV URL and a confusing 401.
+ */
+async function getYandexAccountLogin(accessToken: string): Promise<string> {
   const response = await fetch('https://login.yandex.ru/info?format=json', {
     headers: { Authorization: `OAuth ${accessToken}` },
   });
 
   if (!response.ok) {
-    throw new Error(`Yandex get account email failed: ${response.status}`);
+    throw new Error(`Yandex get account info failed: ${response.status}`);
   }
 
-  const data = await response.json() as { email?: string; default_email?: string };
-  const email = data.email || data.default_email;
+  const data = await response.json() as { login?: string; email?: string; default_email?: string };
+  const account = data.login || data.default_email || data.email;
 
-  if (!email) {
-    throw new Error('Yandex returned no email in user info');
+  if (!account) {
+    throw new Error('Yandex returned no login or email in user info');
   }
 
-  return email;
+  return account;
 }
 
 export async function POST(req: NextRequest) {
@@ -144,14 +152,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get account email
-    let accountEmail: string;
+    // Resolve the account. A placeholder here would silently produce an invalid
+    // CalDAV URL later, so fail loudly instead (the Edge Function does the same).
+    let accountLogin: string;
     try {
-      accountEmail = await getYandexAccountEmail(tokens.access_token);
-      console.log('[Calendar] Account email:', accountEmail);
-    } catch (emailErr) {
-      console.error('[Calendar] Failed to get account email:', emailErr);
-      accountEmail = 'yandex_user';
+      accountLogin = await getYandexAccountLogin(tokens.access_token);
+    } catch (loginErr) {
+      console.error('[Calendar] Failed to resolve Yandex account login:', loginErr);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'account_login_unresolved',
+          details: loginErr instanceof Error ? loginErr.message : 'unknown',
+        },
+        { status: 502 }
+      );
     }
 
     // Call Edge Function to save tokens and sync
@@ -180,7 +195,7 @@ export async function POST(req: NextRequest) {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at: tokens.expires_at,
-        provider_account_email: accountEmail,
+        provider_account_email: accountLogin,
       }),
     });
 
