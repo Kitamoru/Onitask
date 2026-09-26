@@ -649,26 +649,33 @@ format is deliberately compact so that agents can load the file quickly.
       `YANDEX_OAUTH_CLIENT_ID/SECRET` в Supabase Edge Functions; право
       `calendar:read_all` в приложении Яндекс; прогон подключения и проверка
       наполнения `calendar_events` (0 событий → смотреть логи CalDAV REPORT).
-- [ ] CAL-07 CalDAV: перевести синхронизацию Яндекс-календаря на app password #infra !critical @blocked_by:CAL-01
+- [x] CAL-07 CalDAV: перевести синхронизацию Яндекс-календаря на app password #infra !critical @blocked_by:CAL-01
       **Блокер найден экспериментом 2026-09-26 (не догадкой).** OAuth-токен НЕ работает
       в CalDAV: `caldav.yandex.ru` отвечает `401` + `www-authenticate: Basic realm="CalDAV"`
       на все проверенные варианты — bearer-заголовок, токен как пароль Basic,
-      пути `/calendars/<login>/` и `/principals/users/<login>/`, а также PROPFIND корня.
-      Яндекс CalDAV принимает только **app password** (Яндекс ID → Пароли приложений →
-      тип «Календарь»), что и подтверждает официальная справка.
-      Побочно: `login.yandex.ru/info` с нашим токеном работает (200) и отдаёт
-      `login` (НЕ `email` — нет scope `login:email`). Старый код ждал `email`, падал
-      в `catch` и подставлял плейсхолдер `yandex_user` → невалидный CalDAV-URL.
-      **Сделано в этой задаче:** (1) резолв аккаунта через `login` (без новых scope),
-      плейсхолдер удалён — ошибка резолва теперь 502 вместо тихой подстановки;
-      `provider_account_email` в БД исправлен на реальный логин; (2) `syncYandex`
-      возвращает типизированную ошибку `yandex_caldav_requires_app_password` вместо
-      молчаливого `synced: 0`, `last_sync_at` больше не обновляется при блокировке
-      (иначе UI показывал бы ложную свежесть); (3) удалён мёртвый CalDAV-код
-      (OAuth-экран, парсер VEVENT, `upsertCalendarEvent`).
-      **Требуется:** колонка для app password (шифровать тем же AES-256-GCM — INV-17),
-      ввод пароля в UI подключения, восстановить REPORT+парсер в `syncYandex`.
-      **Блокирует UI-фазу:** календарь не может показать события, пока нет данных.
+      пути `/calendars/<login>/` и `/principals/users/<login>/`, PROPFIND корня.
+      REST-альтернатива тоже проверена и закрыта: `calendar.yandex.ru/api/v1/user` → 404,
+      `calendar.yandex.net` → TLS UnknownIssuer, `api.calendar.yandex.net` → DNS. Probe
+      после проверки удалён. Яндекс CalDAV принимает только **app password**
+      (Яндекс ID → Пароли приложений → тип «Календарь»).
+      **Миграция `calendar_connection_caldav_credentials`:** `caldav_password_b64 text`
+      (шифр AES-256-GCM, INV-17) + CHECK `last_sync_at IS NULL OR caldav_password_b64
+      IS NOT NULL` — метка последнего успешного синка не может существовать без пароля.
+      **Edge Function (v0.19.0):** крипто вынесено в `encryptSecret`/`decryptSecret`
+      (один механизм и для токенов, и для пароля); `syncYandex` восстановлен с Basic
+      (логин+app password) и discovery `calendar-home-set` через PROPFIND, чтобы не
+      угадывать путь; парсер VEVENT учитывает RFC 5545 folding и unescape `\n`;
+      новое действие `set_password` (пароль добавляется без повторного OAuth);
+      `caldav_password` также принимается в `connect`; `428 caldav_password_required`
+      без пароля, `caldav_auth_failed_401` при неверном; `last_sync_at` обновляется
+      **только** при ошибках == 0 (иначе 401 рисовал бы свежесть над пустым календарём);
+      ответ больше не врёт «synced successfully» при ошибке.
+      **Проверено вживую:** set_password → sync отдаёт `caldav_auth_failed_401` с
+      подсказкой; пароль в БД зашифрован (76 байт); `last_sync_at` не обновился.
+      Тестовый пароль из БД удалён после проверки.
+      **Осталось:** поле ввода app password в UI подключения (сейчас пароль можно
+      задать только через API) — см. CAL-08. Без реального пароля пользователя
+      наполнение `calendar_events` проверить нельзя.
 - [ ] CAL-06 INV-17: шифрование OAuth-токенов — привести реализацию к инварианту #db !high @blocked_by:CAL-01
       Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
       **Сверка 2026-09-25:** шифрование **реализовано**, но не тем механизмом, который
