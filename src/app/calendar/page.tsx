@@ -574,7 +574,7 @@ function CalendarContent() {
                 key={conn.id}
                 type="button"
                 onClick={() => setActiveConnection(conn)}
-                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
+                className="flex items-center gap-1.5 rounded-[4px] px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
                 style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border-white-subtle)' }}
                 aria-label={`${conn.provider_account_email}, действия интеграции`}
               >
@@ -591,7 +591,7 @@ function CalendarContent() {
             <button
               type="button"
               onClick={() => void handleConnect('yandex')}
-              className="flex items-center gap-1 rounded-full px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
+              className="flex items-center gap-1 rounded-[4px] px-2.5 py-1 shrink-0 transition-colors duration-fast active:scale-95"
               style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px dashed var(--color-border-default)' }}
               aria-label="Добавить календарь"
             >
@@ -739,7 +739,10 @@ function CalendarContent() {
       <CalendarConnectionSheet
         connection={activeConnection}
         onClose={() => setActiveConnection(null)}
-        onSync={handleSync}
+        onSync={(connection) => {
+          setActiveConnection(null);
+          void handleSync(connection);
+        }}
         onDelete={handleDeleteConnection}
         isSyncing={isSyncing}
         eventCount={events.length}

@@ -122,7 +122,7 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
               }`}
             >
               <span
-                className="text-[10px] leading-none"
+                className="text-body-md leading-none"
                 style={{ color: isSelected ? 'var(--color-accent-amber)' : 'var(--color-text-muted)' }}
                 aria-hidden="true"
               >

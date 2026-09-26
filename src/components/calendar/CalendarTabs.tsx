@@ -37,7 +37,7 @@ export function CalendarTabs({ activeMode, onModeChange }: CalendarTabsProps) {
           <button
             key={tab.key}
             onClick={() => onModeChange(tab.key)}
-          className="flex items-center justify-center rounded-lg transition-all duration-fast active:scale-95"
+          className="flex items-center justify-center rounded-[4px] transition-all duration-fast active:scale-95"
           style={{
             height: '32px',
             // flex: 1 ensures each tab expands equally to fill available space

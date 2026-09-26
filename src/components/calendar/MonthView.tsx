@@ -125,7 +125,7 @@ export function MonthView({
         aria-hidden="true"
       >
         {WEEKDAY_INITIALS.map((initial, index) => (
-          <div key={initial} className="text-center text-[10px] font-medium py-1">
+          <div key={initial} className="text-center text-body-md font-medium py-0.5">
             {initial}
             <span className="sr-only">{WEEKDAY_FULL[index]}</span>
           </div>
