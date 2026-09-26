@@ -168,13 +168,71 @@ function unfoldIcalText(value: string): string {
     .trim();
 }
 
-/** Parses an iCal date or date-time into an ISO string. */
-function parseIcalDate(raw: string): string {
+/**
+ * Offset in ms between UTC and `timeZone` at the given instant.
+ * Deno has no Temporal, so this goes through Intl.DateTimeFormat. Throws if
+ * the runtime does not know the zone.
+ */
+function timeZoneOffsetMs(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant);
+
+  const field = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(
+    field('year'),
+    field('month') - 1,
+    field('day'),
+    // Some locales render midnight as hour 24 under hour12:false.
+    field('hour') % 24,
+    field('minute'),
+    field('second'),
+  );
+  return asUtc - instant.getTime();
+}
+
+/**
+ * Converts a wall-clock reading in `timeZone` into the equivalent UTC instant.
+ * Two passes, because the offset we are correcting for itself depends on the
+ * instant — which is what makes this correct across a DST boundary.
+ */
+function zonedWallTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string,
+): Date {
+  const naive = Date.UTC(year, month, day, hour, minute, second);
+  const firstPass = new Date(naive - timeZoneOffsetMs(new Date(naive), timeZone));
+  return new Date(naive - timeZoneOffsetMs(firstPass, timeZone));
+}
+
+/**
+ * Parses an iCalendar DATE or DATE-TIME into an ISO string.
+ *
+ * `timeZone` is the property's TZID parameter. It matters: Yandex writes
+ * `DTSTART;TZID=Europe/Moscow:20260814T100000`, and without the TZID a bare
+ * floating time gets read in the runtime's local zone — which is UTC on Edge
+ * Functions, so a 10:00 Moscow event would be stored as 10:00 UTC and shown
+ * three hours late.
+ */
+function parseIcalDate(raw: string, timeZone?: string): string {
   const value = raw.trim();
   const isUtc = value.endsWith('Z');
   const bare = value.replace(/[-:]/g, '').replace(/Z$/, '');
 
   if (bare.length === 8) {
+    // VALUE=DATE: a date with no time of day, stored as UTC midnight.
     return new Date(Date.UTC(
       parseInt(bare.slice(0, 4)), parseInt(bare.slice(4, 6)) - 1, parseInt(bare.slice(6, 8)),
     )).toISOString();
@@ -187,9 +245,17 @@ function parseIcalDate(raw: string): string {
     const h = parseInt(bare.slice(9, 11));
     const mi = parseInt(bare.slice(11, 13));
     const s = parseInt(bare.slice(13, 15));
-    return isUtc
-      ? new Date(Date.UTC(y, mo, d, h, mi, s)).toISOString()
-      : new Date(y, mo, d, h, mi, s).toISOString();
+
+    if (isUtc) return new Date(Date.UTC(y, mo, d, h, mi, s)).toISOString();
+
+    if (timeZone) {
+      try {
+        return zonedWallTimeToUtc(y, mo, d, h, mi, s, timeZone).toISOString();
+      } catch {
+        // Unknown zone for this runtime — fall through to the old reading.
+      }
+    }
+    return new Date(y, mo, d, h, mi, s).toISOString();
   }
 
   return new Date(value).toISOString();
@@ -410,15 +476,22 @@ function parseVEvents(xml: string): ParsedEvent[] {
     const uid = (unfolded.match(/^UID:(.+)$/m)?.[1] || '').trim();
     const summaryRaw = unfolded.match(/^SUMMARY(?:;[^:]*)?:(.*)$/m)?.[1];
     const descriptionRaw = unfolded.match(/^DESCRIPTION(?:;[^:]*)?:(.*)$/m)?.[1];
-    const dtStartRaw = unfolded.match(/^DTSTART(?:;[^:]*)?:([^\r\n]+)/m)?.[1];
-    const dtEndRaw = unfolded.match(/^DTEND(?:;[^:]*)?:([^\r\n]+)/m)?.[1];
+    // Keep the property parameters — TZID lives there and is the only thing
+    // that tells us which zone a floating DTSTART should be read in.
+    const dtStart = unfolded.match(/^DTSTART([^:\r\n]*):([^\r\n]+)/m);
+    const dtStartRaw = dtStart?.[2];
+    const startTzid = dtStart?.[1].match(/TZID=([^;:]+)/)?.[1]?.trim();
+    const dtEnd = unfolded.match(/^DTEND([^:\r\n]*):([^\r\n]+)/m);
+    const dtEndRaw = dtEnd?.[2];
+    const endTzid = dtEnd?.[1].match(/TZID=([^;:]+)/)?.[1]?.trim();
 
     if (!uid || !dtStartRaw) continue;
 
-    const startAt = parseIcalDate(dtStartRaw);
+    const startAt = parseIcalDate(dtStartRaw, startTzid);
     let endAt = startAt;
     if (dtEndRaw) {
-      try { endAt = parseIcalDate(dtEndRaw); } catch { endAt = startAt; }
+      // DTEND often omits TZID and inherits it from DTSTART.
+      try { endAt = parseIcalDate(dtEndRaw, endTzid ?? startTzid); } catch { endAt = startAt; }
     }
 
     events.push({
