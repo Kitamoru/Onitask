@@ -21,15 +21,26 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '../../../../../../lib/api-auth';
 
 type CalendarProvider = 'yandex';
 
 interface RequestBody {
-  profile_id: string;
+  // `profile_id` принимается только для обратной совместимости и игнорируется:
+  // после authenticateRequest личность известна серверу, клиентскому значению
+  // верить нельзя. `state` для OAuth строится из auth.profileId.
+  profile_id?: string;
+  init_data?: string;
 }
 
 // Yandex requires this specific redirect URI for verification_code flow
 const YANDEX_VERIFICATION_CODE_URI = 'https://oauth.yandex.ru/verification_code';
+
+// Shown in the client modal after the OAuth window opens.
+const YANDEX_INSTRUCTIONS =
+  '1. Разрешите доступ к календарю на странице Яндекса.\n' +
+  '2. Яндекс покажет страницу с кодом авторизации — скопируйте его.\n' +
+  '3. Вставьте код в поле ниже и нажмите «Подключить».';
 
 function generateYandexOAuthUrl(clientId: string, profileId: string): string {
   const params = new URLSearchParams({
@@ -49,7 +60,7 @@ export async function POST(
 ) {
   try {
     const body = await req.json() as RequestBody;
-    const { profile_id } = body;
+    const { init_data } = body;
     const provider = (await params).provider as CalendarProvider;
 
     // Validate provider
@@ -60,11 +71,14 @@ export async function POST(
       );
     }
 
-    // Validate profile_id
-    if (!profile_id) {
+    // Authenticate via Telegram initData. The returned URL carries the profile id
+    // in `state`, so identity must come from the validated session — never from
+    // the request body.
+    const auth = await authenticateRequest(init_data);
+    if (!auth.authenticated || !auth.profileId) {
       return NextResponse.json(
-        { success: false, error: 'missing_profile_id' },
-        { status: 400 }
+        { success: false, error: auth.error || 'unauthorized' },
+        { status: auth.status || 401 }
       );
     }
 
@@ -79,12 +93,13 @@ export async function POST(
       );
     }
 
-    const oauthUrl = generateYandexOAuthUrl(yandexClientId, profile_id);
+    const oauthUrl = generateYandexOAuthUrl(yandexClientId, auth.profileId);
 
     return NextResponse.json({
       success: true,
       url: oauthUrl,
       provider,
+      instructions: YANDEX_INSTRUCTIONS,
       redirect_uri: YANDEX_VERIFICATION_CODE_URI,
     });
   } catch (err) {

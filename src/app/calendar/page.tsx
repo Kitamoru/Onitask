@@ -99,14 +99,14 @@ function CalendarContent() {
 
   async function handleConnect(provider: CalendarProvider) {
     try {
-      if (!workspaceId) {
-        throw new Error('Сначала выберите рабочую область');
+      if (!initData) {
+        throw new Error('Нет данных авторизации Telegram');
       }
 
       const response = await fetch(`/api/calendar/connect/${provider}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: workspaceId }),
+        body: JSON.stringify({ init_data: initData }),
       });
 
       if (!response.ok) {
@@ -118,8 +118,8 @@ function CalendarContent() {
       if (data.success && data.url) {
         // Open OAuth authorization in new window
         window.open(data.url, '_blank', 'noopener,noreferrer');
-        // Show token input modal with instructions
-        setOauthInstructions(data.instructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX');
+        // Show code input modal with instructions
+        setOauthInstructions(data.instructions || 'Разрешите доступ на странице Яндекса, скопируйте код авторизации и вставьте его ниже.');
         setShowTokenModal(true);
         setOauthToken('');
       }
@@ -130,55 +130,47 @@ function CalendarContent() {
   }
 
   async function handleStoreToken() {
-    // Calendar connections are per-user (profile)
-    // Use the authenticated profile's ID (profiles.id = auth.users.id)
-    const profileId = authData?.profile_id;
-    
-    console.log('[Calendar] handleStoreToken called');
-    console.log('[Calendar] oauthToken length:', oauthToken?.length);
-    console.log('[Calendar] profileId:', profileId);
-    
     if (!oauthToken?.trim()) {
-      setError('Токен не введен');
+      setError('Код авторизации не введен');
       return;
     }
-    
-    if (!profileId) {
-      setError('Пользователь не авторизован');
+
+    if (!initData) {
+      setError('Нет данных авторизации Telegram');
       return;
     }
 
     setTokenSubmitting(true);
     try {
-      console.log('[Calendar] Sending token to /api/calendar/callback/yandex...');
-      const response = await fetch('/api/calendar/callback/yandex', {
+      // Yandex redirect_uri is fixed to oauth.yandex.ru/verification_code, so
+      // the user pastes the authorization code here instead of us receiving it.
+      // profile_id is resolved server-side from init_data.
+      const response = await fetch('/api/calendar/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: oauthToken.trim(),
-          profile_id: profileId,
+          provider: 'yandex',
+          code: oauthToken.trim(),
+          init_data: initData,
         }),
       });
 
-      console.log('[Calendar] Response status:', response.status);
-      const result = await response.json();
-      console.log('[Calendar] Response body:', result);
+      const result = await response.json().catch(() => ({}));
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Token storage failed');
+        throw new Error(result.error || 'Не удалось подключить календарь');
       }
 
       // Success — close modal and reload data
-      console.log('[Calendar] Token stored successfully');
       setShowTokenModal(false);
       setOauthToken('');
       await loadData();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
     } catch (err) {
-      console.error('[Calendar] Token storage error:', err);
+      console.error('[Calendar] Authorization code exchange error:', err);
       const errMsg = err instanceof Error ? err.message : 'unknown';
-      setError(`Ошибка сохранения токена: ${errMsg}`);
+      setError(`Ошибка подключения: ${errMsg}`);
     } finally {
       setTokenSubmitting(false);
     }
@@ -388,7 +380,7 @@ function CalendarContent() {
         </div>
       )}
 
-      {/* OAuth Token Modal */}
+      {/* Authorization code modal */}
       {showTokenModal && (
         <div
           className="
@@ -399,7 +391,7 @@ function CalendarContent() {
           style={{ paddingBottom: Math.max(0, 16) + 'px' }}
           role="dialog"
           aria-modal="true"
-          aria-label="Ввод OAuth токена"
+          aria-label="Ввод кода авторизации"
         >
           {/* Backdrop */}
           <div
@@ -438,7 +430,7 @@ function CalendarContent() {
                 "
                 style={{ color: 'var(--color-text-primary)' }}
               >
-                🔐 OAuth токен
+                🔐 Код авторизации
               </h2>
               <button
                 onClick={() => !tokenSubmitting && setShowTokenModal(false)}
@@ -473,10 +465,10 @@ function CalendarContent() {
                 style={{ backgroundColor: 'var(--color-bg-surface)' }}
               >
                 <p
-                  className="text-body-sm"
+                  className="text-body-sm whitespace-pre-line"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  {oauthInstructions || 'После авторизации скопируйте токен из адресной строки https://oauth.yandex.ru/verification_code#access_token=XXX'}
+                  {oauthInstructions || 'Разрешите доступ на странице Яндекса, скопируйте код авторизации и вставьте его ниже.'}
                 </p>
               </div>
 
@@ -486,13 +478,13 @@ function CalendarContent() {
                   className="text-body-sm font-medium"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  OAuth токен
+                  Код авторизации
                 </label>
                 <input
                   type="text"
                   value={oauthToken}
                   onChange={(e) => setOauthToken(e.target.value)}
-                  placeholder="Вставьте токен после access_token="
+                  placeholder="Вставьте код со страницы Яндекса"
                   className="
                     w-full rounded-md px-3 py-2
                     border
@@ -510,7 +502,7 @@ function CalendarContent() {
                     }
                   }}
                   disabled={tokenSubmitting}
-                  aria-label="OAuth токен из Yandex"
+                  aria-label="Код авторизации от Yandex"
                 />
               </div>
 
@@ -530,9 +522,9 @@ function CalendarContent() {
                   backgroundColor: 'var(--color-accent-amber)',
                   color: '#000',
                 }}
-                aria-label="Сохранить токен"
+                aria-label="Подключить календарь"
               >
-                {tokenSubmitting ? 'Сохранение...' : '✓ Сохранить токен'}
+                {tokenSubmitting ? 'Подключение...' : '✓ Подключить'}
               </button>
 
               {/* Link to verification code page */}
@@ -547,7 +539,7 @@ function CalendarContent() {
                 "
                 style={{ color: 'var(--color-accent-amber)' }}
               >
-                Открыть страницу токена →
+                Открыть страницу с кодом →
               </a>
             </div>
           </div>

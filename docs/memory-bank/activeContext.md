@@ -1,3 +1,54 @@
+## Yandex Calendar: починка OAuth flow (2026-09-26) ✅
+
+**Зачем:** интеграция была написана по всем слоям (БД, Edge Function v25, роуты, UI),
+но UI и API разошлись в контрактах — подключение не работало ни одним путём,
+в БД было 0 connections / 0 events. Три бага:
+
+1. `connect/[provider]` ждал `profile_id`, UI слал `workspace_id` → всегда 400;
+   роут не возвращал `instructions`, которое читал UI.
+2. `callback/[provider]` реализует только `GET` (редирект Яндекса), а UI слал
+   в него `POST` с `{ token }` → 405. Роут поле `token` не обрабатывает вовсе.
+3. UI просил «OAuth токен» из урл-фрагмента (`#access_token=`), но `connect`
+   выдаёт `response_type=code` — implicit grant не выдаётся никогда.
+
+**Решение (flow v0.17, copy-paste кода):** сохранён `redirect_uri =
+https://oauth.yandex.ru/verification_code` — редирект на свой домен уводит
+с Telegram Mini App, поэтому пользователь копирует код авторизации вручную.
+
+**Изменено (3 файла, без миграций БД и без правки Edge Function):**
+- `src/app/api/calendar/connect/[provider]/route.ts` — возвращает `instructions`;
+  **личность только из сессии**: `authenticateRequest(init_data)`, а `profile_id`
+  из тела больше не используется (поле оставлено опциональным для обратной
+  совместимости, но игнорируется). Раньше возвращаемый URL нёс `profile_id` в
+  `state`, который брался из тела запроса — его можно было подделать.
+- `src/app/api/calendar/verify-code/route.ts` — **добавлена аутентификация**
+  `init_data`; `profile_id` для Edge Function берётся из `auth.profileId`, а не из
+  тела (раньше любой вызывающий мог записать OAuth-токены в чужой профиль).
+  Проверка `missing_profile_id` удалена как устаревшая. Сам
+  `exchangeYandexTokens` не тронут — он корректно шлёт client_id/secret
+  в Basic-заголовке, как требует Яндекс.
+- `src/app/calendar/page.tsx` — `handleConnect` шлёт только `init_data`;
+  `handleStoreToken` ходит в `/api/calendar/verify-code` с `code` (было
+  `callback` с `token`); модалка переименована «OAuth токен» → «Код авторизации»,
+  убраны упоминания `#access_token=`.
+
+**Не тронуто намеренно:** `callback/[provider]` (оставлен для сценария с
+собственным redirect_uri), БД, Edge Function, `src/lib/api/calendar.ts`.
+
+**Валидация:** `npm run type-check` — 0 ошибок в изменённых файлах
+(остаётся pre-existing `botNotifyCard.test.ts:154`, файл не мой);
+`npm test` — 342 passed / 38 files; `npx eslint` по изменённым путям — 0 ошибок
+(1 pre-existing warning про `useEffect` deps в page.tsx); `next build` —
+«Compiled successfully», валит только pre-existing `/api/bot/webhook`
+(`Invalid supabaseUrl`, плейсхолдеры в `.env.local`).
+
+**Осталось за пределами кода (проверить вручную):** секреты `ENCRYPTION_KEY`
+(байт-в-байт как в Vercel), `YANDEX_OAUTH_CLIENT_ID`, `YANDEX_OAUTH_CLIENT_SECRET`
+в Supabase Edge Functions; право `calendar:read_all` в приложении Яндекс OAuth;
+прогон подключения и проверка, что `calendar_events` наполняется (CalDAV REPORT
+в функции детально логирует статус ответа — если 0 событий, смотреть логи).
+
+
 ## Спеки синхронизированы с БД после F03-16 (2026-09-25) ✅
 
 **Зачем:** после удаления контура 10 документов продолжали описывать

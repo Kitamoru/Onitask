@@ -626,6 +626,29 @@ format is deliberately compact so that agents can load the file quickly.
       calendar_.md §5, bot_.md §6.5.1. Файл существует — верифицирован. Добавлена миграция 025 для триггеров планирования напоминаний.
 - [x] CAL-05 UI календаря (страница настроек + виджет, подключение/отключение аккаунтов) #ui !med @blocked_by:CAL-02
       calendar_.md §6. Исправлены stub'ы в `page.tsx`, `CalendarView.tsx`. Создан `CalendarSettingsCard.tsx`, интегрирован в settings page.
+      **Правка 2026-09-26 (OAuth flow, 3 файла):** подключение не работало ни одним
+      путём — UI и API разошлись в контрактах (0 connections / 0 events в БД).
+      ① `connect/[provider]` ждал `profile_id`, UI слал `workspace_id` → 400; роут
+      не возвращал `instructions`. ② UI слал `POST {token}` в `callback/[provider]`,
+      который реализует только `GET` → 405. ③ UI просил токен из `#access_token=`,
+      но `connect` выдаёт `response_type=code` — implicit grant не выдаётся.
+      Исправлено: `handleConnect` → `init_data`; `handleStoreToken` →
+      `POST /api/calendar/verify-code` с `code`; модалка → «Код авторизации».
+      **Идентичность берётся только из сессии:** и `connect`, и `verify-code`
+      аутентифицируют `init_data` через `authenticateRequest`, а `profile_id`
+      больше **не принимается из тела** (поле оставлено в типах как опциональное
+      для обратной совместимости, но игнорируется) — `state` для OAuth и
+      `profile_id` для Edge Function строятся из `auth.profileId`. Раньше любой
+      вызывающий мог записать OAuth-токены в чужой профиль, а в `connect` мог
+      подделать `state`. Flow сохранён copy-paste
+      (`redirect_uri = oauth.yandex.ru/verification_code` — редирект на свой домен
+      уводит с Telegram Mini App). БД и Edge Function не менялись.
+      Валидация: type-check 0 в изменённых файлах, тесты 342/38 passed,
+      eslint 0 errors, build «Compiled successfully».
+      **Осталось вручную:** секреты `ENCRYPTION_KEY` (идентичен Vercel),
+      `YANDEX_OAUTH_CLIENT_ID/SECRET` в Supabase Edge Functions; право
+      `calendar:read_all` в приложении Яндекс; прогон подключения и проверка
+      наполнения `calendar_events` (0 событий → смотреть логи CalDAV REPORT).
 - [ ] CAL-06 INV-17: шифрование OAuth-токенов — привести реализацию к инварианту #db !high @blocked_by:CAL-01
       Master §6.19, INV-17, calendar_.md §3.3. Токены никогда не передаются клиенту.
       **Сверка 2026-09-25:** шифрование **реализовано**, но не тем механизмом, который

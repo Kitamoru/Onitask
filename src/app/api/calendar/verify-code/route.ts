@@ -17,11 +17,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '../../../../../lib/api-auth';
 
 interface RequestBody {
-  profile_id: string;
+  // `profile_id` принимается для обратной совместимости, но игнорируется —
+  // авторизуемым профилем всегда является auth.profileId.
+  profile_id?: string;
   provider: 'yandex';
   code: string;
+  init_data?: string;
 }
 
 async function exchangeYandexTokens(code: string): Promise<{
@@ -92,16 +96,9 @@ async function getYandexAccountEmail(accessToken: string): Promise<string> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as RequestBody;
-    const { profile_id, provider, code } = body;
+    const { provider, code, init_data } = body;
 
     // Validate inputs
-    if (!profile_id) {
-      return NextResponse.json(
-        { success: false, error: 'missing_profile_id' },
-        { status: 400 }
-      );
-    }
-
     if (provider !== 'yandex') {
       return NextResponse.json(
         { success: false, error: 'invalid_provider', allowed: ['yandex'] },
@@ -115,6 +112,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Authenticate via Telegram initData — without this check any caller could
+    // write OAuth tokens into an arbitrary profile_id row.
+    const auth = await authenticateRequest(init_data);
+    if (!auth.authenticated || !auth.profileId) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'unauthorized' },
+        { status: auth.status || 401 }
+      );
+    }
+
+    // Identity comes from the validated session, never from the request body.
+    const targetProfile = auth.profileId;
 
     // Exchange code for tokens
     console.log('[Calendar] Exchanging Yandex code for tokens...');
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${supabaseServiceKey}`,
       },
       body: JSON.stringify({
-        profile_id,
+        profile_id: targetProfile,
         provider,
         action: 'connect',
         access_token: tokens.access_token,
