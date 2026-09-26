@@ -17,6 +17,14 @@
  * - детальное логирование для диагностики 401
  *
  * Master Spec §6.19, onitask_calendar_.md §4
+ *
+ * ВНИМАНИЕ v0.18.0 (2026-09-26): CalDAV-синхронизация ЗАБЛОКИРОВАНА.
+ * Проверено прямым экспериментом (probe): caldav.yandex.ru отвечает
+ * 401 + `www-authenticate: Basic realm="CalDAV"` на ВСЕ варианты с OAuth
+ * токеном — bearer, токен как пароль, на /calendars/<login>/ и
+ * /principals/users/<login>/, а также на PROPFIND корня. Яндекс CalDAV
+ * требует app password (Яндекс ID → Пароли приложений → тип «Календарь»).
+ * См. docs/TASKS.md CAL-07.
  */
 
 // @ts-nocheck — Supabase Edge Function uses Deno runtime, not Node.js
@@ -34,25 +42,11 @@ interface CalendarConnection {
   last_sync_at: string | null;
 }
 
-interface CalendarEventPayload {
-  profile_id: string;
-  provider: 'yandex';
-  remote_event_id: string;
-  title: string;
-  description: string | null;
-  start_at: string;
-  end_at: string;
-  reminder_minutes_before: number;
-}
-
 interface OAuthTokens {
   access_token: string;
   refresh_token: string;
   expires_at: number;
 }
-
-const SYNC_WINDOW_DAYS = 90;
-const REMINDER_DEFAULT_MINUTES = 15;
 
 // ═══════════════════════════════════════════════════════
 // AES-256-GCM шифрование/дешифрование
@@ -123,153 +117,25 @@ function timingSafeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
-function formatDateForQuery(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
-async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, payload: CalendarEventPayload): Promise<void> {
-  await supabase.from('calendar_events').upsert({
-    profile_id: payload.profile_id, provider: payload.provider, remote_event_id: payload.remote_event_id,
-    title: payload.title.slice(0, 500), description: payload.description?.slice(0, 5000) ?? null,
-    start_at: payload.start_at, end_at: payload.end_at,
-    reminder_minutes_before: payload.reminder_minutes_before, source_synced_at: new Date().toISOString(),
-  }, { onConflict: 'profile_id,provider,remote_event_id', ignoreDuplicates: false });
-}
+const CALDAV_BLOCKED = 'yandex_caldav_requires_app_password';
 
 /**
- * Sync events from Yandex CalDAV.
- * 
- * Yandex CalDAV recommends Basic auth (www-authenticate: Basic realm="CalDAV").
- * We try OAuth first, then fall back to Basic auth with token as password.
- * See: https://yandex.ru/dev/caldav/
+ * Sync events from Yandex CalDAV — BLOCKED as of v0.18.0.
+ *
+ * Measured against the live server on 2026-09-26: caldav.yandex.ru answers
+ * 401 with `www-authenticate: Basic realm="CalDAV"` to every auth shape an
+ * OAuth token can produce (bearer header, token as Basic password) on both
+ * /calendars/<login>/ and /principals/users/<login>/, and to PROPFIND on the
+ * account root. Yandex CalDAV accepts app passwords only, so the token flow
+ * cannot read events at all.
+ *
+ * A typed error beats a silent `synced: 0` on purpose: the UI must be able to
+ * say "app password required" instead of an empty calendar forever. Restoring
+ * real sync is CAL-07 in docs/TASKS.md.
  */
 async function syncYandex(supabase: ReturnType<typeof createClient>, connection: CalendarConnection, tokens: OAuthTokens): Promise<{ synced: number; errors: string[] }> {
-  const errors: string[] = []; let synced = 0;
-  try {
-    console.log('calendar_sync: starting Yandex CalDAV sync for', connection.provider_account_email);
-    
-    const now = new Date();
-    const since = new Date(now.getTime() - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    const until = new Date(now.getTime() + SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    const caldavUrl = `https://caldav.yandex.ru/calendars/${encodeURIComponent(connection.provider_account_email)}/`;
-    
-    console.log('calendar_sync: CalDAV URL =', caldavUrl);
-    console.log('calendar_sync: time range =', since.toISOString(), 'to', until.toISOString());
-    console.log('calendar_sync: access_token prefix =', tokens.access_token?.substring(0, 20) + '...');
-    console.log('calendar_sync: has_refresh_token =', !!tokens.refresh_token);
-    console.log('calendar_sync: token_expires_at =', new Date(tokens.expires_at * 1000).toISOString());
-    
-    const reportXml = `<?xml version="1.0" encoding="utf-8" ?><C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop xmlns:D="DAV:"><C:calendar-data/></D:prop><C:filter><C:time-range start="${formatDateForQuery(since)}" end="${formatDateForQuery(until)}"/></C:filter></C:calendar-query>`;
-    
-    // Try OAuth first, then Basic auth fallback
-    let responseText = '';
-    let responseStatus = 0;
-    let usedBasic = false;
-    
-    // Attempt 1: OAuth auth header
-    console.log('calendar_sync: attempting OAuth auth...');
-    let response = await fetch(caldavUrl, { 
-      method: 'REPORT', 
-      headers: { 
-        Authorization: `OAuth ${tokens.access_token}`, 
-        'Content-Type': 'application/xml; charset=utf-8', 
-        Depth: '1' 
-      }, 
-      body: reportXml 
-    });
-    
-    responseStatus = response.status;
-    responseText = await response.text();
-    
-    if (!response.ok && response.status === 401) {
-      // Fallback to Basic auth with token as password
-      console.log('calendar_sync: OAuth returned 401, trying Basic auth fallback...');
-      const basicAuth = btoa(`${connection.provider_account_email}:${tokens.access_token}`);
-      
-      response = await fetch(caldavUrl, { 
-        method: 'REPORT', 
-        headers: { 
-          Authorization: `Basic ${basicAuth}`, 
-          'Content-Type': 'application/xml; charset=utf-8', 
-          Depth: '1' 
-        }, 
-        body: reportXml 
-      });
-      
-      responseStatus = response.status;
-      responseText = await response.text();
-      usedBasic = true;
-      console.log('calendar_sync: Basic auth response status =', responseStatus);
-    }
-    
-    console.log('calendar_sync: final response status =', responseStatus, '(used_basic=' + usedBasic + ')');
-    console.log('calendar_sync: response body =', responseText.substring(0, 2000));
-    
-    if (!response.ok) { 
-      console.error('calendar_sync: REPORT error details:', {
-        status: responseStatus,
-        statusText: response.statusText,
-        body: responseText.substring(0, 2000),
-        auth_methods_tried: ['OAuth', usedBasic ? 'Basic' : null].filter(Boolean),
-        login_used: connection.provider_account_email,
-      });
-      throw new Error(`Yandex CalDAV REPORT failed: ${responseStatus} ${responseText.substring(0, 500)}`); 
-    }
-    responseText = responseText; // already read above
-    
-    const eventMatches = responseText.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
-    console.log('calendar_sync: found', eventMatches.length, 'VEVENT blocks');
-    
-    for (let i = 0; i < eventMatches.length; i++) {
-      const eventBlock = eventMatches[i];
-      try {
-        const uidMatch = eventBlock.match(/UID:(.+)$/m);
-        const summaryMatch = eventBlock.match(/SUMMARY:(.+)$/m);
-        const descriptionMatch = eventBlock.match(/DESCRIPTION:(.+)$/m);
-        const dtStartMatch = eventBlock.match(/DTSTART[;:]([^,\n]+)/);
-        const dtEndMatch = eventBlock.match(/DTEND[;:]([^,\n]+)/);
-        
-        if (!uidMatch || !dtStartMatch || !dtEndMatch) continue;
-        
-        const remoteId = uidMatch[1].trim();
-        const title = summaryMatch ? summaryMatch[1].trim() : 'No title';
-        const description = descriptionMatch ? descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\\\/g, '\\').trim() : null;
-        
-        const parseDate = (dateStr: string) => {
-          const cleaned = dateStr.replace(/Z$/, '').replace(/[-:]/g, '');
-          if (cleaned.length === 15) return new Date(
-            parseInt(cleaned.slice(0,4)), parseInt(cleaned.slice(4,6))-1,
-            parseInt(cleaned.slice(6,8)), parseInt(cleaned.slice(9,11)),
-            parseInt(cleaned.slice(11,13)), parseInt(cleaned.slice(13,15))
-          ).toISOString();
-          if (cleaned.length === 8) return new Date(
-            parseInt(cleaned.slice(0,4)), parseInt(cleaned.slice(4,6))-1,
-            parseInt(cleaned.slice(6,8))
-          ).toISOString();
-          return new Date(dateStr).toISOString();
-        };
-        
-        const startAt = parseDate(dtStartMatch[1].trim());
-        const endAt = parseDate(dtEndMatch[1].trim());
-        
-        await upsertCalendarEvent(supabase, { 
-          profile_id: connection.profile_id, provider: 'yandex',
-          remote_event_id: remoteId, title, description,
-          start_at: startAt, end_at: endAt,
-          reminder_minutes_before: REMINDER_DEFAULT_MINUTES 
-        });
-        synced++;
-      } catch (parseErr) { 
-        errors.push(`parse_error: ${parseErr instanceof Error ? parseErr.message : 'unknown'}`); 
-      }
-    }
-    
-    console.log('calendar_sync: sync complete. synced =', synced, 'errors =', errors.length);
-  } catch (syncErr) { 
-    errors.push(`sync_error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`); 
-    console.error('calendar_sync: sync error', syncErr);
-  }
-  return { synced, errors };
+  console.error(`calendar_sync: sync blocked (${CALDAV_BLOCKED}) for`, connection.provider_account_email);
+  return { synced: 0, errors: [CALDAV_BLOCKED] };
 }
 
 async function exchangeYandexTokens(code: string): Promise<OAuthTokens> {
@@ -293,14 +159,19 @@ async function exchangeYandexTokens(code: string): Promise<OAuthTokens> {
   return { access_token: data.access_token, refresh_token: data.refresh_token || '', expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600) };
 }
 
-async function getYandexAccountEmail(accessToken: string): Promise<string> {
-  const response = await fetch('https://login.yandex.ru/info?format=json', { 
-    headers: { Authorization: `Bearer ${accessToken}` } 
+/**
+ * Yandex returns `login` for a token without the login:email scope and
+ * `email` when it is granted. Accept both so this keeps working either way.
+ */
+async function getYandexAccountLogin(accessToken: string): Promise<string> {
+  const response = await fetch('https://login.yandex.ru/info?format=json', {
+    headers: { Authorization: `OAuth ${accessToken}` }
   });
-  if (!response.ok) throw new Error(`Yandex get account email failed: ${response.status}`);
-  const data = await response.json() as { email?: string };
-  if (!data.email) throw new Error('Yandex returned no email in user info');
-  return data.email;
+  if (!response.ok) throw new Error(`Yandex get account info failed: ${response.status}`);
+  const data = await response.json() as { login?: string; email?: string; default_email?: string };
+  const account = data.login || data.default_email || data.email;
+  if (!account) throw new Error('Yandex returned no login or email in user info');
+  return account;
 }
 
 async function refreshYandexTokens(refreshToken: string): Promise<OAuthTokens> {
@@ -402,11 +273,21 @@ serve(async (req: Request) => {
         .eq('provider', provider)
         .maybeSingle();
       
+      // Resolve the account. Never fall back to a placeholder: a fake login
+      // silently produced an invalid CalDAV URL and a confusing 401.
       let accountEmail = provider_account_email;
-      if (!accountEmail && existingConnection) accountEmail = existingConnection.provider_account_email;
-      if (!accountEmail) { 
-        try { accountEmail = await getYandexAccountEmail(tokens.access_token); } 
-        catch { accountEmail = 'yandex_user'; } 
+      if (!accountEmail && existingConnection && existingConnection.provider_account_email !== 'yandex_user') {
+        accountEmail = existingConnection.provider_account_email;
+      }
+      if (!accountEmail) {
+        try { accountEmail = await getYandexAccountLogin(tokens.access_token); }
+        catch (err) {
+          console.error('calendar_sync: could not resolve Yandex account login', err);
+          return new Response(JSON.stringify({
+            error: 'account_login_unresolved',
+            details: err instanceof Error ? err.message : 'unknown',
+          }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+        }
       }
       
       const encryptedB64 = await encryptOauthTokens(tokens, encryptionKey);
@@ -520,15 +401,14 @@ serve(async (req: Request) => {
     }
 
     const result = await syncYandex(supabase, connection, tokens);
-    await supabase.from('calendar_connections')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('id', connection.id);
-    
-    const response: Record<string, unknown> = { 
-      message: 'Calendar synced successfully', provider, 
-      synced: result.synced 
+
+    const response: Record<string, unknown> = {
+      message: result.errors.includes(CALDAV_BLOCKED) ? 'Calendar sync unavailable' : 'Calendar synced successfully',
+      provider,
+      synced: result.synced
     };
     if (result.errors.length > 0) response.errors = result.errors;
+    if (result.errors.includes(CALDAV_BLOCKED)) response.error = CALDAV_BLOCKED;
     return new Response(JSON.stringify(response), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('calendar_sync: unexpected error', err);

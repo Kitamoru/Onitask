@@ -1,4 +1,55 @@
-## Yandex Calendar: починка OAuth flow (2026-09-26) ✅
+## Yandex CalDAV: OAuth-токен не работает, нужен app password (2026-09-26) ⚠️
+
+**Зачем:** пользователь подключил календарь, авторизация прошла, но `calendar_events`
+пуст (0 событий) и после перезагрузки просит «новую авторизацию». Диагноз: сессия
+и токен в порядке (`refresh_token` есть, `token_expires_at` = 2027-08-13), сломана
+синхронизация — то есть это один баг, а не два.
+
+**Эксперимент (probe Edge Function, снят после проверки).** Ключ ENCRYPTION_KEY живёт
+в секретах Supabase, локально токен расшифровать нельзя → probe запускался внутри
+функции. Результаты, все против живого caldav.yandex.ru:
+
+| Проверка | Статус | Вывод |
+|---|---|---|
+| `login.yandex.ru/info` | 200 | токен валиден; отдаёт `login`, **не** `email` |
+| CalDAV bearer | 401 | OAuth в CalDAV не работает |
+| CalDAV Basic (логин:токен) | 401 | токен как пароль не подходит |
+| `/calendars/<login>/` и `/principals/users/<login>/` | 401 | формат пути ни при чём |
+| PROPFIND корень | 401 | отказ на уровне аутентификации |
+
+Ответ сервера: `www-authenticate: Basic realm="CalDAV"`. Официальная справка Яндекса
+подтверждает — CalDAV только app password (Яндекс ID → Пароли приложений → «Календарь»).
+**Гипотеза «токен как пароль» опровергнута фактами, не рассуждением.**
+
+**Вторая причина (найдена попутно):** `getYandexAccountEmail` ждал поле `email`,
+которое Яндекс без scope `login:email` не отдаёт → `catch` подставлял
+`yandex_user` → невалидный CalDAV-URL. Новым scope не понадобилось: резолвим `login`.
+
+**Что изменено (`supabase/functions/calendar-sync/index.ts`, v32 ACTIVE):**
+- резолв аккаунта через `login`/`default_email`/`email`; плейсхолдер удалён,
+  ошибка резолва → 502 `account_login_unresolved` вместо тихой подстановки;
+- `syncYandex` возвращает типизированное `yandex_caldav_requires_app_password`
+  вместо молчаливого `synced: 0`; ответ синка несёт `error` и
+  `message: 'Calendar sync unavailable'`;
+- `last_sync_at` больше НЕ обновляется при блокировке — иначе UI показывал бы
+  ложную свежесть данных;
+- удалён мёртвый код CalDAV (OAuth-экран, парсер VEVENT, `upsertCalendarEvent`,
+  `formatDateForQuery`, `SYNC_WINDOW_DAYS`, `REMINDER_DEFAULT_MINUTES`,
+  интерфейс `CalendarEventPayload`) — вернётся с app password;
+- заголовок файла фиксирует измеренный факт, чтобы никто не «починил» обратно.
+
+**БД:** `provider_account_email` исправлен `yandex_user` → `ssr-cirk` (реальный логин).
+
+**Деплой:** MCP-инструмент дважды задеплоил плейсхолдер вместо кода (мой промах) и
+завис на таймауте 120с. Рабочий путь — CLI:
+`npx supabase functions deploy calendar-sync --project-ref atarmvtzvlwhkheeabeb --no-verify-jwt`
+Проект слинкован (`supabase/.temp/project-ref` = atarmvtzvlwhkheeabeb). Предупреждение
+`Docker is not running` для деплоя безвредно.
+
+**Дальше (CAL-07):** колонка под app password (шифровать тем же AES-256-GCM, INV-17),
+ввод пароля в UI, восстановление REPORT+парсера. **Блокирует UI-фазу:** полировать
+календарь, который не может показать ни одного события, бессмысленно.
+
 
 **Зачем:** интеграция была написана по всем слоям (БД, Edge Function v25, роуты, UI),
 но UI и API разошлись в контрактах — подключение не работало ни одним путём,
