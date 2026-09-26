@@ -23,6 +23,8 @@ import { OrbitLoader } from '@/components/shared/OrbitLoader';
 const HOUR_HEIGHT = 44;
 /** Keeps a short event tappable instead of collapsing to a sliver. */
 const MIN_BLOCK_HEIGHT = 22;
+/** Scrollable slack below the 23:00 line so the last hour is fully reachable. */
+const TAIL_PADDING = 28;
 /** Gap between the edge of the axis and a block. */
 const BLOCK_INSET = 6;
 
@@ -161,7 +163,7 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
   return (
     <div className="relative flex flex-col h-full min-h-0">
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
-        <div className="flex" style={{ height: 24 * HOUR_HEIGHT }}>
+        <div className="flex" style={{ height: 24 * HOUR_HEIGHT + TAIL_PADDING }}>
           {/* Hour labels */}
           <div className="w-12 shrink-0 relative">
             {Array.from({ length: 24 }, (_, hour) => (

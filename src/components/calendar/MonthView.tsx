@@ -128,7 +128,11 @@ export function MonthView({
         ))}
       </div>
 
-      <div className="flex-1 grid grid-rows-6 px-1 pb-1" role="grid" aria-label={label}>
+      <div
+        className="flex-1 min-h-0 grid grid-cols-7 grid-rows-6 px-1 pb-1"
+        role="grid"
+        aria-label={label}
+      >
         {cells.map(({ date, inMonth }) => {
           const key = localDateKey(date);
           const count = counts.get(key) ?? 0;

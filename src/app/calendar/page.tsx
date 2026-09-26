@@ -436,7 +436,7 @@ function CalendarContent() {
 
   return (
     <div
-      className="flex flex-col h-full min-h-dvh"
+      className="flex flex-col h-tg-screen overflow-hidden"
       style={{ 
         ...bgStyle,
         paddingTop: 'max(64px, var(--tg-content-safe-top, 0px))',
