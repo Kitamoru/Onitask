@@ -39,6 +39,10 @@ const WEEKDAY_FULL = [
 
 const MAX_DOTS = 3;
 
+/** Size of the tappable date block. The amber fill covers this square and nothing
+ * else, so the presence dots below it stay readable. */
+const DATE_SQUARE = 32;
+
 /** 42 cells: six Monday-first weeks covering the month. */
 function buildGrid(month: Date): { date: Date; inMonth: boolean }[] {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -129,7 +133,7 @@ export function MonthView({
       </div>
 
       <div
-        className="flex-1 min-h-0 grid grid-cols-7 grid-rows-6 px-1 pb-1"
+        className="flex-1 min-h-0 grid auto-rows-min grid-cols-7 gap-y-0.5 px-1 pb-1 overflow-y-auto"
         role="grid"
         aria-label={label}
       >
@@ -146,46 +150,45 @@ export function MonthView({
               type="button"
               role="gridcell"
               onClick={() => onDateSelect(date)}
-              className="flex flex-col items-center justify-start rounded-md py-0.5 transition-colors duration-fast active:scale-95"
-              style={{
-                opacity: inMonth ? 1 : 0.32,
-                backgroundColor: isSelected ? 'var(--color-accent-amber)' : 'transparent',
-              }}
+              className="flex flex-col items-center justify-center transition-transform duration-fast active:scale-95"
+              style={{ opacity: inMonth ? 1 : 0.32 }}
               aria-label={`${date.getDate()} ${MONTHS_GENITIVE[date.getMonth()]}, ${
                 isToday ? 'сегодня, ' : ''
               }событий: ${count}`}
               aria-selected={isSelected}
             >
               <span
-                className="flex items-center justify-center text-body-sm font-medium rounded-full"
+                className="flex items-center justify-center rounded-md font-semibold"
                 style={{
-                  width: 26,
-                  height: 26,
-                  lineHeight: '26px',
+                  width: DATE_SQUARE,
+                  height: DATE_SQUARE,
+                  fontSize: 'var(--text-body-md)',
+                  backgroundColor: isSelected ? 'var(--color-accent-amber)' : 'transparent',
                   color: isSelected
                     ? 'var(--color-accent-ink)'
                     : isToday
                       ? 'var(--color-accent-amber)'
                       : 'var(--color-text-primary)',
-                  fontWeight: isSelected || isToday ? 600 : 400,
                 }}
               >
                 {date.getDate()}
               </span>
 
-              <span className="flex items-center gap-[3px] h-3" aria-hidden="true">
-                {count === 0 ? null : overflow > 0 ? (
-                  <span className="text-[9px] leading-none" style={{ color: 'var(--color-text-muted)' }}>
-                    {count}
+              <span className="flex items-center gap-[3px] h-[6px] mt-[3px]" aria-hidden="true">
+                {Array.from({ length: Math.min(count, MAX_DOTS) }, (_, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full"
+                    style={{ width: 5, height: 5, backgroundColor: 'var(--color-signal-yellow)' }}
+                  />
+                ))}
+                {overflow > 0 && (
+                  <span
+                    className="text-[9px] leading-none"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    +{overflow}
                   </span>
-                ) : (
-                  Array.from({ length: count }, (_, i) => (
-                    <span
-                      key={i}
-                      className="rounded-full"
-                      style={{ width: 5, height: 5, backgroundColor: 'var(--color-signal-yellow)' }}
-                    />
-                  ))
                 )}
               </span>
             </button>

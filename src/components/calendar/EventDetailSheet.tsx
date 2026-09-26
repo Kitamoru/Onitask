@@ -196,7 +196,12 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
 
   return (
     <BottomSheet open onClose={onClose}>
-      <div className="px-4 pb-4 space-y-3">
+      {/* The sheet chrome adds no bottom padding, so this is the only
+          clearance between the last row and the screen edge. */}
+      <div
+        className="px-4 space-y-3"
+        style={{ paddingBottom: 'calc(32px + env(safe-area-inset-bottom, 0px))' }}
+      >
         <h2
           className="pr-2"
           style={{

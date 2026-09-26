@@ -63,13 +63,13 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
   return (
     <div
       className="border-b px-2 py-2"
-      style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-bg-dark)' }}
+      style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-bg-primary-dark)' }}
     >
       <div className="flex items-center justify-between mb-1 px-1">
         <button
           type="button"
           onClick={() => onDateSelect(addDays(weekStart, -7))}
-          className="w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-fast active:scale-95"
+          className="w-8 h-8 flex items-center justify-center rounded-md transition-colors duration-fast active:scale-95"
           style={{ color: 'var(--color-text-muted)' }}
           aria-label="Предыдущая неделя"
         >
@@ -79,7 +79,7 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
         </button>
 
         <span
-          className="text-body-xs font-medium capitalize"
+          className="text-body-sm font-semibold capitalize"
           style={{ color: 'var(--color-text-muted)' }}
         >
           {monthSpan}
@@ -88,7 +88,7 @@ export function WeekStrip({ selectedDate, onDateSelect, eventCounts }: WeekStrip
         <button
           type="button"
           onClick={() => onDateSelect(addDays(weekEnd, 7))}
-          className="w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-fast active:scale-95"
+          className="w-8 h-8 flex items-center justify-center rounded-md transition-colors duration-fast active:scale-95"
           style={{ color: 'var(--color-text-muted)' }}
           aria-label="Следующая неделя"
         >

@@ -456,7 +456,7 @@ function CalendarContent() {
       }}
     >
       <header
-        className="flex items-center justify-between px-4 py-3 border-b"
+        className="flex items-center justify-between px-4 pt-0 pb-3 border-b"
         style={{ borderColor: 'var(--color-border-default)' }}
       >
         <div className="flex items-center gap-2">
@@ -678,7 +678,6 @@ function CalendarContent() {
             sm:items-center
             pb-safe-bottom pt-safe-top
           "
-          style={{ paddingBottom: Math.max(0, 16) + 'px' }}
           role="dialog"
           aria-modal="true"
           aria-label="Ввод кода авторизации"
@@ -840,7 +839,6 @@ function CalendarContent() {
       {showPasswordModal && (
         <div
           className="fixed inset-x-0 z-modal flex items-end justify-center sm:items-center pb-safe-bottom pt-safe-top"
-          style={{ paddingBottom: Math.max(0, 16) + 'px' }}
           role="dialog"
           aria-modal="true"
           aria-label="Пароль приложения Яндекс"
