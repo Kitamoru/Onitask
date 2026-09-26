@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import { useTelegramContext } from '@/components/shared/TelegramProvider';
-import { fetchAvatarAsDataUrl, readCachedAvatar, writeCachedAvatar } from '@/lib/avatarCache';
 import { markPerf, reportPerf } from '@/lib/perf/timings';
 
 /**
@@ -210,61 +209,20 @@ function ActionButton({ label, onClick }: ActionButtonProps) {
 
 // ─── Avatar Component ──────────────────────────────────────────────────────
 
-function UserAvatar({
-  username,
-  telegramPhotoUrl,
-  telegramId,
-}: {
-  username: string;
-  telegramPhotoUrl?: string;
-  telegramId?: string;
-}) {
+function UserAvatar({ username, telegramPhotoUrl }: { username: string; telegramPhotoUrl?: string }) {
   const initial = username.replace('@', '').charAt(0).toUpperCase();
-  const [src, setSrc] = useState<string | undefined>();
   const [loaded, setLoaded] = useState(false);
 
-  // Аватар — фаза ПОСЛЕ снятия лоадера, а дедуп-метка reportPerf к этому
-  // моменту уже стоит (её ставит AuthLoader на boot). Поэтому отчёт шлём
-  // с force, иначе марка проставилась бы и молча потерялась.
-  const markAvatarLoaded = () => {
-    markPerf('avatar:load');
-    reportPerf({ force: true });
-  };
-
-  // Аватар приходит с CDN Telegram, где в URL зашит случайный хеш, который
-  // меняется на каждой сессии → HTTP-кэш браузера не попадает НИКОГДА, и
-  // картинка грузится заново при каждом запуске Mini App. Поэтому байты
-  // кэшируем у себя в localStorage (см. lib/avatarCache): первый запуск тянет
-  // сеть, все последующие рисуются мгновенно и без запроса.
+  // Аватар приходит с CDN Telegram (t.me/i/userpic/...) и грузится строго
+  // через <img src>: это no-cors загрузка, для которой CDN не обязан слать
+  // Access-Control-Allow-Origin. fetch() здесь неприменим — он работает в
+  // CORS-режиме, на этом CDN всегда падает, и аватар не рендерился вовсе
+  // (регрессия c313cb6). Отсюда же следует, что кэшировать байты на клиенте
+  // нельзя: прочитать их можно только с CORS или через свой same-origin
+  // прокси, поэтому прошлый localStorage-кэш пришлось убрать.
   useEffect(() => {
-    if (!telegramPhotoUrl) {
-      setSrc(undefined);
-      return;
-    }
-
-    let cancelled = false;
-
-    if (telegramId) {
-      const cached = readCachedAvatar(telegramId);
-      if (cached) {
-        setSrc(cached);
-        setLoaded(true);
-        markAvatarLoaded();
-        return;
-      }
-    }
-
-    void fetchAvatarAsDataUrl(telegramPhotoUrl).then((dataUrl) => {
-      if (cancelled) return;
-      if (!dataUrl) return; // сеть/размер не дали — остаётся буква-заглушка
-      if (telegramId) writeCachedAvatar(telegramId, dataUrl);
-      setSrc(dataUrl);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [telegramPhotoUrl, telegramId]);
+    setLoaded(false);
+  }, [telegramPhotoUrl]);
 
   return (
     <div
@@ -282,13 +240,13 @@ function UserAvatar({
           бокс 104×104 оставался пустым навсегда. */}
       <div
         className="absolute inset-0 flex items-center justify-center text-white text-3xl font-medium"
-        aria-hidden={!!src}
+        aria-hidden={loaded}
       >
         {initial}
       </div>
-      {src && (
+      {telegramPhotoUrl && (
         <img
-          src={src}
+          src={telegramPhotoUrl}
           alt={username}
           width={104}
           height={104}
@@ -296,12 +254,13 @@ function UserAvatar({
           fetchPriority="high"
           onLoad={() => {
             setLoaded(true);
-            markAvatarLoaded();
+            // Аватар — фаза ПОСЛЕ снятия лоадера, а дедуп-метка reportPerf
+            // к этому моменту уже стоит (её ставит AuthLoader на boot), поэтому
+            // отчёт шлём с force — иначе марка молча потерялась бы.
+            markPerf('avatar:load');
+            reportPerf({ force: true });
           }}
-          onError={() => {
-            setSrc(undefined);
-            setLoaded(false);
-          }}
+          onError={() => setLoaded(false)}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200"
           style={{ opacity: loaded ? 1 : 0 }}
         />
@@ -348,7 +307,6 @@ function SettingsContent() {
 
   const username = typeof user?.username === 'string' ? '@' + user.username : '@kitamoru';
   const telegramPhotoUrl = typeof user?.photo_url === 'string' ? user.photo_url : undefined;
-  const telegramId = user?.id != null ? String(user.id) : undefined;
 
   const handleMcpClick = () => {
     router.push('/settings/mcp');
@@ -385,11 +343,7 @@ function SettingsContent() {
       <div className="flex flex-col gap-6 px-4 pb-[64px] pt-6">
         {/* ═══ PERSONAL SECTION ═══ */}
         <div className="flex flex-col items-center gap-4 w-full">
-          <UserAvatar
-            username={username}
-            telegramPhotoUrl={telegramPhotoUrl}
-            telegramId={telegramId}
-          />
+          <UserAvatar username={username} telegramPhotoUrl={telegramPhotoUrl} />
           <div className="flex items-center gap-2 w-full justify-center flex-wrap">
             <span
               className="font-display font-medium truncate"
