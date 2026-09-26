@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyCalendarState } from '../../../../../../lib/calendar-oauth-state';
 
 type CalendarProvider = 'yandex';
 
@@ -45,12 +46,22 @@ export async function GET(
       return NextResponse.redirect(new URL('/settings?calendar_error=no_code', req.url));
     }
 
-    // profile_id передается через state параметр OAuth
-    const profileId = url.searchParams.get('state');
-    if (!profileId) {
-      console.error('[Calendar Callback] Missing state (profile_id) parameter');
+    // The state is a signed, expiring token (lib/calendar-oauth-state). When it
+    // was the bare profile_id, anyone could forge a callback URL carrying their
+    // own Yandex code and overwrite a victim's calendar connection.
+    const state = url.searchParams.get('state');
+    if (!state) {
+      console.error('[Calendar Callback] Missing state parameter');
       return NextResponse.redirect(new URL('/settings?calendar_error=no_profile', req.url));
     }
+
+    const verified = verifyCalendarState(state);
+    if (!verified.ok) {
+      console.error('[Calendar Callback] Rejected state:', verified.error);
+      return NextResponse.redirect(new URL(`/settings?calendar_error=${verified.error}`, req.url));
+    }
+
+    const profileId = verified.profileId;
 
     // Exchange code for tokens via Edge Function
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';

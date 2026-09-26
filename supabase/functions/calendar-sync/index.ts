@@ -582,9 +582,37 @@ serve(async (req: Request) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
+    // Server-side callers only: every /api/calendar/* route authenticates the
+    // Telegram session first and then forwards the service-role key, so an exact
+    // constant-time match is the whole check.
+    //
+    // The previous guard ALSO accepted any "Bearer " longer than 10 characters,
+    // which left the endpoint effectively public -- the anon key shipped in the
+    // client bundle satisfied it, so anyone could force a sync, overwrite a
+    // stored CalDAV password, or deactivate another user's connection.
+    //
+    // Both env spellings are accepted because the value is configured under
+    // one name or the other per environment, while the Next side always sends
+    // SUPABASE_SERVICE_ROLE_KEY. With neither set we refuse rather than fall
+    // open.
     const authHeader = req.headers.get('Authorization') || '';
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_KEY') || '';
-    if (!(serviceKey && timingSafeEqual(authHeader, `Bearer ${serviceKey}`)) && !(authHeader.startsWith('Bearer ') && authHeader.length > 10)) {
+    // All three names hold a service-role credential; the Next side always sends
+    // SUPABASE_SERVICE_ROLE_KEY, and the project also provisions SB_SERVICE_ROLE_KEY.
+    // Accepting the set removes any dependence on which single name is populated,
+    // while still rejecting the anon key that shipped in the client bundle.
+    const serviceKeys = [
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      Deno.env.get('SB_SERVICE_ROLE_KEY'),
+      Deno.env.get('SUPABASE_SERVICE_KEY'),
+    ].filter((k): k is string => Boolean(k));
+
+    if (serviceKeys.length === 0) {
+      console.error('calendar_sync: no service key configured, refusing request');
+      return new Response(JSON.stringify({ error: 'server_misconfigured' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const authorized = serviceKeys.some((k) => timingSafeEqual(authHeader, `Bearer ${k}`));
+    if (!authorized) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
     

@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '../../../../../../lib/api-auth';
+import { signCalendarState } from '../../../../../../lib/calendar-oauth-state';
 
 type CalendarProvider = 'yandex';
 
@@ -48,7 +49,10 @@ function generateYandexOAuthUrl(clientId: string, profileId: string): string {
     response_type: 'code',
     scope: 'calendar:read_all',
     redirect_uri: YANDEX_VERIFICATION_CODE_URI,
-    state: profileId, // передаем profile_id через state
+    // Signed, expiring state. The raw profile_id used to go here, which let
+    // anyone forge a callback URL and write their own calendar into someone
+    // else's connection row.
+    state: signCalendarState(profileId),
   });
 
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
