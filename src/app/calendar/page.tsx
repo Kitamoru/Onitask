@@ -10,6 +10,17 @@ import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
+/**
+ * How stale calendar data may get before an automatic sync runs on open.
+ *
+ * A sync is a write against Yandex, not a cheap read: one run walks the
+ * CalDAV home-set and GETs every event .ics (measured ~2.7 s and 18 requests
+ * for an 18-event calendar). So unlike board counts there is no
+ * `refetchInterval` here — that would hammer CalDAV all day. Instead we sync
+ * once when the calendar is opened, and only if the data is older than this.
+ */
+const AUTO_SYNC_STALE_MS = 15 * 60_000;
+
 function CalendarContent() {
   const { isLoading: authLoading, data: authData, initData } = useTelegramAuth();
   const { state, loadBoardsData } = useData();
@@ -44,6 +55,8 @@ function CalendarContent() {
   // Ref to prevent duplicate loadData calls when deps change rapidly
   const loadingRef = useRef(false);
   const loadedProfileRef = useRef<string | null>(null);
+  // Auto-sync fires at most once per open; the manual button is unaffected.
+  const autoSyncRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !workspaceId) {
@@ -81,11 +94,45 @@ function CalendarContent() {
       });
   }, [workspaceId, authLoading, initData, authData?.profile_id]);
 
-  async function loadData(): Promise<boolean> {
+  // Auto-sync on open. Syncs once, and only when the stored data has gone
+  // stale — AUTO_SYNC_STALE_MS is the throttle, since each run is a write
+  // against Yandex. Runs silently: the data already on screen stays visible
+  // and a failure does not raise an error banner, because nothing the user
+  // was looking at became wrong. The manual button is there for a retry.
+  useEffect(() => {
+    if (autoSyncRef.current) return;
+    if (!connectionsLoaded || isLoading) return;
+
+    const connection = connections.find((c) => c.is_active);
+    // No app password means Yandex would reject the sync outright.
+    if (!connection?.has_caldav_password) return;
+
+    const lastSyncAt = connection.last_sync_at
+      ? Date.parse(connection.last_sync_at)
+      : NaN;
+    const age = Date.now() - lastSyncAt;
+    // Never synced (null) counts as stale.
+    if (Number.isFinite(age) && age <= AUTO_SYNC_STALE_MS) return;
+
+    autoSyncRef.current = true;
+    handleSync(connection.provider, { silent: true });
+  }, [connections, connectionsLoaded, isLoading]);
+
+  /**
+   * Loads connections + events.
+   *
+   * `silent` leaves the screen as it is — no full-page loader, no error reset.
+   * Used by the background auto-sync, where the events on screen are still
+   * valid, just slightly old, and replacing them with a spinner would be a
+   * worse experience than the staleness.
+   */
+  async function loadData(silent = false): Promise<boolean> {
     if (!workspaceId) return false;
 
-    setIsLoading(true);
-    setError(null);
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const [eventsRes, connectionsRes] = await Promise.all([
@@ -119,7 +166,7 @@ function CalendarContent() {
       setError('Произошла ошибка при загрузке данных');
       return false;
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }
 
@@ -273,8 +320,12 @@ function CalendarContent() {
     }
   }
 
-  async function handleSync(provider: CalendarProvider) {
+  async function handleSync(
+    provider: CalendarProvider,
+    opts: { silent?: boolean } = {}
+  ) {
     if (!workspaceId || !authData?.profile_id) return;
+    const silent = opts.silent ?? false;
     
     console.log('[Calendar/handleSync] START', {
       provider,
@@ -292,16 +343,28 @@ function CalendarContent() {
       );
       
       console.log('[Calendar/handleSync] Success', result);
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus('idle'), 2000);
-      await loadData();
+      // A background sync keeps the quiet «синхронизация…» chip in the header
+      // instead of a celebratory flash nobody asked for.
+      if (!silent) {
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      }
+      await loadData(silent);
     } catch (err) {
       console.error('[Calendar/handleSync] Error:', err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setError(`Синхронизация не удалась: ${errMsg}`);
-      setSyncStatus('error');
+      // A failed background refresh must not interrupt the user with an error
+      // banner — nothing they were looking at became wrong.
+      if (!silent) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setError(`Синхронизация не удалась: ${errMsg}`);
+        setSyncStatus('error');
+      }
     } finally {
       setIsSyncing(false);
+      // The non-silent path already moved off 'syncing' above (success flash or
+      // the error state). The silent one has to clear it here, or the header
+      // chip would claim «синхронизация…» forever after a background run.
+      if (silent) setSyncStatus('idle');
     }
   }
 
