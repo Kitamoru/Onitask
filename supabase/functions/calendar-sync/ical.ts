@@ -123,6 +123,8 @@ export interface ParsedEvent {
   description: string | null;
   startAt: string;
   endAt: string;
+  /** iCal VALUE=DATE: a whole date, not an instant on a clock. */
+  isAllDay: boolean;
 }
 
 const FALLBACK_TITLE = 'Без названия';
@@ -156,8 +158,14 @@ export function parseVEvents(xml: string): ParsedEvent[] {
       try { endAt = parseIcalDate(dtEndRaw, endTzid ?? startTzid); } catch { endAt = startAt; }
     }
 
+    // VALUE=DATE is the explicit marker; an 8-character value is the same thing
+    // written without parameters, so treat both as all-day.
+    const isAllDay =
+      /VALUE=DATE/i.test(dtStart?.[1] ?? '') || dtStartRaw.replace(/[-:]/g, '').replace(/Z$/, '').length === 8;
+
     events.push({
       uid,
+      isAllDay,
       title: summaryRaw ? unfoldIcalText(summaryRaw) || FALLBACK_TITLE : FALLBACK_TITLE,
       description: descriptionRaw ? unfoldIcalText(descriptionRaw) || null : null,
       startAt,

@@ -223,11 +223,17 @@ export function EventDetailSheet({ event, onClose, onEditReminder }: EventDetail
         </div>
 
         <div className="space-y-1.5">
-          <Row
-            label="Когда"
-            value={`${formatDay(event.start_at)}, ${formatClock(event.start_at)}`}
-          />
-          <Row label="Длительность" value={formatDuration(event.start_at, event.end_at)} />
+          {event.is_all_day ? (
+            <Row label="Когда" value={formatDay(event.start_at)} />
+          ) : (
+            <>
+              <Row
+                label="Когда"
+                value={`${formatDay(event.start_at)}, ${formatClock(event.start_at)}`}
+              />
+              <Row label="Длительность" value={formatDuration(event.start_at, event.end_at)} />
+            </>
+          )}
         </div>
 
         {event.description && <Description text={event.description} />}

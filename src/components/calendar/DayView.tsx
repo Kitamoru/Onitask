@@ -22,6 +22,7 @@ import {
   formatTimeShort,
   layoutDayEvents,
 } from '@/lib/calendar';
+import { AllDayRow } from '@/components/calendar/AllDayRow';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 /** Height of one hour row. 24 × this is the full axis height. */
@@ -51,7 +52,17 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
     [events, date]
   );
 
-  const positioned = useMemo(() => layoutDayEvents(dayEvents), [dayEvents]);
+  // All-day events carry a UTC midnight marker rather than an instant, so they
+  // are shown as a row above the axis instead of being placed on it.
+  const { allDay, timed } = useMemo(
+    () => ({
+      allDay: dayEvents.filter((e) => e.is_all_day),
+      timed: dayEvents.filter((e) => !e.is_all_day),
+    }),
+    [dayEvents]
+  );
+
+  const positioned = useMemo(() => layoutDayEvents(timed), [timed]);
   const isToday = isSameLocalDay(date, new Date());
   const now = new Date();
 
@@ -102,6 +113,8 @@ export function DayView({ date, events, onEventClick, onDateSelect, isLoading }:
 
   return (
     <div className="relative flex flex-col h-full min-h-0">
+      <AllDayRow events={allDay} onEventClick={onEventClick} />
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         <div className="flex" style={{ height: 24 * HOUR_HEIGHT + TAIL_PADDING }}>
           {/* Hour labels */}

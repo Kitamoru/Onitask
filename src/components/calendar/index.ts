@@ -9,6 +9,7 @@
 export { CalendarTabs } from './CalendarTabs';
 export { WeekStrip } from './WeekStrip';
 export { DayView } from './DayView';
+export { AllDayRow } from './AllDayRow';
 export { MonthView } from './MonthView';
 export { EventDetailSheet } from './EventDetailSheet';
 

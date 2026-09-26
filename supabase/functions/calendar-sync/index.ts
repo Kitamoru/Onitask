@@ -56,6 +56,7 @@ interface CalendarEventPayload {
   description: string | null;
   start_at: string;
   end_at: string;
+  is_all_day: boolean;
   reminder_minutes_before: number;
 }
 
@@ -152,6 +153,7 @@ async function upsertCalendarEvent(supabase: ReturnType<typeof createClient>, pa
     profile_id: payload.profile_id, provider: payload.provider, remote_event_id: payload.remote_event_id,
     title: payload.title.slice(0, 500), description: payload.description?.slice(0, 5000) ?? null,
     start_at: payload.start_at, end_at: payload.end_at,
+    is_all_day: payload.is_all_day,
     reminder_minutes_before: payload.reminder_minutes_before, source_synced_at: new Date().toISOString(),
   }, { onConflict: 'profile_id,provider,remote_event_id', ignoreDuplicates: false });
 }
@@ -336,6 +338,7 @@ async function syncYandex(
           description: ev.description,
           start_at: ev.startAt,
           end_at: ev.endAt,
+          is_all_day: ev.isAllDay,
           reminder_minutes_before: REMINDER_DEFAULT_MINUTES,
         });
         synced++;

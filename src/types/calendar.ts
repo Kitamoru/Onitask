@@ -24,6 +24,9 @@ export interface CalendarEvent {
   description: string | null;
   start_at: string; // ISO 8601
   end_at: string;   // ISO 8601
+  /** iCal VALUE=DATE: a whole date. start_at is a UTC midnight marker, not
+   * an instant, so it must not be placed on the hourly axis. */
+  is_all_day?: boolean;
   reminder_minutes_before: number | null;
   created_by: string | null;
   updated_by: string | null;

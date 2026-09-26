@@ -247,3 +247,35 @@ describe('parseVEvents', () => {
     expect(events[1].startAt).toBe(wallToUtc([2026, 7, 14, 13, 30, 0], TO));
   });
 });
+
+describe('all-day detection', () => {
+  it('marks an explicit VALUE=DATE as all-day', () => {
+    const [ev] = parseVEvents(
+      ics(vevent('UID:d1@yandex.ru', 'DTSTART;VALUE=DATE:20260820', 'SUMMARY:offsite')),
+    );
+    expect(ev.isAllDay).toBe(true);
+  });
+
+  it('marks a bare 8-character date as all-day', () => {
+    // Same thing written without the VALUE parameter.
+    const [ev] = parseVEvents(ics(vevent('UID:d2@yandex.ru', 'DTSTART:20260820')));
+    expect(ev.isAllDay).toBe(true);
+  });
+
+  it('leaves a timed event not all-day', () => {
+    const [ev] = parseVEvents(
+      ics(vevent('UID:d3@yandex.ru', 'DTSTART;TZID=Europe/Moscow:20260814T100000')),
+    );
+    expect(ev.isAllDay).toBe(false);
+  });
+
+  it('leaves a Z-suffixed instant not all-day', () => {
+    const [ev] = parseVEvents(ics(vevent('UID:d4@yandex.ru', 'DTSTART:20260814T230000Z')));
+    expect(ev.isAllDay).toBe(false);
+  });
+
+  it('still stores an all-day marker as UTC midnight', () => {
+    const [ev] = parseVEvents(ics(vevent('UID:d5@yandex.ru', 'DTSTART;VALUE=DATE:20260820')));
+    expect(ev.startAt).toBe('2026-08-20T00:00:00.000Z');
+  });
+});

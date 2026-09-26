@@ -663,6 +663,7 @@ export type Database = {
           description: string | null
           end_at: string
           id: string
+          is_all_day: boolean
           profile_id: string | null
           provider: string
           reminder_minutes_before: number | null
@@ -679,6 +680,7 @@ export type Database = {
           description?: string | null
           end_at: string
           id?: string
+          is_all_day?: boolean
           profile_id?: string | null
           provider: string
           reminder_minutes_before?: number | null
@@ -695,6 +697,7 @@ export type Database = {
           description?: string | null
           end_at?: string
           id?: string
+          is_all_day?: boolean
           profile_id?: string | null
           provider?: string
           reminder_minutes_before?: number | null
