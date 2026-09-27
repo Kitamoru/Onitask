@@ -160,13 +160,64 @@ export async function POST(
       );
     }
 
+    // ── Отсечение дублей по содержимому (миграция 133) ──────────────────────
+    //
+    // Критерий — СОДЕРЖИМОЕ (SHA-256), а не имя файла: `DESIGN.md` и
+    // `design-copy.md` с одинаковыми байтами дают одинаковый хеш.
+    //
+    // Проверка делается ДО записи в Storage. Иначе дубль сначала лёг бы на диск,
+    // потом пришлось бы его оттуда вычищать, — лишняя работа с файлами и лишнее
+    // окно, в котором файл существует без записи в БД.
+    //
+    // Два уровня защиты. Этот — понятная ошибка с именем файла. Второй —
+    // уникальный индекс в БД, потому что проверка в приложении не защищает от
+    // гонки: два параллельных запроса оба увидят, что такого документа нет, и
+    // оба вставят. Поэтому ниже дополнительно обрабатывается 23505.
+    const filesWithChecksums: { file: File; checksum: string }[] = [];
+    for (const file of files) {
+      filesWithChecksums.push({ file, checksum: await computeChecksum(await file.arrayBuffer()) });
+    }
+
+    const existingChecksums = new Map<string, string>(); // checksum → filename
+    const { data: existingForDedup } = await supabase
+      .from('workspace_documents')
+      .select('filename, checksum')
+      .eq('workspace_id', workspaceId)
+      .not('checksum', 'is', null);
+
+    for (const row of (existingForDedup as any[]) || []) {
+      if (row.checksum && !existingChecksums.has(row.checksum)) {
+        existingChecksums.set(row.checksum, row.filename);
+      }
+    }
+
+    const seenInRequest = new Map<string, string>();
+    for (const { file, checksum } of filesWithChecksums) {
+      const prior = existingChecksums.get(checksum) ?? seenInRequest.get(checksum);
+      if (prior) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'duplicate_document',
+            message:
+              prior === file.name
+                ? `Файл «${file.name}» уже загружен`
+                : `Содержимое файла «${file.name}» совпадает с уже загруженным «${prior}»`,
+            filename: file.name,
+            duplicate_of: prior,
+          },
+          { status: 409 }
+        );
+      }
+      seenInRequest.set(checksum, file.name);
+    }
+
     // Upload files
     const uploadedDocuments = [];
     const queueJobs = [];
 
-    for (const file of files) {
+    for (const { file, checksum } of filesWithChecksums) {
       const fileBuffer = await file.arrayBuffer();
-      const checksum = await computeChecksum(fileBuffer);
       const ext = getFileExtension(file.name);
       const filename = `${crypto.randomUUID()}${ext}`;
       const storagePath = `${workspaceId}/${filename}`;
@@ -205,6 +256,23 @@ export async function POST(
         .single();
 
       if (docError) {
+        // 23505 = гонка: параллельный запрос успел вставить тот же документ
+        // раньше, чем мы соизмерили. Проверка выше этого не видит, поэтому
+        // финальное слово за БД. Файл из Storage убираем — он не нужен,
+        // дубль всё равно не создастся.
+        if (docError.code === '23505') {
+          console.warn(
+            `documents: duplicate rejected by unique index (race): ${file.name}`,
+          );
+          await supabase.storage.from('documents').remove([storagePath]);
+          uploadedDocuments.push({
+            filename: file.name,
+            rejected: true,
+            reason: 'duplicate_document',
+            duplicate_of: existingChecksums.get(checksum) ?? null,
+          } as any);
+          continue;
+        }
         console.error('documents: insert error', docError);
         await supabase.storage.from('documents').remove([storagePath]);
         continue;

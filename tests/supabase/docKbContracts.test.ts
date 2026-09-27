@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -148,4 +148,101 @@ describe('Контракт статусов документа', () => {
       }
     }
   });
+
+describe('Контракт отсечения дублей (миграция 133)', () => {
+  // Переносы строк нормализуем: файлы на диске в CRLF, а поиск по `\n` не нашёл
+  // бы нужное место. Проверка не должна зависеть от платформы.
+  const lf = (s: string) => s.replace(/\r\n/g, '\n');
+  const route = lf(read('src', 'app', 'api', 'workspaces', '[id]', 'documents', 'route.ts'));
+  const docProcess = lf(read('supabase', 'functions', 'doc-process', 'index.ts'));
+  const migration = lf(read('supabase', 'migrations', '133_document_duplicate_rejection.sql'));
+
+  it('уникальный индекс объявлен по (workspace_id, checksum)', () => {
+    // Проверка в приложении не спасает от гонки: два параллельных запроса оба
+    // увидят, что такого документа нет, и оба вставят. Утверждение обязано быть
+    // в БД.
+    expect(migration).toMatch(/UNIQUE INDEX[\s\S]*workspace_documents[\s\S]*workspace_id,\s*checksum/);
+  });
+
+  it('индекс partial по checksum IS NOT NULL', () => {
+    // Иначе строка, вставленная до простановки хеша, упала бы на конфликте
+    // вместо успешной вставки.
+    expect(migration).toMatch(/WHERE checksum IS NOT NULL/);
+  });
+
+  it('Route Handler проверяет дубли ДО записи в Storage', () => {
+    // Обратный порядок означал бы, что дубль сначала ложится на диск, а потом
+    // вычищается. Проверка идёт по тексту: сравниваем позиции.
+    const dedup = route.indexOf('duplicate_document');
+    const upload = route.indexOf(".storage\n        .from('documents')\n        .upload");
+    expect(dedup).toBeGreaterThan(-1);
+    expect(upload).toBeGreaterThan(-1);
+    expect(dedup).toBeLessThan(upload);
+  });
+
+  it('обрабатывается 23505, а не роняется в 500', () => {
+    expect(route).toMatch(/docError\.code === '23505'/);
+  });
+
+  it('doc-process вылечивает устаревший checksum, а не только читает его', () => {
+    // Устаревший формат `checksum_604251_7552` несопоставим с SHA-256: новый
+    // уникальный индекс не отсечёт повторную загрузку такого документа, пока
+    // в базе лежит старое значение. Файл уже скачан, поэтому хеш считается
+    // бесплатно.
+    //
+    // Проверяем ИМЕННО вызов, а не любое упоминание: якорь `^\s*await` с флагом m
+    // не матчит закомментированную строку. Простая регулярка по подстроке дала
+    // ложноотрицательный результат — закомментированный вызов продолжал
+    // удовлетворять проверке, и тест оставался зелёным при выключенной
+    // функциональности. Это ровно тот класс дефекта, который проверка обязана
+    // ловить, а не замалчивать.
+    expect(docProcess).toMatch(/^\s*await backfillLegacyChecksum\(/m);
+    expect(docProcess).toMatch(
+      /^\s*await backfillLegacyChecksum\(supabase, document_id, fileData, document\.checksum\);/m,
+    );
+    // Определение функции должно существовать, иначе вызов не скомпилируется.
+    expect(docProcess).toMatch(/async function backfillLegacyChecksum\(/);
+  });
+
+  it('устаревший формат распознаётся, а корректный SHA-256 не перезаписывается', () => {
+    // /^[0-9a-f]{64}$/ — 64 hex-символа. Перезапись уже корректного значения
+    // бессмысленна и добавляла бы запись в БД на каждом документе.
+    expect(docProcess).toMatch(/if \(existingChecksum && \/\^\[0-9a-f\]\{64\}\$\/\.test\(existingChecksum\)\)/);
+  });
+
+  it('ошибка бэкфилла не роняет обработку документа', () => {
+    // Типичный отказ — два легаси-документа с одинаковым содержимым: второй
+    // нарушит уникальный индекс. Это повод разобраться, а не повод пометить
+    // документ failed и потерять его индекс.
+    const fn = docProcess.slice(
+      docProcess.indexOf('async function backfillLegacyChecksum'),
+    );
+    expect(fn.slice(0, fn.indexOf('\n}'))).toMatch(/catch/);
+  });
+});
+
+describe('Точка вставки документов — единственная', () => {
+  // Если появится второй обработчик загрузки (например, из бота), он обязан
+  // знать про отсечение дублей. Проверяем по всему дереву, а не по одному
+  // маршруту, который сегодня единственный.
+  it('workspace_documents вставляется ровно в одном месте', () => {
+    const inserts: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(e.name)) {
+          const src = readFileSync(full, 'utf8');
+          if (/from\('workspace_documents'\)[\s\S]{0,120}?\.insert\(/.test(src)) {
+            inserts.push(full.replace(ROOT, '').replace(/\\/g, '/'));
+          }
+        }
+      }
+    };
+    for (const dir of ['src', 'lib', 'supabase/functions']) walk(join(ROOT, dir));
+
+    expect(inserts).toEqual(['/src/app/api/workspaces/[id]/documents/route.ts']);
+  });
+});
+
 });

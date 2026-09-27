@@ -350,6 +350,64 @@ async function markJobFailed(
   ]);
 }
 
+/**
+ * Пересчитывает checksum документа в формате SHA-256, если там лежит устаревший
+ * «сумма байт + длина» вида `checksum_604251_7552` (миграция 133).
+ *
+ * Вызывается сразу после скачивания файла, поэтому байты уже в руках и лишнего
+ * запроса в Storage нет. Хеш считается по тем же байтам, что и в Route Handler,
+ * поэтому результат совпадёт с тем, который посчитает следующая загрузка того же
+ * файла, — только так отсечение дублей по уникальному индексу вообще работает.
+ *
+ * Перезаписываются ТОЛЬКО заведомо старые значения. Уже корректный SHA-256
+ * не трогаем: повторный пересчёт ничего не меняет, а лишняя запись в БД на
+ * каждом документе не нужна.
+ *
+ * Ошибка перезаписи не должна ронять обработку документа. Единственный реальный
+ * сценарий отказа — два легаси-документа с одинаковым содержимым: второй
+ * нарушит уникальный индекс. Это повод разобраться, а не повод помечать
+ * документ `failed` и терять его индекс.
+ */
+async function backfillLegacyChecksum(
+  supabase: ReturnType<typeof createClient>,
+  documentId: string,
+  fileData: Blob,
+  existingChecksum: string | null,
+): Promise<void> {
+  if (existingChecksum && /^[0-9a-f]{64}$/.test(existingChecksum)) {
+    return; // уже SHA-256
+  }
+
+  try {
+    const buffer = await fileData.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    const sha256 = Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const { error } = await supabase
+      .from('workspace_documents')
+      .update({ checksum: sha256 })
+      .eq('id', documentId);
+
+    if (error) {
+      // Чаще всего 23505: два легаси-документа с одинаковым содержимым.
+      console.warn(
+        `doc_process: doc=${documentId} legacy checksum backfill rejected (${error.code}): ${error.message}`,
+      );
+      return;
+    }
+
+    console.log(
+      `doc_process: doc=${documentId} legacy checksum "${existingChecksum}" → SHA-256 ${sha256.slice(0, 12)}…`,
+    );
+  } catch (err) {
+    console.warn(
+      `doc_process: doc=${documentId} legacy checksum backfill failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 async function markJobDone(
   supabase: ReturnType<typeof createClient>,
   jobId: string,
@@ -471,6 +529,20 @@ serve(async (_req: Request) => {
         totalProcessed++;
         continue;
       }
+
+      // Самолечение легаси-checksum (миграция 133).
+      //
+      // `computeChecksum` в Route Handler переведён с «сумма байт + длина»
+      // (`checksum_604251_7552`) на SHA-256, но документы, загруженные ДО
+      // деплоя, сохранили старый формат. Для них новый уникальный индекс
+      // бесполезен: повторная загрузка того же файла посчитает SHA-256, он
+      // не совпадёт с легаси-строкой, и дубль пройдёт.
+      //
+      // Здесь уже скачан исходный файл, поэтому хеш считается бесплатно, по
+      // тем же байтам, что хешировал Route Handler, — значения совпадут.
+      // Перезаписываем только явно старый формат, чтобы не трогать строки,
+      // которые уже в порядке.
+      await backfillLegacyChecksum(supabase, document_id, fileData, document.checksum);
 
       let textContent: string;
       try {
