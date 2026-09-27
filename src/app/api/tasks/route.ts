@@ -223,17 +223,24 @@ export async function POST(request: NextRequest) {
     }
 
     if (evaluation.storyPoints.enabled && story_points !== undefined) {
+      // onConflict: task_id — PK task_enrichments это `id`, его в payload нет,
+      // поэтому без target PostgREST делает INSERT и падает на UNIQUE(task_id).
+      // Здесь спасает лишь то, что у только что созданной задачи строки
+      // обогащения ещё нет; полагаться на это нельзя.
       const { error: enrichmentError } = await supabase
         .from('task_enrichments')
-        .upsert({
-          task_id: data.id,
-          workspace_id: workspaceId,
-          story_points: story_points,
-          sp_estimation_type: 'abstract',
-          enrichment_status: 'done',
-          model_used: 'manual',
-          enriched_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            task_id: data.id,
+            workspace_id: workspaceId,
+            story_points: story_points,
+            sp_estimation_type: 'abstract',
+            enrichment_status: 'done',
+            model_used: 'manual',
+            enriched_at: new Date().toISOString(),
+          },
+          { onConflict: 'task_id' },
+        );
       if (enrichmentError) {
         return NextResponse.json({ error: enrichmentError.message }, { status: 500 });
       }

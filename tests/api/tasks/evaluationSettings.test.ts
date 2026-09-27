@@ -118,7 +118,13 @@ describe('task API evaluation gates', () => {
 
     const response = await POST(request({ title: 'Task', workspace_id: 'ws-1', story_points: 5 }));
     expect(response.status).toBe(201);
-    expect(enrichmentUpsert).toHaveBeenCalledWith(expect.objectContaining({ task_id: 'task-1', story_points: 5 }));
+    // Второй аргумент { onConflict: 'task_id' } обязателен: PK task_enrichments
+    // = `id`, которого в payload нет, поэтому без конфликтного столбца PostgREST
+    // делает INSERT и падает на UNIQUE(task_id) (см. ADR-2026-09-27).
+    expect(enrichmentUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ task_id: 'task-1', story_points: 5 }),
+      { onConflict: 'task_id' },
+    );
     expect(await response.json()).toMatchObject({ task: { story_points: 5 } });
   });
 
@@ -143,7 +149,10 @@ describe('task API evaluation gates', () => {
       { params: Promise.resolve({ id: 'task-1' }) },
     );
     expect(response.status).toBe(200);
-    expect(enrichmentUpsert).toHaveBeenCalledWith(expect.objectContaining({ task_id: 'task-1', story_points: 8 }));
+    expect(enrichmentUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ task_id: 'task-1', story_points: 8 }),
+      { onConflict: 'task_id' },
+    );
     expect(vi.mocked(enrichTaskRow)).toHaveBeenCalled();
   });
 });

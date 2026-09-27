@@ -29,13 +29,20 @@ function resolveContentType(filename: string, fileType?: string): string {
   return ext === '.md' ? 'text/markdown' : 'text/plain';
 }
 
-function computeChecksum(buffer: ArrayBuffer): string {
-  const hash = new Uint8Array(buffer);
-  let sum = 0;
-  for (let i = 0; i < hash.length; i++) {
-    sum = (sum + hash[i]) % 1000000;
-  }
-  return `checksum_${sum}_${hash.length}`;
+/**
+ * SHA-256 содержимого файла.
+ *
+ * Раньше здесь была сумма байт по модулю миллион плюс длина
+ * (`checksum_${sum}_${len}`). Это не хеш: коллизии тривиальны, а
+ * `workspace_documents.checksum` нигде не использовался — повторная загрузка
+ * одного и того же файла создавала новый документ и новый набор чанков.
+ * Настоящий SHA-256 позволяет отсекать дубли по содержимому.
+ */
+async function computeChecksum(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export async function POST(
@@ -159,7 +166,7 @@ export async function POST(
 
     for (const file of files) {
       const fileBuffer = await file.arrayBuffer();
-      const checksum = computeChecksum(fileBuffer);
+      const checksum = await computeChecksum(fileBuffer);
       const ext = getFileExtension(file.name);
       const filename = `${crypto.randomUUID()}${ext}`;
       const storagePath = `${workspaceId}/${filename}`;

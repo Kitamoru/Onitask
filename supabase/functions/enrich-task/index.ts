@@ -61,6 +61,7 @@ interface TaskRow {
 interface WorkspaceSettings {
   workspace_context: string | null;
   data_sharing_level: string | null;
+  doc_kb_config: { enabled?: boolean } | null;
   story_points_config: {
     enabled?: boolean;
     estimation_type?: 'hours' | 'days' | 'abstract';
@@ -84,10 +85,39 @@ interface EnrichmentResult {
 
 const NEURALDEEP_URL = 'https://api.neuraldeep.ru/v1';
 const MODEL = 'gpt-oss-120b';
-const EMBEDDING_MODEL = 'bge-m3';
+
+/**
+ * МОДЕЛЬ ЭМБЕДДИНГОВ (2026-09-27, решение владельца).
+ *
+ * Раньше здесь стоял `bge-m3`, а `doc-process` индексировал документы через
+ * `e5-large`. Запрос и документ считались в разных пространствах: `match_doc_chunks`
+ * сравнивал вектор bge-m3 с векторами e5-large. Ошибка молчаливая — RPC отрабатывал
+ * и возвращал шум, поэтому оставалась незамеченной.
+ *
+ * Теперь единая модель `e5-large` для обоих корпусов. Она требует асимметричные
+ * префиксы, и это не косметика:
+ *   - `passage: ` — при ЗАПИСИ вектора (задача, чанк документа);
+ *   - `query: `   — при ПОИСКЕ (match_tasks, match_doc_chunks).
+ * Путь задачи в коде: enrich-task читает embedding_hash → cache-hit → вектор
+ * сохранён с passage-префиксом, и он же уходит в match_tasks как passage. Если
+ * вставить query-префикс сюда, косинус между разными пространствами вернётся.
+ * Не менять без нового замера качества.
+ */
+const EMBEDDING_MODEL = 'e5-large';
+const PASSAGE_PREFIX = 'passage: ';
+const QUERY_PREFIX = 'query: ';
+
 const MAX_RETRIES = 3;
 const RAG_MATCH_COUNT = 5;
 const RAG_MIN_SIMILARITY = 0.75;
+
+// Пороги Doc RAG по data_sharing_level (onitask_ai_.md §2.2 шаг 2.5, INV-15).
+// 'minimal' — документы провайдеру не уходят вовсе; 'full' требует DPA и снимает
+// порог similarity. Раньше здесь стояли константы задач (0.75 / 5) для обоих
+// вызовов, то есть документы уезжали провайдеру даже при выключенном KB.
+const DOC_RAG_MIN_SIMILARITY_STANDARD = 0.68;
+const DOC_RAG_MATCH_COUNT_STANDARD = 3;
+const DOC_RAG_MATCH_COUNT_FULL = 10;
 
 // ═══════════════════════════════════════════════════════
 // Zod schema (onitask_ai_.md §2.5)
@@ -186,9 +216,16 @@ async function computeContentHash(title: string, description: string | null): Pr
 }
 
 /**
- * Generate embedding via NeuralDeep bge-m3 (for RAG semantic search).
+ * Generate embedding via NeuralDeep (e5-large) for RAG semantic search.
+ *
+ * `prefix` обязателен: e5-large различает стороны корпуса, и вектор, записанный
+ * с `passage: `, нельзя сравнивать с вектором, посчитанным с `query: `.
  */
-async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
+async function generateEmbedding(
+  text: string,
+  apiKey: string,
+  prefix: string,
+): Promise<number[]> {
   const res = await fetch(`${NEURALDEEP_URL}/embeddings`, {
     method: 'POST',
     headers: {
@@ -197,7 +234,7 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
     },
     body: JSON.stringify({
       model: EMBEDDING_MODEL,
-      input: text,
+      input: `${prefix}${text}`,
     }),
   });
 
@@ -282,6 +319,7 @@ async function buildRagContext(
   apiKey: string,
   sharingLevel: string = 'standard',
   taskPrefix: string = '???',
+  docKbEnabled: boolean = false,
 ): Promise<{ structural: string; doc: string; memory: string; related: string }> {
   const ctx = { structural: '', doc: '', memory: '', related: '' };
 
@@ -329,7 +367,17 @@ async function buildRagContext(
     // 'standard'/'full': top-5 (текущее поведение)
     const matchCount = sharingLevel === 'minimal' ? 3 : RAG_MATCH_COUNT;
     const queryText = `${task.title} ${task.description ?? ''}`.trim();
-    const embedding = await generateEmbedding(queryText, apiKey);
+    // Сторона запроса: e5-large требует `query: `. Вектор задачи в tasks.embedding
+    // сохранён с `passage: ` — смешивать нельзя.
+    const embedding = await generateEmbedding(queryText, apiKey, QUERY_PREFIX);
+
+      // Doc RAG (INV-15, onitask_ai_.md §2.2 шаг 2.5).
+    // Гейт по doc_kb_config.enabled: раньше его здесь не было вообще, и при
+    // выключенном KB контент документов всё равно уходил провайдеру.
+    // 'minimal' — документы наружу не уходят; 'full' — DPA обязателен, порог
+    // снят; 'standard' — консервативный порог и малый top-K.
+    const docKbActive = docKbEnabled && sharingLevel !== 'minimal';
+    const isFullLevel = sharingLevel === 'full';
 
     const [tasksRes, docRes] = await Promise.all([
       supabase.rpc('match_tasks', {
@@ -339,12 +387,16 @@ async function buildRagContext(
         exclude_task_id: task.id,
         p_workspace_id: task.workspace_id,
       }),
-      supabase.rpc('match_doc_chunks', {
-        query_embedding: embedding,
-        match_count: RAG_MATCH_COUNT,
-        min_similarity: RAG_MIN_SIMILARITY,
-        p_workspace_id: task.workspace_id,
-      }),
+      docKbActive
+        ? supabase.rpc('match_doc_chunks', {
+            query_embedding: embedding,
+            match_count: isFullLevel
+              ? DOC_RAG_MATCH_COUNT_FULL
+              : DOC_RAG_MATCH_COUNT_STANDARD,
+            min_similarity: isFullLevel ? 0 : DOC_RAG_MIN_SIMILARITY_STANDARD,
+            p_workspace_id: task.workspace_id,
+          })
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     // ─── F03-05: Implicit calibration via assignment_history ──────────────
@@ -526,7 +578,7 @@ serve(async (req: Request) => {
     // ── 4. Load workspace settings ──────────────────────────
     const { data: settings, error: settingsError } = await supabase
       .from('workspace_settings')
-      .select('workspace_context, data_sharing_level, story_points_config')
+      .select('workspace_context, data_sharing_level, story_points_config, doc_kb_config')
       .eq('workspace_id', task.workspace_id)
       .single() as { data: WorkspaceSettings | null; error: unknown };
 
@@ -570,9 +622,11 @@ serve(async (req: Request) => {
       embedding = task.embedding;
       cacheHit = true;
     } else {
-      // Cache-miss: вызываем NeuralDeep Hub
+      // Cache-miss: вызываем NeuralDeep Hub.
+      // Сторона документа: этот вектор ПИШЕТСЯ в tasks.embedding и позже
+      // участвует в match_tasks как passage, поэтому префикс `passage: `.
       const queryText = `${task.title} ${task.description ?? ''}`.trim();
-      embedding = await generateEmbedding(queryText, neuralDeepKey);
+      embedding = await generateEmbedding(queryText, neuralDeepKey, PASSAGE_PREFIX);
 
       // Сохраняем эмбеддинг и хэш
       await supabase
@@ -589,7 +643,16 @@ serve(async (req: Request) => {
     // ── 6. Build RAG context (standard only) ────────────────
     let rag = { structural: '', doc: '', memory: '', related: '' };
     if (mode === 'standard') {
-      rag = await buildRagContext(supabase, task, neuralDeepKey, sharingLevel, taskPrefix);
+      // Гейт Doc RAG: при выключенном KB документы провайдеру не уходят (INV-15).
+      const docKbEnabled = (settings as WorkspaceSettings | null)?.doc_kb_config?.enabled === true;
+      rag = await buildRagContext(
+        supabase,
+        task,
+        neuralDeepKey,
+        sharingLevel,
+        taskPrefix,
+        docKbEnabled,
+      );
     }
 
     // ── 7. Build system prompt (onitask_ai_.md §2.3) ────────
@@ -738,7 +801,7 @@ ${rag.related || '[]'}
         workspace_id: task.workspace_id,
         enrichment_status: 'stale',
         enrichment_notes: 'version conflict: task updated during enrichment',
-      });
+      }, { onConflict: 'task_id' });
       await supabase
         .from('enrichment_queue')
         .update({ status: 'done', processed_at: new Date().toISOString() })
@@ -750,12 +813,32 @@ ${rag.related || '[]'}
     }
 
     // ── 10. Update tasks.cognitive_weight + upsert task_enrichments ──
-    await supabase.from('tasks')
+    // Ошибки записи ОБЯЗАТЕЛЬНО проверяются. Раньше здесь стоял голый `await`
+    // без деструктуризации `error`: при отказе PostgREST функция продолжала
+    // путь, помечала джоб `done` и отвечала "Task enriched successfully",
+    // хотя в task_enrichments ничего не попало. Пользователь и оператор видели
+    // успех при полном отсутствии обогащения — ровно тот класс отказов, который
+    // мы уже дважды находили в этом контуре.
+    const { error: taskUpdateError } = await supabase.from('tasks')
       .update({ cognitive_weight: result.cognitive_weight })
       .eq('id', taskId)
       .eq('version', currentTask?.version ?? task.version);
+    if (taskUpdateError) {
+      console.error('enrich-task: tasks.cognitive_weight update failed', taskUpdateError);
+      await handleFailure(supabase, task, job.id, taskUpdateError);
+      return new Response(
+        JSON.stringify({ error: 'task_update_failed' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
-    await supabase.from('task_enrichments').upsert({
+    // onConflict ОБЯЗАТЕЛЕН. Без него PostgREST считает конфликтным столбцом
+    // первичный ключ (`id`), которого в payload нет: генерируется новый uuid,
+    // конфликта по `id` не происходит, идёт INSERT и он падает на
+    // UNIQUE(task_id) — 23505. Именно так F-03 терял результат при любом
+    // повторном обогащении (retry по F03-10 после handleFailure, который сам
+    // создаёт строку), а ошибка проглатывалась.
+    const { error: upsertError } = await supabase.from('task_enrichments').upsert({
       task_id: taskId,
       workspace_id: task.workspace_id,
       cognitive_weight: result.cognitive_weight,
@@ -767,7 +850,16 @@ ${rag.related || '[]'}
       enrichment_status: 'done',
       model_used: cacheHit ? 'cached' : MODEL,
       enriched_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'task_id' });
+
+    if (upsertError) {
+      console.error('enrich-task: task_enrichments upsert failed', upsertError);
+      await handleFailure(supabase, task, job.id, upsertError);
+      return new Response(
+        JSON.stringify({ error: 'enrichment_upsert_failed', detail: upsertError.message }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
     // ── 11. Realtime push (enrichment_done) ─────────────────
     const sprintId = currentTask?.sprint_id ?? null;
@@ -862,13 +954,14 @@ async function handleFailure(
     );
 
     // Обновляем запись в task_enrichments (attempts, last_attempt_at)
+    // onConflict: task_id — см. комментарий в основном пути записи.
     await supabase.from('task_enrichments').upsert({
       task_id: task.id,
       workspace_id: task.workspace_id,
       enrichment_status: 'pending',
       attempts,
       last_attempt_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'task_id' });
 
     // Переназначаем задачу в очереди enrichment_queue с новым scheduled_at
     await supabase
@@ -890,7 +983,7 @@ async function handleFailure(
       failed_at: new Date().toISOString(),
       attempts,
       last_attempt_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'task_id' });
     await supabase
       .from('enrichment_queue')
       .update({ status: 'failed', processed_at: new Date().toISOString() })

@@ -260,6 +260,63 @@ format is deliberately compact so that agents can load the file quickly.
  [x] DOC-03 Создать bucket 'documents' в Supabase Storage (ручное создание через Dashboard) #infra !high
       Dashboard → Storage → Create Bucket → name: `documents`, public: OFF, file_size_limit: 524288.
 
+## Stage 6c · Починка Doc RAG и векторного поиска (2026-09-27)
+
+> Аудит перед этими задачами: Doc RAG не проходил end-to-end ни разу
+> (0 документов, 0 чанков), а `match_tasks` не мог вернуть строку по построению.
+> Полный разбор — ADR-2026-09-27 в `decisions.md`.
+
+ - [x] VEC-01 Единая модель эмбеддингов `e5-large` + префиксы `passage:`/`query:` #ai !high
+       `doc-process` индексировал через `e5-large`, `enrich-task` искал через `bge-m3` —
+       косинус между векторами разных моделей бессмыслен, RPC отвечал 200 и возвращал шум.
+       Решение владельца: `e5-large` везде. Контракт зафиксирован комментарием в шапке
+       `enrich-task/index.ts` и тестом.
+ - [x] VEC-02 `idx_tasks_embedding`: IVFFlat `lists=100` → HNSW (m=16, ef_construction=64) #db !med
+       Миграция `130`. IVFFlat при ~50 строках давал ~0.5 вектора на кластер.
+       Отклонение от A-4 — зафиксировано в ADR-2026-09-27.
+ - [x] VEC-03 Edge Function `task-embed`: свип `embedding IS NULL` → пересчёт #ai !high
+       Закрывает и бэкфилл, и дрейф после правок заголовка. Бэкфилл выполнен:
+       50/50 эмбеддингов; `match_tasks` вернул 5 строк (0.84–0.90) вместо 0.
+ - [x] VEC-04 Крон `task-embed-sweep` `*/5 * * * *` #db !low
+ - [x] VEC-05 Крон `doc-process-tick` `*/2 * * * *` — драйвер очереди #db !med
+       Раньше единственный триггер — fire-and-forget `void fetch()` из Route Handler;
+       `pending`-джоб висел вечно. `*/2`, а не `*/1`: функция занимает до 120 с.
+ - [x] VEC-06 `get_task_context`: `relevant_docs` из заглушки `null` #mcp !med
+       За гейтом `doc_kb_config.enabled` и `data_sharing_level !== 'minimal'`.
+ - [x] VEC-07 `DocumentsCard`: статус `"completed"` → `"ready"` (в CHECK БД — `ready`) #ui !low
+       Успешно обработанный документ не отрисовывался ни иконкой, ни подписью.
+ - [x] VEC-08 `computeChecksum`: сумма байт по модулю → SHA-256 #db !low
+ - [x] VEC-09 `doc-process`: удалить мёртвый хвост (`context_stale`, `workspace_context_rebuild`) #ai !low
+       Обе сущности снесены F03-16; ошибки `await` не проверялись — падения невидимы.
+ - [x] VEC-10 `doc-process`: UTF-16LE → UTF-8, отступы из NBSP → пробелы (482 строки) #infra !low
+       Git видел файл как бинарник, diff и ревью были невозможны.
+ - [x] VEC-11 Обрезка документа сверх лимита объявляется явно (`status='failed'`) #ai !med
+       Вместо тихого `slice(0, MAX_FILE_SIZE_CHARS)` и `break` по `MAX_CHUNKS_PER_DOC`,
+       из-за которых UI рапортовал «Готово» при покрытии ~50k символов из 100k.
+ - [x] VEC-12 Тесты на «падающие молча» места #test !med
+       `tests/supabase/edgeFunctionContracts.test.ts` — структурная целостность
+       Edge Functions (ловит вложенность объявлений, из-за которой `task-embed` v1
+       висел вместо ответа: скобки сошлись, `tsc` молчал, статус был ACTIVE).
+       `tests/supabase/docKbContracts.test.ts` — единая модель, префиксы, формула
+       хеша, `DocumentStatus` против CHECK-констрейнта. Оба проверены мутацией.
+
+ - [x] VEC-13 E2E документов: загрузить `.md` через UI → `status='ready'`, `workspace_doc_chunks` непуста #test !med
+       **ЗАКРЫТО 2026-09-27.** Владелец включил KB и загрузил DESIGN.md:
+       `status='ready'`, 14 чанков, все с эмбеддингами, `source_origin='doc_rag'`.
+       Кросс-корпусная схожесть задача↔чанк min/avg/max = 0.24/0.76/0.84 —
+       распределение невырожденное, значит оба корпуса в одном векторном пространстве.
+       `match_doc_chunks` отдал 3 осмысленных чанка (Icons/Components/Spacing).
+ - [x] VEC-14 `upsert` по `task_enrichments` без `onConflict` терял результат F-03 #db !high
+       Найдено при E2E (VEC-13), к RAG отношения не имеет. PK таблицы = `id`, его нет
+       в payload → PostgREST делает INSERT и падает на UNIQUE(task_id) (23505).
+       В Edge Function ошибка не проверялась: джоб `done` + «Task enriched successfully»
+       при полностью пустой БД. Ломалось всё повторное: ретраи F03-10 и ручная правка
+       Story Points (500). Исправлено в 6 местах + проверка `error` → `handleFailure`.
+ - [x] VEC-15 Аудит `upsert` по схеме → `tests/supabase/upsertConflictTarget.test.ts` #test !med
+       Первая версия (регулярка в окне 40 строк) дала ложноотрицательный результат
+       и не поймала намеренную мутацию. Переписана на AST с точным указанием
+       файла и строки.
+
 ---
 
 ## Stage 6b · Card Enrichment (F-03)
@@ -278,6 +335,11 @@ format is deliberately compact so that agents can load the file quickly.
       ai_.md §2.2 шаг 3–4. Реализовано: `supabase/functions/enrich-task/index.ts` — постобработка `relatedWithHistory` с запросом `assignment_history` WHERE `outcome_status='completed_on_time'`, avg вычисляется при ≥3 записях.
  - [x] F03-06 Doc RAG с ветвлением по `data_sharing_level` (minimal=skip, standard=sim≥0.68, full=без порога) #ai !med @blocked_by:F03-01
       ai_.md §2.2 шаг 2.5.
+      **Доделано 2026-09-27:** добавлен гейт `doc_kb_config.enabled` (его не было —
+      дыра INV-15) и спековые пороги 0.68/3 и 0.0/10 вместо задачных 0.75/5.
+      Модель приведена к `e5-large` с префиксом `query:`; до этого запрос шёл через
+      `bge-m3` против векторов `e5-large`, т.е. сравнивались разные пространства.
+      См. ADR-2026-09-27.
  - [x] F03-07 LTM RAG (порог ≥500 done задач) #ai !low @blocked_by:F03-01
       ai_.md §2.2 шаг 2.6. Реализовано: `supabase/functions/enrich-task/index.ts` — `match_agent_memory` вызывается только если `sharingLevel !== 'minimal'` AND COUNT(done tasks) ≥ 500.
  - [x] F03-08 System Prompt (JSON mode, output schema, anchor-примеры `ai_hint`) #ai !high @blocked_by:F03-02,F03-04,F03-05,F03-06,F03-07

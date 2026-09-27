@@ -17,6 +17,70 @@ import type {
   DomainResult,
 } from '../../shared/types';
 
+/**
+ * Релевантные фрагменты документов доски для агента (Doc RAG).
+ *
+ * Модель `e5-large` и префикс `query:` — те же, что в F-03. Сторона здесь именно
+ * запрос: вектор задачи в tasks.embedding сохранён с `passage:`. Смешивать нельзя.
+ *
+ * Любая ошибка деградирует в null: контекст агента не должен падать из-за
+ * справочного блока (A-6).
+ */
+async function getRelevantDocs(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  workspaceId: string,
+  task: { title: string; description?: string | null },
+): Promise<GetTaskContextResult['relevant_docs']> {
+  try {
+    const { data: settings } = await supabase
+      .from('workspace_settings')
+      .select('data_sharing_level, doc_kb_config')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+
+    const docKbEnabled = (settings as any)?.doc_kb_config?.enabled === true;
+    const sharingLevel = (settings as any)?.data_sharing_level ?? 'standard';
+    if (!docKbEnabled || sharingLevel === 'minimal') return null;
+
+    const apiKey = process.env.NEURALDEEP_KEY || '';
+    if (!apiKey) return null;
+
+    const queryText = `${task.title} ${task.description ?? ''}`.trim();
+    if (!queryText) return null;
+
+    const res = await fetch('https://api.neuraldeep.ru/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: 'e5-large', input: `query: ${queryText}` }),
+    });
+    if (!res.ok) return null;
+
+    const embedding = (await res.json())?.data?.[0]?.embedding;
+    if (!Array.isArray(embedding)) return null;
+
+    const isFullLevel = sharingLevel === 'full';
+    const { data: chunks, error } = await supabase.rpc('match_doc_chunks', {
+      query_embedding: embedding,
+      match_count: isFullLevel ? 10 : 3,
+      min_similarity: isFullLevel ? 0 : 0.68,
+      p_workspace_id: workspaceId,
+    });
+    if (error || !chunks || chunks.length === 0) return null;
+
+    return chunks.map((c: any) => ({
+      filename: c.filename ?? '',
+      section: c.meta_headers?.h2 ?? c.meta_headers?.h1 ?? '',
+      content: c.content ?? '',
+      similarity: typeof c.similarity === 'number' ? c.similarity : 0,
+    }));
+  } catch {
+    return null; // graceful degradation
+  }
+}
+
 export async function getTaskContext(
   params: GetTaskContextParams
 ): Promise<DomainResult<GetTaskContextResult>> {
@@ -98,8 +162,12 @@ export async function getTaskContext(
     }
   }
 
-  // --- Relevant docs (semantic search pending match_doc_chunks wiring → graceful null) ---
-  const relevantDocs = null;
+  // --- Relevant docs (Doc RAG) ------------------------------------------------------------
+  // Долго стоял заглушкой `const relevantDocs = null`, то есть агент физически не
+  // видел документы доски, хотя RPC match_doc_chunks и таблица чанков готовы.
+  // Гейты те же, что в F-03 (INV-15): KB выключен → не идём; data_sharing_level
+  // 'minimal' → контент документов наружу не уходит.
+  const relevantDocs = await getRelevantDocs(supabase, workspaceId, task);
 
   // --- Subgraph (A-12) --------------------------------------------------------------------
   const subgraph = await getTaskSubgraph(workspaceId, params.task_id);

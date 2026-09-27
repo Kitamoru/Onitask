@@ -12,7 +12,11 @@ import { cn } from "@/lib/cn";
 const MAX_DOCUMENTS = 10;
 
 // Status type for server-stored documents
-export type DocumentStatus = "processing" | "completed" | "failed";
+// Статусы берутся из CHECK-констрейнта workspace_documents.status:
+// 'processing' | 'ready' | 'failed'. Раньше здесь стояло 'completed', которого в
+// БД нет, — успешно обработанный документ не попадал ни в одну ветку и не
+// показывал ни иконку, ни подпись.
+export type DocumentStatus = "processing" | "ready" | "failed";
 
 export interface ServerDocument {
   id: string;
@@ -89,7 +93,7 @@ export function DocumentsCard({
     switch (status) {
       case "processing":
         return <Loader2 className="h-4 w-4 animate-spin text-accent-amber" />;
-      case "completed":
+      case "ready":
         return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
       case "failed":
         return <AlertCircle className="h-4 w-4 text-accent-red" />;
@@ -103,7 +107,7 @@ export function DocumentsCard({
     switch (status) {
       case "processing":
         return "Обработка...";
-      case "completed":
+      case "ready":
         return "Готово";
       case "failed":
         return "Ошибка";

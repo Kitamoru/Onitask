@@ -221,17 +221,24 @@ export async function PATCH(
     }
 
     if (evaluation.storyPoints.enabled && body.story_points !== undefined) {
+      // onConflict: task_id обязателен. PK таблицы — `id`, которого в payload
+      // нет, поэтому без явного target PostgREST делает INSERT и падает на
+      // UNIQUE(task_id). Раньше ручная правка Story Points завершалась 500,
+      // если у задачи уже была строка обогащения (то есть почти всегда).
       const { error: enrichmentError } = await supabase
         .from('task_enrichments')
-        .upsert({
-          task_id: taskId,
-          workspace_id: taskRow.workspace_id,
-          story_points: body.story_points,
-          sp_estimation_type: 'abstract',
-          enrichment_status: 'done',
-          model_used: 'manual',
-          enriched_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            task_id: taskId,
+            workspace_id: taskRow.workspace_id,
+            story_points: body.story_points,
+            sp_estimation_type: 'abstract',
+            enrichment_status: 'done',
+            model_used: 'manual',
+            enriched_at: new Date().toISOString(),
+          },
+          { onConflict: 'task_id' },
+        );
       if (enrichmentError) {
         return NextResponse.json({ error: enrichmentError.message }, { status: 500 });
       }

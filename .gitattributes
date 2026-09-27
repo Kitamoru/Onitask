@@ -1,0 +1,30 @@
+# Исходники — всегда текст.
+# Без этого правила git определяет «бинарность» по NUL-байтам, и UTF-16 файл
+# (таким был сохранён в репозитории supabase/functions/doc-process/index.ts)
+# делает дифф нечитаемым: `Bin 39762 -> 23527 bytes` вместо построчного.
+# После перевода файла на UTF-8 правило гарантирует текстовый diff и
+# предсказуемую нормализацию переводов строк на всех машинах.
+* text=auto eol=lf
+
+*.ts   text
+*.tsx  text
+*.js   text
+*.jsx  text
+*.json text
+*.md   text
+*.sql  text
+*.css  text
+*.yml  text
+*.yaml text
+*.toml text
+
+# Бинарные файлы, которые легально лежат в репозитории.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary
