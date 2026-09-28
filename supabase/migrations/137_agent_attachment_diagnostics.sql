@@ -173,22 +173,46 @@ BEGIN
     v_target_column := 'review';
 
     IF v_details IS NOT NULL THEN
+      -- Ищем воркера по ИМЕНИ АГЕНТА. В workers его лежит в source_id, а
+      -- колонки agent_name в таблице НЕТ.
+      --
+      -- Здесь была ошибка, внесённая 2026-09-28 при переписывании тела функции:
+      -- подставили `AND w.agent_name = v_exec.agent_name`. Из-за этого
+      -- ops_terminal падал на каждом успешном прогоне агента с
+      -- «column w.agent_name does not exist», и результат терялся целиком —
+      -- агент отвечал (2976 и 1304 completion-токенов), но терминал бросал
+      -- исключение. Тело plpgsql разбирается только в рантайме, поэтому
+      -- CREATE OR REPLACE проходил, а tsc и vitest были зелёными: базы в CI нет.
+      --
+      -- Урок: тело функции не пишется по памяти. Чтение этой миграции и вывод
+      -- pg_get_functiondef обрезались ровно на этом блоке — читать по частям.
       SELECT w.id, w.display_name
         INTO v_agent_worker, v_agent_name
         FROM public.workers w
        WHERE w.workspace_id = v_exec.workspace_id
-         AND w.agent_name = v_exec.agent_name
+         AND w.type = 'agent'
+         AND w.source_id = v_exec.agent_name
        LIMIT 1;
 
-      INSERT INTO public.task_comments (workspace_id, task_id, author_id, author_type, body_text, source)
-      VALUES (
-        v_exec.workspace_id,
-        p_task_id,
-        v_agent_worker,
-        CASE WHEN v_agent_worker IS NULL THEN 'agent'::text ELSE 'worker'::text END,
-        v_details,
-        'result'
-      );
+      -- task_comments: колонка называется body (НЕ body_text), а author_name и
+      -- consolidated обязательны. Здесь была вторая ошибка того же переписывания:
+      -- подставили body_text и забыли author_name/consolidated, из-за чего INSERT
+      -- падал с «column "body_text" of relation "task_comments" does not exist»
+      -- и результат агента снова терялся целиком. Форма взята из
+      -- persist_result_on_done (миграция 136) — тот же комментарий-результат.
+      -- Проверено настоящим INSERT с откатом: INSERT_OK.
+      INSERT INTO public.task_comments
+        (workspace_id, task_id, author_id, author_name, author_type,
+         body, source, consolidated)
+      VALUES
+        (v_exec.workspace_id,
+         p_task_id,
+         v_agent_worker,
+         COALESCE(v_agent_name, 'Агент'),
+         'agent',
+         v_details,
+         'result',
+         false);
     END IF;
 
   ELSIF p_outcome = 'escalate' THEN
