@@ -7,6 +7,7 @@ import {
   canCurrentUserReview,
   isReviewDecision,
   isReviewBypassBlocked,
+  isResultArtifact,
 } from '../../src/lib/reviewDecision';
 import type { TaskEntity } from '../../src/types/flowboard';
 
@@ -228,5 +229,51 @@ describe('isReviewBypassBlocked (REV-02) — обход назначенного
         { workerId: 'agent-1', role: null },
       ),
     ).toBe(true);
+  });
+});
+
+// ─── isResultArtifact (REV-02): зелёный бордер итогового результата ──────────
+// Отдельный предикат, потому что source='agent' занят под обычные реплики
+// агента и details: покрасив его, мы бы позеленили лишнее.
+
+describe('isResultArtifact (REV-02) — зелёный бордер итога', () => {
+  const feedItem = (
+    kind: string,
+    source?: unknown,
+  ): { kind: string; payload?: { source?: unknown } | null } => ({
+    kind,
+    payload: source === undefined ? null : { source },
+  });
+
+  it('source=result → true', () => {
+    expect(isResultArtifact(feedItem('comment', 'result'))).toBe(true);
+  });
+
+  it('source=agent → false: details и обычные реплики агента не красим', () => {
+    expect(isResultArtifact(feedItem('comment', 'agent'))).toBe(false);
+  });
+
+  it('остальные источники → false', () => {
+    for (const source of ['twa', 'mcp', 'telegram', 'system', 'review', 'cron']) {
+      expect(isResultArtifact(feedItem('comment', source))).toBe(false);
+    }
+  });
+
+  it('не комментарий (status/activity) → false, даже с source=result', () => {
+    expect(isResultArtifact(feedItem('status', 'result'))).toBe(false);
+    expect(isResultArtifact(feedItem('activity', 'result'))).toBe(false);
+  });
+
+  it('нет payload / нет source / null / undefined → false', () => {
+    expect(isResultArtifact(feedItem('comment'))).toBe(false);
+    expect(isResultArtifact(feedItem('comment', null))).toBe(false);
+    expect(isResultArtifact({ kind: 'comment', payload: {} })).toBe(false);
+    expect(isResultArtifact(null)).toBe(false);
+    expect(isResultArtifact(undefined)).toBe(false);
+  });
+
+  it('result НЕ подпадает под isReviewDecision — цвета не конфликтуют', () => {
+    expect(isResultArtifact(feedItem('comment', 'result'))).toBe(true);
+    expect(isReviewDecision(feedItem('comment', 'result'))).toBe(false);
   });
 });

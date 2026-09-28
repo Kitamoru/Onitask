@@ -34,6 +34,20 @@ export function canCurrentUserReview(
  * Писатели сегодня: review_action(fix) — причина возврата (083),
  * review_action(approve) — «результат согласован» (086).
  */
+/**
+ * REV-02: итоговый результат задачи — ровно один комментарий на задачу.
+ *
+ * Отдельный предикат, а не расширение isReviewDecision: source='result' нельзя
+ * смешивать с source='agent'. Под source='agent' идут и обычные реплики агента,
+ * и подробности сдачи (details), поэтому «покрасить всё агентское» означало бы
+ * позеленить лишнее. Итог помечен собственным значением — миграция 136.
+ */
+export function isResultArtifact(
+  item: { kind: string; payload?: { source?: unknown } | null } | null | undefined,
+): boolean {
+  return item?.kind === 'comment' && String(item.payload?.source ?? '') === 'result';
+}
+
 export function isReviewDecision(
   item: { kind: string; payload?: { source?: unknown } | null } | null | undefined,
 ): boolean {
