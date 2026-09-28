@@ -2901,3 +2901,31 @@ attempt >= 3 эскалирует, а не переочередивает. Об�
 открытой лизой, репёр освободит их в ближайшую минуту. Для проверки нужен
 ручной перезапуск из бота.
 
+## ПОДТВЕРЖДЕНО ЖИВЫМ ПРОГОНОМ: source_path работает (2026-09-28 20:25)
+
+Прогон `13f1e6f6` по задаче aca89ee8: `status: collected`, `error_code: null`,
+`outcome: review`, `attachments: 1`. Ответ агента:
+
+    "attachments": [{ "filename": "presidents_usa.csv",
+                      "source_path": "presidents_usa.csv",
+                      "caption": "Список 10 первых президентов США с датами жизни" }]
+
+`content_base64` в ответе нет вообще — канал заменён полностью. Значит
+`GET https://drift.neuraldeep.ru/v1/files/presidents_usa.csv` по ключу коннектора
+ОТДАЁТ байты, и файл переживает отдельный запрос. Ровно то, что было
+непроверенным предположением из пробы `deliver_file`.
+
+Терминал отработал целиком: задача в `review`, `metadata.ops_terminal_summary`
+заполнен, `attachments_count: 1` (миграция 137 видна), комментарий с
+`source='result'` создан (миграция 136-форма, проверенная вставкой).
+`task_attachments`: `presidents_usa.csv`, 580 байт, `text/csv`,
+`source='hosted_runtime'`.
+
+Два уточнения по урокам:
+- `task_attachments.execution_id` — это `task_executions.id`, а НЕ
+  `agent_runs.id`. Проверять доставку по `agent_runs.id` молча даёт пустоту.
+- 580 байт: агент выбрал CSV, как его и просили для таблиц. Выигрыш по
+  потолку размера пока теоретический — он проявится на задаче, где нужен
+  настоящий xlsx/pdf.
+
+
