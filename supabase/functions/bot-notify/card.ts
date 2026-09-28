@@ -232,6 +232,13 @@ export function buildTaskNotifyCard(
     nackDetail?: string;
     /** Детали результата агента доступны в комментариях задачи. */
     hasDetails?: boolean;
+    /**
+     * Рекомендация агента (metadata.recommendation, миграция 134).
+     *
+     * Необязательна: контракт её не требует, поле есть только когда агент
+     * прислал его сам. Обрезается — карточка Telegram ограничена 4096 символами.
+     */
+    recommendation?: string;
     /** DUP-01: full_id задачи-дубля («Похожа на …»). */
     duplicateOfFullId?: string;
     /** DUP-01: similarity 0..1 от find_duplicate_tasks. */
@@ -267,6 +274,13 @@ export function buildTaskNotifyCard(
     if (extras.hasDetails) {
       extraLines.push('Подробности — в комментариях задачи.');
     }
+  }
+
+  // Рекомендация идёт после «Результата», но отдельным блоком: на карточке
+  // эскалации этот блок не показываем — там уже есть «Предлагаю:» из
+  // suggested_action, и две строки с предложением читались бы как дубль.
+  if (extras?.recommendation && context !== 'escalation') {
+    extraLines.push(`Рекомендация: ${escapeHtml(truncateForTelegram(extras.recommendation, 500))}`);
   }
 
   if (

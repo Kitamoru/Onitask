@@ -206,6 +206,61 @@ describe('bot-notify card: регрессии контекстов', () => {
     });
   });
 
+  describe('bot-notify card: рекомендация агента (134)', () => {
+    it('печатается после результата', () => {
+      const res = buildTaskNotifyCard(makeCard({ column: 'review' }), 'review', {
+        reason: 'Отчёт по закупке готов',
+        taskId: 'uuid-1',
+        recommendation: 'Оптимизировать заказ через Фрутоманию + Винум.',
+      });
+      expect(res.text).toContain('Результат: Отчёт по закупке готов');
+      expect(res.text).toContain('Рекомендация: Оптимизировать заказ через Фрутоманию + Винум.');
+      // Порядок важен: рекомендация читается как продолжение результата.
+      expect(res.text.indexOf('Результат:')).toBeLessThan(
+        res.text.indexOf('Рекомендация:'),
+      );
+    });
+
+    it('html-экранируется', () => {
+      // Текст приходит от LLM и попадает в HTML-карточку Telegram: без
+      // экранирования это вектор инъекции разметки.
+      const res = buildTaskNotifyCard(makeCard(), 'review', {
+        reason: 'Готово',
+        recommendation: '<b>жирный</b> & "кавычки"',
+      });
+      expect(res.text).not.toContain('<b>жирный</b>');
+      expect(res.text).toContain('&lt;b&gt;');
+      expect(res.text).toContain('&amp;');
+    });
+
+    it('длинная рекомендация обрезается под лимит Telegram', () => {
+      const res = buildTaskNotifyCard(makeCard(), 'review', {
+        reason: 'Готово',
+        recommendation: 'я'.repeat(1200),
+      });
+      expect(res.text).toContain('Рекомендация:');
+      expect(res.text.length).toBeLessThan(4096);
+    });
+
+    it('без рекомендации карточка не меняется', () => {
+      const res = buildTaskNotifyCard(makeCard({ column: 'review' }), 'review', {
+        reason: 'краткий итог',
+        taskId: 'uuid-1',
+      });
+      expect(res.text).not.toContain('Рекомендация:');
+    });
+
+    it('на эскалации не дублирует «Предлагаю»', () => {
+      const res = buildTaskNotifyCard(makeCard(), 'escalation', {
+        reason: 'нет доступа',
+        suggestedAction: 'выдать роль',
+        recommendation: 'выдать роль админу',
+      });
+      expect(res.text).toContain('Предлагаю: выдать роль');
+      expect(res.text).not.toContain('Рекомендация:');
+    });
+  });
+
   it('done без reason — нет пустой строки «Результат:»', () => {
     const res = buildTaskNotifyCard(makeCard(), 'done');
     expect(res.text).not.toContain('Результат:');

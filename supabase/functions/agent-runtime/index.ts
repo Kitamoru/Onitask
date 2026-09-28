@@ -17,13 +17,7 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runAgent, type RunRequest } from './provider.ts';
-import {
-  base64ToBytes,
-  EXTENSION_MIME,
-  extensionOf,
-  reviewAttachments,
-  type RuntimeAttachmentMeta,
-} from './attachments.ts';
+import { persistRunAttachments } from './persistAttachments.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -210,89 +204,11 @@ function failureDetail(failure: {
 }
 
 // ============================================================================
-// Файлы агента (FILE-01/08): base64 из JSON → Storage + манифест
+// Файлы агента (FILE-01/08): base64 из JSON → Storage + манифест.
+// Реализация вынесена в persistAttachments.ts — она покрыта тестом, который
+// вызывает её с подставным клиентом (index.ts грузит esm.sh и в vitest не
+// поднимается).
 // ============================================================================
-
-interface AttachmentIngest {
-  /** Манифест для metadata терминала (тот же формат, что у MCP-пути). */
-  manifest: RuntimeAttachmentMeta[];
-  rejected: { filename: string; reason: string }[];
-  failed: { filename: string; reason: string }[];
-}
-
-/**
- * Кладёт файлы агента туда же, куда и MCP-путь (opsTerminalCore): бинарник →
- * Storage 'task-attachments' (приватный), манифест → task_attachments.
- *
- * Идемпотентность retry — UNIQUE(execution_id, filename): уже загруженные
- * имена пропускаем. Ошибка на одном файле не роняет прогон: результат уже
- * получен, причина уходит проверяющему в metadata и в журнал прогона.
- */
-async function persistRunAttachments(
-  supabase: SupabaseClient,
-  opts: { workspaceId: string; taskId: string; executionId: string; raw: unknown },
-): Promise<AttachmentIngest> {
-  const review = reviewAttachments(opts.raw);
-  if (review.accepted.length === 0) {
-    return { manifest: [], rejected: review.rejected, failed: [] };
-  }
-
-  const { data: existing } = await supabase
-    .from('task_attachments')
-    .select('filename')
-    .eq('execution_id', opts.executionId);
-  const already = new Set(
-    ((existing as { filename: string }[] | null) ?? []).map((row) => row.filename),
-  );
-
-  const manifest: RuntimeAttachmentMeta[] = [];
-  const failed: { filename: string; reason: string }[] = [];
-
-  for (const attachment of review.accepted) {
-    if (already.has(attachment.filename)) continue;
-
-    const ext = extensionOf(attachment.filename);
-    const mime = EXTENSION_MIME[ext] ?? 'application/octet-stream';
-    const bytes = base64ToBytes(attachment.content_base64);
-    const storagePath = `${opts.workspaceId}/${opts.taskId}/${crypto.randomUUID().replace(/-/g, '')}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('task-attachments')
-      .upload(storagePath, bytes, { contentType: mime, upsert: false });
-    if (uploadError) {
-      failed.push({ filename: attachment.filename, reason: uploadError.message });
-      continue;
-    }
-
-    const { error: insertError } = await supabase.from('task_attachments').insert({
-      workspace_id: opts.workspaceId,
-      task_id: opts.taskId,
-      execution_id: opts.executionId,
-      filename: attachment.filename,
-      mime_type: mime,
-      size_bytes: bytes.length,
-      storage_path: storagePath,
-      uploaded_by: null,
-      author_type: 'agent',
-      source: 'hosted_runtime',
-    });
-    if (insertError) {
-      // Откат: не оставляем сироту в Storage без строки манифеста.
-      await supabase.storage.from('task-attachments').remove([storagePath]);
-      failed.push({ filename: attachment.filename, reason: insertError.message });
-      continue;
-    }
-
-    manifest.push({
-      filename: attachment.filename,
-      mime_type: mime,
-      size_bytes: bytes.length,
-      storage_path: storagePath,
-    });
-  }
-
-  return { manifest, rejected: review.rejected, failed };
-}
 
 async function handleJob(
   supabase: SupabaseClient,
@@ -481,6 +397,13 @@ async function handleJob(
       });
     }
 
+    // Имя файла без содержимого — не вложение, а обещание агента. Пишем в
+    // response_digest как диагностику, но НЕ отдельным комментарием в задаче:
+    // после починки контракта (агент наконец видит требование приложить файл)
+    // этот случай должен исчезнуть, а пока он добавлял бы вторую строку в
+    // ленту задачи ради того, что уже видно в agent_runs.
+    const claimed = outcome.result.claimedFiles;
+
     const { data: terminalData, error: terminalError } = await supabase.rpc('ops_terminal', {
       p_execution_id: leaseJob.execution_id,
       p_runtime_id: runtimeId,
@@ -493,6 +416,10 @@ async function handleJob(
         ...(outcome.result.details
           ? { details: outcome.result.details }
           : {}),
+        ...(outcome.result.recommendation
+          ? { recommendation: outcome.result.recommendation }
+          : {}),
+        ...(claimed.length > 0 ? { claimed_files: claimed } : {}),
         source: 'hosted_connector',
         run_id: runId,
         model: outcome.usage.model ?? job.model,
@@ -547,6 +474,14 @@ async function handleJob(
           // Мягкий разбор конверта не должен быть молчаливым (provider.ts).
           coerced: outcome.result.coerced,
           attachments: files.manifest.length,
+          recommendation: outcome.result.recommendation,
+          claimed_files: claimed,
+          // Сырой ответ на успехе: без него кейс «агент назвал файл, которого
+          // нет» невозможно отличить от «файл был, но не распарсился».
+          // Раньше raw_preview писался только на провале — это и был дефект.
+          // observed_keys здесь НЕ дублируем: на мягком пути он уже едет
+          // в metadata (provider.ts) и оттуда — в карточку эскалации.
+          raw_preview: outcome.rawPreview,
         },
         finished_at: new Date().toISOString(),
         next_poll_at: null,
