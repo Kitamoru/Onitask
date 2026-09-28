@@ -6,7 +6,7 @@
 // удовлетворяет toContain). Здесь файл реально «загружается» и «вставляется»,
 // а утверждения — на результат.
 import { describe, it, expect } from 'vitest';
-import { persistRunAttachments } from '../../supabase/functions/agent-runtime/persistAttachments';
+import { persistRunAttachments, mintUploadTarget } from '../../supabase/functions/agent-runtime/persistAttachments';
 
 const TEXT = Buffer.from('привет, мир', 'utf8').toString('base64');
 
@@ -71,6 +71,67 @@ const baseOpts = {
   taskId: 'task-1',
   executionId: 'exec-1',
 };
+
+// Регресс ONIT-43: URL собирался вручную как
+// `/storage/v1/object/upload/<bucket>/<path>`, Storage читал сегмент `upload`
+// как имя бакета и отвечал «bucket not found». Агент честно отступал по
+// инструкции «не смог загрузить — верни пустой массив», и файл терялся.
+describe('mintUploadTarget (ONIT-43)', () => {
+  const clientWith = (data: unknown, error: unknown = null) =>
+    ({
+      storage: {
+        from: () => ({ createSignedUploadUrl: async () => ({ data, error }) }),
+      },
+    }) as never;
+
+  const ids = { workspaceId: 'ws-1', taskId: 'task-1', executionId: 'exec-1' };
+
+  it('отдаёт ровно тот signedUrl, который вернул API', async () => {
+    // Ключевое утверждение: URL НЕ собирается вручную. Любая ручная склейка
+    // — это копирование детали API, которую меняет обновление Supabase.
+    const signedUrl =
+      'https://proj.supabase.co/storage/v1/object/upload/sign/task-attachments/ws-1/task-1/exec-1?token=abc';
+    const target = await mintUploadTarget(clientWith({ signedUrl, token: 'abc' }), ids);
+
+    expect(target).toEqual({ storagePath: 'ws-1/task-1/exec-1', url: signedUrl });
+    expect(target?.url).toBe(signedUrl);
+  });
+
+  it('подписывается ровно тот путь, который агент вернёт в storage_path', async () => {
+    // Инвариант: агент берёт storage_path из блока ЗАГРУЗКА, значит подписанный
+    // путь и возвращаемый в промт обязаны совпадать. Иначе манифест укажет
+    // на объект, которого нет, и файл молча потеряется.
+    const signedPaths: string[] = [];
+    const client = {
+      storage: {
+        from: () => ({
+          createSignedUploadUrl: async (path: string) => {
+            signedPaths.push(path);
+            return { data: { signedUrl: `https://p/${path}?token=t`, token: 't' }, error: null };
+          },
+        }),
+      },
+    } as never;
+
+    const target = await mintUploadTarget(client, ids);
+
+    expect(signedPaths).toEqual(['ws-1/task-1/exec-1']);
+    expect(target?.storagePath).toBe(signedPaths[0]);
+    expect(target?.url).toContain(signedPaths[0]);
+  });
+
+  it('ошибка подписи → null, а не ссылка в никуда', async () => {
+    const target = await mintUploadTarget(clientWith(null, { message: 'no access' }), ids);
+    expect(target).toBeNull();
+  });
+
+  it('ответ без signedUrl → null', async () => {
+    // Раньше проверяли token и склеивали URL сами. Если API вернёт иное
+    // поле, мы обязаны упасть в base64-фолбэк, а не выдать битую ссылку.
+    const target = await mintUploadTarget(clientWith({ token: 'abc' }), ids);
+    expect(target).toBeNull();
+  });
+});
 
 describe('persistRunAttachments: дедуп по имени файла', () => {
   it('файл один раз попадает в Storage и в манифест', async () => {

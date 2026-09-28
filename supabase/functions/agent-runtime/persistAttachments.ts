@@ -112,16 +112,16 @@ export async function mintUploadTarget(
     const { data, error } = await supabase.storage
       .from('task-attachments')
       .createSignedUploadUrl(storagePath, UPLOAD_URL_TTL_SECONDS);
-    if (error || !data?.token) {
-      console.error('[agent-runtime] mint upload url failed:', error?.message ?? 'no token');
+    // Забираем ГОТОВЫЙ signedUrl из ответа. Собирать его вручную нельзя:
+    // первая версия склеила `/storage/v1/object/upload/<bucket>/<path>`, и
+    // Storage читал сегмент `upload` как имя бакета. Агент получал 404
+    // «bucket not found» и сдавался (ONIT-43). Формат подписи — деталь API,
+    // которую меняет обновление Supabase; отдавать её значит не копировать.
+    if (error || !data?.signedUrl) {
+      console.error('[agent-runtime] mint upload url failed:', error?.message ?? 'no signedUrl');
       return null;
     }
-    const projectUrl = Deno.env.get('SUPABASE_URL');
-    if (!projectUrl) return null;
-    return {
-      storagePath,
-      url: `${projectUrl}/storage/v1/object/upload/task-attachments/${storagePath}?token=${data.token}`,
-    };
+    return { storagePath, url: data.signedUrl };
   } catch (err) {
     console.error('[agent-runtime] mint upload url threw:', err);
     return null;
