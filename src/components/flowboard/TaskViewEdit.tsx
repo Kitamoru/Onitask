@@ -1003,7 +1003,7 @@ export function TaskViewEdit({
   const doneColumnBlocked =
     task != null &&
     isReviewBypassBlocked(
-      { column: currentTaskColumn, reviewer_id: task.reviewer_id ?? null },
+      { reviewer_id: task.reviewer_id ?? null },
       { workerId: currentUserId, role: currentUserRole },
     );
 

@@ -94,11 +94,9 @@ export async function moveTask(
   // UI, HTTP-роут и агента, дублировать правило безопасности нельзя.
   if (
     params.target_column === 'done' &&
+    currentTask.column !== 'done' &&
     isReviewBypassBlocked(
-      {
-        column: currentTask.column as string,
-        reviewer_id: currentTask.reviewer_id as string | null,
-      },
+      { reviewer_id: currentTask.reviewer_id as string | null },
       {
         workerId: await resolveAgentWorkerId(agentName, workspaceId),
         role: null,

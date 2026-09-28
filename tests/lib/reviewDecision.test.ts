@@ -155,80 +155,61 @@ describe('isReviewDecision (083/086) — циановый бордер ревь�
 });
 
 // ─── isReviewBypassBlocked (REV-02): назначенного ревьюера нельзя обойти ─────
-// Регресс на найденную дыру: старые гварды в route.ts / moveTask.ts / миграции
-// 082 срабатывали только при `!reviewer_id`, поэтому исполнитель мог провести
-// задачу с назначенным ревьюером прямо в «Сделано».
+// Правило: проверяющий назначен → в «Сделано» переводит только он сам или
+// owner/admin. Исходная колонка значения не имеет.
+//
+// Закрывает два обхода разом:
+//   1. review → done мимо ревьюера (старые гварды в route.ts / moveTask.ts и
+//      миграции 082 срабатывали только при `!reviewer_id`);
+//   2. backlog → done без ревью вообще — найдено живой проверкой BLTV-2.
 
 describe('isReviewBypassBlocked (REV-02) — обход назначенного ревьюера', () => {
-  it('исполнитель (не ревьюер) НЕ может провести в done — blocked', () => {
-    expect(
-      isReviewBypassBlocked(
-        { column: 'review', reviewer_id: 'r-1' },
-        { workerId: 'assignee-1', role: 'member' },
-      ),
-    ).toBe(true);
+  const blocked = (
+    reviewer_id: string | null,
+    workerId: string | null | undefined,
+    role: string | null,
+  ) => isReviewBypassBlocked({ reviewer_id }, { workerId, role });
+
+  it('исполнитель (не ревьюер) — blocked', () => {
+    expect(blocked('r-1', 'assignee-1', 'member')).toBe(true);
   });
 
   it('автор задачи тоже blocked, если ревьюер назначен', () => {
-    expect(
-      isReviewBypassBlocked(
-        { column: 'review', reviewer_id: 'r-1' },
-        { workerId: 'creator-1', role: 'member' },
-      ),
-    ).toBe(true);
+    expect(blocked('r-1', 'creator-1', 'member')).toBe(true);
   });
 
   it('аноним (workerId=null/undefined) → blocked', () => {
-    for (const workerId of [null, undefined]) {
-      expect(
-        isReviewBypassBlocked({ column: 'review', reviewer_id: 'r-1' }, { workerId, role: 'member' }),
-      ).toBe(true);
-    }
-  });
-
-  it('сам ревьюер может — это его решение', () => {
-    expect(
-      isReviewBypassBlocked(
-        { column: 'review', reviewer_id: 'r-1' },
-        { workerId: 'r-1', role: 'member' },
-      ),
-    ).toBe(false);
-  });
-
-  it('owner/admin форс-мейджит (сценарий «закрыть мимо ревьюера»)', () => {
-    for (const role of ['owner', 'admin']) {
-      expect(
-        isReviewBypassBlocked(
-          { column: 'review', reviewer_id: 'r-other' },
-          { workerId: 'x-1', role },
-        ),
-      ).toBe(false);
-    }
-  });
-
-  it('задача НЕ в review → false (правило про согласование не применяется)', () => {
-    for (const column of ['backlog', 'in_progress', 'done']) {
-      expect(
-        isReviewBypassBlocked({ column, reviewer_id: 'r-1' }, { workerId: 'a-1', role: 'member' }),
-      ).toBe(false);
-    }
-  });
-
-  it('ревьюер НЕ назначен → false: прежнее поведение не меняем (см. комментарий в модуле)', () => {
-    for (const reviewer_id of [null, undefined, '']) {
-      expect(
-        isReviewBypassBlocked({ column: 'review', reviewer_id }, { workerId: 'a-1', role: 'member' }),
-      ).toBe(false);
-    }
+    expect(blocked('r-1', null, 'member')).toBe(true);
+    expect(blocked('r-1', undefined, 'member')).toBe(true);
   });
 
   it('роль не задана (агент, role=null) → blocked, если агент не ревьюер', () => {
-    expect(
-      isReviewBypassBlocked(
-        { column: 'review', reviewer_id: 'r-1' },
-        { workerId: 'agent-1', role: null },
-      ),
-    ).toBe(true);
+    expect(blocked('r-1', 'agent-1', null)).toBe(true);
+  });
+
+  it('сам ревьюер может — это его решение', () => {
+    expect(blocked('r-1', 'r-1', 'member')).toBe(false);
+  });
+
+  it('owner/admin форс-мейджит (сценарий «закрыть мимо ревьюера»)', () => {
+    expect(blocked('r-other', 'x-1', 'owner')).toBe(false);
+    expect(blocked('r-other', 'x-1', 'admin')).toBe(false);
+  });
+
+  it('РЕГРЕСС BLTV-2: ревьюер назначен → blocked независимо от колонки', () => {
+    // Именно этот кейс проходил мимо: BLTV-2 лежала в backlog, а предикат
+    // первой версии смотрел только на column='review' и разрешал перенос.
+    // Сигнатура намеренно не принимает column — компилятор не даст проверить
+    // «а из другой колонки», потому что колонка в решении не участвует.
+    expect(blocked('r-1', 'assignee-1', 'member')).toBe(true);
+  });
+
+  it('ревьюер НЕ назначен → false: прежнее поведение не меняем', () => {
+    for (const reviewer_id of [null, undefined, '']) {
+      expect(isReviewBypassBlocked({ reviewer_id }, { workerId: 'a-1', role: 'member' })).toBe(
+        false,
+      );
+    }
   });
 });
 

@@ -176,9 +176,45 @@ describe('PATCH /api/tasks/[id] — REV-02 (обход назначенного 
     expect(res.status).toBe(200);
   });
 
-  it('задача НЕ в review (in_progress → done) с ревьюером: 200 — правило не применяется', async () => {
+  // Регресс на BLTV-2: задача с назначенным ревьюером, лежащая в backlog,
+  // уходила в «Сделано» без проверки — мимо и UI, и сервера.
+  it('РЕГРЕСС BLTV-2: backlog с ревьюером → done = 403, записи в БД нет', async () => {
+    vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue(actor('assignee-1', 'executor') as never);
+    const { client, updateSpy } = buildSupabase(makeTask({ column: 'backlog' }));
+    vi.mocked(createServerClient).mockReturnValue(client);
+
+    const res = await PATCH(mockRequest({ column: 'done' }), params);
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: REVIEW_BYPASS_BLOCKED });
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('in_progress с ревьюером → done = 403', async () => {
     vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue(actor('assignee-1', 'executor') as never);
     const { client, updateSpy } = buildSupabase(makeTask({ column: 'in_progress' }));
+    vi.mocked(createServerClient).mockReturnValue(client);
+
+    const res = await PATCH(mockRequest({ column: 'done' }), params);
+
+    expect(res.status).toBe(403);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('переименование задачи, УЖЕ в «Сделано», ревьюера не блокирует (guard только на переход)', async () => {
+    vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue(actor('assignee-1', 'executor') as never);
+    const { client, updateSpy } = buildSupabase(makeTask({ column: 'done' }));
+    vi.mocked(createServerClient).mockReturnValue(client);
+
+    const res = await PATCH(mockRequest({ title: 'Новое название' }), params);
+
+    expect(res.status).toBe(200);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('PATCH column=done по задаче, УЖЕ в done: no-op, не 403', async () => {
+    vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue(actor('assignee-1', 'executor') as never);
+    const { client, updateSpy } = buildSupabase(makeTask({ column: 'done' }));
     vi.mocked(createServerClient).mockReturnValue(client);
 
     const res = await PATCH(mockRequest({ column: 'done' }), params);

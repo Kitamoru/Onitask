@@ -216,11 +216,9 @@ export async function PATCH(
     // согласование. Пропускаем самого ревьюера и owner/admin — форс-мейдж.
     if (
       cleanUpdate.column === 'done' &&
+      taskRow.column !== 'done' &&
       isReviewBypassBlocked(
-        {
-          column: taskRow.column as string,
-          reviewer_id: taskRow.reviewer_id as string | null,
-        },
+        { reviewer_id: taskRow.reviewer_id as string | null },
         { workerId: actor?.id, role: actor?.role as string | null | undefined },
       )
     ) {
