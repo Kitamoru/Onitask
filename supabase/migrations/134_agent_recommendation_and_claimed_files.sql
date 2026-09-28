@@ -192,6 +192,14 @@ BEGIN
             jsonb_build_object(
               'ops_terminal_summary', p_summary,
               'recommendation', v_recommendation,
+              'claimed_files', v_claimed_files
+            )
+      WHERE id = p_task_id;
+      v_target_column := v_exec.task_column;
+    ELSE
+      RETURN public.ops_error('invalid_request', 'handoff next_owner must be agent:<name> or human.');
+    END IF;
+  END IF;
 
   UPDATE public.task_executions
   SET status = 'closed',
@@ -321,11 +329,3 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION public.notify_task_done IS
   '048 + 086 + 104 + 134: via_review, reason; + recommendation из metadata.ops_terminal.';
-
-            )
-      WHERE id = p_task_id;
-      v_target_column := v_exec.task_column;
-    ELSE
-      RETURN public.ops_error('invalid_request', 'handoff next_owner must be agent:<name> or human.');
-    END IF;
-  END IF;

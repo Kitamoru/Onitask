@@ -69,6 +69,7 @@ import ParticipantCard from './ParticipantCard';
 import { WorkerSelectSheet } from './WorkerSelectSheet';
 import { MoveTaskSheet } from './MoveTaskSheet';
 import { getTaskPermission } from '@/lib/taskPermissions';
+import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { ReviewDecisionBlock } from './ReviewDecisionBlock';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
@@ -996,6 +997,16 @@ export function TaskViewEdit({
     { workerId: currentUserId, role: currentUserRole },
   );
 
+  // REV-02: назначенный ревьюер блокирует перенос в «Сделано» — мимо него
+  // согласование не берётся. Тем же предикатом, что handleMoveTask и Route
+  // Handler, иначе кнопка обещает то, что сервер отклонит.
+  const doneColumnBlocked =
+    task != null &&
+    isReviewBypassBlocked(
+      { column: currentTaskColumn, reviewer_id: task.reviewer_id ?? null },
+      { workerId: currentUserId, role: currentUserRole },
+    );
+
   const availableForAssignee = workers.filter((w) => w.id !== reviewerId);
   const availableForReviewer = workers.filter((w) => w.id !== assignedTo);
 
@@ -1375,6 +1386,11 @@ export function TaskViewEdit({
         selectedColumn={moveTargetColumn}
         onSelect={setMoveTargetColumn}
         onConfirm={handleMoveConfirm}
+        // REV-02: назначенный ревьюер — «Сделано» недоступно, кроме случая
+        // самого ревьюера и owner/admin. Тот же предикат, что в handleMoveTask
+        // и в Route Handler, чтобы подсказка в UI и запрет не расходились.
+        disabledColumns={doneColumnBlocked ? ['done'] : []}
+        disabledReason={REVIEW_BYPASS_BLOCKED}
       />
     </>
   );

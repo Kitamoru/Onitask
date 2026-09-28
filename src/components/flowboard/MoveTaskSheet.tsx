@@ -39,6 +39,14 @@ export interface MoveTaskSheetProps {
   onSelect: (column: string) => void;
   /** Called when user confirms the move */
   onConfirm: (targetColumn: string) => void;
+  /**
+   * REV-02: колонки, в которые перенос запрещён (например «Сделано» при
+   * назначенном ревьюере). Рендерится как неактивная кнопка с причиной.
+   * Прокручивающий слой всё равно проверяет правило — это подсказка, а не запрет.
+   */
+  disabledColumns?: string[];
+  /** Причина блокировки — показывается, если выбрана заблокированная колонка */
+  disabledReason?: string;
 }
 
 /** Safe, no-op haptic helpers — mirror useTelegramAuth.triggerHaptic surface. */
@@ -57,12 +65,18 @@ export function MoveTaskSheet({
   selectedColumn,
   onSelect,
   onConfirm,
+  disabledColumns = [],
+  disabledReason,
 }: MoveTaskSheetProps) {
   // Invariant: no task selected yet → render nothing (the sheet mounts before a task is picked)
   if (!task) return null;
 
   const columns = MOVE_COLUMN_ORDER;
   const isSameAsTarget = selectedColumn === currentColumn;
+  const isTargetBlocked = disabledColumns.includes(selectedColumn);
+  // REV-02: подтверждать перенос в заблокированную колонку тоже нельзя — иначе
+  // кнопка «Переместить» выглядела бы рабочей и уводила в тупик.
+  const confirmDisabled = isSameAsTarget || isTargetBlocked;
 
   const handleConfirm = () => {
     successHaptic();
@@ -89,20 +103,27 @@ export function MoveTaskSheet({
         <div className="flex flex-col gap-2 pt-1">
           {columns.map((col) => {
             const isActive = selectedColumn === col;
+            const isBlocked = disabledColumns.includes(col);
             const color = COLUMN_ACCENTS[col] ?? COLUMN_ACCENTS.in_progress;
             const label = taskColumnLabel(col);
             return (
               <button
                 key={col}
                 type="button"
+                // REV-02: заблокированная колонка не выбирается. Само правило
+                // проверяется в handleMoveTask и на сервере — здесь подсказка.
+                disabled={isBlocked}
                 onClick={() => {
+                  if (isBlocked) return;
                   selectionHaptic();
                   onSelect(col);
                 }}
-                className={`w-full cursor-pointer rounded-lg border-2 bg-transparent p-3 text-left transition-colors ${
-                  isActive
-                    ? 'border-white'
-                    : 'border-line hover:border-white/30'
+                className={`w-full rounded-lg border-2 bg-transparent p-3 text-left transition-colors ${
+                  isBlocked
+                    ? 'cursor-not-allowed border-line opacity-40'
+                    : `cursor-pointer ${
+                        isActive ? 'border-white' : 'border-line hover:border-white/30'
+                      }`
                 }`}
                 aria-pressed={isActive}
               >
@@ -133,11 +154,16 @@ export function MoveTaskSheet({
           })}
         </div>
 
+        {/* REV-02: причина, по которой выбранная колонка недоступна */}
+        {isTargetBlocked && disabledReason && (
+          <p className="text-sm leading-snug text-text-muted">{disabledReason}</p>
+        )}
+
         {/* Confirm — amber solid, labeled with the target column */}
         <Button
           variant="solid"
           onClick={handleConfirm}
-          disabled={isSameAsTarget}
+          disabled={confirmDisabled}
           className="w-full"
         >
           {`Переместить → ${taskColumnLabel(selectedColumn)}`}
