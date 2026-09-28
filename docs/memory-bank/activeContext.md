@@ -2768,6 +2768,66 @@ the returned path}]`. То есть модель выполнила невыпо
 функции) — через `execute_sql`, БЕЗ записи в `supabase_migrations`; повторное
 применение файла безопасно, обе части идемпотентны. `supabase migration up
 --linked` не годится — виснет на пароле БД. `supabase functions deploy
+
+## ONIT-43, шаг 3: канал файла — source_path (2026-09-28)
+
+**Проба capabilities Drift (выполнена, код пробы удалён).** Ответы на три вопроса,
+которые мы не знали:
+
+1. **tools/function calling работает.** С `tools` в запросе Drift ответил
+   `finish_reason: "tool_calls"` и вызвал объявленную нами функцию
+   `submit_artifact` (106 completion-токенов).
+2. **Drift — не голая модель, а агентный рантайм.** Без наших инструментов он
+   сам перечислил свой набор: `run_command`, `write_file`, `read_file`,
+   `edit_file`, `list_directory`, `search_files`, `search_text`, `memory`,
+   `schedule_task`, `search_tools`, `load_tools`, `search_web`, `fetch_page`,
+   `generate_image`, `deliver_file`, `post_to_channel`. Значит у него есть шелл и
+   файловая система, и «bucket not found» из прогона 2026-09-27 был ПРАВДОЙ: он
+   реально ходил по нашей ссылке и получал настоящий 404.
+3. **`deliver_file` оставляет файл у Drift** и печатает путь вида
+   `[name.csv](/v1/files/name.csv)`. В теле API-ответа байтов при этом нет:
+   `content_len: 329`, лишних полей нет, `has_tool_calls: false` — платформа
+   выполнила свой инструмент внутри и вернула прозу.
+
+**Почему base64 не годится — замер, а не мнение.** Файлы по источникам:
+hosted_runtime 1.4 / 6.1 / 6.9 КБ; mcp (агент с файловыми инструментами)
+25 и 32 КБ; загрузка пользователем 32 и 71 КБ. Разрыв 5–10x, и формат
+деградировал: вместо `presidents_usa.xlsx` пришёл `presidents_usa.csv`. Настоящий
+xlsx — zip-контейнер, модель не выдаст его текстом надёжно.
+
+**Что сделано.** Промт переведён на `attachments: [{filename, source_path}]`,
+где `source_path` — путь в workspace агента. Ключевые формулировки: «СОЗДАЙ файл
+своим файловым инструментом (write_file, generate_image)», «source_path — это
+путь файла в ТВОЁМ workspace, ровно тот, который ты передал инструменту», «Onitask
+сам скачает файл по этому пути, байты не нужны», табличные данные — CSV,
+`xlsx/docx/pdf` — только если инструменты их действительно создают.
+
+**Проверено.** 525 тестов, 50 файлов. Мутация (возврат `content_base64` в
+контракт) роняет регресс-тест. `tsc` — только давняя ошибка
+`botNotifyCard.test.ts(154)`.
+
+**НЕ сделано, и это главное.** Забор файла не реализован. `reviewAttachments`
+`source_path` не понимает и отбросит такое вложение с причиной
+`neither content_base64 nor storage_path` — теперь она видна в карточке
+(миграция 137). Не проверено главное: доступен ли `GET <base>/v1/files/<path>`
+с ключом коннектора и переживает ли файл завершение запроса (в ответе нет
+`session_id`). Пока это не проверено, канал `source_path` — контракт без приёмника.
+
+**Про пробу — урок на будущее.** Проба потребовала исходящего `fetch` внутри
+Edge Function, и это сразу поймал `tests/supabase/edgeFunctionContracts.test.ts`:
+в функциях запрещён любой исходящий fetch, кроме `task-embed`. Guard сработал
+правильно; код пробы удалён, таблица `agent_probe_log` дропнута, `index.ts`
+возвращён к HEAD. Прогонять такие пробы придётся вне Edge Function.
+
+**Ограничения инструментов, замеченные по пути.** `apply_migration` режет длинные
+statement с телом функции; именованный dollar-тег `$ops$` вырезается, нужен `$$`.
+`supabase migration up --linked` виснет на пароле. `supabase functions invoke` в
+CLI 2.109.1 нет. pg_net отправляет запросы, но ответы не возвращает
+(`status_code` NULL), `net.http_collect_response` вручную не вызывается. Для
+новой таблицы нужен `notify pgrst, 'reload schema'`, иначе insert из Edge
+Function падает — и падает молча, если ошибку не проверять. `.env.local` в
+рабочем окружении содержит заглушки `[SENSITIVE]` вместо значений.
+
 --project-ref` работает без пароля.
 
 **Открыто.** Перезапуск ONIT-43 не выполнен (нужен запуск из UI) — не проверено,

@@ -123,8 +123,8 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('docx');
     // Сжатие промта не должно выкинуть требование приложить файл: именно
     // его не хватало в ONIT-42, где модель назвала отчёт и прошла как успех.
-    expect(user).toContain('content_base64');
-    expect(user).toContain('не приложив его в attachments, нельзя');
+    expect(user).toContain('source_path');
+    expect(user).toContain('не вернув его в attachments, нельзя');
 
     // Контракт лежит в user целиком, system отсылает к нему, а не дублирует:
     // два полных контракта в промпте — лишние токены без выигрыша.
@@ -134,22 +134,28 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('ONIT-36');
   });
 
-  it('в промте нет ссылки на загрузку: файл приходит только в ответе (ONIT-43)', () => {
-    // Регресс. Drift получил исправный signedUrl, вернул правильный
-    // storage_path и отчитался «Файл успешно загружен в Storage» — объекта в
-    // бакете не было. Проверка objectSizeBytes отбросила вложение с причиной,
-    // но модель выполнила невыполнимую инструкцию вместо фолбэка, который
-    // сработал бы. Здесь уместна проверка текста: промт и есть то, что уходит
-    // модели, и откат к заливке должен ломать этот тест, а не проходить.
+  it('в промте нет ни заливки по ссылке, ни base64: файл забираем сами по source_path', () => {
+    // Регресс. Смена канала проходит три ступени, и каждая ломалась:
+    //   1. Ссылка на загрузку — Drift получил исправный signedUrl, вернул
+    //      правильный storage_path и отчитался «Файл успешно загружен»;
+    //      объекта в бакете не было.
+    //   2. base64 в ответе — работает, но упирается в потолок: hosted-файлы
+    //      1.4…6.9 КБ против реальных 25…71 КБ у агента с файловыми
+    //      инструментами, и формат деградировал до csv.
+    //   3. source_path — файл создаёт инструмент агента, забираем мы.
+    // Здесь уместна проверка текста: промт и есть то, что уходит модели, и
+    // возврат ЛЮБОГО из двух прежних каналов должен ломать этот тест.
     const user = buildMessages(makeRequest())[1].content;
 
     expect(user).not.toContain('=== ЗАГРУЗКА ===');
     expect(user).not.toContain('сначала залей');
     expect(user).not.toContain('по ссылке');
     expect(user).not.toContain('storage_path');
+    expect(user).not.toContain('content_base64');
 
-    // Единственный канал — байты в JSON, и про это сказано прямо.
-    expect(user).toContain('content_base64');
+    // Единственный канал — путь в workspace агента, и про это сказано прямо.
+    expect(user).toContain('source_path');
+    expect(user).toContain('write_file');
     expect(user).toContain('CSV');
   });
 
