@@ -79,62 +79,24 @@ async function insertManifestRow(
   return true;
 }
 
-/** TTL одноразовой ссылки на загрузку. Должно хватать на POST файла агентом. */
-const UPLOAD_URL_TTL_SECONDS = 900;
-
-/**
- * FILE-08: одноразовая ссылка на загрузку файла + путь, который агент вернёт.
- *
- * Зачем так, а не base64 в ответе: байты, сгенерированные моделью, упираются
- * в потолок ответа (десятки тысяч токенов — это десятки килобайт файла) и ещё
- * стоят токены за каждый байт. Здесь байты идут обычным POST-ом, мимо модели,
- * поэтому размер ограничен только Storage.
- *
- * Ссылка именно одноразовая и с узким TTL: агент ходит по ней только чтобы
- * отдать файл текущего прогона. Права не нужны — авторизацию несёт сам URL.
- *
- * Ссылка привязана к ОДНОМУ объекту (Storage не умеет подписывать префикс),
- * и путь не имеет расширения: имя и MIME берутся из манифеста
- * (bot-notify отправляет в Telegram по filename из task_attachments).
- * Из-за привязки к одному объекту ссылка годится ровно для одного файла —
- * второй POST по ней перезаписал бы первый молча, поэтому ограничение
- * зафиксировано и в промте, и проверкой дубликатов в манифесте.
- *
- * Ошибка minting'а не должна ронять прогон: возвращаем null, и агент
- * отработает через base64-фолбэк.
- */
-export async function mintUploadTarget(
-  supabase: SupabaseClient,
-  ids: { workspaceId: string; taskId: string; executionId: string },
-): Promise<{ storagePath: string; url: string } | null> {
-  const storagePath = `${ids.workspaceId}/${ids.taskId}/${ids.executionId}`;
-  try {
-    const { data, error } = await supabase.storage
-      .from('task-attachments')
-      .createSignedUploadUrl(storagePath, UPLOAD_URL_TTL_SECONDS);
-    // Забираем ГОТОВЫЙ signedUrl из ответа. Собирать его вручную нельзя:
-    // первая версия склеила `/storage/v1/object/upload/<bucket>/<path>`, и
-    // Storage читал сегмент `upload` как имя бакета. Агент получал 404
-    // «bucket not found» и сдавался (ONIT-43). Формат подписи — деталь API,
-    // которую меняет обновление Supabase; отдавать её значит не копировать.
-    if (error || !data?.signedUrl) {
-      console.error('[agent-runtime] mint upload url failed:', error?.message ?? 'no signedUrl');
-      return null;
-    }
-    return { storagePath, url: data.signedUrl };
-  } catch (err) {
-    console.error('[agent-runtime] mint upload url threw:', err);
-    return null;
-  }
-}
+// FILE-08 (одноразовая ссылка на загрузку) удалён 2026-09-28 вместе с
+// UPLOAD_URL_TTL_SECONDS. Ссылка была исправна — баг был в том, что агенту
+// дали невыполнимую инструкцию: Drift получил signedUrl, вернул правильный
+// storage_path, отчитался «Файл успешно загружен в Storage», а объекта в бакете
+// не было. Причина не в формате URL (его чинили дважды) и не в бейте: модель
+// не умеет заливать по HTTP, но предпочла это фолбэку, который сработал бы.
+//
+// Не возвращать minting без смены промта: одно только наличие ссылки в
+// RunRequest делает заливку основным путём и воспроизводит этот же кейс.
 
 /**
  * Кладёт файлы агента туда же, куда и MCP-путь (opsTerminalCore): бинарник →
  * Storage 'task-attachments' (приватный), манифест → task_attachments.
  *
- * Два пути доставки байтов (FILE-08): агент залил файл сам по одноразовой
- * ссылке и вернул storage_path — тогда мы только пишем манифест; либо вернул
- * content_base64 — тогда декодируем и грузим сами (фолбэк для мелких файлов).
+ * content_base64 — штатный путь: байты кладут в ответ, декодируем и грузим мы.
+ * storage_path оставлен как защита: агент может придумать путь или подставить
+ * путь чужой задачи, и objectSizeBytes обязан отбросить такой файл с причиной,
+ * а не записать в манифест запись без байтов.
  *
  * Идемпотентность retry — UNIQUE(execution_id, filename): уже загруженные
  * имена пропускаем. Ошибка на одном файле не роняет прогон: результат уже

@@ -17,7 +17,7 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runAgent, type RunRequest } from './provider.ts';
-import { persistRunAttachments, mintUploadTarget } from './persistAttachments.ts';
+import { persistRunAttachments } from './persistAttachments.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -179,13 +179,23 @@ async function logEvent(
   tool: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
-  await supabase.from('agent_events').insert({
+  // Ошибку вставки НЕ глотаем молча. Так было 4 дня: agent_events_tool_check
+  // не знал 'agent_attachments_dropped', CHECK отклонял вставку, а logEvent
+  // её проглатывал — событие о потере файла не появлялось в таблице ни разу за
+  // всё время, и потеря выглядела как «потери не было». Журнал аудита
+  // best-effort (его потеря не должна ронять прогон), но молчать о ней нельзя.
+  const { error } = await supabase.from('agent_events').insert({
     workspace_id: job.workspace_id,
     task_id: job.task_id,
     agent_name: job.agent_name,
     tool,
     metadata,
   });
+  if (error) {
+    console.error(
+      `[agent-runtime] agent_events insert failed: tool=${tool} error=${error.message}`,
+    );
+  }
 }
 
 /**
@@ -373,11 +383,6 @@ async function handleJob(
     },
     comments,
     subgraph: toArray(subgraphRaw) as Record<string, unknown>[],
-    upload: await mintUploadTarget(supabase, {
-      workspaceId: job.workspace_id,
-      taskId: task.id,
-      executionId: leaseJob.execution_id,
-    }),
   };
 
   await logEvent(supabase, job, 'agent_run_submitted', { run_id: runId, model: job.model });

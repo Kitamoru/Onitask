@@ -26,7 +26,6 @@ const makeRequest = () => ({
   },
   comments: [],
   subgraph: [],
-  upload: null,
 });
 
 describe('agent-runtime provider: result contract', () => {
@@ -124,8 +123,8 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('docx');
     // Сжатие промта не должно выкинуть требование приложить файл: именно
     // его не хватало в ONIT-42, где модель назвала отчёт и прошла как успех.
-    expect(user).toContain('storage_path');
-    expect(user).toContain('Называть файл в summary без загрузки нельзя');
+    expect(user).toContain('content_base64');
+    expect(user).toContain('не приложив его в attachments, нельзя');
 
     // Контракт лежит в user целиком, system отсылает к нему, а не дублирует:
     // два полных контракта в промпте — лишние токены без выигрыша.
@@ -135,19 +134,23 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('ONIT-36');
   });
 
-  it('блок ЗАГРУЗКА попадает в промт только когда рантайм выдал ссылку', () => {
-    const withoutUpload = buildMessages(makeRequest())[1].content;
-    expect(withoutUpload).not.toContain('=== ЗАГРУЗКА ===');
+  it('в промте нет ссылки на загрузку: файл приходит только в ответе (ONIT-43)', () => {
+    // Регресс. Drift получил исправный signedUrl, вернул правильный
+    // storage_path и отчитался «Файл успешно загружен в Storage» — объекта в
+    // бакете не было. Проверка objectSizeBytes отбросила вложение с причиной,
+    // но модель выполнила невыполнимую инструкцию вместо фолбэка, который
+    // сработал бы. Здесь уместна проверка текста: промт и есть то, что уходит
+    // модели, и откат к заливке должен ломать этот тест, а не проходить.
+    const user = buildMessages(makeRequest())[1].content;
 
-    const withUpload = buildMessages({
-      ...makeRequest(),
-      upload: { storagePath: 'ws-1/task-1/exec-1', url: 'https://p.supabase.co/storage/v1/object/upload/task-attachments/ws-1/task-1/exec-1?token=t' },
-    })[1].content;
-    expect(withUpload).toContain('=== ЗАГРУЗКА ===');
-    expect(withUpload).toContain('ws-1/task-1/exec-1');
-    expect(withUpload).toContain('token=t');
-    // Ссылка обязана стоять в промте, иначе агент не сможет залить файл.
-    expect(withUpload).toContain('POST');
+    expect(user).not.toContain('=== ЗАГРУЗКА ===');
+    expect(user).not.toContain('сначала залей');
+    expect(user).not.toContain('по ссылке');
+    expect(user).not.toContain('storage_path');
+
+    // Единственный канал — байты в JSON, и про это сказано прямо.
+    expect(user).toContain('content_base64');
+    expect(user).toContain('CSV');
   });
 
   it('промпт объясняет, что делать, если файл отдать нельзя', () => {
