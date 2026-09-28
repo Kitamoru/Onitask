@@ -399,6 +399,9 @@ async function handleJob(
       taskId: task.id,
       executionId: leaseJob.execution_id,
       raw: outcome.result.attachments,
+      // Забор файла: хост и ключ берём из коннектора, никогда из ответа модели.
+      baseUrl: job.base_url,
+      apiKey,
     });
 
     if (files.rejected.length > 0 || files.failed.length > 0) {

@@ -19,18 +19,22 @@ export type RunOutcome = 'review' | 'escalate' | 'handoff';
 /**
  * Файл-артефакт, который агент вернул внутри JSON-ответа.
  *
- * Два пути доставки байтов:
- *   · storage_path — основной. Агент заливает файл сам по одноразовой ссылке
- *     из блока ЗАГРУЗКА и возвращает только путь. Байты идут обычным HTTP и
- *     не проходят через генерацию моделью, поэтому размер файла не упирается
- *     в потолок ответа и не стоит токенов.
- *   · content_base64 — фолбэк для мелких файлов, которые агент вернул прямо в
- *     ответе. Оставлен, чтобы не отрезать агентов, которые грузить не умеют.
+ * Три пути доставки байтов, в порядке предпочтения:
+ *   · source_path — основной. Файл создан файловым инструментом агента
+ *     (write_file/generate_image) и лежит в его workspace; путь приходит в
+ *     ответе, байты мы забираем сами с хоста коннектора. Потолка ответа нет,
+ *     и настоящий бинарник (xlsx/pdf/docx) не выдаётся моделью как текст.
+ *   · storage_path — файл уже в нашем бакете. Сохранён как защита: агент
+ *     может подставить путь, и objectSizeBytes обязан отбросить с причиной.
+ *   · content_base64 — байты прямо в ответе. Работает, но упирается в потолок
+ *     ответа (замер: 1.4…6.9 КБ против 25…71 КБ у агента с файловыми
+ *     инструментами) и поэтому в промте больше не запрашивается.
  */
 export interface AgentAttachment {
   filename: string;
   content_base64?: string;
   storage_path?: string;
+  source_path?: string;
   caption?: string;
 }
 
@@ -501,9 +505,23 @@ export function collectArtifacts(record: Record<string, unknown>, nested: Record
     const contentBase64 =
       asString(element.content_base64) ?? asString(element.content);
 
-    // Основной путь (FILE-08): агент залил файл сам по ссылке из блока
-    // ЗАГРУЗКА и вернул путь. Байты в Storage, нам остаётся записать
-    // манифест — проверка содержимого идёт в persistRunAttachments.
+    // Основной путь: файл лежит в workspace агента, забираем сами. Смычка
+    // до Storage — в persistAttachments, здесь только форма ответа.
+    const sourcePath = asString(element.source_path);
+
+    if (filename && sourcePath) {
+      const caption = asString(element.caption);
+      attachments.push(
+        caption
+          ? { filename, source_path: sourcePath, caption }
+          : { filename, source_path: sourcePath },
+      );
+      return;
+    }
+
+    // Защита: файл заявлен как уже лежащий в нашем бакете. Байты в Storage,
+    // нам остаётся записать манифест — проверка содержимого идёт в
+    // persistRunAttachments.
     const storagePath = asString(element.storage_path);
 
     if (filename && storagePath) {

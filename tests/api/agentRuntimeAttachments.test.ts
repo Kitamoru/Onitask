@@ -143,7 +143,7 @@ describe('agent-runtime attachments: отбраковка отдельного �
       { filename: 'binary.txt', content_base64: bytesB64([0x61, 0x00, 0x62]) },
     ]);
     expect(review.rejected.map((r) => r.reason)).toEqual([
-      'neither content_base64 nor storage_path',
+      'neither source_path, content_base64 nor storage_path',
       'content does not match declared type: txt',
     ]);
   });

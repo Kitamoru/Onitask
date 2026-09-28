@@ -18,6 +18,8 @@ export interface RuntimeAttachmentInput {
   filename: string;
   /** Фолбэк: байты пришли прямо в ответе агента. */
   content_base64?: string;
+  /** Путь файла в workspace агента: забираем сами с хоста коннектора. */
+  source_path?: string;
   /** Основной путь: файл уже залит агентом в бакет по одноразовой ссылке. */
   storage_path?: string;
   caption?: string;
@@ -208,6 +210,7 @@ export function reviewAttachments(raw: unknown, opts: ReviewOptions = {}): Runti
     const filename = sanitizeFilename(rawName);
     const contentBase64 = String(record.content_base64 ?? '').trim();
     const storagePath = String(record.storage_path ?? '').trim();
+    const sourcePath = String(record.source_path ?? '').trim();
 
     if (accepted.length >= MAX_ATTACHMENTS) {
       rejected.push({ filename: filename || label, reason: `more than ${MAX_ATTACHMENTS} files` });
@@ -249,8 +252,33 @@ export function reviewAttachments(raw: unknown, opts: ReviewOptions = {}): Runti
       return;
     }
 
+    // Ветка source_path: файл лежит в workspace агента, мы его забираем сами.
+    // Путь приходит от модели, поэтому проверяем форму, а не содержимое:
+    // никаких `..`, никаких схем, никаких абсолютных путей. Хост собирает
+    // persistAttachments от base_url коннектора — URL от модели не берётся
+    // никогда (SSRF, см. CLAIM_ONLY_SOURCES в provider.ts).
+    if (sourcePath) {
+      if (sourcePath.length > MAX_STORAGE_PATH_LENGTH) {
+        rejected.push({ filename, reason: 'source_path is too long' });
+        return;
+      }
+      if (sourcePath.includes('..') || sourcePath.startsWith('/') || sourcePath.startsWith('\\')) {
+        rejected.push({ filename, reason: 'source_path must be a relative workspace path' });
+        return;
+      }
+      if (/^[a-z][a-z0-9+.-]*:/i.test(sourcePath)) {
+        rejected.push({ filename, reason: 'source_path must not be a URL' });
+        return;
+      }
+      const caption = record.caption ? String(record.caption).slice(0, 1024) : undefined;
+      accepted.push(
+        caption ? { filename, source_path: sourcePath, caption } : { filename, source_path: sourcePath },
+      );
+      return;
+    }
+
     if (!contentBase64) {
-      rejected.push({ filename, reason: 'neither content_base64 nor storage_path' });
+      rejected.push({ filename, reason: 'neither source_path, content_base64 nor storage_path' });
       return;
     }
     if (contentBase64.length > MAX_ONE_BASE64_LENGTH) {

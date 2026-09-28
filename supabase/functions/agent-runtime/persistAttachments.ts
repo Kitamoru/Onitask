@@ -13,8 +13,82 @@ import {
   EXTENSION_MIME,
   extensionOf,
   reviewAttachments,
+  sniffMatches,
   type RuntimeAttachmentMeta,
 } from './attachments.ts';
+
+/** Потолок забора: ровно лимит бакета task-attachments (file_size_limit). */
+const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
+/** Таймаут одного GET. Согласовано с потолком прогона, но не занимает его. */
+const ARTIFACT_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Собирает URL артефакта ОТ base_url коннектора, а не от модели.
+ *
+ * Это граница безопасности: путь приходит из недоверенного ответа (task
+ * description тоже попадает в промт), поэтому единственный источник хоста —
+ * настройка коннектора. Никакой схемы, никакого абсолютного пути, никакого
+ * `..` (это проверяется ещё в reviewAttachments, здесь — страховка). Редиректы
+ * запрещены на уровне fetch: иначе `https://drift…/redirect?to=169.254.169.254`
+ * обошёл бы проверку хоста.
+ *
+ * Drift отдаёт файлы по схеме <base>/files/<путь в workspace> — это зафиксировано
+ * пробой его инструмента deliver_file, который печатает `/v1/files/<name>`.
+ */
+export function resolveArtifactUrl(baseUrl: string, sourcePath: string): URL | null {
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return null;
+  }
+  if (base.protocol !== 'https:') return null;
+  if (!sourcePath || sourcePath.includes('..') || sourcePath.startsWith('/')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(sourcePath)) return null;
+
+  const prefix = base.pathname.replace(/\/+$/, '');
+  let target: URL;
+  try {
+    target = new URL(`${prefix}/files/${sourcePath.split('/').map(encodeURIComponent).join('/')}`, base.origin);
+  } catch {
+    return null;
+  }
+  // Хост берётся из origin коннектора, так что проверка почти формальная —
+  // но она ловит неверный base_url, и стоит ноль.
+  return target.host === base.host ? target : null;
+}
+
+/**
+ * GET артефакта. Возвращает байты либо причину: вызывающий пишет её в
+ * `attachments_failed`, поэтому текст должен быть коротким и без URL —
+ * адрес может нести токен.
+ */
+export async function fetchArtifactBytes(
+  url: URL,
+  apiKey: string,
+): Promise<{ bytes: Uint8Array } | { error: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ARTIFACT_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: '*/*' },
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    if (!res.ok) return { error: `artifact fetch failed: HTTP ${res.status}` };
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length === 0) return { error: 'artifact is empty' };
+    if (bytes.length > MAX_ARTIFACT_BYTES) {
+      return { error: `artifact is larger than the 2MB bucket limit (${bytes.length} bytes)` };
+    }
+    return { bytes };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: `artifact fetch failed: ${message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface AttachmentIngest {
   /** Манифест для metadata терминала (тот же формат, что у MCP-пути). */
@@ -93,7 +167,9 @@ async function insertManifestRow(
  * Кладёт файлы агента туда же, куда и MCP-путь (opsTerminalCore): бинарник →
  * Storage 'task-attachments' (приватный), манифест → task_attachments.
  *
- * content_base64 — штатный путь: байты кладут в ответ, декодируем и грузим мы.
+ * source_path — штатный путь: файл создан инструментом агента в его workspace,
+ * а мы забираем байты GET-ом с хоста коннектора и грузим в Storage сами.
+ * content_base64 оставлен для агентов, которые файловые инструменты не имеют.
  * storage_path оставлен как защита: агент может придумать путь или подставить
  * путь чужой задачи, и objectSizeBytes обязан отбросить такой файл с причиной,
  * а не записать в манифест запись без байтов.
@@ -104,7 +180,16 @@ async function insertManifestRow(
  */
 export async function persistRunAttachments(
   supabase: SupabaseClient,
-  opts: { workspaceId: string; taskId: string; executionId: string; raw: unknown },
+  opts: {
+    workspaceId: string;
+    taskId: string;
+    executionId: string;
+    raw: unknown;
+    /** base_url коннектора: единственный источник хоста для забора файла. */
+    baseUrl: string;
+    /** Ключ агента — авторизация GET к его собственному API. */
+    apiKey: string;
+  },
 ): Promise<AttachmentIngest> {
   const review = reviewAttachments(opts.raw, {
     workspacePrefix: `${opts.workspaceId}/`,
@@ -130,8 +215,8 @@ export async function persistRunAttachments(
     const ext = extensionOf(attachment.filename);
     const mime = EXTENSION_MIME[ext] ?? 'application/octet-stream';
 
-    // Ветка FILE-08: байты агент уже залил сам по одноразовой ссылке. Нам НЕ
-    // надо ни декодировать, ни грузить — надо убедиться, что объект реально
+    // Ветка storage_path: байты агент заявил, что уже положил в наш бакет. Нам
+    // НЕ надо ни декодировать, ни грузить — надо убедиться, что объект реально
     // есть, и записать строку манифеста. Проверка существования обязательна:
     // без неё модель могла бы «приклеить» несуществующий файл к задаче, а
     // GC из миграции 081 снёс бы объект только через час, оставив битую ссылку.
@@ -164,7 +249,39 @@ export async function persistRunAttachments(
       continue;
     }
 
-    const bytes = base64ToBytes(attachment.content_base64);
+    // Ветка source_path: байты забираем сами с хоста коннектора. Именно этот
+    // путь снимает потолок ответа — файл любого размера, и он настоящий,
+    // а не набранный моделью base64.
+    let bytes: Uint8Array;
+    if (attachment.source_path) {
+      const url = resolveArtifactUrl(opts.baseUrl, attachment.source_path);
+      if (!url) {
+        failed.push({
+          filename: attachment.filename,
+          reason: 'source_path is not a fetchable path on the connector host',
+        });
+        continue;
+      }
+      const fetched = await fetchArtifactBytes(url, opts.apiKey);
+      if ('error' in fetched) {
+        failed.push({ filename: attachment.filename, reason: fetched.error });
+        continue;
+      }
+      bytes = fetched.bytes;
+      // Магия байтов — та же проверка, что и для base64: без неё переименованный
+      // .exe прошёл бы под .png. Для base64 она живёт в reviewAttachments,
+      // здесь файла ещё не было, поэтому проверяем сами.
+      if (!sniffMatches(mime, bytes)) {
+        failed.push({
+          filename: attachment.filename,
+          reason: `content does not match declared type: ${ext}`,
+        });
+        continue;
+      }
+    } else {
+      bytes = base64ToBytes(attachment.content_base64);
+    }
+
     const storagePath = `${opts.workspaceId}/${opts.taskId}/${crypto.randomUUID().replace(/-/g, '')}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
