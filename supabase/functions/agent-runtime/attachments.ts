@@ -16,7 +16,10 @@
 
 export interface RuntimeAttachmentInput {
   filename: string;
-  content_base64: string;
+  /** Фолбэк: байты пришли прямо в ответе агента. */
+  content_base64?: string;
+  /** Основной путь: файл уже залит агентом в бакет по одноразовой ссылке. */
+  storage_path?: string;
   caption?: string;
 }
 
@@ -33,6 +36,17 @@ export interface RuntimeAttachmentReview {
   rejected: { filename: string; reason: string }[];
 }
 
+/**
+ * Правила приёма для reviewAttachments.
+ *
+ * workspacePrefix обязателен для элементов со storage_path: без него агент
+ * подставил бы путь чужой задачи и приклеил файл к чужому воркспейсу.
+ */
+export interface ReviewOptions {
+  /** `${workspaceId}/` — префикс, внутри которого обязаны лежать storage_path. */
+  workspacePrefix?: string;
+}
+
 // ============================================================================
 // Лимиты и whitelist (1:1 с lib/shared/attachments.ts)
 // ============================================================================
@@ -41,6 +55,8 @@ export const MAX_ATTACHMENTS = 5;
 export const MAX_ONE_BASE64_LENGTH = 2 * 1024 * 1024; // 2MB base64 (~1.5MB bin)
 export const MAX_TOTAL_BASE64_LENGTH = 3 * 1024 * 1024; // 3MB base64 суммарно
 export const MAX_FILENAME_LENGTH = 120;
+/** Разумный потолок длины storage_path — защита от абсурдно длинной строки. */
+export const MAX_STORAGE_PATH_LENGTH = 512;
 
 export const ALLOWED_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'webp', 'gif',
@@ -169,7 +185,7 @@ export function sniffMatches(mime: string, bytes: Uint8Array): boolean {
  * Разбирает `attachments` из JSON-ответа агента. Каждый элемент проверяется
  * независимо: плохой файл отбрасывается с причиной, остальные проходят.
  */
-export function reviewAttachments(raw: unknown): RuntimeAttachmentReview {
+export function reviewAttachments(raw: unknown, opts: ReviewOptions = {}): RuntimeAttachmentReview {
   const accepted: RuntimeAttachmentInput[] = [];
   const rejected: { filename: string; reason: string }[] = [];
 
@@ -191,6 +207,7 @@ export function reviewAttachments(raw: unknown): RuntimeAttachmentReview {
     const rawName = String(record.filename ?? '').trim();
     const filename = sanitizeFilename(rawName);
     const contentBase64 = String(record.content_base64 ?? '').trim();
+    const storagePath = String(record.storage_path ?? '').trim();
 
     if (accepted.length >= MAX_ATTACHMENTS) {
       rejected.push({ filename: filename || label, reason: `more than ${MAX_ATTACHMENTS} files` });
@@ -200,15 +217,40 @@ export function reviewAttachments(raw: unknown): RuntimeAttachmentReview {
       rejected.push({ filename: filename || label, reason: 'invalid filename' });
       return;
     }
-    if (!contentBase64) {
-      rejected.push({ filename, reason: 'content_base64 is empty' });
-      return;
-    }
-
+    // Расширение проверяем для обоих путей: имя в манифесте и в Storage одно.
     const ext = extensionOf(filename);
     const mime = EXTENSION_MIME[ext];
     if (!mime || !ALLOWED_EXTENSIONS.has(ext)) {
       rejected.push({ filename, reason: `unsupported file type: ${ext || '<none>'}` });
+      return;
+    }
+
+    // Ветка FILE-08: файл уже в бакете, байты придут не из ответа модели.
+    if (storagePath) {
+      // Путь приходит от агента, а agent видит недоверенные данные задачи.
+      // Без проверки префикса инъекция в description подставила бы путь чужой
+      // задачи — и файл приклеился бы к чужому воркспейсу.
+      if (!opts.workspacePrefix) {
+        rejected.push({ filename, reason: 'storage_path given but workspace prefix is unknown' });
+        return;
+      }
+      if (!storagePath.startsWith(opts.workspacePrefix)) {
+        rejected.push({ filename, reason: 'storage_path is outside the workspace prefix' });
+        return;
+      }
+      if (storagePath.includes('..') || storagePath.length > MAX_STORAGE_PATH_LENGTH) {
+        rejected.push({ filename, reason: 'invalid storage_path' });
+        return;
+      }
+      const caption = record.caption ? String(record.caption).slice(0, 1024) : undefined;
+      accepted.push(
+        caption ? { filename, storage_path: storagePath, caption } : { filename, storage_path: storagePath },
+      );
+      return;
+    }
+
+    if (!contentBase64) {
+      rejected.push({ filename, reason: 'neither content_base64 nor storage_path' });
       return;
     }
     if (contentBase64.length > MAX_ONE_BASE64_LENGTH) {

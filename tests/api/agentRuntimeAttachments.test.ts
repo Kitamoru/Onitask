@@ -50,6 +50,67 @@ describe('agent-runtime attachments: happy path', () => {
   });
 });
 
+describe('agent-runtime attachments: файлы, залитые агентом (FILE-08)', () => {
+  // Байты в Storage приходят по одноразовой ссылке, мимо модели. Путь в ответе
+  // агента — тоже данные, к которым нельзя относиться доверчиво: description
+  // задачи помечен как недоверенный, поэтому инъекция может подсунуть чужой
+  // путь. Отсюда обязательная проверка префикса воркспейса.
+  const WS = 'ws-11111111-2222-3333-4444-555555555555/';
+  const okPath = `${WS}task-1/exec-1`;
+
+  it('storage_path внутри своего воркспейса принимается без base64', () => {
+    const review = reviewAttachments(
+      [{ filename: 'otchet.xlsx', storage_path: okPath }],
+      { workspacePrefix: WS },
+    );
+    expect(review.rejected).toEqual([]);
+    expect(review.accepted).toEqual([{ filename: 'otchet.xlsx', storage_path: okPath }]);
+  });
+
+  it('чужой воркспейс отбрасывается — иначе файл приклеился бы к чужой задаче', () => {
+    const review = reviewAttachments(
+      [{ filename: 'otchet.xlsx', storage_path: 'ws-CHUHOROJ/task-9/exec-9' }],
+      { workspacePrefix: WS },
+    );
+    expect(review.accepted).toEqual([]);
+    expect(review.rejected[0].reason).toBe('storage_path is outside the workspace prefix');
+  });
+
+  it('без известного префикса storage_path не принимается вовсе', () => {
+    const review = reviewAttachments([{ filename: 'otchet.xlsx', storage_path: okPath }]);
+    expect(review.accepted).toEqual([]);
+    expect(review.rejected[0].reason).toBe('storage_path given but workspace prefix is unknown');
+  });
+
+  it('обход каталога внутри своего префикса всё равно режется', () => {
+    const review = reviewAttachments(
+      [{ filename: 'otchet.xlsx', storage_path: `${WS}task-1/../../ws-chuzhoy/x` }],
+      { workspacePrefix: WS },
+    );
+    expect(review.accepted).toEqual([]);
+    expect(review.rejected[0].reason).toBe('invalid storage_path');
+  });
+
+  it('base64-фолбэк продолжает работать: агент, который грузить не умеет', () => {
+    const review = reviewAttachments(
+      [{ filename: 'note.txt', content_base64: TXT }],
+      { workspacePrefix: WS },
+    );
+    expect(review.rejected).toEqual([]);
+    expect(review.accepted).toHaveLength(1);
+    expect(review.accepted[0].content_base64).toBeTruthy();
+  });
+
+  it('storage_path не отменяет проверку расширения', () => {
+    const review = reviewAttachments(
+      [{ filename: 'payload.exe', storage_path: okPath }],
+      { workspacePrefix: WS },
+    );
+    expect(review.accepted).toEqual([]);
+    expect(review.rejected[0].reason).toBe('unsupported file type: exe');
+  });
+});
+
 describe('agent-runtime attachments: отбраковка отдельного файла', () => {
   it('магия байтов: переименованный файл в .png не проходит', () => {
     const review = reviewAttachments([
@@ -82,7 +143,7 @@ describe('agent-runtime attachments: отбраковка отдельного �
       { filename: 'binary.txt', content_base64: bytesB64([0x61, 0x00, 0x62]) },
     ]);
     expect(review.rejected.map((r) => r.reason)).toEqual([
-      'content_base64 is empty',
+      'neither content_base64 nor storage_path',
       'content does not match declared type: txt',
     ]);
   });

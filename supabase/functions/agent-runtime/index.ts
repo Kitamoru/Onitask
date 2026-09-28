@@ -17,7 +17,7 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runAgent, type RunRequest } from './provider.ts';
-import { persistRunAttachments } from './persistAttachments.ts';
+import { persistRunAttachments, mintUploadTarget } from './persistAttachments.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,10 +27,12 @@ const CORS_HEADERS = {
 
 /**
  * Потолок одного прогона внутри вызова функции. Платформенный лимит Edge
- * Function — 150 с (free) / 400 с (paid), поэтому держим свой таймаут ниже:
- * обрыв соединения у провайдера без session_id = потеря результата.
+ * Function — 150 с (free) / 400 с (paid), поэтому на free это ровно стена:
+ * обрывать будет платформа, а не наш AbortController, и агент потеряет
+ * результат без внятной причины. На paid запас есть.
+ * Если выяснится, что проект на free — опустить до ~135 с.
  */
-const MAX_RUN_TIMEOUT_MS = 120_000;
+const MAX_RUN_TIMEOUT_MS = 150_000;
 const MIN_RUN_TIMEOUT_MS = 30_000;
 /** Комментариев в контекст — не раздуваем промпт. */
 const CONTEXT_COMMENTS_LIMIT = 10;
@@ -371,6 +373,11 @@ async function handleJob(
     },
     comments,
     subgraph: toArray(subgraphRaw) as Record<string, unknown>[],
+    upload: await mintUploadTarget(supabase, {
+      workspaceId: job.workspace_id,
+      taskId: task.id,
+      executionId: leaseJob.execution_id,
+    }),
   };
 
   await logEvent(supabase, job, 'agent_run_submitted', { run_id: runId, model: job.model });

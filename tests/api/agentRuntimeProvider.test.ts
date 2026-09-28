@@ -26,6 +26,7 @@ const makeRequest = () => ({
   },
   comments: [],
   subgraph: [],
+  upload: null,
 });
 
 describe('agent-runtime provider: result contract', () => {
@@ -36,15 +37,29 @@ describe('agent-runtime provider: result contract', () => {
       details: 'Полный отчёт с поставщиками и следующими шагами',
       metadata: { document_format: 'xlsx' },
       next_owner: null,
-      attachments: [{ filename: 'suppliers.xlsx', content_base64: '...' }],
+      attachments: [{ filename: 'suppliers.xlsx', storage_path: 'ws-1/t-1/e-1' }],
     });
     expect(result).toMatchObject({
       outcome: 'review',
       summary: 'Краткий итог',
       details: 'Полный отчёт с поставщиками и следующими шагами',
-      attachments: [{ filename: 'suppliers.xlsx' }],
+      attachments: [{ filename: 'suppliers.xlsx', storage_path: 'ws-1/t-1/e-1' }],
+      claimedFiles: [],
       coerced: false,
     });
+  });
+
+  it('файл, названный без содержимого и без storage_path, идёт в claimedFiles', () => {
+    // Основной путь FILE-08 требует вернуть storage_path. Имя без него — это
+    // заявка, а не результат (ровно тот случай, что стоил нам ONIT-42).
+    const result = normalizeResult({
+      outcome: 'review',
+      summary: 'Краткий итог',
+      details: 'Отчёт назван, но не приложен',
+      report: 'grecheskiy_salat_otchet.xlsx',
+    });
+    expect(result?.claimedFiles).toEqual(['grecheskiy_salat_otchet.xlsx']);
+    expect(result?.attachments).toEqual([]);
   });
 
   it('legacy envelope does not turn a domain object into a comment', () => {
@@ -107,17 +122,32 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('attachments');
     expect(user).toContain('xlsx');
     expect(user).toContain('docx');
-    expect(user).toContain('content_base64');
-    expect(user).toContain('обязательно для outcome="review"');
-    expect(user).toContain('Не возвращай JSON или структурированный объект');
-    expect(user).toContain('без текста до и после');
+    // Сжатие промта не должно выкинуть требование приложить файл: именно
+    // его не хватало в ONIT-42, где модель назвала отчёт и прошла как успех.
+    expect(user).toContain('storage_path');
+    expect(user).toContain('Называть файл в summary без загрузки нельзя');
 
     // Контракт лежит в user целиком, system отсылает к нему, а не дублирует:
     // два полных контракта в промпте — лишние токены без выигрыша.
     expect(system).toContain('контракт');
-    expect(system).not.toContain('content_base64');
+    expect(system).not.toContain('storage_path');
     expect(user).toContain('=== ДАННЫЕ ЗАДАЧИ ===');
     expect(user).toContain('ONIT-36');
+  });
+
+  it('блок ЗАГРУЗКА попадает в промт только когда рантайм выдал ссылку', () => {
+    const withoutUpload = buildMessages(makeRequest())[1].content;
+    expect(withoutUpload).not.toContain('=== ЗАГРУЗКА ===');
+
+    const withUpload = buildMessages({
+      ...makeRequest(),
+      upload: { storagePath: 'ws-1/task-1/exec-1', url: 'https://p.supabase.co/storage/v1/object/upload/task-attachments/ws-1/task-1/exec-1?token=t' },
+    })[1].content;
+    expect(withUpload).toContain('=== ЗАГРУЗКА ===');
+    expect(withUpload).toContain('ws-1/task-1/exec-1');
+    expect(withUpload).toContain('token=t');
+    // Ссылка обязана стоять в промте, иначе агент не сможет залить файл.
+    expect(withUpload).toContain('POST');
   });
 
   it('промпт объясняет, что делать, если файл отдать нельзя', () => {
@@ -125,7 +155,7 @@ describe('agent-runtime provider: result contract', () => {
     // не определён. Модель придумала выход сама (поле report с именем
     // несуществующего файла) и прошла как успешный прогон.
     const user = buildMessages(makeRequest())[1].content;
-    expect(user).toContain('не придумывай имя файла');
+    expect(user).toContain('metadata.claimed_files');
   });
 });
 
