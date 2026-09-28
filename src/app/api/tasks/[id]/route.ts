@@ -26,6 +26,7 @@ import {
   getTaskWritePermission,
 } from '../../../../../lib/api-auth';
 import { TASK_FORBIDDEN_EDIT, TASK_FORBIDDEN_DELETE } from '@/lib/taskPermissions';
+import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
 import {
@@ -206,6 +207,24 @@ export async function PATCH(
       };
       delete meta.review_pending;
       cleanUpdate.metadata = meta as TasksRow['metadata'];
+    }
+
+    // REV-02: назначенный ревьюер — согласование обязательно, мимо него не
+    // ходим. Существующий гвард выше покрывает только случай «ревьюер НЕ
+    // назначен»; этот закрывает обратный, иначе исполнитель (который проходит
+    // canEdit) перетаскивал бы задачу с ревьюером прямо в «Сделано», минуя
+    // согласование. Пропускаем самого ревьюера и owner/admin — форс-мейдж.
+    if (
+      cleanUpdate.column === 'done' &&
+      isReviewBypassBlocked(
+        {
+          column: taskRow.column as string,
+          reviewer_id: taskRow.reviewer_id as string | null,
+        },
+        { workerId: actor?.id, role: actor?.role as string | null | undefined },
+      )
+    ) {
+      return NextResponse.json({ error: REVIEW_BYPASS_BLOCKED }, { status: 403 });
     }
 
     const { data, error } = await supabase

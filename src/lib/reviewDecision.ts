@@ -39,3 +39,36 @@ export function isReviewDecision(
 ): boolean {
   return item?.kind === 'comment' && String(item.payload?.source ?? '') === 'review';
 }
+
+/**
+ * REV-02: назначенный ревьюер — не формальность, мимо него ходить нельзя.
+ *
+ * Замер 2026-09-27: гвард на переход review → done был ТОЛЬКО для случая
+ * «ревьюер не назначен» (`!taskRow.reviewer_id` в route.ts, `!reviewer_id` в
+ * moveTask.ts, `reviewer_id IS NULL` в миграции 082). При назначенном ревьюере
+ * не срабатывал ни один из трёх, и оставалась только общая проверка прав, её
+ * проходит исполнитель. То есть исполнитель мог перетащить задачу с ревьюером
+ * прямо в «Сделано»: ревьюер пропущен, `review_pending` не снят, комментарий
+ * «согласован» не написан, а `notify_task_done` всё равно отчитывается по
+ * `OLD.column = 'review'` как о согласовании.
+ *
+ * Этот предикат закрывает именно новый случай. Случай «ревьюер не назначен»
+ * НЕ трогаем: там поведение route/moveTask/БД различается между собой
+ * исторически, и менять его здесь — отдельная задача со своим регрессом.
+ *
+ * @param task колонка и назначенный ревьюер задачи
+ * @param ctx worker.id текущего пользователя и его роль в воркспейсе
+ * @returns true — согласование обязательно и обойти его нельзя
+ */
+export function isReviewBypassBlocked(
+  task: { column: string; reviewer_id?: string | null },
+  ctx: { workerId?: string | null; role?: string | null },
+): boolean {
+  if (task.column !== 'review') return false;
+  if (!task.reviewer_id) return false;
+  if (ctx.role === 'owner' || ctx.role === 'admin') return false;
+  return task.reviewer_id !== (ctx.workerId ?? null);
+}
+
+export const REVIEW_BYPASS_BLOCKED =
+  'Задача на проверке: перевести её в «Сделано» может только назначенный проверяющий или администратор доски';

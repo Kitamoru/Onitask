@@ -25,6 +25,7 @@ import { filterTasksForUser } from '@/lib/streamFilter';
 import { findActiveWorkspaceWorkerId } from '@/lib/activeWorkspaceWorker';
 import { formatWorkerRole } from '@/lib/roles';
 import { getTaskPermission } from '@/lib/taskPermissions';
+import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 
 // Сброс скролла при переходе на страницу
@@ -423,6 +424,20 @@ function FlowBoardPageContent() {
       // потом вернётся, и это выглядит как «ничего не произошло».
       if (task && !taskPermissionFor(task).canEdit) {
         alert('Задача не ваша: двигать её может автор, исполнитель или администратор доски');
+        return;
+      }
+      // REV-02: ревьюер назначен — мимо него в «Сделано» не ходим, даже если
+      // право на редактирование есть (его проходит и исполнитель). Иначе
+      // система отчиталась бы о согласовании, которого не было.
+      if (
+        task &&
+        newColumn === 'done' &&
+        isReviewBypassBlocked(task, {
+          workerId: currentUserId,
+          role: activeWs?.role,
+        })
+      ) {
+        alert(REVIEW_BYPASS_BLOCKED);
         return;
       }
       // SUBMIT-01: сдача исполнителя — переход в review/done из НЕ-review колонки

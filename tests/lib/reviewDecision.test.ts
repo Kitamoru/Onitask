@@ -3,7 +3,11 @@
 // в node-env (vitest) без jsdom/RTL.
 
 import { describe, it, expect } from 'vitest';
-import { canCurrentUserReview, isReviewDecision } from '../../src/lib/reviewDecision';
+import {
+  canCurrentUserReview,
+  isReviewDecision,
+  isReviewBypassBlocked,
+} from '../../src/lib/reviewDecision';
 import type { TaskEntity } from '../../src/types/flowboard';
 
 type ReviewTask = Pick<TaskEntity, 'column' | 'reviewer_id' | 'created_by'>;
@@ -146,5 +150,83 @@ describe('isReviewDecision (083/086) — циановый бордер ревь�
 
   it('нестроковый source приводится через String (число 0 → false)', () => {
     expect(isReviewDecision(feedItem('comment', 0))).toBe(false);
+  });
+});
+
+// ─── isReviewBypassBlocked (REV-02): назначенного ревьюера нельзя обойти ─────
+// Регресс на найденную дыру: старые гварды в route.ts / moveTask.ts / миграции
+// 082 срабатывали только при `!reviewer_id`, поэтому исполнитель мог провести
+// задачу с назначенным ревьюером прямо в «Сделано».
+
+describe('isReviewBypassBlocked (REV-02) — обход назначенного ревьюера', () => {
+  it('исполнитель (не ревьюер) НЕ может провести в done — blocked', () => {
+    expect(
+      isReviewBypassBlocked(
+        { column: 'review', reviewer_id: 'r-1' },
+        { workerId: 'assignee-1', role: 'member' },
+      ),
+    ).toBe(true);
+  });
+
+  it('автор задачи тоже blocked, если ревьюер назначен', () => {
+    expect(
+      isReviewBypassBlocked(
+        { column: 'review', reviewer_id: 'r-1' },
+        { workerId: 'creator-1', role: 'member' },
+      ),
+    ).toBe(true);
+  });
+
+  it('аноним (workerId=null/undefined) → blocked', () => {
+    for (const workerId of [null, undefined]) {
+      expect(
+        isReviewBypassBlocked({ column: 'review', reviewer_id: 'r-1' }, { workerId, role: 'member' }),
+      ).toBe(true);
+    }
+  });
+
+  it('сам ревьюер может — это его решение', () => {
+    expect(
+      isReviewBypassBlocked(
+        { column: 'review', reviewer_id: 'r-1' },
+        { workerId: 'r-1', role: 'member' },
+      ),
+    ).toBe(false);
+  });
+
+  it('owner/admin форс-мейджит (сценарий «закрыть мимо ревьюера»)', () => {
+    for (const role of ['owner', 'admin']) {
+      expect(
+        isReviewBypassBlocked(
+          { column: 'review', reviewer_id: 'r-other' },
+          { workerId: 'x-1', role },
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('задача НЕ в review → false (правило про согласование не применяется)', () => {
+    for (const column of ['backlog', 'in_progress', 'done']) {
+      expect(
+        isReviewBypassBlocked({ column, reviewer_id: 'r-1' }, { workerId: 'a-1', role: 'member' }),
+      ).toBe(false);
+    }
+  });
+
+  it('ревьюер НЕ назначен → false: прежнее поведение не меняем (см. комментарий в модуле)', () => {
+    for (const reviewer_id of [null, undefined, '']) {
+      expect(
+        isReviewBypassBlocked({ column: 'review', reviewer_id }, { workerId: 'a-1', role: 'member' }),
+      ).toBe(false);
+    }
+  });
+
+  it('роль не задана (агент, role=null) → blocked, если агент не ревьюер', () => {
+    expect(
+      isReviewBypassBlocked(
+        { column: 'review', reviewer_id: 'r-1' },
+        { workerId: 'agent-1', role: null },
+      ),
+    ).toBe(true);
   });
 });

@@ -10,6 +10,7 @@ import {
   logAgentEvent,
   resolveAgentWorkerId,
 } from '../../shared/mcpAuth';
+import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import {
   invalidParams,
   taskNotFound,
@@ -82,6 +83,29 @@ export async function moveTask(
       'review_approval_required',
       'Task is in review and requires human approval before moving to done. Use the Approve button in the Telegram notification.'
     );
+  }
+
+  // --- Review approval guard, назначенный ревьюер (REV-02) --------------------
+  // Гвард выше ловит только «ревьюер НЕ назначен». Здесь закрываем обратный
+  // случай — иначе агент, как и исполнитель в UI, провёл бы задачу мимо
+  // назначенного ревьюера. Пропускаем только самого ревьюера (owner/admin у
+  // агента роли нет, ctx.role = null).
+  // Алиас '@/lib' — исключение для этого файла: предикат намеренно один на
+  // UI, HTTP-роут и агента, дублировать правило безопасности нельзя.
+  if (
+    params.target_column === 'done' &&
+    isReviewBypassBlocked(
+      {
+        column: currentTask.column as string,
+        reviewer_id: currentTask.reviewer_id as string | null,
+      },
+      {
+        workerId: await resolveAgentWorkerId(agentName, workspaceId),
+        role: null,
+      },
+    )
+  ) {
+    throw new DomainError(409, 'review_approval_required', REVIEW_BYPASS_BLOCKED);
   }
 
 
