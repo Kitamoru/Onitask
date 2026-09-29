@@ -124,7 +124,7 @@ describe('agent-runtime provider: result contract', () => {
     // Сжатие промта не должно выкинуть требование приложить файл: именно
     // его не хватало в ONIT-42, где модель назвала отчёт и прошла как успех.
     expect(user).toContain('source_path');
-    expect(user).toContain('не вернув его в attachments, нельзя');
+    expect(user).toContain('Запрещено упоминать файл в summary, если он не приложен в attachments');
 
     // Контракт лежит в user целиком, system отсылает к нему, а не дублирует:
     // два полных контракта в промпте — лишние токены без выигрыша.
