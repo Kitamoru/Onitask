@@ -156,7 +156,13 @@ describe('agent-runtime provider: result contract', () => {
     // Единственный канал — путь в workspace агента, и про это сказано прямо.
     expect(user).toContain('source_path');
     expect(user).toContain('write_file');
-    expect(user).toContain('CSV');
+    // Формат: офисный по умолчанию, подменять молча запрещено. CSV-установка
+    // была наследием base64-эры, когда таблица не влезала в потолок ответа;
+    // теперь потолка нет, и она только сбивала агента с xlsx/docx на csv.
+    expect(user).toContain('xlsx');
+    expect(user).toContain('docx');
+    expect(user).toContain('Подменять формат молча нельзя');
+    expect(user).not.toContain('Табличные данные отдавай в CSV');
   });
 
   it('промпт объясняет, что делать, если файл отдать нельзя', () => {
