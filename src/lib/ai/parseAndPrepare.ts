@@ -43,7 +43,7 @@ export interface PreparedDraft {
   showCorrectionSheet: boolean;
   /** Контекст commit-фазы: config для Gatekeeper, workers для matchAssignee */
   config: F04Config;
-  workers: { id: string; display_name: string }[];
+  workers: { id: string; display_name: string; type?: string }[];
 }
 
 export type PrepareResult =
@@ -63,7 +63,7 @@ export interface DraftContext {
    * NULL во всех workspace. null = RPC не дал данных, блок в промпте опускается.
    */
   operationalContext: OperationalContext | null;
-  workers: { id: string; display_name: string }[];
+  workers: { id: string; display_name: string; type?: string }[];
 }
 
 /**
@@ -148,7 +148,10 @@ export async function loadDraftContext(
 
   const { data: workers, error: workersError } = await supabase
     .from('workers')
-    .select('id, display_name')
+    // type нужен, чтобы отличить агента от человека: задача, уходящая агенту,
+    // не обогащается (ADR-2026-09-29), а без type это выяснилось бы только
+    // после INSERT — обогащение уже в очереди.
+    .select('id, display_name, type')
     .eq('workspace_id', workspaceId);
 
   if (workersError) {

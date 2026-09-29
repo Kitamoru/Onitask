@@ -138,6 +138,78 @@ describe('POST /api/ai/create-task — two-phase commit (parsed present)', () =>
     );
   });
 
+  it('agent: задача агентскому исполнителю НЕ ставится в enrichment_queue (ADR-2026-09-29)', async () => {
+    // Регресс. Обогащение агентской задачи поднимало tasks.version между
+    // ops_lease и ops_terminal, CAS отвергал результат, и ответ агента
+    // терялся целиком (ONIT-45, 2026-09-29). Проверка на РЕЗУЛЬТАТ — по
+    // таблице вставки, а не по наличию ветки в коде.
+    //
+    // complexity: 3 обязателен. При complexity 1 + clarity 0.9 Gatekeeper
+    // возвращает 'skip', и тест проходил бы по старой ветке strategy==='skip',
+    // а не по новой assigneeIsAgent — то есть проверял бы не то. 'standard'
+    // гарантирует, что БЕЗ нового условия очередь была бы вставлена.
+    vi.mocked(loadDraftContext).mockResolvedValue({
+      config: {
+        skip_min_clarity: 0.85,
+        skip_max_complexity: 1,
+        correction_sheet_clarity_threshold: 0.7,
+        low_clarity_tag_threshold: 0.55,
+      },
+      settings: null,
+      operationalContext: null,
+      workers: [{ id: 'w-drift', display_name: 'Drift', type: 'agent' }],
+    });
+
+    const db = makeDb();
+    vi.mocked(createServerClient).mockReturnValue(db);
+    const res = await POST(
+      mockRequest({
+        init_data: 'x',
+        input: 'составить таблицу царей',
+        workspace_id: 'ws-1',
+        parsed: { ...VALID_PARSE, assignee: 'Drift', complexity: 3 },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const tables = db.inserted.map((i) => i.table);
+    expect(tables).not.toContain('enrichment_queue');
+    // задача всё равно создана, и enrichment закрыт детерминированно
+    expect(tables).toContain('tasks');
+    expect(tables).toContain('task_enrichments');
+  });
+
+  it('human: та же задача человеку по-прежнему обогащается (страховка от перебора)', async () => {
+    // Обратная сторона: если бы условие ловило всех подряд, обогащение
+    // выключилось бы целиком. Те же входные данные (complexity 3), что и в
+    // тесте выше, — единственное различие это type исполнителя.
+    vi.mocked(loadDraftContext).mockResolvedValue({
+      config: {
+        skip_min_clarity: 0.85,
+        skip_max_complexity: 1,
+        correction_sheet_clarity_threshold: 0.7,
+        low_clarity_tag_threshold: 0.55,
+      },
+      settings: null,
+      operationalContext: null,
+      workers: [{ id: 'w1', display_name: 'Vadim', type: 'human' }],
+    });
+
+    const db = makeDb();
+    vi.mocked(createServerClient).mockReturnValue(db);
+    const res = await POST(
+      mockRequest({
+        init_data: 'x',
+        input: 'составить таблицу царей',
+        workspace_id: 'ws-1',
+        parsed: { ...VALID_PARSE, assignee: 'Vadim', complexity: 3 },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(db.inserted.map((i) => i.table)).toContain('enrichment_queue');
+  });
+
   it('commit: 400 при невалидном parsed (Zod revalidation)', async () => {
     const db = makeDb();
     vi.mocked(createServerClient).mockReturnValue(db);

@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     let chain: FallbackStep[];
     let attemptsMs: number;
     let config: F04Config;
-    let workers: { id: string; display_name: string }[];
+    let workers: { id: string; display_name: string; type?: string }[];
 
     if (isConfirmedCommit) {
       const ctx = await loadDraftContext(supabase, workspaceId);
@@ -201,6 +201,11 @@ export async function POST(request: NextRequest) {
     // 8. Assignee matching (в commit-фазе — повторно: команда могла измениться
     // между draft и подтверждением)
     const assignedTo = matchAssignee(workers, parsed);
+
+    // Задача, уходящая агенту, не обогащается (ADR-2026-09-29). Проверка ДО
+    // постановки в очередь, иначе обогащение уже в очереди.
+    const assigneeIsAgent =
+      assignedTo !== null && workers.find((w) => w.id === assignedTo)?.type === 'agent';
 
     // 9. Title / description finalization
     const { finalTitle, finalDescription } = finalizeTitles(parsed);
@@ -262,7 +267,11 @@ export async function POST(request: NextRequest) {
     const taskId = (task as { id: string }).id;
 
     // 11. Enrichment
-    if (strategy === 'skip') {
+    // Агентские задачи не обогащаем: обогащение не доходит до агента (TaskRow
+    // в agent-runtime его не читает, ai_hint ищется в tasks.metadata, а лежит
+    // в task_enrichments), но поднимает tasks.version между lease и
+    // ops_terminal и роняет CAS — результат агента теряется.
+    if (strategy === 'skip' || assigneeIsAgent) {
       await supabase.from('task_enrichments').insert({
         task_id: taskId,
         workspace_id: workspaceId,
