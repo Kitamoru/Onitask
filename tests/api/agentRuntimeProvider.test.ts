@@ -36,21 +36,37 @@ describe('agent-runtime provider: result contract', () => {
       details: 'Полный отчёт с поставщиками и следующими шагами',
       metadata: { document_format: 'xlsx' },
       next_owner: null,
-      attachments: [{ filename: 'suppliers.xlsx', storage_path: 'ws-1/t-1/e-1' }],
+      attachments: [{ filename: 'suppliers.xlsx', source_path: 'out/suppliers.xlsx' }],
     });
     expect(result).toMatchObject({
       outcome: 'review',
       summary: 'Краткий итог',
       details: 'Полный отчёт с поставщиками и следующими шагами',
-      attachments: [{ filename: 'suppliers.xlsx', storage_path: 'ws-1/t-1/e-1' }],
+      attachments: [{ filename: 'suppliers.xlsx', source_path: 'out/suppliers.xlsx' }],
       claimedFiles: [],
       coerced: false,
     });
   });
 
-  it('файл, названный без содержимого и без storage_path, идёт в claimedFiles', () => {
-    // Основной путь FILE-08 требует вернуть storage_path. Имя без него — это
-    // заявка, а не результат (ровно тот случай, что стоил нам ONIT-42).
+  it('файл с одним лишь storage_path уходит в claimedFiles, а не в attachments', () => {
+    // Регресс на удаление канала storage_path (2026-09-29). Проверка именно
+    // на РЕЗУЛЬТАТ разбора: пока collectArtifacts принимал storage_path как
+    // байты, элемент попадал в attachments, persistAttachments писал строку
+    // манифеста, и файл чужой задачи молча приклеивался. Теперь имя без
+    // содержимого — это заявка, её видно (ровно кейс ONIT-42).
+    const result = normalizeResult({
+      outcome: 'review',
+      summary: 'Краткий итог',
+      details: 'Отчёт назван и приложен, но байт в ответе нет',
+      attachments: [{ filename: 'suppliers.xlsx', storage_path: 'ws-1/t-1/e-1' }],
+    });
+    expect(result?.attachments).toEqual([]);
+    expect(result?.claimedFiles).toEqual(['suppliers.xlsx']);
+  });
+
+  it('файл, названный без содержимого, идёт в claimedFiles', () => {
+    // Имя без байтов — это заявка, а не результат (ровно тот случай, что стоил
+    // нам ONIT-42).
     const result = normalizeResult({
       outcome: 'review',
       summary: 'Краткий итог',

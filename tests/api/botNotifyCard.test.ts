@@ -150,7 +150,7 @@ describe('bot-notify card: детект дублей (DUP-01)', () => {
     const callbacks = res.replyMarkup.inline_keyboard
       .flat()
       .map((b) => b.callback_data)
-      .filter(Boolean);
+      .filter((c): c is string => Boolean(c));
     expect(callbacks.some((c) => c.startsWith('ra:'))).toBe(false);
   });
 });
@@ -168,7 +168,7 @@ describe('bot-notify card: регрессии контекстов', () => {
     const callbacks = res.replyMarkup.inline_keyboard
       .flat()
       .map((b) => b.callback_data)
-      .filter(Boolean);
+      .filter((c): c is string => Boolean(c));
     expect(callbacks).toContain('ra:approve:uuid-1');
     expect(res.replyMarkup.inline_keyboard[0][0].text).toBe('✅ Согласовать');
     expect(callbacks).toContain('ra:fix:uuid-1');

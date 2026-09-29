@@ -19,21 +19,21 @@ export type RunOutcome = 'review' | 'escalate' | 'handoff';
 /**
  * Файл-артефакт, который агент вернул внутри JSON-ответа.
  *
- * Три пути доставки байтов, в порядке предпочтения:
+ * Два пути доставки байтов, в порядке предпочтения:
  *   · source_path — основной. Файл создан файловым инструментом агента
  *     (write_file/generate_image) и лежит в его workspace; путь приходит в
  *     ответе, байты мы забираем сами с хоста коннектора. Потолка ответа нет,
  *     и настоящий бинарник (xlsx/pdf/docx) не выдаётся моделью как текст.
- *   · storage_path — файл уже в нашем бакете. Сохранён как защита: агент
- *     может подставить путь, и objectSizeBytes обязан отбросить с причиной.
  *   · content_base64 — байты прямо в ответе. Работает, но упирается в потолок
  *     ответа (замер: 1.4…6.9 КБ против 25…71 КБ у агента с файловыми
  *     инструментами) и поэтому в промте больше не запрашивается.
+ *
+ * storage_path (файл якобы уже в нашем бакете) удалён 2026-09-29: незащищённый
+ * канал без легитимного producer'а, см. persistAttachments.ts.
  */
 export interface AgentAttachment {
   filename: string;
   content_base64?: string;
-  storage_path?: string;
   source_path?: string;
   caption?: string;
 }
@@ -437,10 +437,14 @@ function sanitizeArtifactName(value: string): string | null {
  * Собирает файлы-артефакты из ответа агента и «заявленные, но не приложенные»
  * имена.
  *
- * Три формы элемента:
- *   {filename, storage_path}               — файл залит агентом сам (основной путь);
- *   {filename, content_base64}              — готовый файл (и {name, content});
- *   "имя.xlsx" / {filename} без содержимого  — заявка, а не файл.
+ * Две формы элемента с байтами:
+ *   {filename, source_path}                — файл в workspace агента, забираем мы;
+ *   {filename, content_base64}             — готовый файл (и {name, content});
+ *   "имя.xlsx" / {filename} без содержимого — заявка, а не файл.
+ *
+ * Элемент с одним лишь storage_path (файл якобы уже в нашем бакете) сюда
+ * больше не попадает: канал удалён 2026-09-29, и имя без байтов уходит в
+ * claimedFiles — то есть потеря видна, а не записана в манифест фиктивно.
  *
  * Источники — `attachments` / `files` / `report` на верхнем уровне и внутри
  * `result|output|data`. Мержим всё: агент может принести файл в одном ключе
@@ -499,21 +503,6 @@ export function collectArtifacts(record: Record<string, unknown>, nested: Record
         caption
           ? { filename, source_path: sourcePath, caption }
           : { filename, source_path: sourcePath },
-      );
-      return;
-    }
-
-    // Защита: файл заявлен как уже лежащий в нашем бакете. Байты в Storage,
-    // нам остаётся записать манифест — проверка содержимого идёт в
-    // persistRunAttachments.
-    const storagePath = asString(element.storage_path);
-
-    if (filename && storagePath) {
-      const caption = asString(element.caption);
-      attachments.push(
-        caption
-          ? { filename, storage_path: storagePath, caption }
-          : { filename, storage_path: storagePath },
       );
       return;
     }
