@@ -134,6 +134,21 @@ describe('agent-runtime provider: result contract', () => {
     expect(user).toContain('ONIT-36');
   });
 
+  it('без примера ответа проза сама называет форму вложения и metadata', () => {
+    // Пример ответа из промта убран намеренно, отдельным обратимым коммитом:
+    // контракт целиком живёт в user, а system до Drift не доходит. Тогда
+    // единственное, что держит форму, — описание полей словами. Если прозу
+    // потом сократят, полагаясь на «ну там в примере», примера уже нет: агент
+    // вернёт вложение без filename, а reviewAttachments его отбросит.
+    const user = buildMessages(makeRequest())[1].content;
+
+    expect(user).not.toContain('sluzhebnaya_zapiska');
+    expect(user).toContain('{filename, source_path, caption?}');
+    expect(user).toContain('filename обязателен');
+    expect(user).toContain('metadata:');
+    expect(user).toContain('claimed_files');
+  });
+
   it('в промте нет ни заливки по ссылке, ни base64: файл забираем сами по source_path', () => {
     // Регресс. Смена канала проходит три ступени, и каждая ломалась:
     //   1. Ссылка на загрузку — Drift получил исправный signedUrl, вернул
