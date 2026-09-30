@@ -39,7 +39,6 @@ import {
   Button,
   NotchedPanel,
   Stepper,
-  ToggleSwitch,
   Segments,
   SectionHeader,
   Card,
@@ -74,6 +73,7 @@ import { ReviewDecisionBlock } from './ReviewDecisionBlock';
 import { TaskCommentsPanel } from './TaskCommentsPanel';
 import { ExternalLinksCard, type ExternalLink } from '@/components/desk-create/ExternalLinksCard';
 import { RelatedTasksSection } from './RelatedTasksSection';
+import { SubtasksSection } from './SubtasksSection';
 import type { AffectedTaskState } from '@/types/taskRelations';
 
 /** Максимальное число файлов на задачу (синхронизировано с backend-лимитом) */
@@ -113,6 +113,8 @@ export interface TaskViewEditProps {
   onTaskStateChange?: (state: AffectedTaskState) => void;
   /** FILE-03: initial tab for deep-link «Обсудить задачу» → comments */
   initialTab?: 'general' | 'comments';
+  /** SUB-01: подзадача, которую надо раскрыть и подсветить (deep link из TG). */
+  highlightSubtaskId?: string | null;
   /** Custom className */
   className?: string;
 }
@@ -318,19 +320,15 @@ const ResponsibilitySection = memo(function ResponsibilitySection({
 });
 
 const ExtraContextSection = memo(function ExtraContextSection({
-  checklistEnabled,
   linksEnabled,
   links,
   isView,
-  onChecklistChange,
   onLinksEnabledChange,
   onLinksChange,
 }: {
-  checklistEnabled: boolean;
   linksEnabled: boolean;
   links: ExternalLink[];
   isView: boolean;
-  onChecklistChange: (v: boolean) => void;
   onLinksEnabledChange: (v: boolean) => void;
   onLinksChange: (links: ExternalLink[]) => void;
 }) {
@@ -338,17 +336,6 @@ const ExtraContextSection = memo(function ExtraContextSection({
     <section>
       <SectionHeader title="Дополнительный контекст" />
       <div className="flex flex-col gap-3">
-        <Card>
-          <div className="flex items-center justify-between">
-            <span className="text-[15px] font-medium text-text">Чеклист задачи</span>
-            <ToggleSwitch
-              checked={checklistEnabled}
-              onChange={onChecklistChange}
-              label="Чеклист задачи"
-              disabled={isView}
-            />
-          </div>
-        </Card>
         <ExternalLinksCard
           enabled={linksEnabled}
           onEnabledChange={onLinksEnabledChange}
@@ -590,6 +577,7 @@ export function TaskViewEdit({
   canGoBack = false,
   onTaskStateChange,
   initialTab = 'general',
+  highlightSubtaskId = null,
   className = '',
 }: TaskViewEditProps) {
   const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
@@ -607,7 +595,6 @@ export function TaskViewEdit({
   const [deadline, setDeadline] = useState<Date | null>(
     task?.deadline ? new Date(task.deadline) : null,
   );
-  const [checklistEnabled, setChecklistEnabled] = useState(false);
   const [linksEnabled, setLinksEnabled] = useState(false);
   const [links, setLinks] = useState<ExternalLink[]>([]);
 
@@ -701,7 +688,6 @@ export function TaskViewEdit({
   const handleStoryPointsChange = useCallback((v: number) => setStoryPoints(v), []);
   const handleCognitiveWeightChange = useCallback((v: number) => setCognitiveWeight(v), []);
   const handleOpenDate = useCallback(() => setIsDateSheetOpen(true), []);
-  const handleChecklistChange = useCallback((v: boolean) => setChecklistEnabled(v), []);
   const handleLinksEnabledChange = useCallback((v: boolean) => setLinksEnabled(v), []);
   const handleLinksChange = useCallback((next: ExternalLink[]) => setLinks(next), []);
 
@@ -878,7 +864,6 @@ export function TaskViewEdit({
     try {
       const metadata: Record<string, unknown> = {
         ...(task?.metadata ?? {}),
-        checklist: checklistEnabled ? (task?.metadata?.checklist ?? []) : [],
         external_links: linksEnabled ? links : [],
       };
 
@@ -936,7 +921,6 @@ export function TaskViewEdit({
     evaluation.storyPointsEnabled,
     evaluation.cognitiveWeightEnabled,
     deadline,
-    checklistEnabled,
     linksEnabled,
     links,
     isNew,
@@ -1207,12 +1191,23 @@ export function TaskViewEdit({
                 claimBusy={claimBusy}
               />
 
+              {/* SUB-01: тоггл «Чеклист задачи» заменён блоком подзадач.
+                  Чеклист был заглушкой без бэкенда, а подзадачи — реальная
+                  функция; держать оба переключателя значило бы предлагать
+                  несуществующую возможность. */}
+              {!isNew && task.id && (
+                <SubtasksSection
+                  task={task as TaskEntity}
+                  workers={workers}
+                  canEdit={taskPermission.canEdit}
+                  highlightSubtaskId={highlightSubtaskId}
+                />
+              )}
+
               <ExtraContextSection
-                checklistEnabled={checklistEnabled}
                 linksEnabled={linksEnabled}
                 links={links}
                 isView={isView}
-                onChecklistChange={handleChecklistChange}
                 onLinksEnabledChange={handleLinksEnabledChange}
                 onLinksChange={handleLinksChange}
               />

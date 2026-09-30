@@ -3,7 +3,7 @@ import { inviteDeepLink } from '../../src/lib/taskLaunch';
 import { createLatestLoadGuard } from '../../src/lib/latestLoadGuard';
 import { resolveFlowLaunchTarget, resolveTaskLaunchTarget } from '../../src/lib/server/taskLaunch';
 
-function makeSupabase(options: { taskId?: string | null; taskWorkspace?: string | null; member?: boolean; flowMember?: boolean }) {
+function makeSupabase(options: { taskId?: string | null; taskWorkspace?: string | null; member?: boolean; flowMember?: boolean; parentTaskId?: string | null }) {
   return {
     rpc: async () => ({ data: options.taskId ?? null, error: null }),
     from: (table: string) => {
@@ -12,7 +12,13 @@ function makeSupabase(options: { taskId?: string | null; taskWorkspace?: string 
         eq: () => query,
         maybeSingle: async () => ({
           data: table === 'tasks'
-            ? (options.taskWorkspace ? { id: options.taskId, workspace_id: options.taskWorkspace } : null)
+            ? (options.taskWorkspace
+                ? {
+                    id: options.taskId,
+                    workspace_id: options.taskWorkspace,
+                    parent_task_id: options.parentTaskId ?? null,
+                  }
+                : null)
             : table === 'workspaces'
               ? { id: options.taskWorkspace, slug: 'beta-board' }
               : (options.member || options.flowMember ? { id: 'member-1' } : null),
@@ -59,6 +65,36 @@ describe('task launch resolver', () => {
       workspaceSlug: 'beta-board',
       fullId: 'BETA-42',
       tab: 'comments',
+      // SUB-01: самостоятельная задача — подзадачи нет, оба поля null.
+      parentTaskId: null,
+      subtaskId: null,
+    });
+  });
+
+  it('SUB-01: подзадача возвращает taskId САМОЙ подзадачи + её parentTaskId', async () => {
+    // Ключевое: taskId остаётся подзадачей, а parentTaskId нужен, чтобы TWA
+    // открыла карточку РОДИТЕЛЯ. Подзадачи нет на доске — открывать её
+    // напрямую значило бы упереться в пустоту.
+    const result = await resolveTaskLaunchTarget(
+      makeSupabase({
+        taskId: 'subtask-1',
+        taskWorkspace: 'ws-beta',
+        member: true,
+        parentTaskId: 'parent-1',
+      }),
+      'profile-1',
+      'BETA-42-SUB-1',
+      'general',
+    );
+    expect(result).toEqual({
+      kind: 'task',
+      taskId: 'subtask-1',
+      workspaceId: 'ws-beta',
+      workspaceSlug: 'beta-board',
+      fullId: 'BETA-42-SUB-1',
+      tab: 'general',
+      parentTaskId: 'parent-1',
+      subtaskId: 'subtask-1',
     });
   });
 

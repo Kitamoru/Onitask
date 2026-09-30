@@ -285,6 +285,27 @@ export function TaskCard({
         {/* Priority badge */}
         <PriorityBadge label={priorityLabel} color={priorityColor as 'red' | 'amber' | 'green'} />
 
+        {/* SUB-01: маркер подзадачи. Без него карточка подзадачи в стриме
+            выглядит как самостоятельная задача с незнакомым номером
+            «ONI-42-SUB-1» — человек не понял бы, что это пункт внутри задачи. */}
+        {task.parent_task_id && (
+          <span
+            className="rounded px-1 py-0.5"
+            style={{
+              fontFamily: 'var(--font-family-display)',
+              fontSize: 'var(--text-body-sm)',
+              lineHeight: 'var(--text-body-sm-line)',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--color-accent-amber)',
+              backgroundColor: 'transparent',
+              border: '1px solid var(--color-accent-amber)',
+              borderRadius: 'var(--radius-flowboard-section)',
+            }}
+          >
+            Подзадача {task.subtask_index}
+          </span>
+        )}
+
         {/* Workspace name badge — matches PriorityBadge style with border */}
         {workspaceDisplayName && (
           <span

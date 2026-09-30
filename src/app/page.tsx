@@ -53,8 +53,10 @@ export default function HomePage() {
       const preferred = getPreferredView();
       const preferredTarget = preferred === 'stream' ? '/flowboard?view=stream' : '/flowboard';
       const launch = launchContext;
+      // SUB-01: subtask_id едет тем же открытием — карточка родителя плюс
+      // подсветка подзадачи внутри (task_id здесь уже id родителя).
       const target = launch?.kind === 'task'
-        ? `/flowboard?open_task_id=${encodeURIComponent(launch.task_id)}${launch.tab === 'comments' ? '&tab=comments' : ''}`
+        ? `/flowboard?open_task_id=${encodeURIComponent(launch.task_id)}${launch.subtask_id ? `&subtask_id=${encodeURIComponent(launch.subtask_id)}` : ''}${launch.tab === 'comments' ? '&tab=comments' : ''}`
         : launch?.kind === 'flow'
           ? `/flowboard?workspace_id=${encodeURIComponent(launch.workspace_id)}`
           : preferredTarget;

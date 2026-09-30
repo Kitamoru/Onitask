@@ -32,7 +32,7 @@ export async function resolveTaskLaunchTarget(
 
   const { data: task, error: taskError } = await supabase
     .from('tasks')
-    .select('id, workspace_id')
+    .select('id, workspace_id, parent_task_id')
     .eq('id', taskId)
     .maybeSingle();
   if (taskError || !task?.workspace_id) return null;
@@ -60,6 +60,10 @@ export async function resolveTaskLaunchTarget(
     workspaceSlug: workspace.slug,
     fullId: `${fullId}`,
     tab,
+    // SUB-01: цель перехода — карточка родителя, а сама подзадача помечена,
+    // чтобы UI раскрыл и подсветил её. Для самостоятельной задачи оба поля null.
+    parentTaskId: task.parent_task_id ?? null,
+    subtaskId: task.parent_task_id ? task.id : null,
   };
 }
 

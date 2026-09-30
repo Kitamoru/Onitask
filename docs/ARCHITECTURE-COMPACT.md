@@ -108,6 +108,20 @@ workers (
 
 **Задачи:** `tasks`, `tracker.columns`, `sprints`, `task_column_history`, `task_relations` (+ RPC `get_task_subgraph`)
 
+> **SUB-01 (миграции 139–141):** подзадача — **строка в `tasks`**, а не
+> отдельная сущность. `tasks.parent_task_id` (FK self, `ON DELETE CASCADE`) +
+> `tasks.subtask_index` (1..10). Отдельная таблица отвергнута: весь контур
+> (стрим, ТГ, сдача, ревью, вложения, комментарии, права, Realtime) уже
+> построен на `tasks.id`. У подзадачи `task_number IS NULL`, display-id
+> `ONI-42-SUB-1` собирает `task_full_id()`. Ключевой инвариант: **`parent_task_id
+> IS NULL` = самостоятельная задача**, и этот предикат стоит фильтром в
+> `attention_risk_pulse`, `review_backlog`, `stuck_tasks`,
+> `bottleneck_columns`, `overloaded_workers`, `orphan_blockers`,
+> `stale_blocked`, `get_workspace_operational_context()`, `deadline_notify_tick()`
+> — подзадачи не создают нагрузки, её наследует родитель. Осознанные
+> исключения: `pending_escalations`, `context_switches_today`, триггеры
+> `task_started`/`task_review`/`task_done`. ADR-2026-09-30 в `decisions.md`.
+
 **AI-пайплайн:** `enrichment_queue`, `task_enrichments`, `agent_events`, `agent_memory` (+ RPC `match_agent_memory`), `task_events`, `consolidation_errors`
 
 **Knowledge Base:** `workspace_documents`, `workspace_doc_chunks` (+ RPC `match_doc_chunks`)

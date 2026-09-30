@@ -38,7 +38,7 @@ function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
   }
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
-  const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id);
+  const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id, task.subtask_index);
   return { ...task, full_id: fullId, workspace_prefix: prefix };
 }
 
@@ -47,7 +47,12 @@ function toTaskEntity(
   raw: Record<string, unknown> & { id: string; task_number?: number | null; workspace_id?: string },
   prefix: string,
 ): TaskEntity {
-  const fullId = buildFullId(prefix, raw.task_number as number | null | undefined, raw.id);
+  const fullId = buildFullId(
+    prefix,
+    raw.task_number as number | null | undefined,
+    raw.id,
+    raw.subtask_index as number | null | undefined,
+  );
   return {
     ...raw,
     full_id: fullId,

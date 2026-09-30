@@ -1278,4 +1278,69 @@ format is deliberately compact so that agents can load the file quickly.
 
 ---
 
-*onitask · Декомпозиция по задачам · компакт-версия · 12 июля 2026 · обновлено 4 августа 2026 (аудит Stage 1-4 + Stage 5+)*
+## Stage 9 · SUB-01 Подзадачи (вместо фиктивного «Чеклиста задачи»)
+
+> Запрос владельца 2026-09-30: подзадача не должна требовать создания новой
+> задачи. Разбор архитектуры: «Чеклист задачи» оказался фикцией — поле
+> `metadata.checklist` писалось `ToggleSwitch'ом` и не читалось никогда
+> (42 ключа в проде, все пустые). Решения — ADR-2026-09-30 ×2 в
+> `decisions.md`. Подзадача = строка в `tasks` с `parent_task_id`.
+
+- [x] SUB-01.1 Схема: `parent_task_id` + `subtask_index`, гарды нумерации и
+      дедупликации, `task_full_id`/`find_task_by_full_id` → «ONI-42-SUB-1» #db !high
+      Миграция `139`. Ключевое: `task_number` подзадачи = NULL (нумерация не
+      сдвигается); без отдельной ветки `find_task_by_full_id` возвращал бы
+      **родителя** на запрос подзадачи. Проверено на живых данных: гарды БД
+      отвергают 11-ю подзадачу / индекс без родителя / дубль позиции.
+- [x] SUB-01.2 Фильтры read-path: подзадачи не создают нагрузки #db !high
+      Миграции `140` + `141` (разделены из-за ограничения `apply_migration`).
+      7 вьюх + 2 функции. `get_workspace_operational_context()` — критично,
+      уходит в промт. Осознанно оставлены: `pending_escalations`,
+      `context_switches_today`, триггеры task_started/review/done.
+      Проверено: исполнитель с 1 родителем + 3 подзадачами в работе →
+      `active_tasks`=1, не 4; `overloaded_workers`=NULL; ctx 7→8, не 11.
+- [x] SUB-01.3 Слияние результата: `source='subtask'` + триггер `review→done` #db !med @blocked_by:SUB-01.1
+      Миграция `142`. Вложения → родителю (только манифест, `storage_path` не
+      трогаем — download идёт по нему), `submission_id` обнуляется (иначе
+      CASCADE сдачи унёс бы ссылку на живой файл), комментарий → ленту
+      родителя. Колонку родителя НЕ трогаем — авто-закрытие отменено решением
+      владельца. Проверено на живых данных полным сценарием; пустая подзадача
+      комментарий не пишет, повторный UPDATE не дублирует.
+- [x] SUB-01.4 Роут `POST /api/tasks/[id]/subtasks` + фильтр в MCP #api !med @blocked_by:SUB-01.1
+      `src/lib/subtasks.ts` (чистые правила под unit-тесты) + `route.ts`/`auth.ts`
+      + клиент `src/lib/api/subtasks.ts`. Права на родителе (`getTaskPermission`),
+      лимит 10 до INSERT (409, не 500 на CHECK), `assigned_to` только `type='human'`,
+      `reviewer_id = parent.created_by` — иначе обход review→done (см. ADR).
+      `nextSubtaskIndex` = max+1, не count+1 (после удаления позиции не сдвигаются).
+      `.is('parent_task_id', null)` в `getTasksByColumn`. Storage-чистка в
+      DELETE расширена на подзадачи. Типы дописаны вручную (CLI-gen требует токен).
+      Тесты 34 (было 543 → 577). Проверено мутациями: снятие гарда «только человек»
+      роняет 3 теста, снятие проверки `type==='human'` в `canBeSubtaskAssignee` — 2.
+- [x] SUB-01.5 UI: `SubtasksSection` + `SubtaskViewSheet` #ui !med @blocked_by:SUB-01.4
+      `SubtasksSection` (тоггл, список, добавление, удаление) + `SubtaskViewSheet`
+      (состояние, исполнитель, срок, «Сделать самостоятельной задачей»).
+      Фиктивный чеклист и мёртвый `metadata.checklist` удалены. `mapTaskRow`
+      пробрасывает `parent_task_id`/`subtask_index`. `boardTasks` режет подзадачи
+      из доски/счётчиков/шторки колонки; стрим их показывает с маркером.
+      Deep link `subtask_ONI-42-SUB-1` → карточка родителя + подсветка.
+      Пробел: компоненты `.tsx` не покрыты тестами (RTL в проекте нет) —
+      см. activeContext, Stage 4.
+- [x] SUB-01.6 Лента: amber-бордер результата подзадачи #ui !low @blocked_by:SUB-01.3
+      `isSubtaskArtifact()` в `reviewDecision.ts` + янтарный бордер в
+      `TaskCommentsPanel`. Отдельный предикат от `isResultArtifact` (зелёный итог
+      самой подзадачи остаётся зелёным). Копирование по клику — общий UX для всех
+      пузырей, вынесено отдельной задачей, здесь не сделано.
+- [ ] SUB-01.7 Карточка TG подзадачи #bot !med @blocked_by:SUB-01.1
+      Заголовок основной задачи, описание родителя, «Ваша подзадача», срок.
+      Deep-link `subtask_<full_id>` в клиенте уже работает (Stage 5), нужна
+      только карточка в `bot-notify`.
+- [x] SUB-01.8 Тесты #test !med @blocked_by:SUB-01.4
+      `tests/lib/subtasks.test.ts` (31: чистые хелперы + `subtaskState`/
+      `groupSubtasksByParent`), `tests/api/tasks/subtasks.test.ts` (12: 403/409/
+      агент), `tests/lib/buildFullId.test.ts` (6), плюс по 4-5 на
+      `parseStartParam` и `isSubtaskArtifact` и 1 на резолвер deep link.
+      Итого 602/602. Ключевые правила проверены мутациями (см. activeContext).
+
+---
+
+*onitask · Декомпозиция по задачам · компакт-версия · 12 июля 2026 · обновлено 30 августа 2026 (аудит Stage 1-4 + Stage 5+ + Stage 9 SUB)*

@@ -19,6 +19,7 @@ import type {
   ReviewActionRequest,
   ReviewActionResponse,
 } from '@/types/flowboard';
+import { buildFullId } from '@/lib/realtime/tasks';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -34,9 +35,13 @@ function getTelegramInitData(): string {
 
 /** Convert DB task row to our TaskEntity */
 function mapTaskRow(row: any): TaskEntity {
-  // Use server-computed full_id/workspace_prefix if available, otherwise fallback
-  const fullId = row.full_id ?? (row.task_number ? `${row.workspace_prefix ?? 'TASK'}-${row.task_number}` : row.id.slice(0, 8));
-  const prefix = row.workspace_prefix ?? (fullId.includes('-') ? fullId.split('-')[0] : 'TASK');
+  // Use server-computed full_id/workspace_prefix if available, otherwise fallback.
+  // SUB-01: у подзадачи task_number = NULL, поэтому fallback «prefix-N» дал бы
+  // номер РОДИТЕЛЯ (ONI-42 вместо ONI-42-SUB-1) либо вообще hex от UUID.
+  // Сборка подзадачи живёт в buildFullId — одна функция на оба пути (load и
+  // Realtime), чтобы они не разошлись.
+  const prefix = row.workspace_prefix ?? 'TASK';
+  const fullId = row.full_id ?? buildFullId(prefix, row.task_number, row.id, row.subtask_index);
   
   return {
     id: row.id,
@@ -58,6 +63,10 @@ function mapTaskRow(row: any): TaskEntity {
     assigned_to: row.assigned_to,
     reviewer_id: row.reviewer_id,
     handoff_to: row.handoff_to ?? null,
+    // SUB-01: без этих полей isSubtask() вернул бы false на клиенте, и подзадачи
+    // слились бы в общий список как самостоятельные задачи.
+    parent_task_id: row.parent_task_id ?? null,
+    subtask_index: row.subtask_index ?? null,
     handoff_notes: row.handoff_notes ?? null,
     sprint_id: row.sprint_id,
     story_points: row.story_points ?? null,

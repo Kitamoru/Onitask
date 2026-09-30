@@ -392,6 +392,10 @@ export interface TaskEntity {
   handoff_to: string | null;
   /** Handoff notes */
   handoff_notes: string | null;
+  /** SUB-01: parent task UUID, если это подзадача */
+  parent_task_id: string | null;
+  /** SUB-01: порядковый номер подзадачи внутри родителя (1..10) */
+  subtask_index: number | null;
   /** Sprint UUID */
   sprint_id: string | null;
   /** Story points */

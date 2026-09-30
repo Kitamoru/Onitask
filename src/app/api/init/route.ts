@@ -59,7 +59,10 @@ export async function POST(req: NextRequest) {
     const initData = (body.initData || body.init_data) as string | undefined;
     const start_param = body.start_param as string | undefined;
     const parsedStartParam = parseStartParam(start_param);
-    const taskParam = parsedStartParam?.kind === 'task' ? parsedStartParam : null;
+    const taskParam =
+      parsedStartParam?.kind === 'task' || parsedStartParam?.kind === 'subtask'
+        ? parsedStartParam
+        : null;
     const flowParam = parsedStartParam?.kind === 'flow' ? parsedStartParam : null;
     const inviteCode = parsedStartParam?.kind === 'invite' ? parsedStartParam.code : null;
 
@@ -197,11 +200,15 @@ export async function POST(req: NextRequest) {
       const launchContext = launchTarget?.kind === 'task'
         ? {
             kind: 'task' as const,
-            task_id: launchTarget.taskId,
+            // SUB-01: для подзадачи task_id — это id РОДИТЕЛЯ. Подзадачи нет на
+            // доске, поэтому открывать надо её карточку, а саму подзадачу —
+            // раскрыть и подсветить внутри.
+            task_id: launchTarget.parentTaskId ?? launchTarget.taskId,
             workspace_id: launchTarget.workspaceId,
             workspace_slug: launchTarget.workspaceSlug,
             full_id: launchTarget.fullId,
             tab: launchTarget.tab,
+            ...(launchTarget.subtaskId ? { subtask_id: launchTarget.subtaskId } : {}),
           }
         : launchTarget?.kind === 'flow'
           ? {

@@ -8,6 +8,7 @@ import {
   isReviewDecision,
   isReviewBypassBlocked,
   isResultArtifact,
+  isSubtaskArtifact,
 } from '../../src/lib/reviewDecision';
 import type { TaskEntity } from '../../src/types/flowboard';
 
@@ -256,5 +257,47 @@ describe('isResultArtifact (REV-02) — зелёный бордер итога',
   it('result НЕ подпадает под isReviewDecision — цвета не конфликтуют', () => {
     expect(isResultArtifact(feedItem('comment', 'result'))).toBe(true);
     expect(isReviewDecision(feedItem('comment', 'result'))).toBe(false);
+  });
+});
+
+// ─── isSubtaskArtifact (SUB-01): янтарный бордер результата подзадачи ────────
+// Три предиката на три цвета: review → cyan, result → green, subtask → amber.
+// Разводить их НЕЛЬЗЯ: один пузырь должен краситься ровно одним цветом, иначе
+// «результат подзадачи» в ленте родителя стал бы неотличим от «итога задачи».
+
+describe('isSubtaskArtifact (SUB-01) — янтарный бордер результата подзадачи', () => {
+  const feedItem = (kind: string, source?: unknown) =>
+    ({ kind, payload: source === undefined ? undefined : { source } }) as any;
+
+  it('source=subtask → true', () => {
+    expect(isSubtaskArtifact(feedItem('comment', 'subtask'))).toBe(true);
+  });
+
+  it('остальные источники → false', () => {
+    // source='result' — итог САМОЙ подзадачи в её ленте. Он остаётся зелёным,
+    // и красить его янтарным значило бы смешать два разных итога.
+    for (const source of ['result', 'review', 'agent', 'twa', 'mcp', 'telegram', 'system']) {
+      expect(isSubtaskArtifact(feedItem('comment', source))).toBe(false);
+    }
+  });
+
+  it('не комментарий (status/activity) → false, даже с source=subtask', () => {
+    expect(isSubtaskArtifact(feedItem('status', 'subtask'))).toBe(false);
+    expect(isSubtaskArtifact(feedItem('activity', 'subtask'))).toBe(false);
+  });
+
+  it('нет payload / нет source / null / undefined → false', () => {
+    expect(isSubtaskArtifact(feedItem('comment'))).toBe(false);
+    expect(isSubtaskArtifact(feedItem('comment', null))).toBe(false);
+    expect(isSubtaskArtifact({ kind: 'comment', payload: {} })).toBe(false);
+    expect(isSubtaskArtifact(null)).toBe(false);
+    expect(isSubtaskArtifact(undefined)).toBe(false);
+  });
+
+  it('взаимоисключающе с двумя другими предикатами — ровно один цвет', () => {
+    const item = feedItem('comment', 'subtask');
+    expect(isSubtaskArtifact(item)).toBe(true);
+    expect(isResultArtifact(item)).toBe(false);
+    expect(isReviewDecision(item)).toBe(false);
   });
 });

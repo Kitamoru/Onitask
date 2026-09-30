@@ -94,6 +94,8 @@ export interface InitResponse {
     workspace_slug: string;
     full_id: string;
     tab: TaskLaunchTab;
+    /** SUB-01: подзадача, ради которой открыли карточку task_id (родителя). */
+    subtask_id?: string;
   } | {
     kind: 'flow';
     workspace_id: string;

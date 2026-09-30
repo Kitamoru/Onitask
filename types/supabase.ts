@@ -2234,12 +2234,14 @@ export type Database = {
           metadata: Json
           moved_to_column_at: string | null
           needs_human: boolean
+          parent_task_id: string | null
           position: number
           priority: string
           raw_input: string | null
           reviewer_id: string | null
           source: string | null
           sprint_id: string | null
+          subtask_index: number | null
           tags: string[]
           task_number: number | null
           title: string
@@ -2273,12 +2275,14 @@ export type Database = {
           metadata?: Json
           moved_to_column_at?: string | null
           needs_human?: boolean
+          parent_task_id?: string | null
           position?: number
           priority?: string
           raw_input?: string | null
           reviewer_id?: string | null
           source?: string | null
           sprint_id?: string | null
+          subtask_index?: number | null
           tags?: string[]
           task_number?: number | null
           title: string
@@ -2312,12 +2316,14 @@ export type Database = {
           metadata?: Json
           moved_to_column_at?: string | null
           needs_human?: boolean
+          parent_task_id?: string | null
           position?: number
           priority?: string
           raw_input?: string | null
           reviewer_id?: string | null
           source?: string | null
           sprint_id?: string | null
+          subtask_index?: number | null
           tags?: string[]
           task_number?: number | null
           title?: string

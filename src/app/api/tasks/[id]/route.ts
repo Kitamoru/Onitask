@@ -388,15 +388,38 @@ export async function DELETE(
     // undefined_column на каждом DELETE /api/tasks/:id.
 
     // FILE-07: бинарники вложений из Storage (строки task_attachments каскадят
-    // сами по ON DELETE CASCADE; объекты в bucket — нет, чистим явно ДО delete)
+    // сами по ON DELETE CASCADE; объекты в bucket — нет, чистим явно ДО delete).
+    //
+    // SUB-01: parent_task_id — ON DELETE CASCADE, поэтому удаление родителя
+    // уносит и подзадачи, и их строки task_attachments. Но бинарники в бакете
+    // останутся сиротами до ночного gc_orphan_task_attachments (миг. 081), то
+    // есть на сутки. Собираем пути по подзадачам ЗДЕСЬ, в той же транзакции
+    // удаления, — иначе ссылка на объект исчезла бы вместе со строкой.
     try {
+      const { data: subtaskRows } = await anySupabase
+        .from('tasks')
+        .select('id')
+        .eq('parent_task_id', taskId);
+      const subtaskIds = (subtaskRows ?? []).map((r: { id: string }) => r.id);
+
       const { data: attachRows } = await anySupabase
         .from('task_attachments')
         .select('storage_path')
         .eq('task_id', taskId);
       const paths = (attachRows ?? []).map(
-        (r: { storage_path: string }) => r.storage_path
+        (r: { storage_path: string }) => r.storage_path,
       );
+
+      if (subtaskIds.length > 0) {
+        const { data: subAttachRows } = await anySupabase
+          .from('task_attachments')
+          .select('storage_path')
+          .in('task_id', subtaskIds);
+        for (const r of (subAttachRows ?? []) as Array<{ storage_path: string }>) {
+          if (r.storage_path) paths.push(r.storage_path);
+        }
+      }
+
       if (paths.length > 0) {
         await anySupabase.storage.from('task-attachments').remove(paths);
       }

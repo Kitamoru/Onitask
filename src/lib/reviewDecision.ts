@@ -55,6 +55,20 @@ export function isReviewDecision(
 }
 
 /**
+ * SUB-01: результат подзадачи, слитый в ленту задачи-родителя (миграция 142).
+ *
+ * Отдельный предикат по той же причине, что isResultArtifact: `source='subtask'`
+ * нельзя слить с `result` — это разные ленты и разные смыслы. В ленте подзадачи
+ * лежит её собственный зелёный итог (`result`), а в ленте родителя — янтарный
+ * артефакт подзадачи. Красить оба одним цветом значило бы потерять различие.
+ */
+export function isSubtaskArtifact(
+  item: { kind: string; payload?: { source?: unknown } | null } | null | undefined,
+): boolean {
+  return item?.kind === 'comment' && String(item.payload?.source ?? '') === 'subtask';
+}
+
+/**
  * REV-02: назначенный ревьюер — не формальность, мимо него ходить нельзя.
  *
  * Замер 2026-09-27: гвард на переход review → done был ТОЛЬКО для случая

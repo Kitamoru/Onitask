@@ -36,7 +36,7 @@ import { getClient } from '@/lib/supabase/client';
 import { getTaskFeedPage, createComment } from '@/lib/api/comments';
 import { formatFeedTime } from '@/lib/date';
 import { TextArea } from '@/components/ui/desk-ui';
-import { isReviewDecision, isResultArtifact } from '@/lib/reviewDecision';
+import { isReviewDecision, isResultArtifact, isSubtaskArtifact } from '@/lib/reviewDecision';
 import { scrollFeedToLatest } from '@/lib/commentsScroll';
 import type { CommentsPage, FeedPageCursor, TaskFeedItem } from '@/types/comments';
 
@@ -401,6 +401,10 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
                 // REV-02: зелёным ровно один комментарий — итоговый результат.
                 // Комментарий «согласован» (source='review') остаётся циановым.
                 const isResult = isResultArtifact(item);
+                // SUB-01: янтарный бордер — результат подзадачи, слитый в ленту
+                // родителя. Проверка до result: зелёный «итог задачи» и янтарный
+                // «итог подзадачи» не должны красить один и тот же пузырь.
+                const isSubtask = isSubtaskArtifact(item);
                 const isOwn =
                   currentUserId != null &&
                   item.author_id === currentUserId &&
@@ -415,11 +419,13 @@ export function TaskCommentsPanel({ taskId, workers, currentUserId }: TaskCommen
                       className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2"
                       style={{
                         ...(isPending ? { opacity: 0.5 } : null),
-                        ...(isResult
-                          ? { borderColor: 'var(--color-signal-green)' }
-                          : isReview
-                            ? { borderColor: 'var(--color-signal-cyan)' }
-                            : null),
+                        ...(isSubtask
+                          ? { borderColor: 'var(--color-accent-amber)' }
+                          : isResult
+                            ? { borderColor: 'var(--color-signal-green)' }
+                            : isReview
+                              ? { borderColor: 'var(--color-signal-cyan)' }
+                              : null),
                       }}
                     >
                       <div className="flex items-baseline justify-between gap-2">

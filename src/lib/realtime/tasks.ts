@@ -32,10 +32,21 @@ export interface RealtimeTaskEvent {
 }
 
 /**
- * Build full_id from workspace prefix and task_number.
+ * Build full_id from workspace prefix + task_number.
  * Consistent with mapTaskRow() in /api/tasks/[id]/route.ts and DataContext.
+ *
+ * SUB-01: у подзадачи `task_number` = NULL (номер производный от родителя),
+ * поэтому без отдельной ветки Realtime отдавал бы `id.slice(0,8)` вместо
+ * «ONI-42-SUB-1» — карточка в стриме получила бы случайный hex вместо номера.
+ * `subtaskIndex` приходит из строки tasks, для самостоятельной задачи null.
  */
-export function buildFullId(prefix: string | null | undefined, taskNumber: number | null | undefined, fallbackId: string): string {
+export function buildFullId(
+  prefix: string | null | undefined,
+  taskNumber: number | null | undefined,
+  fallbackId: string,
+  subtaskIndex?: number | null,
+): string {
+  if (prefix && subtaskIndex != null) return `${prefix}-SUB-${subtaskIndex}`;
   if (prefix && taskNumber) return `${prefix}-${taskNumber}`;
   return fallbackId.slice(0, 8);
 }
@@ -97,7 +108,7 @@ export function useTasksRealtime(
 
           if (payload.new) {
             const raw = payload.new as TasksRow;
-            const fullId = buildFullId(prefix, raw.task_number, raw.id);
+            const fullId = buildFullId(prefix, raw.task_number, raw.id, raw.subtask_index);
             taskEntity = {
               ...raw,
               full_id: fullId,
@@ -109,7 +120,7 @@ export function useTasksRealtime(
 
           if (payload.old && eventType !== 'INSERT') {
             const raw = payload.old as TasksRow;
-            const fullId = buildFullId(prefix, raw.task_number, raw.id);
+            const fullId = buildFullId(prefix, raw.task_number, raw.id, raw.subtask_index);
             oldTaskEntity = {
               ...raw,
               full_id: fullId,

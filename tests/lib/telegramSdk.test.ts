@@ -29,6 +29,38 @@ describe('parseStartParam', () => {
     expect(parseStartParam('task_ONI-42_comments')).toEqual({ kind: 'task', fullId: 'ONI-42', tab: 'comments' });
   });
 
+  it('subtask_ONI-42-SUB-1 → подзадача, а не задача', () => {
+    // SUB-01: namespace отдельный. Если бы подзадача разбиралась как 'task',
+    // ссылка была бы неотличима от ссылки на родителя, и UI не смог бы
+    // показать «Ваша подзадача» внутри карточки.
+    expect(parseStartParam('subtask_ONI-42-SUB-1')).toEqual({
+      kind: 'subtask',
+      fullId: 'ONI-42-SUB-1',
+      tab: 'general',
+    });
+  });
+
+  it('subtask_…_comments → подзадача + вкладка «Комментарии»', () => {
+    expect(parseStartParam('subtask_ONI-42-SUB-3_comments')).toEqual({
+      kind: 'subtask',
+      fullId: 'ONI-42-SUB-3',
+      tab: 'comments',
+    });
+  });
+
+  it('task_ с -SUB- хвостом не подзадача, а мусор → null', () => {
+    // Регрессия: `task_ONI-42-SUB-1` НЕ должен молча открываться как задача с
+    // обрезанным id. Либо подзадача, либо ничего.
+    expect(parseStartParam('task_ONI-42-SUB-1')).toBeNull();
+  });
+
+  it('битый subtask_ не становится invite-кодом', () => {
+    // Зарезервированный namespace: иначе 'subtask_ONI-42' уехал бы в invite
+    // redemption, и человек получил бы «приглашение» вместо задачи.
+    expect(parseStartParam('subtask_ONI-42')).toBeNull();
+    expect(parseStartParam('subtask_')).toBeNull();
+  });
+
   it('flow_acme → flow target', () => {
     expect(parseStartParam('flow_acme')).toEqual({ kind: 'flow', slug: 'acme' });
   });

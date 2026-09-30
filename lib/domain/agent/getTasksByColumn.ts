@@ -39,6 +39,12 @@ export async function getTasksByColumn(
     .order('created_at', { ascending: true })
     .limit(limit);
 
+  // SUB-01: подзадачи — не самостоятельные задачи, агент их не берёт.
+  // Без фильтра агент забрал бы подзадачу из backlog как обычную работу, а её
+  // результат должен сливаться в задачу-родителя, а не жить своей историей.
+  // Фильтр в application-уровне, а не в RLS: MCP идёт через service_role.
+  query = query.is('parent_task_id', null);
+
   // assigned_to_me → resolve agent worker (INV-04 auto-create may not have run yet)
   if (params.assigned_to_me) {
     const { data: worker } = await supabase

@@ -53,6 +53,9 @@ function FlowBoardPageContent() {
   const isStreamView = view === 'stream';
   const openTaskIdParam = searchParams.get('open_task_id');
   const openTaskParam = searchParams.get('open_task');
+  // SUB-01: deep link на подзадачу. open_task_id при этом — id РОДИТЕЛЯ
+  // (подзадачи на доске нет), а subtask_id помечает, что раскрыть внутри.
+  const openSubtaskIdParam = searchParams.get('subtask_id');
   const requestedWorkspaceId = searchParams.get('workspace_id');
   const router = useRouter();
   const { isLoading: authLoading, error: authError, data: authData, refresh: refreshAuth, initData: tgInitData } = useTelegramAuth();
@@ -92,6 +95,8 @@ function FlowBoardPageContent() {
   const [selectedAgent, setSelectedAgent] = useState<AgentCardData | null>(null);
   // FILE-03: deep-link «Обсудить задачу» → открыть вкладку «Комментарии»
   const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
+  // SUB-01: подзадача, ради которой открыли карточку родителя (deep link из TG).
+  const [highlightedSubtaskId, setHighlightedSubtaskId] = useState<string | null>(null);
   // SUBMIT-01: сдача исполнителя — шаг «Результат» открывается при переходе
   // в review/done из не-review колонки (backlog/in_progress → сдача).
   // review→done/review→in_progress сюда НЕ попадают (это ревью-решение).
@@ -126,6 +131,15 @@ function FlowBoardPageContent() {
     [tasks, currentUserId],
   );
 
+  // SUB-01: доска показывает только самостоятельные задачи. Подзадача — не
+  // карточка на доске, а пункт внутри задачи-родителя: отдельная колонка для
+  // неё означала бы, что объём работы по задаче посчитан по пунктам.
+  //
+  // Фильтр здесь, а не в GET /api/tasks, намеренно: стрим подзадачи ПОКАЗЫВАЕТ
+  // (исполнитель должен видеть «ваша подзадача»), и они нужны для поиска по
+  // связанным задачам. Отрезать их на бэкенде значило бы отрезать их везде.
+  const boardTasks = useMemo(() => tasks.filter((t) => !t.parent_task_id), [tasks]);
+
   useEffect(() => {
     if (!requestedWorkspaceId || authLoading || dataError) return;
     const isMember = authData?.workspaces.some((workspace) => workspace.id === requestedWorkspaceId);
@@ -153,15 +167,17 @@ function FlowBoardPageContent() {
       setSelectedTask(task);
       setTaskSheetHistory([]);
       setOpenTaskTab(searchParams.get('tab') === 'comments' ? 'comments' : 'general');
+      setHighlightedSubtaskId(openSubtaskIdParam);
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open_task');
       params.delete('open_task_id');
+      params.delete('subtask_id');
       params.delete('tab');
       params.delete('source');
       const cleanQuery = params.toString();
       router.replace(`/flowboard${cleanQuery ? '?' + cleanQuery : ''}`, { scroll: false });
     }
-  }, [openTaskIdParam, openTaskParam, firstLoadDone, dataError, tasks, searchParams, router]);
+  }, [openTaskIdParam, openTaskParam, openSubtaskIdParam, firstLoadDone, dataError, tasks, searchParams, router]);
 
   const sprintEnabled = metrics?.sprintEnabled ?? false;
   const sprint = useMemo<SprintInfo | undefined>(() => metrics?.sprint ?? undefined, [metrics]);
@@ -180,9 +196,12 @@ function FlowBoardPageContent() {
 
   const taskStatuses = useMemo<TaskStatusData[]>(() => {
     if (!metrics) return [];
-    // Single source of truth: derive column counters from the same `tasks` array
-    // that powers the bottom sheet, so both stay consistent during optimistic moves.
-    const countByColumn = (col: string) => tasks.filter((t) => t.column === col).length;
+    // Single source of truth: derive column counters from the same `boardTasks`
+    // array that powers the bottom sheet, so both stay consistent during
+    // optimistic moves. Считаем по boardTasks, а не по tasks: счётчик «в работе»
+    // показывает объём по задачам, и подзадачи в него не входят (SUB-01).
+    const countByColumn = (col: string) =>
+      boardTasks.filter((t) => t.column === col).length;
     return TASK_COLUMN_ORDER.map((column) => {
       const count = countByColumn(column);
       const meta = TASK_COLUMN_META[column];
@@ -195,7 +214,7 @@ function FlowBoardPageContent() {
         color: meta.accent,
       };
     });
-  }, [metrics, tasks]);
+  }, [metrics, boardTasks]);
 
   const workers = useMemo<WorkerCardData[]>(() => {
     if (!metrics) return [];
@@ -330,6 +349,9 @@ function FlowBoardPageContent() {
   const handleTaskSheetClose = useCallback(() => {
     setSelectedTask(null);
     setTaskSheetHistory([]);
+    // Подсветка подзадачи живёт только ради deep link: при ручном закрытии
+    // карточки она бы осталась висеть на следующей открытой задаче.
+    setHighlightedSubtaskId(null);
   }, []);
 
   const handleTaskStateChange = useCallback((state: import('@/types/taskRelations').AffectedTaskState) => {
@@ -772,7 +794,7 @@ function FlowBoardPageContent() {
           onClose={handleColumnSheetClose}
           column={columnSheet.column}
           title={columnSheet.label}
-          tasks={tasks}
+          tasks={boardTasks}
           accentColor={columnSheet.accentColor}
           onMoveTask={handleMoveTask}
           canMoveTask={(taskId) => {
@@ -792,6 +814,7 @@ function FlowBoardPageContent() {
           mode="view"
           initialTab={openTaskTab}
           onOpenTask={handleRelatedTaskOpen}
+          highlightSubtaskId={highlightedSubtaskId}
           onBack={handleTaskSheetBack}
           canGoBack={taskSheetHistory.length > 0}
           onTaskStateChange={handleTaskStateChange}
