@@ -13,6 +13,7 @@ import {
   nextSubtaskIndex,
   normalizeSubtaskTitle,
   resolveSubtaskReviewerId,
+  subtaskOwnerRow,
   subtaskState,
   validateSubtaskParent,
 } from '../../src/lib/subtasks';
@@ -194,6 +195,53 @@ describe('groupSubtasksByParent', () => {
       { id: 'sNull', parent_task_id: 'p1', subtask_index: null },
     ]);
     expect(grouped.get('p1')?.map((t) => t.id)).toEqual(['sNull', 's2']);
+  });
+});
+
+
+describe('subtaskOwnerRow (SUB-01) — чьи права на удаление подзадачи', () => {
+  const subtask = (over = {}) => ({
+    created_by: 'admin-who-added',
+    assigned_to: 'executor',
+    column: 'backlog',
+    parent_task_id: 'parent-1',
+    ...over,
+  });
+  const parent = (over = {}) => ({
+    created_by: 'task-author',
+    assigned_to: 'executor',
+    column: 'in_progress',
+    ...over,
+  });
+
+  it('подзадача наследует права РОДИТЕЛЯ, а не своего created_by', () => {
+    // Ключевой случай: админ добавил подзадачу в чужую задачу. created_by
+    // подзадачи = админ, но удалить её должен автор задачи, а не админ-заёмник
+    // и уж точно не автор задачи не должен зависеть от того, кто нажал кнопку.
+    expect(subtaskOwnerRow(subtask(), parent())).toEqual(parent());
+  });
+
+  it('самостоятельная задача → null: права считаются по ней самой', () => {
+    expect(subtaskOwnerRow(subtask({ parent_task_id: null }), parent())).toBeNull();
+  });
+
+  it('родитель исчез (гонка с CASCADE) → права самой подзадачи, не молчание', () => {
+    // Строгая проверка лучше, чем разрешить удаление при неясном владельце.
+    const s = subtask();
+    expect(subtaskOwnerRow(s, null)).toEqual({
+      created_by: s.created_by,
+      assigned_to: s.assigned_to,
+      column: s.column,
+    });
+    expect(subtaskOwnerRow(s, undefined)).not.toBeNull();
+  });
+
+  it('подзадача без своего created_by всё равно наследует родителя', () => {
+    // Раньше (до фикса) created_by = null давал бы canDelete = false для всех,
+    // кроме админа, и родительский автор терял бы право убрать подзадачу.
+    expect(
+      subtaskOwnerRow(subtask({ created_by: null }), parent()),
+    ).toEqual(parent());
   });
 });
 

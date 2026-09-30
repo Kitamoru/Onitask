@@ -76,6 +76,42 @@ export function isSubtask(
   return !!task?.parent_task_id;
 }
 
+/** Минимальный набор полей, по которому считаются права на владение задачей. */
+export interface TaskOwnershipFields {
+  created_by: string | null;
+  assigned_to: string | null;
+  column: string;
+  parent_task_id: string | null;
+}
+
+/**
+ * SUB-01: чьи права определяют владение подзадачей.
+ *
+ * Подзадача не самостоятельная единица — она часть жизненного цикла задачи.
+ * Поэтому её `created_by` (тот, кто нажал «добавить подзадачу») НЕ должен
+ * определять, кто может её удалить: иначе админ, добавивший подзадачу в чужую
+ * задачу, забрал бы у автора задачи право её убрать. Владелец подзадачей —
+ * родитель: автор родителя или администратор доски.
+ *
+ * Возвращает null, если родителя нет (самостоятельная задача) — тогда вызывающий
+ * код считает права по самой задаче, как раньше.
+ */
+export function subtaskOwnerRow<T extends TaskOwnershipFields>(
+  task: T,
+  parent: Pick<TaskOwnershipFields, 'created_by' | 'assigned_to' | 'column'> | null | undefined,
+): Pick<TaskOwnershipFields, 'created_by' | 'assigned_to' | 'column'> | null {
+  if (!task.parent_task_id) return null;
+  // Родитель мог исчезнуть (ON DELETE CASCADE уносит подзадачу вместе с ним, но
+  // между транзакциями возможна гонка). Тогда падаем на права самой подзадачи —
+  // строгая проверка лучше, чем молчаливое разрешение.
+  return parent ?? {
+    created_by: task.created_by,
+    assigned_to: task.assigned_to,
+    column: task.column,
+  };
+}
+
+
 /**
  * Группировка подзадач по родителю — для выборки из общего стора задач.
  *

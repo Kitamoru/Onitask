@@ -1335,11 +1335,12 @@ format is deliberately compact so that agents can load the file quickly.
       Deep-link `subtask_<full_id>` в клиенте уже работает (Stage 5), нужна
       только карточка в `bot-notify`.
 - [x] SUB-01.8 Тесты #test !med @blocked_by:SUB-01.4
-      `tests/lib/subtasks.test.ts` (31: чистые хелперы + `subtaskState`/
-      `groupSubtasksByParent`), `tests/api/tasks/subtasks.test.ts` (12: 403/409/
-      агент), `tests/lib/buildFullId.test.ts` (6), плюс по 4-5 на
-      `parseStartParam` и `isSubtaskArtifact` и 1 на резолвер deep link.
-      Итого 602/602. Ключевые правила проверены мутациями (см. activeContext).
+      `tests/lib/subtasks.test.ts` (35: чистые хелперы + `subtaskState`/
+      `groupSubtasksByParent`/`subtaskOwnerRow`), `tests/api/tasks/
+      subtasks.test.ts` (12), `tests/api/tasks/subtaskDeletePermission.test.ts`
+      (8: права по родителю в DELETE/PATCH), `tests/lib/buildFullId.test.ts` (6),
+      плюс по 4-5 на `parseStartParam` и `isSubtaskArtifact` и 1 на резолвер.
+      Итого 614/614. Ключевые правила проверены мутациями (см. activeContext).
 
 ---
 

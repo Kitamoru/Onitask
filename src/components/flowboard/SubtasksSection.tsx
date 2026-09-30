@@ -35,6 +35,12 @@ export interface SubtasksSectionProps {
   workers: WorkerCardData[];
   /** Права на родителе: без canEdit секция read-only. */
   canEdit: boolean;
+  /**
+   * Право удалять подзадачу. Отдельно от canEdit: по правилам сервера удаляет
+   * автор родителя или админ, а править может ещё и исполнитель. Смешивать их
+   * нельзя — иначе кнопка предлагала бы действие, которое сервер отвергнет 403.
+   */
+  canDeleteSubtask: boolean;
   /** Deep link из TG: подзадача, которую раскрыть и подсветить. */
   highlightSubtaskId?: string | null;
 }
@@ -43,6 +49,7 @@ export function SubtasksSection({
   task,
   workers,
   canEdit,
+  canDeleteSubtask,
   highlightSubtaskId = null,
 }: SubtasksSectionProps) {
   const queryClient = useQueryClient();
@@ -187,7 +194,7 @@ export function SubtasksSection({
                           {SUBTASK_STATE_LABEL[state]}
                         </span>
                       </button>
-                      {canEdit &&
+                      {canDeleteSubtask &&
                         (confirmDeleteId === subtask.id ? (
                           <div className="flex shrink-0 items-center gap-1">
                             <Button

@@ -1200,6 +1200,7 @@ export function TaskViewEdit({
                   task={task as TaskEntity}
                   workers={workers}
                   canEdit={taskPermission.canEdit}
+                  canDeleteSubtask={taskPermission.canDelete}
                   highlightSubtaskId={highlightSubtaskId}
                 />
               )}

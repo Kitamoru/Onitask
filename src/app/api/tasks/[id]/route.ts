@@ -26,6 +26,11 @@ import {
   getTaskWritePermission,
 } from '../../../../../lib/api-auth';
 import { TASK_FORBIDDEN_EDIT, TASK_FORBIDDEN_DELETE } from '@/lib/taskPermissions';
+import {
+  subtaskOwnerRow,
+  canBeSubtaskAssignee,
+  SUBTASK_FORBIDDEN_ASSIGNEE,
+} from '@/lib/subtasks';
 import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { enrichTaskRow } from '../../../../../lib/taskEnrichment';
 import type { Database } from '../../../../../types/supabase';
@@ -83,7 +88,7 @@ export async function PATCH(
     const supabase = createServerClient();
     const { data: taskRow, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('version, workspace_id, column, reviewer_id, metadata, created_by, assigned_to')
+      .select('version, workspace_id, column, reviewer_id, metadata, created_by, assigned_to, parent_task_id')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -99,6 +104,17 @@ export async function PATCH(
       return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
     }
 
+    // SUB-01: права на ПОДЗАДАЧУ считаются по её РОДИТЕЛЮ (created_by/assigned_to
+    // родителя), а колонка остаётся собственной — от неё зависит self-claim,
+    // и «взять подзадачу в работу» должно решаться по подзадаче, не по родителю.
+    //
+    // Без этого автор задачи не мог бы отредактировать подзадачу, добавленную
+    // админом, хотя UI (SubtaskViewSheet по правам на родителе) предлагал кнопки.
+    const patchOwner = (await subtaskOwnerRow(
+      taskRow as unknown as Parameters<typeof subtaskOwnerRow>[0],
+      await loadSubtaskParent(supabase, (taskRow as any).parent_task_id as string | null),
+    )) ?? (taskRow as any);
+
     // TASK-PERM: перемещение (column) и редактирование полей — это ОДИН и тот же
     // PATCH, поэтому единая проверка canEdit закрывает оба случая.
     // Правило: owner/admin — всё; автор (created_by) — правит; исполнитель
@@ -107,8 +123,8 @@ export async function PATCH(
     // исполнителя себе (тогда меняется только assigned_to → его worker.id).
     const permission = await getTaskWritePermission(auth.profileId!, {
       workspace_id: taskRow.workspace_id as string,
-      created_by: (taskRow.created_by as string | null) ?? null,
-      assigned_to: (taskRow.assigned_to as string | null) ?? null,
+      created_by: (patchOwner.created_by as string | null) ?? null,
+      assigned_to: (patchOwner.assigned_to as string | null) ?? null,
       column: taskRow.column as string,
     });
 
@@ -128,6 +144,40 @@ export async function PATCH(
         { error: TASK_FORBIDDEN_EDIT },
         { status: 403 },
       );
+    }
+
+    // SUB-01: подзадаче нельзя назначить AI-агента (v1, ADR-2026-09-30).
+    // Проверка именно здесь, а не только в POST /subtasks: PATCH — общий путь
+    // назначения, и без него `assigned_to: <agent>` проходил бы мимо правила.
+    // Побочный эффект, ради которого гард обязателен: trg_dispatch_outbox_on_assign
+    // кладёт задачу в dispatch_outbox при назначении агенту, и агент получил бы
+    // подзадачу в работу в обход фильтра `.is('parent_task_id', null)` в MCP.
+    if (
+      'assigned_to' in update &&
+      (taskRow as any).parent_task_id != null &&
+      update.assigned_to != null
+    ) {
+      const { data: assignee } = await supabase
+        .from('workers')
+        .select('id, type, is_active, workspace_id')
+        .eq('id', update.assigned_to as string)
+        .maybeSingle();
+
+      const assigneeOk =
+        assignee &&
+        assignee.workspace_id === taskRow.workspace_id &&
+        canBeSubtaskAssignee({
+          id: assignee.id as string,
+          type: assignee.type as 'human' | 'agent',
+          is_active: assignee.is_active as boolean,
+        });
+
+      if (!assigneeOk) {
+        return NextResponse.json(
+          { error: SUBTASK_FORBIDDEN_ASSIGNEE },
+          { status: 400 },
+        );
+      }
     }
 
     const { data: settingsRow } = await supabase
@@ -291,6 +341,27 @@ export async function PATCH(
   }
 }
 
+/**
+ * SUB-01: родитель подзадачи (или null, если это самостоятельная задача).
+ *
+ * Отдельный запрос вместо JOIN: задача уже прочитана, а `maybeSingle` на
+ * отсутствующем родителе корректно даёт null — на этом строится запасной путь
+ * в `subtaskOwnerRow` (гонка с ON DELETE CASCADE).
+ */
+async function loadSubtaskParent(
+  supabase: ReturnType<typeof createServerClient>,
+  parentTaskId: string | null,
+): Promise<{ created_by: string | null; assigned_to: string | null; column: string } | null> {
+  if (!parentTaskId) return null;
+  const { data } = await supabase
+    .from('tasks')
+    .select('created_by, assigned_to, column')
+    .eq('id', parentTaskId)
+    .maybeSingle();
+  return (data as { created_by: string | null; assigned_to: string | null; column: string } | null) ?? null;
+}
+
+
 // ─── DELETE /api/tasks/[id] — Delete task with cascade cleanup ────────────────
 
 export async function DELETE(
@@ -318,7 +389,7 @@ export async function DELETE(
     // for valid members once they switched boards (multi-workspace users).
     const { data: taskData, error: taskFetchError } = await supabase
       .from('tasks')
-      .select('workspace_id, created_by, assigned_to, column')
+      .select('workspace_id, created_by, assigned_to, column, parent_task_id')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -339,13 +410,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
+    // SUB-01: права на подзадачу считаются по РОДИТЕЛЮ, а не по её собственному
+    // created_by. Иначе автор задачи не смог бы удалить подзадачу, добавленную
+    // админом, а UI (кнопка по правам на родителе) обещал бы действие, которое
+    // сервер отверг бы 403. Подзадача — часть задачи, значит и права на неё
+    // принадлежат задаче.
+    const ownerRow = (await subtaskOwnerRow(
+      taskData as unknown as Parameters<typeof subtaskOwnerRow>[0],
+      await loadSubtaskParent(supabase, (taskData as any).parent_task_id as string | null),
+    )) ?? (taskData as any);
+
     // TASK-PERM: удалять задачу может её автор или администратор доски.
     // Исполнитель (assigned_to) правит и двигает, но не удаляет.
     const permission = await getTaskWritePermission(auth.profileId!, {
       workspace_id: taskWorkspaceId as string,
-      created_by: (taskData as any).created_by ?? null,
-      assigned_to: (taskData as any).assigned_to ?? null,
-      column: (taskData as any).column ?? '',
+      created_by: ownerRow.created_by ?? null,
+      assigned_to: ownerRow.assigned_to ?? null,
+      column: ownerRow.column ?? '',
     });
 
     if (!permission) {
