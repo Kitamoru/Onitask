@@ -320,7 +320,7 @@ export function SubtaskViewSheet({
             </>
           ) : (
             <>
-              <SectionHeader title="Текст подзадачи" />
+              <SectionHeader title="Содержание подзадачи" />
               <TextArea
                 corner="field"
                 value={draft.text}

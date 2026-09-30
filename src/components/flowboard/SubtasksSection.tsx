@@ -28,6 +28,7 @@ import { createSubtask, getSubtasks } from '@/lib/api/subtasks';
 import { deleteTask, patchTask } from '@/lib/api/flow';
 import { MAX_SUBTASKS, subtaskState } from '@/lib/subtasks';
 import { taskColumnLabel } from '@/lib/taskColumns';
+import { formatDate } from '@/lib/date';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { SubtaskViewSheet } from './SubtaskViewSheet';
 import { SubtaskCreateSheet } from './SubtaskCreateSheet';
@@ -67,7 +68,7 @@ export function SubtasksSection({
   const queryKey = useMemo(() => ['task-subtasks', task.id] as const, [task.id]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [openSubtask, setOpenSubtask] = useState<TaskEntity | null>(null);
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
 
   const subtasksQuery = useQuery({
     queryKey,
@@ -76,8 +77,27 @@ export function SubtasksSection({
     staleTime: 15_000,
   });
 
-  const subtasks = subtasksQuery.data?.subtasks ?? [];
+  // Мемо обязателен: `?? []` создавал бы новый массив на каждом рендере и
+  // делал зависимости useMemo для открытой подзадачи нестабильными.
+  const subtasks = useMemo(
+    () => subtasksQuery.data?.subtasks ?? [],
+    [subtasksQuery.data],
+  );
   const limitReached = subtasks.length >= MAX_SUBTASKS;
+
+  /**
+   * Открытая подзадача берётся из СПИСКА, а не из снимка в state.
+   *
+   * Раньше state хранил сам объект на момент тапа. После PATCH список
+   * инвалидировался и перечитывался, но шторка продолжала держать старый
+   * объект — «сохранил, а текст прежний». Со стороны это выглядело как
+   * «ничего не сохранилось», хотя PATCH отрабатывал. Теперь инвалидация
+   * проезжает и в шторку.
+   */
+  const openSubtask = useMemo(
+    () => subtasks.find((s) => s.id === openSubtaskId) ?? null,
+    [subtasks, openSubtaskId],
+  );
 
   // Подзадача удаляется общим DELETE /api/tasks/[id]: это та же строка tasks,
   // отдельный эндпоинт на удаление завёл бы второй путь каскада (вложения,
@@ -184,18 +204,42 @@ export function SubtasksSection({
                   deadline: subtask.deadline,
                 });
                 const isHighlighted = highlightSubtaskId === subtask.id;
+                // Текст — тот же, что в шторке: description полнее обрезанного
+                // title, а при его отсутствии откатываемся на title.
+                const content = subtask.description?.trim() || subtask.title;
+                const assignee =
+                  workers.find((w) => w.id === subtask.assigned_to) ?? null;
+                // Срок в правом верхнем углу; просрочка и выполнение заменяют его
+                // бейджем — «дата + бейдж» перегружали бы компактную строку.
+                // Токены те же, что у приоритетов.
+                const badge =
+                  state === 'overdue'
+                    ? {
+                        text: 'Просрочено',
+                        bg: 'var(--color-priority-red-bg)',
+                        fg: 'var(--color-priority-red-text)',
+                        border: 'var(--color-priority-red-border)',
+                      }
+                    : state === 'done'
+                      ? {
+                          text: 'Выполнено',
+                          bg: 'var(--color-priority-green-bg)',
+                          fg: 'var(--color-priority-green-text)',
+                          border: 'var(--color-priority-green-border)',
+                        }
+                      : null;
                 return (
                   <NotchedPanel
                     key={subtask.id}
                     corner="field"
                     notch={4}
                     className="w-full"
-                    contentClassName="flex items-center gap-3 p-3"
+                    contentClassName="p-3"
                   >
                       <button
                         type="button"
-                        onClick={() => setOpenSubtask(subtask)}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        onClick={() => setOpenSubtaskId(subtask.id)}
+                        className="flex w-full items-start gap-3 text-left"
                         aria-label={`Открыть подзадачу ${subtask.full_id}`}
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -220,12 +264,38 @@ export function SubtasksSection({
                             </span>
                           </div>
                           <span
-                            className={`truncate text-[14px] font-medium ${
+                            className={`line-clamp-2 text-[14px] font-medium ${
                               state === 'done' ? 'text-text-muted line-through' : 'text-text'
                             }`}
                           >
-                            {subtask.title}
+                            {content}
                           </span>
+                          {assignee && (
+                            <span className="truncate text-[11px] text-text-muted">
+                              {assignee.displayName}
+                              {assignee.roleLabel ? ` · ${assignee.roleLabel}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end">
+                          {badge ? (
+                            <span
+                              className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap"
+                              style={{
+                                backgroundColor: badge.bg,
+                                color: badge.fg,
+                                border: `1px solid ${badge.border}`,
+                              }}
+                            >
+                              {badge.text}
+                            </span>
+                          ) : (
+                            subtask.deadline && (
+                              <span className="whitespace-nowrap text-[11px] text-text-muted">
+                                {formatDate(subtask.deadline)}
+                              </span>
+                            )
+                          )}
                         </div>
                       </button>
                   </NotchedPanel>
@@ -286,7 +356,7 @@ export function SubtasksSection({
       {openSubtask && (
         <SubtaskViewSheet
           open
-          onClose={() => setOpenSubtask(null)}
+          onClose={() => setOpenSubtaskId(null)}
           subtask={openSubtask}
           parent={task}
           assignee={workers.find((w) => w.id === openSubtask.assigned_to) ?? null}
