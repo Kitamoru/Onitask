@@ -27,6 +27,22 @@ export type TaskCardData = {
   reviewerName?: string | null;
   workspaceHandle: string;
   clarityScore: number | null;
+  /**
+   * SUB-01: подзадача. null/undefined = самостоятельная задача (поведение
+   * прежнее). Заполняется для карточек подзадач, чтобы текст говорил
+   * «подзадача», а ссылка вела в namespace `subtask_`.
+   */
+  subtask?: SubtaskRef | null;
+};
+
+/** Родитель подзадачи в том виде, в каком он нужен карточке. */
+export type SubtaskRef = {
+  /** Порядковый номер подзадачи внутри родителя (1..10). */
+  index: number | null;
+  /** display-id родителя, напр. «ONI-42». Может быть null — не собрался. */
+  parentFullId: string | null;
+  /** Название родителя — без него подзадача висит в Telegram без контекста. */
+  parentTitle: string | null;
 };
 
 export type NotifyContext =
@@ -127,6 +143,24 @@ export function renderTaskCardBody(
 
   const lines: string[] = [];
   lines.push(`📋 <b>${title}</b>`);
+
+  // SUB-01: подзадача без указания родителя висит в Telegram как «ONI-42-SUB-3»
+  // без понятного контекста. Строка идёт сразу под заголовком — раньше названия.
+  if (card.subtask) {
+    const parentId = card.subtask.parentFullId
+      ? escapeHtml(card.subtask.parentFullId)
+      : null;
+    const parentTitle = card.subtask.parentTitle?.trim()
+      ? escapeHtml(truncateForTelegram(card.subtask.parentTitle, 60))
+      : null;
+    const label = [parentId, parentTitle].filter(Boolean).join(' — ');
+    if (label) {
+      const pos =
+        card.subtask.index != null ? ` · подзадача ${card.subtask.index}` : ' · подзадача';
+      lines.push(`🗂 <i>в задаче ${label}${escapeHtml(pos)}</i>`);
+    }
+  }
+
   if (description) {
     lines.push(`<blockquote>${description}</blockquote>`);
   }
@@ -163,17 +197,29 @@ export function renderTaskCardBody(
   return lines.join('\n');
 }
 
-export function buildHeader(context: NotifyContext, fullId: string): string {
+export function buildHeader(
+  context: NotifyContext,
+  fullId: string,
+  isSubtask = false,
+): string {
   const id = escapeHtml(fullId);
+  // SUB-01: подзадача — не самостоятельная единица работы, и называть её
+  // «задачей» вводит в заблуждение: человек не понимает, что это пункт внутри
+  // задачи. Слово подставляется в тех же местах, где стояло «Задача».
+  const noun = isSubtask ? 'Подзадача' : 'Задача';
+  // Родительный падеж для «Результат … согласован». Через toLowerCase() вышло бы
+  // «подзадача» вместо «подзадачи» — согласование по-русски требует формы
+  // отдельно, а не механики смены регистра.
+  const nounGenitive = isSubtask ? 'подзадачи' : 'задачи';
   switch (context) {
     case 'assigned':
-      return `📝 Задача <b>${id}</b> назначена на тебя`;
+      return `📝 ${noun} <b>${id}</b> назначена на тебя`;
     case 'done':
-      return `✅ Задача <b>${id}</b> выполнена`;
+      return `✅ ${noun} <b>${id}</b> выполнена`;
     case 'done_approved':
-      return `✅ Результат задачи <b>${id}</b> согласован`;
+      return `✅ Результат ${nounGenitive} <b>${id}</b> согласован`;
     case 'review':
-      return `🔎 Задача <b>${id}</b> ждет вашей проверки`;
+      return `🔎 ${noun} <b>${id}</b> ждет вашей проверки`;
     case 'escalation':
       return `🆘 Эскалация · <b>${id}</b>`;
     case 'escalation_resolved':
@@ -183,15 +229,15 @@ export function buildHeader(context: NotifyContext, fullId: string): string {
     case 'deadline_overdue':
       return `🔴 Дедлайн пропущен · <b>${id}</b>`;
     case 'unblocked':
-      return `🔓 Задача <b>${id}</b> разблокирована`;
+      return `🔓 ${noun} <b>${id}</b> разблокирована`;
     case 'cascade':
       return `🔗 Цепочка разблокирована · <b>${id}</b>`;
     case 'handoff':
-      return `🤝 Задача <b>${id}</b> передана`;
+      return `🤝 ${noun} <b>${id}</b> передана`;
     case 'duplicate':
       return `👯 Похоже на дубликат · <b>${id}</b>`;
     default:
-      return `📋 Задача <b>${id}</b>`;
+      return `📋 ${noun} <b>${id}</b>`;
   }
 }
 
@@ -199,9 +245,17 @@ export function buildOpenButton(
   card: TaskCardData,
   context: NotifyContext,
 ): { text: string; url: string } {
-  const url = context === 'review'
-    ? taskCommentsDeepLink(card.fullId)
-    : taskDeepLink(card.fullId);
+  // SUB-01: подзадаче нужен namespace subtask_. Иначе ссылка мёртвая —
+  // parseStartParam отвергает `task_` с хвостом «-SUB-1» как мусор.
+  const isSub = !!card.subtask;
+  const url =
+    context === 'review'
+      ? isSub
+        ? subtaskCommentsDeepLink(card.fullId)
+        : taskCommentsDeepLink(card.fullId)
+      : isSub
+        ? subtaskDeepLink(card.fullId)
+        : taskDeepLink(card.fullId);
   if (isLowClarity(card)) {
     return {
       text: `✏️ Уточнить ${card.fullId} →`,
@@ -318,7 +372,7 @@ export function buildTaskNotifyCard(
     );
   }
 
-  const header = buildHeader(context, card.fullId);
+  const header = buildHeader(context, card.fullId, !!card.subtask);
   const body = renderTaskCardBody(card, { extraLines });
   const text = `${header}\n\n${body}`.slice(0, 4096);
 
@@ -364,6 +418,23 @@ export function escapeHtml(str: string): string {
 export function miniAppDeepLink(startParam?: string): string {
   const base = `https://t.me/${CARD_CONFIG.botUsername}/${CARD_CONFIG.miniAppShortName}`;
   return startParam ? `${base}?startapp=${startParam}` : base;
+}
+
+/**
+ * SUB-01: подзадача = отдельный namespace `subtask_`.
+ *
+ * Без этого кнопка на карточке подзадачи вела в `task_ONI-42-SUB-1`, а
+ * parseStartParam такой start_param отвергает как мусор (`task_` ждёт ровно
+ * `[A-Za-z]+-\d+`) — то есть тихо мёртвая ссылка: приложение открывалось, но
+ * ничего не показывало. Проверено тестом на parseStartParam.
+ */
+export function subtaskDeepLink(fullId: string): string {
+  return miniAppDeepLink(`subtask_${fullId}`);
+}
+
+/** Deep link на подзадачу сразу на вкладку «Комментарии». */
+export function subtaskCommentsDeepLink(fullId: string): string {
+  return miniAppDeepLink(`subtask_${fullId}_comments`);
 }
 
 export function taskDeepLink(fullId: string): string {

@@ -16,6 +16,7 @@ import {
   CARD_CONFIG,
   type NotifyContext,
   type TaskCardData,
+  type SubtaskRef,
 } from './card.ts';
 
 
@@ -566,17 +567,44 @@ async function buildTaskCardData(
     const { data: task } = await supabase
       .from('tasks')
       .select(
-        'id, title, description, column, priority, deadline, metadata, task_number, created_by, assigned_to, reviewer_id, is_blocked, is_inbox'
+        'id, title, description, column, priority, deadline, metadata, task_number, created_by, assigned_to, reviewer_id, is_blocked, is_inbox, parent_task_id, subtask_index'
       )
       .eq('id', taskId)
       .maybeSingle();
 
     const meta = (task?.metadata as Record<string, unknown>) || {};
+
+    // SUB-01: подзадача. Нужны номер позиции и данные родителя — без них
+    // карточка говорит «Задача ONI-42-SUB-1», и человек не понимает, что это
+    // пункт внутри задачи и в какой именно.
+    let subtask: SubtaskRef | null = null;
+    let parentNumber: number | null = null;
+    if (task?.parent_task_id) {
+      const { data: parent } = await supabase
+        .from('tasks')
+        .select('id, title, task_number')
+        .eq('id', task.parent_task_id as string)
+        .maybeSingle();
+      parentNumber = (parent?.task_number as number | null) ?? null;
+      subtask = {
+        index: (task.subtask_index as number | null) ?? null,
+        parentFullId:
+          parentNumber != null ? `${ws?.task_prefix || '?'}-${parentNumber}` : null,
+        parentTitle: (parent?.title as string | null) ?? null,
+      };
+    }
+
+    // display-id. У подзадачи task_number = NULL, поэтому собираем из номера
+    // родителя и позиции.
     const fullId =
       (job.payload.full_id as string) ||
-      (task?.task_number != null
-        ? `${ws?.task_prefix || '?'}-${task.task_number}`
-        : '?');
+      (task?.parent_task_id && task?.subtask_index != null
+        ? parentNumber != null
+          ? `${ws?.task_prefix || '?'}-${parentNumber}-SUB-${task.subtask_index}`
+          : `?-${task.subtask_index}`
+        : task?.task_number != null
+          ? `${ws?.task_prefix || '?'}-${task.task_number}`
+          : '?');
 
     const title =
       (meta.rewritten_title as string) ||
@@ -617,6 +645,7 @@ async function buildTaskCardData(
       reviewerName,
       workspaceHandle: ws?.name || ws?.slug || '',
       clarityScore,
+      subtask,
     };
   }
 

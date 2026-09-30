@@ -1330,10 +1330,14 @@ format is deliberately compact so that agents can load the file quickly.
       `TaskCommentsPanel`. Отдельный предикат от `isResultArtifact` (зелёный итог
       самой подзадачи остаётся зелёным). Копирование по клику — общий UX для всех
       пузырей, вынесено отдельной задачей, здесь не сделано.
-- [ ] SUB-01.7 Карточка TG подзадачи #bot !med @blocked_by:SUB-01.1
-      Заголовок основной задачи, описание родителя, «Ваша подзадача», срок.
-      Deep-link `subtask_<full_id>` в клиенте уже работает (Stage 5), нужна
-      только карточка в `bot-notify`.
+- [x] SUB-01.7 Карточка TG подзадачи #bot !med @blocked_by:SUB-01.1
+      `buildHeader` подставляет «Подзадача», тело карточки показывает родителя
+      («в задаче ONI-42 — Релиз сайта · подзадача 1»), кнопка ведёт в namespace
+      `subtask_`. Найдено и исправлено: кнопка вела в `task_` c хвостом «-SUB-1»,
+      а `parseStartParam` такой параметр отвергает — ссылка была мёртвой.
+      Родительный падеж задан явно (`подзадачи`), `toLowerCase()` давал
+      неверное «подзадача» — поймано тестом. Проверено на проде:
+      `task_full_id` → `ONIT-25-SUB-2`, парсер принимает.
 - [x] SUB-01.8 Тесты #test !med @blocked_by:SUB-01.4
       `tests/lib/subtasks.test.ts` (35: чистые хелперы + `subtaskState`/
       `groupSubtasksByParent`/`subtaskOwnerRow`), `tests/api/tasks/
