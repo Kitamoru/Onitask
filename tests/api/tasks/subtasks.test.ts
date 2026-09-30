@@ -326,6 +326,72 @@ describe('POST /api/tasks/[id]/subtasks — SUB-01', () => {
   });
 });
 
+describe('POST /api/tasks/[id]/subtasks — описание подзадачи (SUB-01)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authenticateRequest).mockResolvedValue({
+      authenticated: true,
+      profileId: 'profile-1',
+    } as never);
+    vi.mocked(extractInitData).mockResolvedValue('init' as never);
+    vi.mocked(isWorkspaceMember).mockResolvedValue(true);
+    vi.mocked(getActiveWorkerInWorkspace).mockResolvedValue({
+      id: 'w-1',
+      workspace_id: 'ws-1',
+      type: 'human',
+    } as never);
+    vi.mocked(getTaskWritePermission).mockResolvedValue(
+      getTaskPermission(
+        { created_by: 'w-1', assigned_to: null, column: 'in_progress' },
+        { workerId: 'w-1', role: 'member' },
+      ),
+    );
+  });
+
+  /**
+   * Перехватываем реально уходящий INSERT через `__state.inserted` того же
+   * мока, что и остальные тесты файла, — без второго, параллельного мока.
+   */
+  function setupInsertCapture(workers: WorkerRow[] = []) {
+    const supabase = buildSupabase({ workers });
+    vi.mocked(createServerClient).mockReturnValue(supabase);
+    return supabase;
+  }
+
+  const post = (body: Record<string, unknown>) =>
+    POST(
+      {
+        json: async () => body,
+        headers: { get: () => null },
+      } as never,
+      { params: Promise.resolve({ id: 'task-1' }) },
+    );
+
+  it('текст из «Что нужно сделать» сохраняется и в title, и в description', async () => {
+    // Шторка подзадачи показывает description под заголовком «Подзадача»,
+    // а список и TG-карточка — title. Одно поле ввода, две роли.
+    const supabase = setupInsertCapture();
+    await post({ title: 'Написать текст', description: 'Написать текст' });
+    expect(supabase.__state.inserted).toMatchObject({
+      title: 'Написать текст',
+      description: 'Написать текст',
+    });
+  });
+
+  it('без description отдаём title — старые вызовы не остаются без текста', async () => {
+    const supabase = setupInsertCapture();
+    await post({ title: 'Только название' });
+    expect(supabase.__state.inserted?.description).toBe('Только название');
+  });
+
+  it('пустой description не затирает title', async () => {
+    // Иначе подзадача выглядела бы созданной, но с пустым телом в шторке.
+    const supabase = setupInsertCapture();
+    await post({ title: 'Текст', description: '   ' });
+    expect(supabase.__state.inserted?.description).toBe('Текст');
+  });
+});
+
 describe('GET /api/tasks/[id]/subtasks — SUB-01', () => {
   beforeEach(() => {
     vi.clearAllMocks();

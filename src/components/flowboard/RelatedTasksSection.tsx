@@ -156,6 +156,13 @@ export function RelatedTasksSection({
     );
   };
 
+  // Блок целиком скрываем, когда связей нет: заголовок «Связанные задачи» без
+  // содержимого — шум, он занимает место и обещает действие, которого нет.
+  // Показываем во время загрузки, при ошибке и когда связи реально есть.
+  if (!relationsQuery.isPending && !relationsQuery.isError && !hasRelations) {
+    return null;
+  }
+
   return (
     <section>
       <SectionHeader title="Связанные задачи" />

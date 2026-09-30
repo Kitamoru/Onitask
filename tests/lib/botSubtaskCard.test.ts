@@ -8,6 +8,27 @@ import {
   subtaskDeepLink,
   type TaskCardData,
 } from '../../supabase/functions/bot-notify/card';
+import {
+  renderTaskCardBody as renderWebhookCardBody,
+  type TaskCardData as WebhookTaskCardData,
+} from '../../lib/bot';
+
+/** Карточка для webhook-рендера (lib/bot) — форма чуть уже, чем у bot-notify. */
+const makeWebhookCard = (
+  over: Partial<WebhookTaskCardData> = {},
+): WebhookTaskCardData => ({
+  fullId: 'ONI-42-SUB-1',
+  title: 'Написать текст',
+  column: 'backlog',
+  isInbox: false,
+  isBlocked: false,
+  priority: 'medium',
+  dueDate: null,
+  assigneeName: 'Пётр',
+  workspaceHandle: 'acme',
+  clarityScore: null,
+  ...over,
+});
 
 const makeCard = (over: Partial<TaskCardData> = {}): TaskCardData => ({
   fullId: 'ONI-42-SUB-1',
@@ -170,3 +191,52 @@ describe('SUB-01: карточка целиком', () => {
     }
   });
 });
+
+// SUB-01: одно поле ввода «Что нужно сделать» пишется и в title, и в
+// description (ADR-2026-10-02 — отдельного subtask_description нет). Без
+// проверки на равенство карточка печатала бы один и тот же текст дважды:
+// жирной строкой и в blockquote. Проверяем оба рендерера — правка в одном
+// и забытая во втором дали бы расхождение между путями доставки.
+describe('SUB-01: одинаковые title и description не дублируются', () => {
+  const TEXT = 'Написать текст для главной';
+
+  it('bot-notify: при полном совпадении блока цитаты нет', () => {
+    const text = renderTaskCardBody(makeCard({ title: TEXT, description: TEXT }));
+    expect(text).toContain(TEXT);
+    // Маркер именно <blockquote>, а не «&gt;»: escapeHtml экранирует только
+    // СОДЕРЖИМОЕ, теги шаблона печатаются как есть. Проверка на «&gt;» прошла
+    // бы и на сломанном коде — текст подзадачи не содержит «>».
+    expect(text).not.toContain('<blockquote>');
+  });
+
+  it('bot-notify: разные тексты — оба на месте', () => {
+    const text = renderTaskCardBody(
+      makeCard({ title: 'Написать текст', description: 'Взять интервью у трёх клиентов' }),
+    );
+    expect(text).toContain('Написать текст');
+    expect(text).toContain('<blockquote>Взять интервью у трёх клиентов</blockquote>');
+  });
+
+  it('bot-notify: обрезка не ломает сравнение', () => {
+    // title рендерится с truncateForTelegram(…, 120), но сравниваются сырые
+    // значения — иначе длинное совпадение прошло бы как «разные тексты».
+    const long = 'я'.repeat(200);
+    const text = renderTaskCardBody(makeCard({ title: long, description: long }));
+    expect(text).not.toContain('<blockquote>');
+  });
+
+  it('lib/bot: при полном совпадении блока цитаты нет', () => {
+    const text = renderWebhookCardBody(makeWebhookCard({ title: TEXT, description: TEXT }));
+    expect(text).toContain(TEXT);
+    expect(text).not.toContain('<blockquote>');
+  });
+
+  it('lib/bot: разные тексты — оба на месте', () => {
+    const text = renderWebhookCardBody(
+      makeWebhookCard({ title: 'Написать текст', description: 'Взять интервью у трёх клиентов' }),
+    );
+    expect(text).toContain('Написать текст');
+    expect(text).toContain('<blockquote>Взять интервью у трёх клиентов</blockquote>');
+  });
+});
+

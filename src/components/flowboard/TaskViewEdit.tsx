@@ -1201,6 +1201,9 @@ export function TaskViewEdit({
                   workers={workers}
                   canEdit={taskPermission.canEdit}
                   canDeleteSubtask={taskPermission.canDelete}
+                  isView={isView}
+                  currentUserId={currentUserId}
+                  currentUserRole={currentUserRole}
                   highlightSubtaskId={highlightSubtaskId}
                 />
               )}

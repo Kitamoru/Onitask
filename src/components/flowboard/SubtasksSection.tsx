@@ -4,30 +4,34 @@
  * SubtasksSection — блок подзадач в карточке задачи (SUB-01).
  *
  * Заменяет фиктивный тоггл «Чеклист задачи»: чеклист — список пунктов внутри
- * одной задачи, а подзадачи — отдельные задачи со своими сроками, исполнителями
- * и историей. Один контрол на оба смысла был бы ложью в интерфейсе.
+ * одной задачи, а подзадачи — отдельные задачи со своими сроками,
+ * исполнителями и историей. Смешивать их в одном контроле было бы ложью в UI.
  *
- * Данные берём отдельным запросом `/api/tasks/[id]/subtasks`, а не из общего
- * стора: подзадачи исключены из выдачи Flow Board (миграции 140/141), и в
- * `availableTasks` их просто нет.
+ * Раскладка (решение владельца, 2026-09-30): ОДИН заголовок «Подзадачи» и
+ * ОДИН блок под ним — список плюс кнопка «Добавить подзадачу». Отдельного
+ * заголовка, тоггла и поля ввода в блоке нет: ввод переехал в
+ * SubtaskCreateSheet, который открывается по кнопке.
+ *
+ * В режиме просмотра пустой блок не показывается вовсе — заголовок без
+ * содержимого только шумит.
  */
 
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Check, Loader2, Trash2 } from 'lucide-react';
 import {
   Button,
   Card,
-  CountBadge,
   NotchedPanel,
   SectionHeader,
-  ToggleSwitch,
 } from '@/components/ui/desk-ui';
 import { createSubtask, getSubtasks } from '@/lib/api/subtasks';
 import { deleteTask, patchTask } from '@/lib/api/flow';
-import { MAX_SUBTASKS, SUBTASK_STATE_LABEL, subtaskState } from '@/lib/subtasks';
+import { MAX_SUBTASKS, subtaskState } from '@/lib/subtasks';
+import { taskColumnLabel } from '@/lib/taskColumns';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { SubtaskViewSheet } from './SubtaskViewSheet';
+import { SubtaskCreateSheet } from './SubtaskCreateSheet';
 
 export interface SubtasksSectionProps {
   task: TaskEntity;
@@ -41,6 +45,11 @@ export interface SubtasksSectionProps {
    * нельзя — иначе кнопка предлагала бы действие, которое сервер отвергнет 403.
    */
   canDeleteSubtask: boolean;
+  /** Режим просмотра: в нём пустой блок подзадач не показывается. */
+  isView: boolean;
+  /** Текущий пользователь — правило ревью при переносе подзадачи в «Сделано». */
+  currentUserId: string | null | undefined;
+  currentUserRole: string | null | undefined;
   /** Deep link из TG: подзадача, которую раскрыть и подсветить. */
   highlightSubtaskId?: string | null;
 }
@@ -50,36 +59,27 @@ export function SubtasksSection({
   workers,
   canEdit,
   canDeleteSubtask,
+  isView,
+  currentUserId,
+  currentUserRole,
   highlightSubtaskId = null,
 }: SubtasksSectionProps) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ['task-subtasks', task.id] as const, [task.id]);
-  const [enabled, setEnabled] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const [openSubtask, setOpenSubtask] = useState<TaskEntity | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const subtasksQuery = useQuery({
     queryKey,
     queryFn: () => getSubtasks(task.id),
-    enabled: enabled && !!task.id,
+    enabled: !!task.id,
     staleTime: 15_000,
   });
 
   const subtasks = subtasksQuery.data?.subtasks ?? [];
   const limitReached = subtasks.length >= MAX_SUBTASKS;
-
-  const createMutation = useMutation({
-    mutationFn: (title: string) => createSubtask(task.id, { title }),
-    onSuccess: () => {
-      setDraft('');
-      setActionError(null);
-      void queryClient.invalidateQueries({ queryKey });
-    },
-    onError: (err) =>
-      setActionError(err instanceof Error ? err.message : 'Не удалось создать подзадачу'),
-  });
 
   // Подзадача удаляется общим DELETE /api/tasks/[id]: это та же строка tasks,
   // отдельный эндпоинт на удаление завёл бы второй путь каскада (вложения,
@@ -95,12 +95,14 @@ export function SubtasksSection({
       void queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) =>
-      setActionError(err instanceof Error ? err.message : 'Не удалось удалить подзадачу'),
+      setActionError(
+        err instanceof Error ? err.message : 'Не удалось удалить подзадачу',
+      ),
   });
 
   /**
-   * PATCH подзадачи идёт общим patchTask: подзадача — строка tasks, отдельный
-   * эндпоинт на редактирование заводить незачем. invalidate нужен, чтобы список
+   * PATCH подзадачи идёт общим patchTask: подзадача — строка tasks, отдельного
+   * эндпоинта на редактирование заводить незачем. invalidate нужен, чтобы список
    * перечитал колонку и срок после смены.
    */
   const patchSubtask = useCallback(
@@ -113,13 +115,21 @@ export function SubtasksSection({
     [queryClient, queryKey],
   );
 
-  const handleCreate = () => {
-    const title = draft.trim();
-    if (!title) return;
+  const handleCreate = async (input: {
+    title: string;
+    description?: string | null;
+    assigned_to?: string | null;
+    deadline?: string | null;
+  }) => {
     setActionError(null);
-    void createMutation.mutateAsync(title).catch(() => {
-      // Текст ошибки уже разобран в onError.
-    });
+    try {
+      await createSubtask(task.id, input);
+      setCreateOpen(false);
+      await queryClient.invalidateQueries({ queryKey });
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Не удалось создать подзадачу';
+    }
   };
 
   const handleDelete = (subtaskId: string) => {
@@ -129,70 +139,104 @@ export function SubtasksSection({
     });
   };
 
+  /**
+   * Удаление из шторки подзадачи. Тот же мутатор, что и кнопка в списке, но
+   * возвращает текст ошибки вызывающему — шторка показывает его сам.
+   */
+  const deleteSubtask = useCallback(
+    async (subtaskId: string): Promise<string | null> => {
+      setActionError(null);
+      try {
+        await deleteMutation.mutateAsync(subtaskId);
+        return null;
+      } catch (err) {
+        return err instanceof Error
+          ? err.message
+          : 'Не удалось удалить подзадачу';
+      }
+    },
+    [deleteMutation],
+  );
+
+  // Пустой блок в режиме просмотра не показываем: смотреть не на что, а
+  // заголовок «Подзадачи» без содержимого только занимает место.
+  const hideEmptyBlock =
+    isView && subtasks.length === 0 && !subtasksQuery.isPending && !subtasksQuery.isError;
+  if (hideEmptyBlock) return null;
+
   return (
     <section>
       <SectionHeader title="Подзадачи" />
-      <div className="flex flex-col gap-3">
-        <Card>
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-[15px] font-medium text-text">
-              Подзадачи
-              {subtasks.length > 0 && <CountBadge>{subtasks.length}</CountBadge>}
-            </span>
-            <ToggleSwitch
-              checked={enabled}
-              onChange={setEnabled}
-              label="Подзадачи"
-              disabled={!canEdit}
-            />
-          </div>
-        </Card>
+      <Card notch={8}>
+        <div className="flex flex-col gap-4">
+          {subtasksQuery.isPending && (
+            <div className="flex items-center gap-2 py-2 text-[13px] text-text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Загрузка подзадач…
+            </div>
+          )}
 
-        {enabled && (
-          <>
-            {subtasksQuery.isPending && (
-              <div className="flex items-center gap-2 py-2 text-[13px] text-text-muted">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Загрузка подзадач…
-              </div>
-            )}
+          {subtasksQuery.isError && (
+            <div
+              className="rounded border border-[var(--color-priority-red-border)] px-3 py-2 text-[13px] text-[var(--color-priority-red-text)]"
+              role="alert"
+            >
+              {subtasksQuery.error.message}
+            </div>
+          )}
 
-            {subtasks.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {subtasks.map((subtask) => {
-                  const state = subtaskState({
-                    column: subtask.column,
-                    deadline: subtask.deadline,
-                  });
-                  const isHighlighted = highlightSubtaskId === subtask.id;
-                  return (
-                    <div key={subtask.id} className="flex items-center gap-2">
+          {subtasks.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {subtasks.map((subtask) => {
+                const state = subtaskState({
+                  column: subtask.column,
+                  deadline: subtask.deadline,
+                });
+                const isHighlighted = highlightSubtaskId === subtask.id;
+                return (
+                  <div key={subtask.id} className="flex items-center gap-2">
+                    <NotchedPanel
+                      corner="field"
+                      notch={4}
+                      fill="var(--color-surface)"
+                      className="min-w-0 flex-1"
+                      contentClassName="flex items-center gap-3 p-3"
+                    >
                       <button
                         type="button"
                         onClick={() => setOpenSubtask(subtask)}
-                        // Подсветка deep link'а: amber-рамка, тот же акцент, что у
-                        // результата подзадачи в ленте (ADR-2026-09-30).
-                        className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${
-                          isHighlighted
-                            ? 'border-[var(--color-accent-amber)]'
-                            : 'border-line'
-                        }`}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        aria-label={`Открыть подзадачу ${subtask.full_id}`}
                       >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[12px] font-semibold text-text-muted">
-                          {subtask.subtask_index}
-                        </span>
-                        <span
-                          className={`min-w-0 flex-1 truncate text-[14px] ${
-                            state === 'done'
-                              ? 'text-text-muted line-through'
-                              : 'text-text'
-                          }`}
-                        >
-                          {subtask.title}
-                        </span>
-                        <span className="shrink-0 text-[11px] text-text-muted">
-                          {SUBTASK_STATE_LABEL[state]}
-                        </span>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {/* Подсветка deep link'а — тот же amber, что у
+                                результата подзадачи в ленте. */}
+                            <span
+                              className={`font-mono text-[11px] ${
+                                isHighlighted
+                                  ? 'text-[var(--color-accent-amber)]'
+                                  : 'text-text-muted'
+                              }`}
+                            >
+                              {subtask.full_id}
+                            </span>
+                            <span className="text-[11px] text-text-muted">
+                              {/* Колонка, а не состояние: «Просрочена» — это
+                                  вычисляемое состояние поверх due_date, и в
+                                  строке списка оно шумит. Тот же словарь, что
+                                  у связанных задач. */}
+                              · {taskColumnLabel(subtask.column)}
+                            </span>
+                          </div>
+                          <span
+                            className={`truncate text-[14px] font-medium ${
+                              state === 'done' ? 'text-text-muted line-through' : 'text-text'
+                            }`}
+                          >
+                            {subtask.title}
+                          </span>
+                        </div>
                       </button>
                       {canDeleteSubtask &&
                         (confirmDeleteId === subtask.id ? (
@@ -222,71 +266,74 @@ export function SubtasksSection({
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         ))}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    </NotchedPanel>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-            {canEdit && (
-              <NotchedPanel
-                corner="field"
-                notch={8}
-                contentClassName="flex flex-col gap-3 px-4 py-3"
+          {actionError && (
+            <div
+              className="rounded border border-[var(--color-priority-red-border)] px-3 py-2 text-[13px] text-[var(--color-priority-red-text)]"
+              role="alert"
+            >
+              {actionError}
+            </div>
+          )}
+
+          {canEdit && (
+            // Зелёный градиент — тот же приём, что у кнопки «Редактировать»
+            // в TaskViewEdit (borderGradient grad-add-from/to на corner=action).
+            <NotchedPanel
+              corner="action"
+              notch={8}
+              borderWidth={1.5}
+              borderGradient={[
+                'var(--color-grad-add-from)',
+                'var(--color-grad-add-to)',
+              ]}
+              fill="var(--color-bg)"
+              className="h-10 w-full"
+              contentClassName="h-full w-full"
+            >
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                disabled={limitReached}
+                aria-label={limitReached ? `Лимит подзадач — ${MAX_SUBTASKS}` : 'Добавить подзадачу'}
+                className="flex h-full w-full items-center justify-center text-[15px] font-semibold text-text disabled:opacity-40"
               >
-                <div className="flex flex-col gap-3">
-                  <input
-                    type="text"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !limitReached) handleCreate();
-                    }}
-                    placeholder={
-                      limitReached
-                        ? `Лимит — ${MAX_SUBTASKS} подзадач`
-                        : 'Что нужно сделать?'
-                    }
-                    disabled={limitReached || createMutation.isPending}
-                    className="w-full bg-transparent text-[15px] text-text outline-none placeholder:text-text-muted"
-                  />
-                  <Button
-                    variant="solid"
-                    onClick={handleCreate}
-                    disabled={
-                      limitReached ||
-                      createMutation.isPending ||
-                      draft.trim().length === 0
-                    }
-                    className="w-full"
-                  >
-                    {createMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    Добавить подзадачу
-                  </Button>
-                </div>
-              </NotchedPanel>
-            )}
+                Добавить подзадачу
+              </button>
+            </NotchedPanel>
+          )}
+        </div>
+      </Card>
 
-            {actionError && (
-              <p className="text-[13px] text-[var(--color-danger)]">{actionError}</p>
-            )}
-          </>
-        )}
-      </div>
+      {createOpen && (
+        <SubtaskCreateSheet
+          open
+          onClose={() => setCreateOpen(false)}
+          workers={workers}
+          onCreate={handleCreate}
+        />
+      )}
 
       {openSubtask && (
         <SubtaskViewSheet
           open
           onClose={() => setOpenSubtask(null)}
           subtask={openSubtask}
+          parent={task}
           assignee={workers.find((w) => w.id === openSubtask.assigned_to) ?? null}
           workers={workers}
           canEdit={canEdit}
+          canDelete={canDeleteSubtask}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
           onPatch={patchSubtask}
+          onDelete={deleteSubtask}
         />
       )}
     </section>

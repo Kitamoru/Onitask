@@ -515,9 +515,16 @@ function formatPersonMention(name: string | null | undefined): string {
 export function renderTaskCardBody(card: TaskCardData): string {
   const status = card.isInbox ? 'Inbox' : STATUS_LABELS[card.column] ?? card.column;
   const title = escapeHtml(truncateForTelegram(card.title || 'Без названия', 120));
-  const description = card.description?.trim()
-    ? escapeHtml(card.description.trim())
-    : null;
+  // SUB-01: у подзадачи содержание лежит и в title, и в description (одно
+  // поле ввода «Что нужно сделать» пишется в оба). Без этой проверки карточка
+  // печатала бы один и тот же текст дважды — жирной строкой и в blockquote.
+  // Сравниваем сырые значения, до обрезки и экранирования.
+  const rawTitle = card.title || '';
+  const rawDescription = card.description?.trim() || '';
+  const description =
+    rawDescription && rawDescription !== rawTitle
+      ? escapeHtml(rawDescription)
+      : null;
   const lines: string[] = [];
   // 📋 Title
   lines.push(`📋 <b>${title}</b>`);

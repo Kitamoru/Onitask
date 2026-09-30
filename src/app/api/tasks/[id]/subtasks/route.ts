@@ -47,6 +47,8 @@ type Params = { params: Promise<{ id: string }> };
 
 type CreateSubtaskBody = {
   title?: unknown;
+  /** Полный текст подзадачи (поле «Что нужно сделать»). */
+  description?: unknown;
   assigned_to?: unknown;
   deadline?: unknown;
 };
@@ -195,7 +197,13 @@ export async function POST(request: NextRequest, { params }: Params) {
       .insert({
         workspace_id: task.workspace_id,
         title,
-        description: null,
+        // Текст из «Что нужно сделать» храним и в description: шторка подзадачи
+        // показывает его под заголовком «Подзадача», а title режется до 500.
+        // Не передан description — отдаём title, чтобы старые вызовы работали.
+        description:
+          typeof body.description === 'string' && body.description.trim()
+            ? body.description.trim()
+            : title,
         column: SUBTASK_INITIAL_COLUMN,
         is_inbox: false,
         parent_task_id: taskId,

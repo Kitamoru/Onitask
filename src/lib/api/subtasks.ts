@@ -40,6 +40,11 @@ export interface CreateSubtaskResponse {
 export interface CreateSubtaskInput {
   /** Содержание подзадачи. Пустое значение отсекается сервером (400). */
   title: string;
+  /**
+   * Полный текст подзадачи для шторки. Не передан — берётся title, потому что
+   * единственное поле ввода в UI одно и то же.
+   */
+  description?: string | null;
   /** workers.id исполнителя; null — без исполнителя. Сервер отклонит агента. */
   assigned_to?: string | null;
   /** ISO-строка срока; невалидная дата сохранится как null. */
@@ -70,6 +75,10 @@ export async function createSubtask(
     },
     body: JSON.stringify({
       title: input.title,
+      // Текст из «Что нужно сделать» идёт и в описание: шторка подзадачи
+      // показывает его под заголовком «Подзадача», и обрезанное до 500
+      // символов название для этого не годится.
+      description: input.description ?? input.title,
       assigned_to: input.assigned_to ?? null,
       deadline: input.deadline ?? null,
     }),

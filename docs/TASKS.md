@@ -1317,8 +1317,11 @@ format is deliberately compact so that agents can load the file quickly.
       Тесты 34 (было 543 → 577). Проверено мутациями: снятие гарда «только человек»
       роняет 3 теста, снятие проверки `type==='human'` в `canBeSubtaskAssignee` — 2.
 - [x] SUB-01.5 UI: `SubtasksSection` + `SubtaskViewSheet` #ui !med @blocked_by:SUB-01.4
-      `SubtasksSection` (тоггл, список, добавление, удаление) + `SubtaskViewSheet`
-      (состояние, исполнитель, срок, «Сделать самостоятельной задачей»).
+      `SubtasksSection` (список + «Добавить подзадачу» в `SubtaskCreateSheet`) +
+      `SubtaskViewSheet` («Контекст» → «Подзадача» → срок; просмотр/редактирование,
+      перенос через `MoveTaskSheet`, удаление с модалкой). Один блок без тоггла,
+      пустой блок в режиме просмотра скрыт вместе с заголовком. Кнопка
+      «Сделать самостоятельной задачей» убрана (была мёртвой — см. SUB-02).
       Фиктивный чеклист и мёртвый `metadata.checklist` удалены. `mapTaskRow`
       пробрасывает `parent_task_id`/`subtask_index`. `boardTasks` режет подзадачи
       из доски/счётчиков/шторки колонки; стрим их показывает с маркером.
@@ -1345,6 +1348,24 @@ format is deliberately compact so that agents can load the file quickly.
       (8: права по родителю в DELETE/PATCH), `tests/lib/buildFullId.test.ts` (6),
       плюс по 4-5 на `parseStartParam` и `isSubtaskArtifact` и 1 на резолвер.
       Итого 614/614. Ключевые правила проверены мутациями (см. activeContext).
+
+- [ ] SUB-01.9 UI-регрессии содержания подзадачи #ui !med @blocked_by:SUB-01.5
+      Одно поле ввода «Что нужно сделать» пишется в `description` и в
+      производный `title` (ADR-2026-09-30). Карточка TG не печатает текст дважды
+      при их равенстве — одинаково в `bot-notify/card.ts` и `lib/bot.ts`.
+      В строке списка подпись — колонка (`taskColumnLabel`), а не «Просрочена».
+      Подзадачи исключены из `task-embed` (`.is('parent_task_id', null)`).
+      Итого 645/645 (было 640). Первая версия ассерта проверяла `&gt;` и
+      оставалась зелёной на сломанном коде — маркером оказался `<blockquote>`.
+      См. ADR-2026-09-30, activeContext Stage 8.
+
+- [ ] SUB-02 Превратить подзадачу в самостоятельную задачу #ui !med
+      Кнопка убрана в Stage 8 как мёртвая: `parent_task_id`/`subtask_index` не
+      входят в `allowedFields` PATCH, а фильтр `!== null` отбрасывает присланный
+      `null` — не прошёл бы и явный `null`. Нужен отдельный эндпоинт
+      (POST /api/tasks/[id]/detach) с пересчётом `subtask_index` у оставшихся
+      подзадач родителя: сервер сейчас считает max+1, и старый номер образовал бы
+      дыру в нумерации.
 
 ---
 
