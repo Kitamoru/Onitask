@@ -9,9 +9,32 @@
  */
 
 import { createServerClient } from './supabase';
+import { buildFullId } from './taskFullId';
 import type { Database } from '../types/supabase';
 
 type TasksRow = Database['public']['Tables']['tasks']['Row'];
+
+/**
+ * SUB-01: номера родителей для сборки «PREFIX-42-SUB-1».
+ *
+ * Нужен, потому что у подзадачи `task_number = NULL` — номер производный от
+ * родителя, и без него обогащение уходило в `id.slice(0,8)`. Один запрос на
+ * пачку, симметрично getWorkerNames/getWorkspaceInfos — не N+1.
+ */
+async function getParentTaskNumbers(ids: string[]): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('tasks')
+    .select('id, task_number')
+    .in('id', ids);
+  return new Map(
+    ((data ?? []) as Array<{ id: string; task_number: number | null }>).map((r) => [
+      r.id,
+      r.task_number as number,
+    ]),
+  );
+}
 
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
@@ -171,6 +194,10 @@ export interface EnrichedTask {
   updated_at: string;
   created_by: string | null;
   created_by_name?: string;
+  // SUB-01: без этих полей подзадача теряла связь с родителем по дороге к
+  // клиенту — и isSubtask() на ней вернул бы false.
+  parent_task_id: string | null;
+  subtask_index: number | null;
   // Additional fields that exist on the raw task row but are not used for enrichment
   story_points?: number | null;
   embedding?: any;
@@ -180,9 +207,18 @@ export interface EnrichedTask {
 
 export async function enrichTaskRow(row: TasksRow): Promise<EnrichedTask> {
   const workspaceInfo = await getWorkspaceInfo(row.workspace_id);
-  const fullId = workspaceInfo.task_prefix && row.task_number
-    ? `${workspaceInfo.task_prefix}-${row.task_number}`
-    : row.id.slice(0, 8);
+  // SUB-01: прежде здесь стояло `prefix && task_number ? ... : id.slice(0,8)`.
+  // У подзадачи task_number = NULL, и обогащение отдавало «8a35e04c».
+  const parentNumber = row.parent_task_id
+    ? ((await getParentTaskNumbers([row.parent_task_id])).get(row.parent_task_id) ?? null)
+    : null;
+  const fullId = buildFullId(
+    workspaceInfo.task_prefix,
+    row.task_number,
+    row.id,
+    row.subtask_index,
+    parentNumber,
+  );
 
   // Fetch worker display names in parallel
   const [createdByName, assignedToName] = await Promise.all([
@@ -229,6 +265,8 @@ export async function enrichTaskRow(row: TasksRow): Promise<EnrichedTask> {
     updated_at: row.updated_at,
     created_by: row.created_by ?? null,
     created_by_name: createdByName ?? undefined,
+    parent_task_id: row.parent_task_id ?? null,
+    subtask_index: row.subtask_index ?? null,
   };
 }
 
@@ -243,11 +281,16 @@ export async function enrichTaskRowsBatch(rows: TasksRow[]): Promise<EnrichedTas
     rows
       .flatMap(r => [r.created_by, r.assigned_to].filter(Boolean) as string[])
   ));
+  // SUB-01: родители подзадач. Без их номеров full_id собирался бы в hex.
+  const parentIds = Array.from(new Set(
+    rows.map(r => r.parent_task_id).filter(Boolean) as string[]
+  ));
 
   // Batch fetch all at once
-  const [workspaceMap, workerMap] = await Promise.all([
+  const [workspaceMap, workerMap, parentNumbers] = await Promise.all([
     getWorkspaceInfos(workspaceIds),
     getWorkerNames(workerIds),
+    getParentTaskNumbers(parentIds),
   ]);
 
   // Build lookup maps for O(1) access
@@ -267,9 +310,15 @@ export async function enrichTaskRowsBatch(rows: TasksRow[]): Promise<EnrichedTas
   // Map rows to enriched tasks
   return rows.map((row) => {
     const workspaceInfo = wsLookup.get(row.workspace_id) ?? { task_prefix: 'TASK', name: 'TASK' };
-    const fullId = workspaceInfo.task_prefix && row.task_number
-      ? `${workspaceInfo.task_prefix}-${row.task_number}`
-      : row.id.slice(0, 8);
+    // SUB-01: было `prefix && task_number ? ... : id.slice(0,8)` — у подзадачи
+    // task_number = NULL, и в шапке шторки показывалось «Подзадача 8a35e04c».
+    const fullId = buildFullId(
+      workspaceInfo.task_prefix,
+      row.task_number,
+      row.id,
+      row.subtask_index,
+      row.parent_task_id ? parentNumbers.get(row.parent_task_id) ?? null : null,
+    );
 
     return {
       id: row.id,
@@ -309,6 +358,8 @@ export async function enrichTaskRowsBatch(rows: TasksRow[]): Promise<EnrichedTas
       created_at: row.created_at,
       updated_at: row.updated_at,
       created_by: row.created_by ?? null,
+      parent_task_id: row.parent_task_id ?? null,
+      subtask_index: row.subtask_index ?? null,
       created_by_name: createdByNameMap.get(row.created_by ?? '') ?? undefined,
     };
   });

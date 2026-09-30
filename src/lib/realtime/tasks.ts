@@ -38,18 +38,14 @@ export interface RealtimeTaskEvent {
  * SUB-01: у подзадачи `task_number` = NULL (номер производный от родителя),
  * поэтому без отдельной ветки Realtime отдавал бы `id.slice(0,8)` вместо
  * «ONI-42-SUB-1» — карточка в стриме получила бы случайный hex вместо номера.
- * `subtaskIndex` приходит из строки tasks, для самостоятельной задачи null.
+ *
+ * Сама функция живёт в корневом `lib/taskFullId.ts`: её зовёт ещё и серверное
+ * обогащение задач, а этот модуль подтягивает React-хук. Реэкспорт — чтобы
+ * существующие импорты (`@/lib/realtime/tasks`) продолжали работать.
  */
-export function buildFullId(
-  prefix: string | null | undefined,
-  taskNumber: number | null | undefined,
-  fallbackId: string,
-  subtaskIndex?: number | null,
-): string {
-  if (prefix && subtaskIndex != null) return `${prefix}-SUB-${subtaskIndex}`;
-  if (prefix && taskNumber) return `${prefix}-${taskNumber}`;
-  return fallbackId.slice(0, 8);
-}
+import { buildFullId } from '../../../lib/taskFullId';
+
+export { buildFullId };
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 

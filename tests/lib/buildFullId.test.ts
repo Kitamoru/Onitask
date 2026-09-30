@@ -39,6 +39,27 @@ describe('buildFullId (SUB-01)', () => {
     expect(buildFullId('ONI', 42, 'abcdef12-3456', 0)).toBe('ONI-SUB-0');
   });
 
+  it('с номером родителя — полная форма PREFIX-42-SUB-i, как у RPC task_full_id', () => {
+    // Главный баг, найденный владельцем в UI: обогащение задач (lib/
+    // taskEnrichment) собирало id мимо buildFullId и отдавало «8a35e04c».
+    // Форма «PREFIX-42-SUB-1» обязана совпадать с тем, что Telegram-карточка
+    // берёт из БД (миграция 139) — иначе один и тот же пункт называется в двух
+    // местах по-разному, а find_task_by_full_id такой id не разобрал бы.
+    expect(buildFullId('ONI', null, 'abcdef12-3456', 1, 42)).toBe('ONI-42-SUB-1');
+    expect(buildFullId('ONI', null, 'abcdef12-3456', 10, 42)).toBe('ONI-42-SUB-10');
+  });
+
+  it('номер родителя не вытесняет subtask_index', () => {
+    expect(buildFullId('ONI', 42, 'abcdef12-3456', 3, 42)).toBe('ONI-42-SUB-3');
+  });
+
+  it('без номера родителя остаётся PREFIX-SUB-i, а не hex', () => {
+    // Номер родителя может не прийти (например, обогащение без батча). Тогда
+    // «ONI-SUB-1» всё равно лучше случайного hex, но это уже не полная форма.
+    expect(buildFullId('ONI', null, 'abcdef12-3456', 1, null)).toBe('ONI-SUB-1');
+  });
+
+
   it('без номера и без подзадачи — как раньше, hex от UUID', () => {
     expect(buildFullId('ONI', null, 'abcdef12-3456')).toBe('abcdef12');
     expect(buildFullId('ONI', 0, 'abcdef12-3456')).toBe('abcdef12');

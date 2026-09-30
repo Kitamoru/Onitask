@@ -26,7 +26,7 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Calendar, Loader2 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button, Card, SectionHeader, TextArea } from '@/components/ui/desk-ui';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
@@ -130,11 +130,6 @@ export function SubtaskViewSheet({
       deadline: subtask.deadline ?? null,
     });
     setMode('edit');
-  };
-
-  const cancelEdit = () => {
-    setError(null);
-    setMode('view');
   };
 
   const runPatch = async (payload: Record<string, unknown>) => {
@@ -293,33 +288,29 @@ export function SubtaskViewSheet({
               )}
 
               {canEdit && (
-                <>
-                  <SectionHeader title="Действия" />
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => {
-                        setMoveColumn(subtask.column);
-                        setMoveOpen(true);
-                      }}
-                      className="w-full"
-                    >
-                      Переместить
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={startEdit}
-                      className="w-full"
-                    >
-                      <span className="flex items-center justify-center gap-1.5">
-                        <Pencil className="h-4 w-4" />
-                        Редактировать
-                      </span>
-                    </Button>
-                  </div>
-                </>
+                // Заголовка «Действия» нет: две кнопки подряд после блоков
+                // читались как отдельный раздел, которого в шторке задачи нет.
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="solid"
+                    disabled={busy}
+                    onClick={() => {
+                      setMoveColumn(subtask.column);
+                      setMoveOpen(true);
+                    }}
+                    className="w-full"
+                  >
+                    Переместить
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={startEdit}
+                    className="w-full"
+                  >
+                    Редактировать
+                  </Button>
+                </div>
               )}
             </>
           ) : (
@@ -334,18 +325,9 @@ export function SubtaskViewSheet({
                 placeholder="Что нужно сделать"
               />
 
-              <SectionHeader title="Исполнитель и срок" />
+              <SectionHeader title="Срок и исполнитель" />
               <div className="flex flex-col gap-2">
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setAssigneeOpen(true)}
-                  className="w-full"
-                >
-                  {draftAssignee
-                    ? `Исполнитель: ${draftAssignee.displayName}`
-                    : 'Назначить исполнителя'}
-                </Button>
+                {/* Порядок владельца: срок задаётся раньше исполнителя. */}
                 <Button
                   variant="outline"
                   disabled={busy}
@@ -355,6 +337,16 @@ export function SubtaskViewSheet({
                   {draft.deadline
                     ? `Срок: ${new Date(draft.deadline).toLocaleDateString('ru-RU')}`
                     : 'Задать срок'}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setAssigneeOpen(true)}
+                  className="w-full"
+                >
+                  {draftAssignee
+                    ? `Исполнитель: ${draftAssignee.displayName}`
+                    : 'Назначить исполнителя'}
                 </Button>
               </div>
 
@@ -367,25 +359,16 @@ export function SubtaskViewSheet({
                 >
                   Сохранить
                 </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={cancelEdit}
-                  className="w-full"
-                >
-                  Отмена
-                </Button>
                 {canDelete && (
                   <Button
-                    variant="outline"
+                    variant="solid"
+                    fill="#EF4444"
+                    textColor="#FAFAFA"
                     disabled={busy || deleting}
                     onClick={() => setConfirmDelete(true)}
                     className="w-full"
                   >
-                    <span className="flex items-center justify-center gap-1.5">
-                      <Trash2 className="h-4 w-4" />
-                      Удалить подзадачу
-                    </span>
+                    Удалить подзадачу
                   </Button>
                 )}
               </div>
