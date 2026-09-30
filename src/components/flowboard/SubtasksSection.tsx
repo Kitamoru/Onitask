@@ -18,9 +18,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import {
-  Button,
   Card,
   NotchedPanel,
   SectionHeader,
@@ -69,7 +68,6 @@ export function SubtasksSection({
   const [actionError, setActionError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [openSubtask, setOpenSubtask] = useState<TaskEntity | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const subtasksQuery = useQuery({
     queryKey,
@@ -90,7 +88,6 @@ export function SubtasksSection({
       if (!success) throw new Error(error ?? 'Не удалось удалить подзадачу');
     },
     onSuccess: () => {
-      setConfirmDeleteId(null);
       setActionError(null);
       void queryClient.invalidateQueries({ queryKey });
     },
@@ -132,16 +129,10 @@ export function SubtasksSection({
     }
   };
 
-  const handleDelete = (subtaskId: string) => {
-    setActionError(null);
-    void deleteMutation.mutateAsync(subtaskId).catch(() => {
-      // Текст ошибки уже разобран в onError.
-    });
-  };
-
   /**
-   * Удаление из шторки подзадачи. Тот же мутатор, что и кнопка в списке, но
-   * возвращает текст ошибки вызывающему — шторка показывает его сам.
+   * Удаление из шторки подзадачи. Кнопки удаления в строке списка больше нет
+   * (она перекрывала карточку) — удаление живёт только здесь, с модалкой
+   * подтверждения.
    */
   const deleteSubtask = useCallback(
     async (subtaskId: string): Promise<string | null> => {
@@ -194,14 +185,13 @@ export function SubtasksSection({
                 });
                 const isHighlighted = highlightSubtaskId === subtask.id;
                 return (
-                  <div key={subtask.id} className="flex items-center gap-2">
-                    <NotchedPanel
-                      corner="field"
-                      notch={4}
-                      fill="var(--color-surface)"
-                      className="min-w-0 flex-1"
-                      contentClassName="flex items-center gap-3 p-3"
-                    >
+                  <NotchedPanel
+                    key={subtask.id}
+                    corner="field"
+                    notch={4}
+                    className="w-full"
+                    contentClassName="flex items-center gap-3 p-3"
+                  >
                       <button
                         type="button"
                         onClick={() => setOpenSubtask(subtask)}
@@ -238,36 +228,7 @@ export function SubtasksSection({
                           </span>
                         </div>
                       </button>
-                      {canDeleteSubtask &&
-                        (confirmDeleteId === subtask.id ? (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <Button
-                              variant="solid"
-                              onClick={() => handleDelete(subtask.id)}
-                              disabled={deleteMutation.isPending}
-                              aria-label="Подтвердить удаление подзадачи"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={() => setConfirmDeleteId(null)}
-                              aria-label="Отменить удаление"
-                            >
-                              Отмена
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            onClick={() => setConfirmDeleteId(subtask.id)}
-                            aria-label={`Удалить подзадачу ${subtask.subtask_index}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ))}
-                    </NotchedPanel>
-                  </div>
+                  </NotchedPanel>
                 );
               })}
             </div>
@@ -282,9 +243,12 @@ export function SubtasksSection({
             </div>
           )}
 
-          {canEdit && (
+          {canEdit && !isView && (
             // Зелёный градиент — тот же приём, что у кнопки «Редактировать»
             // в TaskViewEdit (borderGradient grad-add-from/to на corner=action).
+            // fill НЕ задаём: дефолт NotchedPanel — var(--color-surface), он же
+            // у Card вокруг. Прежний var(--color-bg) давал чёрную плашку
+            // внутри светлой карточки.
             <NotchedPanel
               corner="action"
               notch={8}
@@ -293,7 +257,6 @@ export function SubtasksSection({
                 'var(--color-grad-add-from)',
                 'var(--color-grad-add-to)',
               ]}
-              fill="var(--color-bg)"
               className="h-10 w-full"
               contentClassName="h-full w-full"
             >
