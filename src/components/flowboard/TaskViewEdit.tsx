@@ -332,6 +332,12 @@ const ExtraContextSection = memo(function ExtraContextSection({
   onLinksEnabledChange: (v: boolean) => void;
   onLinksChange: (links: ExternalLink[]) => void;
 }) {
+  // В просмотре пустой или выключенный блок не показываем вовсе. «Дополнительный
+  // контекст» внутри — это одна карточка с тумблером «Внешние ссылки» и текстом;
+  // при linksEnabled=false её содержимое свёрнуто в max-h-0, но заголовок и
+  // карточка остаются. В read-режиме это чистый шум.
+  if (isView && (!linksEnabled || links.length === 0)) return null;
+
   return (
     <section>
       <SectionHeader title="Дополнительный контекст" />
@@ -382,6 +388,14 @@ const FilesSection = memo(function FilesSection({
   onDownload: (a: TaskAttachment) => void;
   onFileChange: (files: FileList | null) => void;
 }) {
+  // Пока файлы грузятся, секция нужна — иначе лэйаут прыгнет после ответа.
+  // Пустая в просмотре — нет: заголовок «Файлы» без единого файла только шумит.
+  // При ошибке загрузки НЕ прячем: текст ошибки рисуется внутри этой секции, и
+  // условие выше проглотало бы его — список молча выглядел бы пустым.
+  if (isView && !attachmentsLoading && attachments.length === 0 && !attachmentsErrorText) {
+    return null;
+  }
+
   return (
     <section>
       <SectionHeader title="Файлы" />

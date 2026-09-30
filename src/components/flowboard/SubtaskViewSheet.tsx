@@ -26,7 +26,7 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button, Card, SectionHeader, TextArea } from '@/components/ui/desk-ui';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
@@ -272,12 +272,16 @@ export function SubtaskViewSheet({
                 </p>
               </Card>
 
-              {subtask.deadline && (
-                <div className="flex items-center gap-2 text-[14px] text-text">
-                  <Calendar className="h-4 w-4 text-text-muted" />
-                  {new Date(subtask.deadline).toLocaleDateString('ru-RU')}
-                </div>
-              )}
+              {/* Тот же SingleDateField, что в задаче — в обоих режимах. Раньше
+                  в просмотре была своя строка `<Calendar/> + дата`: другое
+                  форматирование, без рамки. У задачи в просмотре поле тоже
+                  рендерится, просто disabled. */}
+              <SingleDateField
+                date={subtask.deadline ? new Date(subtask.deadline) : null}
+                onOpen={() => {}}
+                placeholder="Дата окончания"
+                disabled
+              />
 
               {assignee && (
                 <ParticipantCard
