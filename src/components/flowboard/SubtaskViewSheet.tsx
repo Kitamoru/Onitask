@@ -30,6 +30,7 @@ import { Calendar, Loader2 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button, Card, SectionHeader, TextArea } from '@/components/ui/desk-ui';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
+import { SingleDateField } from '@/components/ui/SingleDateField';
 import ParticipantCard from '@/components/flowboard/ParticipantCard';
 import { WorkerSelectSheet } from '@/components/flowboard/WorkerSelectSheet';
 import { MoveTaskSheet } from '@/components/flowboard/MoveTaskSheet';
@@ -326,27 +327,35 @@ export function SubtaskViewSheet({
               />
 
               <SectionHeader title="Срок и исполнитель" />
+              {/* Тот же SingleDateField, что в задаче: плейсхолдер
+                  «Дата окончания» и тот же шеврон. Кнопка «Задать срок»
+                  выглядела отдельным контролом и не совпадала с задачей. */}
+              <SingleDateField
+                date={draft.deadline ? new Date(draft.deadline) : null}
+                onOpen={() => setDeadlineOpen(true)}
+                placeholder="Дата окончания"
+                disabled={busy}
+              />
+
+              {draftAssignee && (
+                <ParticipantCard
+                  id={draftAssignee.id}
+                  displayName={draftAssignee.displayName}
+                  avatarUrl={draftAssignee.avatarUrl}
+                  role="Исполнитель"
+                />
+              )}
+
               <div className="flex flex-col gap-2">
-                {/* Порядок владельца: срок задаётся раньше исполнителя. */}
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setDeadlineOpen(true)}
-                  className="w-full"
-                >
-                  {draft.deadline
-                    ? `Срок: ${new Date(draft.deadline).toLocaleDateString('ru-RU')}`
-                    : 'Задать срок'}
-                </Button>
+                {/* Формулировка и логика — как у задачи (TaskViewEdit):
+                    карточка исполнителя + «Сменить/Добавить исполнителя». */}
                 <Button
                   variant="outline"
                   disabled={busy}
                   onClick={() => setAssigneeOpen(true)}
                   className="w-full"
                 >
-                  {draftAssignee
-                    ? `Исполнитель: ${draftAssignee.displayName}`
-                    : 'Назначить исполнителя'}
+                  {draftAssignee ? 'Сменить исполнителя' : 'Добавить исполнителя'}
                 </Button>
               </div>
 
@@ -393,11 +402,12 @@ export function SubtaskViewSheet({
             onClose={() => setAssigneeOpen(false)}
             workers={humanWorkers}
             selectedId={draft.assignedTo}
-            title="Исполнитель подзадачи"
-            onSelect={(id) => {
-              setAssigneeOpen(false);
-              setDraft((d) => ({ ...d, assignedTo: id }));
-            }}
+            title="Выберите исполнителя"
+            // Без `stacked` шторка выбора ложилась ПОД родительской BottomSheet
+            // (у неё свой transform-контекст) — кнопка выглядела рабочей, а по
+            // факту ничего не открывала. Так же подключён в TaskViewEdit.
+            stacked
+            onSelect={(id) => setDraft((d) => ({ ...d, assignedTo: id }))}
           />
 
           <SingleDateSheet
