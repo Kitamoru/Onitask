@@ -7,6 +7,7 @@ import { CognitiveWeightIndicator, PriorityBadge } from '@/components/flowboard/
 import { TaskBlockedBadge } from '@/components/flowboard/TaskBlockedBadge';
 import { UrgencyBadge } from '@/components/flowboard/UrgencyBadge';
 import { COLUMN_ACCENTS } from '@/components/flowboard/ColumnTasksSheet';
+import { formatDueShort } from '@/lib/date';
 import type { TaskEntity, EvaluationConfig } from '@/types/flowboard';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 import {
@@ -198,18 +199,9 @@ export function TaskCard({
           ? 'Средний'
           : 'Низкий';
 
-  // Format deadline for display: "до Вт 27 мая"
-  const formattedDeadline = task.deadline
-    ? (() => {
-        const d = new Date(task.deadline);
-        const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-        const months = ['янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.'];
-        const dayName = days[d.getDay()];
-        const day = d.getDate();
-        const month = months[d.getMonth()];
-        return `до ${dayName} ${day} ${month}`;
-      })()
-    : null;
+  // Формат срока живёт в общей formatDueShort: раньше массивы дней и месяцев
+  // были продублированы здесь и в списке подзадач.
+  const formattedDeadline = formatDueShort(task.deadline);
 
   // Workspace display name (or fallback to prefix)
   const workspaceDisplayName = task.workspace_name ?? task.workspace_prefix;

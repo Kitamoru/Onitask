@@ -32,6 +32,30 @@ export function formatDate(date: Date | string | null): string {
 }
 
 /**
+ * Компактный срок для карточек: «до Чт 12 ноя.».
+ *
+ * Формат владельца, одинаковый для карточки задачи в стриме и для карточки
+ * подзадачи в списке. Раньше жил инлайном в StreamView — второе место завело бы
+ * свой копипаст массивов, и при правке месяцев они разошлись бы.
+ *
+ * Префикс строчными «до», как в карточке задачи (StreamView), а не «До».
+ * Битая дата даёт null, а не «до NaN NaN.».
+ */
+const WEEKDAYS_SHORT_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const MONTHS_SHORT_RU = [
+  'янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июн.',
+  'июл.', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.',
+];
+
+export function formatDueShort(date: Date | string | null | undefined): string | null {
+  if (!date) return null;
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return null;
+  return `до ${WEEKDAYS_SHORT_RU[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT_RU[d.getMonth()]}`;
+}
+
+
+/**
  * Formats a date range as "DD.MM.YYYY – DD.MM.YYYY".
  * Returns placeholder if either date is missing.
  */

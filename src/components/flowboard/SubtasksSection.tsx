@@ -28,7 +28,7 @@ import { createSubtask, getSubtasks } from '@/lib/api/subtasks';
 import { deleteTask, patchTask } from '@/lib/api/flow';
 import { MAX_SUBTASKS, subtaskState } from '@/lib/subtasks';
 import { taskColumnLabel } from '@/lib/taskColumns';
-import { formatDate } from '@/lib/date';
+import { formatDueShort } from '@/lib/date';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 import { SubtaskViewSheet } from './SubtaskViewSheet';
 import { SubtaskCreateSheet } from './SubtaskCreateSheet';
@@ -209,6 +209,11 @@ export function SubtasksSection({
                 const content = subtask.description?.trim() || subtask.title;
                 const assignee =
                   workers.find((w) => w.id === subtask.assigned_to) ?? null;
+                // Роль в доске = role_title (кастомный текст: «Маркетолог»),
+                // а НЕ roleLabel: тот склеивает «Администратор доски · Маркетолог»,
+                // то есть начинается с пресета доступов. Владелец попросил
+                // пресет здесь не показывать.
+                const assigneeRole = assignee?.roleTitle?.trim() || '';
                 // Срок в правом верхнем углу; просрочка и выполнение заменяют его
                 // бейджем — «дата + бейдж» перегружали бы компактную строку.
                 // Токены те же, что у приоритетов.
@@ -271,9 +276,12 @@ export function SubtasksSection({
                             {content}
                           </span>
                           {assignee && (
-                            <span className="truncate text-[11px] text-text-muted">
+                            // Без truncate: имя и роль показываются полностью,
+                            // строка переносится. Обрезка многоточием съедала
+                            // конец длинного имени или должности.
+                            <span className="text-[11px] text-text-muted">
                               {assignee.displayName}
-                              {assignee.roleLabel ? ` · ${assignee.roleLabel}` : ''}
+                              {assigneeRole ? ` · ${assigneeRole}` : ''}
                             </span>
                           )}
                         </div>
@@ -292,7 +300,7 @@ export function SubtasksSection({
                           ) : (
                             subtask.deadline && (
                               <span className="whitespace-nowrap text-[11px] text-text-muted">
-                                {formatDate(subtask.deadline)}
+                                {formatDueShort(subtask.deadline)}
                               </span>
                             )
                           )}
