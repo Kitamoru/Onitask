@@ -254,4 +254,37 @@ describe('POST /api/init', () => {
     const data = await response.json();
     expect(data.error).toBe('invite_acceptance_failed');
   });
+
+  // Регресс-контракт для фикса онбординга. /api/init для СУЩЕСТВУЮЩЕГО
+  // профиля всегда отдаёт is_new_user: false — даже когда у пользователя ноль
+  // досок. Именно поэтому клиент больше не решает онбординг по этому флагу:
+  // «профиль создан» ≠ «доска есть». Проверяем, что сервер честно отдаёт
+  // пустой workspaces, и клиент по нему и принимает решение.
+  it('existing profile without workspaces → is_new_user=false, workspaces=[]', async () => {
+    mockValidateTelegramInitData.mockResolvedValue({
+      valid: true,
+      user: { id: '987654321', is_bot: false, first_name: 'Test', username: 'testuser' },
+    });
+    const profileQuery = createThenable({
+      id: 'profile-uuid', telegram_id: 987654321, display_name: 'testuser',
+      avatar_url: null, last_active_workspace_id: null,
+    });
+    // Прерванный онбординг: профиль создан, ни одного воркера нет.
+    const workersQuery = createThenable([]);
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') return profileQuery;
+        if (table === 'workers') return workersQuery;
+        throw new Error(`unexpected table ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: null })),
+    };
+    mockCreateServerClient.mockReturnValue(supabase);
+
+    const response = await POST(createMockRequest({ init_data: 'valid' }));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.is_new_user).toBe(false);
+    expect(payload.data.workspaces).toEqual([]);
+  });
 });

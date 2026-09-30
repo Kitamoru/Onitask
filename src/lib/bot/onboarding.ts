@@ -192,15 +192,19 @@ async function registerWorker(
     .maybeSingle();
 
   if (existing) {
-    await supabase
+    const { error: reactivateError } = await supabase
       .from('workers')
       .update({ is_active: true })
       .eq('source_id', profileId)
       .eq('workspace_id', workspaceId);
+
+    if (reactivateError) {
+      throw new Error(`[Bot Onboarding] Worker reactivation failed: ${reactivateError.message}`);
+    }
     return;
   }
 
-  await supabase.from('workers').insert({
+  const { error: insertError } = await supabase.from('workers').insert({
     workspace_id: workspaceId,
     source_id: profileId,
     type: 'human',
@@ -208,6 +212,14 @@ async function registerWorker(
     display_name: displayName,
     is_active: true,
   });
+
+  // Результат записи проверяем обязательно: профиль к этому моменту уже
+  // создан, и молчаливая ошибка оставляла пользователя в состоянии
+  // «профиль есть, досок нет» — необратимом до фикса онбординга.
+  // См. src/lib/onboarding.ts.
+  if (insertError) {
+    throw new Error(`[Bot Onboarding] Worker creation failed: ${insertError.message}`);
+  }
 }
 
 async function logBotEvent(

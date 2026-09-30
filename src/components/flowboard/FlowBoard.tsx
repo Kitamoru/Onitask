@@ -133,8 +133,6 @@ export interface FlowBoardProps {
   onAddWorker?: () => void;
   onAddAgent?: () => void;
   onRefresh?: (options?: { force?: boolean }) => void;
-  /** Show onboarding modal for new users (no workspace) */
-  isNewUser?: boolean;
   /** Callback when board is created successfully */
   onBoardCreate?: () => void;
   /** Telegram WebApp initData string for API authentication */

@@ -25,6 +25,7 @@ import { filterTasksForUser } from '@/lib/streamFilter';
 import { findActiveWorkspaceWorkerId } from '@/lib/activeWorkspaceWorker';
 import { formatWorkerRole } from '@/lib/roles';
 import { getTaskPermission } from '@/lib/taskPermissions';
+import { needsBoardCreation } from '@/lib/onboarding';
 import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 
@@ -642,8 +643,11 @@ function FlowBoardPageContent() {
     month: 'long',
   });
 
-  const isNewUser = authData?.is_new_user === true;
-  const needsOnboarding = !authData?.worker?.workspace_id && !authLoading && !authError && isNewUser;
+  // Онбординг — по состоянию (нет досок), а не по is_new_user: прерванный
+  // онбординг обязан показываться снова, а is_new_user становится false уже
+  // на втором запуске. Защита от редиректа при ошибке авторизации — внутри
+  // needsBoardCreation (authData === null → false).
+  const needsOnboarding = !authLoading && !authError && needsBoardCreation(authData);
 
   // Вычисляем роль текущего пользователя в активном воркспейсе
   const activeWs = authData?.workspaces?.find(
@@ -707,7 +711,6 @@ function FlowBoardPageContent() {
           onAddWorker={() => setShowInviteModal(true)}
           onAddAgent={() => setShowAgentSheet(true)}
           onRefresh={(options: { force?: boolean } | undefined) => refreshMetrics(options ?? { force: true })}
-          isNewUser={isNewUser}
           onBoardCreate={handleBoardCreate}
           initData={tgInitData}
           workspaceId={state.activeWorkspaceId ?? undefined}

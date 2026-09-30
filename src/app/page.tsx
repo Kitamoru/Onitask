@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getPreferredView } from '@/lib/viewPreference';
 import { markPerf } from '@/lib/perf/timings';
+import { needsBoardCreation } from '@/lib/onboarding';
 import { OrbitLoader } from '@/components/shared/OrbitLoader';
 
 // Сброс скролла при переходе на страницу
@@ -33,9 +34,15 @@ export default function HomePage() {
   const launchContext = data?.launch_context;
   const launchError = data?.launch_error;
 
+  // Онбординг — по состоянию: нет ни одной доски. Обратимо, в отличие от
+  // is_new_user (см. src/lib/onboarding.ts).
+  // Защита от редиректа на создание доски при ошибке авторизации живёт в
+  // самой needsBoardCreation (data === null → false).
+  const needsOnboarding = needsBoardCreation(data);
+
   // Guard: once redirected, NEVER redirect again.
-  // Fixes board creation issue where refresh() flips is_new_user to false
-  // and triggers unwanted redirect to /flowboard.
+  // Fixes board creation issue where refresh() right after workspace creation
+  // re-runs this effect and would bounce the user back to /board/create.
   const hasNavigatedRef = useRef(false);
 
   useEffect(() => {
@@ -43,11 +50,16 @@ export default function HomePage() {
     if (hasNavigatedRef.current) return;
 
     if (launchError) return;
-    if (data?.is_new_user === true) {
+
+    // Онбординг определяется СОСТОЯНИЕМ (нет досок), а не флагом is_new_user.
+    // is_new_user истинно только в том запросе, где профиль был создан, —
+    // поэтому прерванный онбординг раньше был необратим. needsOnboarding
+    // делает его повторяемым: не создал доску — увидишь форму снова.
+    if (needsOnboarding) {
       hasNavigatedRef.current = true;
       markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       router.replace('/board/create');
-    } else if (data?.is_new_user === false) {
+    } else {
       hasNavigatedRef.current = true;
       markPerf('route:flowboard'); // PERF-06: конец boot-фазы корневого экрана
       const preferred = getPreferredView();
@@ -63,7 +75,7 @@ export default function HomePage() {
       router.replace(target);
     }
     // If error or no data, stay on this page and show error below
-  }, [isLoading, data?.is_new_user, launchContext, launchError, router]);
+  }, [isLoading, data, needsOnboarding, launchContext, launchError, router]);
 
   // Loading state
   if (isLoading) {
