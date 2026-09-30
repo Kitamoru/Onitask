@@ -110,7 +110,7 @@ export function SubtaskCreateSheet({
         <SingleDateField
           date={deadline}
           onOpen={() => setDateSheetOpen(true)}
-          placeholder="Срок"
+          placeholder="Дата окончания"
         />
 
         {assignee ? (
@@ -158,11 +158,13 @@ export function SubtaskCreateSheet({
           onClose={() => setAssigneeSheetOpen(false)}
           workers={humanWorkers}
           selectedId={assigneeId}
-          title="Исполнитель подзадачи"
-          onSelect={(id) => {
-            setAssigneeId(id);
-            setAssigneeSheetOpen(false);
-          }}
+          title="Выберите исполнителя"
+          // ОБЯЗАТЕЛЬНО. Без `stacked` шторка выбора ложилась ПОД эту
+          // BottomSheet (у неё свой transform-контекст) — кнопка «Выбрать
+          // исполнителя» выглядела рабочей, а по факту ничего не открывала.
+          // Так же подключено в TaskViewEdit и в SubtaskViewSheet.
+          stacked
+          onSelect={(id) => setAssigneeId(id)}
         />
       </div>
     </BottomSheet>
