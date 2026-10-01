@@ -115,6 +115,16 @@ export interface TaskViewEditProps {
   initialTab?: 'general' | 'comments';
   /** SUB-01: подзадача, которую надо раскрыть и подсветить (deep link из TG). */
   highlightSubtaskId?: string | null;
+  /**
+   * Рисовать шторку ПОВЕРХ другой (`BottomSheet` со `stacked`, z-index 9999).
+   *
+   * Нужен для открытия задачи из шторки воркера: у `WorkerSheet` свой
+   * transform-контекст, и обычная карточка легла бы ПОД него — выглядело бы
+   * как «ничего не открылось». Именно на этом уже дважды уезжал баг с
+   * `WorkerSelectSheet`, теперь на него стоит сторож
+   * `tests/components/stackedSheetGuard.test.ts`.
+   */
+  stacked?: boolean;
   /** Custom className */
   className?: string;
 }
@@ -592,6 +602,7 @@ export function TaskViewEdit({
   onTaskStateChange,
   initialTab = 'general',
   highlightSubtaskId = null,
+  stacked = false,
   className = '',
 }: TaskViewEditProps) {
   const [internalMode, setInternalMode] = useState<'view' | 'edit'>(mode);
@@ -1110,6 +1121,7 @@ export function TaskViewEdit({
       <BottomSheet
         open={open}
         onClose={onClose}
+        stacked={stacked}
       >
         <div
           className={`flex flex-col gap-6 px-4 pb-6 ${className}`}

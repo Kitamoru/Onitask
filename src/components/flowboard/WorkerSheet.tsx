@@ -4,7 +4,10 @@
  * WorkerSheet — bottom sheet с деталями воркера (Figma 622:29869 / 622:30273).
  *
  * Два таба (desk-ui `Segments`):
- *  - «Статус»  — метрики (velocity, rework, forecast, gap) + задачи в `in_progress`/`review`
+ *  - «Статус»  — метрики (velocity, rework, forecast, gap) + задачи в
+ *                 `backlog` («В очереди»), `in_progress` («В работе»),
+ *                 `review` («На проверке»); карточка открывается по клику
+ *                 поверх шторки через `onTaskTap`;
  *  - «Доступы»  — «Роль в доске» (кастомный текст, workers.role_title) +
  *                 «Пресет доступов» (селект owner/admin/member → workers.role),
  *                 кнопки «Сохранить»/«Отозвать доступ»;
@@ -34,6 +37,7 @@ import {
   PRESET_LABELS,
   formatWorkerRole,
 } from '@/lib/roles';
+import { selectWorkerTaskSections, selectWorkerWorkingTasks } from '@/lib/workerTasks';
 
 const METRIC_WINDOW_DAYS = 14;
 
@@ -46,6 +50,12 @@ export interface WorkerSheetProps {
   worker?: WorkerCardData | null;
   /** Все задачи текущей доски */
   tasks: TaskEntity[];
+  /**
+   * Клик по карточке задачи в секциях статуса. Карточка открывается поверх
+   * шторки (`TaskViewEdit` со `stacked`), а сам воркер остаётся под ней —
+   * по закрытию задачи пользователь возвращается к карточке участника.
+   */
+  onTaskTap?: (taskId: string) => void;
   /** Активный спринт (если включён) */
   sprint?: SprintInfo | null;
   /** UUID текущего воркспейса (доски) */
@@ -80,6 +90,7 @@ export function WorkerSheet({
   onClose,
   worker,
   tasks,
+  onTaskTap,
   sprint,
   workspaceId,
   workspaceName,
@@ -120,30 +131,21 @@ export function WorkerSheet({
     }
   }, [open]);
 
-  // Задачи воркера в `in_progress` (назначенные исполнителем) и `review` (проверяющий)
-  const inProgressTasks = useMemo(
-    () =>
-      worker
-        ? tasks.filter((t) => t.assigned_to === worker.id && t.column === 'in_progress')
-        : [],
+  // Задачи воркера по трём секциям статуса: «В очереди» (исполнитель,
+  // backlog), «В работе» (исполнитель, in_progress) и «На проверке»
+  // (ПРОВЕРЯЮЩИЙ, review — не исполнитель). Логика вынесена в чистую функцию
+  // `selectWorkerTaskSections`: у React-компонента здесь нет тестовой среды,
+  // а правила отбора разъезжались инлайновыми фильтрами (см. lib/workerTasks).
+  const sections = useMemo(
+    () => selectWorkerTaskSections(tasks, worker?.id),
     [tasks, worker?.id],
   );
-  const reviewTasks = useMemo(
-    () =>
-      worker
-        ? tasks.filter((t) => t.reviewer_id === worker.id && t.column === 'review')
-        : [],
-    [tasks, worker?.id],
-  );
+  const queueTasks = sections.queue;
+  const inProgressTasks = sections.inProgress;
+  const reviewTasks = sections.review;
+  // Когнитивная нагрузка — только реальная работа, без очереди (A-09).
   const workingTasks = useMemo(
-    () =>
-      worker
-        ? tasks.filter(
-            (t) =>
-              t.assigned_to === worker.id &&
-              (t.column === 'in_progress' || t.column === 'review'),
-          )
-        : [],
+    () => selectWorkerWorkingTasks(tasks, worker?.id),
     [tasks, worker?.id],
   );
 
@@ -509,17 +511,33 @@ export function WorkerSheet({
         {tab === 'status' && (
           <div className="flex flex-col gap-6">
             <StatusMetrics metrics={metrics} evaluation={evaluation} />
+            {/* Порядок секций = порядок колонок доски (TASK_COLUMN_ORDER):
+                backlog → in_progress → review. Акценты — те же токены, что
+                в колонках (COLUMN_ACCENTS), чтобы одна и та же колонка
+                выглядела одинаково в любом месте экрана. */}
+            <TaskSection
+              color="var(--color-text-primary)"
+              title={`В очереди (${queueTasks.length})`}
+              tasks={queueTasks}
+              emptyNote="В очереди пока нет задач"
+              evaluation={evaluation}
+              onTaskTap={onTaskTap}
+            />
             <TaskSection
               color="var(--color-accent-amber)"
               title="В работе"
               tasks={inProgressTasks}
               emptyNote="Нет задач в работе"
+              evaluation={evaluation}
+              onTaskTap={onTaskTap}
             />
             <TaskSection
               color="var(--color-signal-cyan)"
               title={`На проверке (${reviewTasks.length})`}
               tasks={reviewTasks}
               emptyNote="На проверке пока нет задач"
+              evaluation={evaluation}
+              onTaskTap={onTaskTap}
             />
           </div>
         )}
@@ -749,11 +767,18 @@ function TaskSection({
   title,
   tasks,
   emptyNote,
+  evaluation,
+  onTaskTap,
 }: {
   color: string;
   title: string;
   tasks: TaskEntity[];
   emptyNote: string;
+  /** Настройки доски: без них `TaskCard` рисует cognitive weight даже там,
+   *  где он выключен (у карточки дефолт `true`). */
+  evaluation: EvaluationConfig;
+  /** Клик по карточке открывает задачу поверх шторки */
+  onTaskTap?: (taskId: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -788,8 +813,17 @@ function TaskSection({
         </p>
       ) : (
         <div className="flex flex-col gap-2">
+          {/* Клик открывает задачу (onTaskTap приходит от страницы). Раньше
+              здесь был голый <TaskCard>, и карточка в шторке воркера была
+              некликабельной: в отличие от колонок и стрима, обработчика
+              не подключали. */}
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onClick={onTaskTap ? () => onTaskTap(task.id) : undefined}
+              cognitiveWeightEnabled={evaluation.cognitiveWeightEnabled}
+            />
           ))}
         </div>
       )}

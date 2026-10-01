@@ -807,7 +807,18 @@ function FlowBoardPageContent() {
           onTaskTap={handleTaskTap}
         />
 
-                        {/* Task view/edit bottom sheet */}
+                        {/* Task view/edit bottom sheet.
+
+            `stacked={!!selectedWorker}` — задача, открытая из шторки воркера,
+            рисуется ПОВЕРХ неё: `WorkerSheet` объявлен ниже по DOM, а у всех
+            `BottomSheet` общий z-index 60, поэтому без `stacked` карточка легла
+            бы ПОД шторкой воркера (кнопка выглядит рабочей, а ничего не
+            открывается — тот же класс бага, что дважды уезжал с
+            `WorkerSelectSheet`). Сам воркер при этом не закрывается: по
+            закрытию задачи мы возвращаемся к карточке участника.
+
+            Комментарий живёт здесь, а не в списке атрибутов: JSX-выражения-
+            комментарии внутри него недопустимы (tsc: «'...' expected»). */}
                 <TaskViewEdit
           open={!!selectedTask}
           onClose={handleTaskSheetClose}
@@ -821,6 +832,7 @@ function FlowBoardPageContent() {
           onBack={handleTaskSheetBack}
           canGoBack={taskSheetHistory.length > 0}
           onTaskStateChange={handleTaskStateChange}
+          stacked={!!selectedWorker}
           onSave={(updatedTask) => {
             dispatch({ type: 'PATCH_TASK', payload: updatedTask });
             invalidateBoardCounts();
@@ -881,6 +893,7 @@ function FlowBoardPageContent() {
           workspaceName={workspaceName}
           canRevoke={canRevoke}
           currentWorkerId={currentUserId}
+          onTaskTap={handleTaskTap}
           onRevokeSuccess={() => {
             setSelectedWorker(null);
             refreshMetrics({ force: true });
