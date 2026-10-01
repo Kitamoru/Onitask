@@ -43,9 +43,9 @@ export interface RealtimeTaskEvent {
  * обогащение задач, а этот модуль подтягивает React-хук. Реэкспорт — чтобы
  * существующие импорты (`@/lib/realtime/tasks`) продолжали работать.
  */
-import { buildFullId } from '../../../lib/taskFullId';
+import { buildFullId, parentTaskNumberFor } from '../../../lib/taskFullId';
 
-export { buildFullId };
+export { buildFullId, parentTaskNumberFor };
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
@@ -64,15 +64,27 @@ export function useTasksRealtime(
   workspaceId: string | null,
   workspacePrefix: string | null | undefined,
   onEvent: (event: RealtimeTaskEvent) => void,
+  /**
+   * SUB-01: номер задачи-родителя по её id. Нужен, чтобы display-id подзадачи
+   * собрался как `ONI-41-SUB-1`, а не `ONI-SUB-1`: у подзадачи `task_number`
+   * = NULL, и без номера родителя Realtime перезаписал бы правильный id из API
+   * сломанным. Без этого резолвера поведение прежнее (усечённый id).
+   */
+  resolveParentTaskNumber?: (row: { parent_task_id?: string | null }) => number | null | undefined,
 ) {
   const channelRef = useRef<any>(null);
   const callbackRef = useRef(onEvent);
   const prefixRef = useRef(workspacePrefix);
+  const resolveParentTaskNumberRef = useRef(resolveParentTaskNumber);
 
   // Keep prefix ref up to date
   useEffect(() => {
     prefixRef.current = workspacePrefix;
   }, [workspacePrefix]);
+
+  useEffect(() => {
+    resolveParentTaskNumberRef.current = resolveParentTaskNumber;
+  }, [resolveParentTaskNumber]);
 
   // Keep callback ref up to date
   useEffect(() => {
@@ -104,7 +116,13 @@ export function useTasksRealtime(
 
           if (payload.new) {
             const raw = payload.new as TasksRow;
-            const fullId = buildFullId(prefix, raw.task_number, raw.id, raw.subtask_index);
+            const fullId = buildFullId(
+              prefix,
+              raw.task_number,
+              raw.id,
+              raw.subtask_index,
+              resolveParentTaskNumberRef.current?.(raw),
+            );
             taskEntity = {
               ...raw,
               full_id: fullId,
@@ -116,7 +134,13 @@ export function useTasksRealtime(
 
           if (payload.old && eventType !== 'INSERT') {
             const raw = payload.old as TasksRow;
-            const fullId = buildFullId(prefix, raw.task_number, raw.id, raw.subtask_index);
+            const fullId = buildFullId(
+              prefix,
+              raw.task_number,
+              raw.id,
+              raw.subtask_index,
+              resolveParentTaskNumberRef.current?.(raw),
+            );
             oldTaskEntity = {
               ...raw,
               full_id: fullId,

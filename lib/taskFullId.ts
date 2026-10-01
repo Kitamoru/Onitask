@@ -17,6 +17,32 @@
  * боте, и `find_task_by_full_id` такой id не разобрал бы.
  */
 
+import type { TaskEntity } from '../src/types/flowboard';
+
+/**
+ * Номер задачи-родителя по её id — для сборки display-id подзадачи.
+ *
+ * У подзадачи `task_number = NULL` (миг. 139), а идентификатор производный —
+ * `ONI-41-SUB-1`. Без номера родителя `buildFullId` даёт `ONI-SUB-1`, и
+ * Realtime-событие подзадачи перезатирало бы правильный id, пришедший из API,
+ * сломанным: в стриме и в шапке шторки появлялось «Подзадача ONIT-SUB-1».
+ *
+ * Родитель всегда есть в `known` (там лежат все задачи воркспейса), поэтому
+ * ходить в БД на каждое событие не нужно.
+ *
+ * `undefined` — родитель неизвестен вызывающему (не передан `known` или строки
+ * нет): buildFullId тогда ведёт себя как раньше. `null` — родитель известен, но
+ * номера у него нет.
+ */
+export function parentTaskNumberFor(
+  raw: { id: string; parent_task_id?: string | null } | null | undefined,
+  known: TaskEntity[] | null | undefined,
+): number | null | undefined {
+  const parentId = raw?.parent_task_id;
+  if (!parentId || !known) return undefined;
+  return known.find((t) => t.id === parentId)?.task_number ?? null;
+}
+
 export function buildFullId(
   prefix: string | null | undefined,
   taskNumber: number | null | undefined,

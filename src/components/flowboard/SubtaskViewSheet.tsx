@@ -452,7 +452,7 @@ export function SubtaskViewSheet({
   return (
     <>
       <BottomSheet open={open} onClose={onClose}>
-        <div className="flex flex-col gap-4 px-4 pb-6 pt-6">
+        <div className="flex flex-col gap-4 px-4 pb-6">
           <div>
             <h2 className="text-[19px] font-medium text-text">
               Подзадача {subtask?.full_id}

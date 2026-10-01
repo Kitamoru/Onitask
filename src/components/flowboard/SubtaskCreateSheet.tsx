@@ -95,7 +95,7 @@ export function SubtaskCreateSheet({
 
   return (
     <BottomSheet open={open} onClose={handleClose}>
-      <div className="flex flex-col gap-4 px-4 pb-6 pt-6">
+      <div className="flex flex-col gap-4 px-4 pb-6">
         <h2 className="text-[19px] font-medium text-text">Добавить подзадачу</h2>
 
         {/* TextArea отдаёт значение строкой (не событием) и сам растёт по высоте,

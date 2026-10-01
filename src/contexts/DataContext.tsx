@@ -15,7 +15,7 @@ import type { FlowMetricsResponse } from '../types/flowboard';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
-import { buildFullId } from '@/lib/realtime/tasks';
+import { buildFullId, parentTaskNumberFor } from '@/lib/realtime/tasks';
 import { BOARD_COUNTS_QUERY_KEY, fetchBoardCounts } from '@/lib/api/boardCounts';
 import { createLatestLoadGuard } from '@/lib/latestLoadGuard';
 
@@ -24,7 +24,11 @@ import { createLatestLoadGuard } from '@/lib/latestLoadGuard';
  * Сервер — источник правды, но если какой-либо endpoint вернёт задачу без
  * этих полей, клиент не упадёт — вычисляем fallback через buildFullId.
  */
-function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
+function ensureFullId(
+  task: TaskEntity,
+  fallbackPrefix?: string,
+  parentTaskNumber?: number | null,
+): TaskEntity {
   if (!task || typeof task !== 'object' || !task.id) {
     if (process.env.NODE_ENV === 'development') {
       console.error('[DataContext] ensureFullId: task without id received:', {
@@ -38,7 +42,13 @@ function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
   }
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
-  const fullId = task.full_id || buildFullId(prefix, task.task_number, task.id, task.subtask_index);
+  const fullId = task.full_id || buildFullId(
+    prefix,
+    task.task_number,
+    task.id,
+    task.subtask_index,
+    parentTaskNumber,
+  );
   return { ...task, full_id: fullId, workspace_prefix: prefix };
 }
 
@@ -46,12 +56,14 @@ function ensureFullId(task: TaskEntity, fallbackPrefix?: string): TaskEntity {
 function toTaskEntity(
   raw: Record<string, unknown> & { id: string; task_number?: number | null; workspace_id?: string },
   prefix: string,
+  parentTaskNumber?: number | null,
 ): TaskEntity {
   const fullId = buildFullId(
     prefix,
     raw.task_number as number | null | undefined,
     raw.id,
     raw.subtask_index as number | null | undefined,
+    parentTaskNumber,
   );
   return {
     ...raw,
@@ -546,7 +558,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const previousTask = tasksRef.current.find((task) => task.id === raw.id);
-        const taskEntity = toTaskEntity({ ...(raw as any), story_points: (raw as any).story_points ?? previousTask?.story_points }, prefix);
+        // SUB-01: подзадаче нужен номер РОДИТЕЛЯ, иначе Realtime собрал бы
+        // display-id как «ONIT-SUB-1» и перезаписал бы правильный «ONIT-41-SUB-1»,
+        // пришедший из API. Родитель уже в сторе — запрос не нужен.
+        const taskEntity = toTaskEntity(
+          { ...(raw as any), story_points: (raw as any).story_points ?? previousTask?.story_points },
+          prefix,
+          parentTaskNumberFor(raw, tasksRef.current),
+        );
         dispatch({ type: 'PATCH_TASK', payload: taskEntity });
         invalidateCountsThrottled();
       } else if (payload.eventType === 'DELETE') {
