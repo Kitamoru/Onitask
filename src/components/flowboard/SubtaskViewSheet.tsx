@@ -36,6 +36,8 @@ import {
 } from '@/components/desk-create/ExternalLinksCard';
 import {
   getTaskAttachments,
+  getLatestTaskSubmission,
+  reviewTask,
   signTaskAttachment,
   type TaskAttachment,
 } from '@/lib/api/flow';
@@ -44,6 +46,7 @@ import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import ParticipantCard from '@/components/flowboard/ParticipantCard';
 import { WorkerSelectSheet } from '@/components/flowboard/WorkerSelectSheet';
+import { ReviewDecisionBlock } from '@/components/flowboard/ReviewDecisionBlock';
 import { MoveTaskSheet } from '@/components/flowboard/MoveTaskSheet';
 import {
   isReviewBypassBlocked,
@@ -89,6 +92,17 @@ export interface SubtaskViewSheetProps {
    * на родителя было бы вовсе недостижимо.
    */
   onOpenParent?: () => void;
+  /**
+   * SUB-01: переход вперёд в «На проверке» требует сдачи результата. Шторка
+   * только перехватывает и просит; сама форма и её обработчик — на странице,
+   * один инстанс на задачу и на подзадачу.
+   */
+  onRequestSubmit?: (
+    subtaskId: string,
+    targetColumn: 'review' | 'done',
+  ) => void;
+  /** Решение по ревью принято — пора обновить список подзадач. */
+  onReviewResolved?: () => void;
 }
 
 type Mode = 'view' | 'edit';
@@ -99,6 +113,14 @@ type Mode = 'view' | 'edit';
  * не плодить новую функцию на каждом рендере.
  */
 const noop = () => {};
+
+/**
+ * SUB-01: в «Сделано» подзадача попадает только через approve из формы ревью
+ * (решение владельца, 2026-10-01). Короткого пути нет: без него слияние
+ * результата с родителем (миг. 142) происходило бы мимо решения ревьюера.
+ */
+export const SUBTASK_DONE_REQUIRES_REVIEW =
+  'Подзадача попадает в «Сделано» только после согласования на ревью';
 
 interface Draft {
   text: string;
@@ -120,6 +142,8 @@ export function SubtaskViewSheet({
   onPatch,
   onDelete,
   onOpenParent,
+  onRequestSubmit,
+  onReviewResolved,
 }: SubtaskViewSheetProps) {
   const [mode, setMode] = useState<Mode>('view');
   const [busy, setBusy] = useState(false);
@@ -132,6 +156,8 @@ export function SubtaskViewSheet({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({
     text: '',
     assignedTo: null,
@@ -295,7 +321,58 @@ export function SubtaskViewSheet({
   };
 
   const handleMoveConfirm = (targetColumn: string) => {
+    if (!subtask) return;
+    const from = subtask.column;
+    // SUB-01: короткого пути в «Сделано» нет (решение владельца) — туда
+    // ведёт только approve из формы ревью. А вперёд из не-review колонки у
+    // задачи открывается шаг «Результат», и колонка не двигается, пока сдача
+    // не принята. Раньше подзадача обходила и то и другое: тихо уезжала в
+    // review сырым PATCH, без task_submissions, поэтому миграция 142 нечего
+    // было сливать в родителя.
+    if (targetColumn === 'review' && from !== 'review') {
+      onRequestSubmit?.(subtask.id, 'review');
+      return;
+    }
     void runPatch({ column: targetColumn });
+  };
+
+  // SUB-01: причину возврата ревьюер пишет в metadata.last_fix_reason самой
+  // строки (миг. 051, review_action(fix)). Показываем её здесь: комментарии у
+  // подзадачи не выводятся (решение владельца — только янтарный артефакт в
+  // ленте родителя), и иначе исполнитель просто не увидел бы, зачем его
+  // вернули.
+  const fixReason =
+    typeof subtask?.metadata?.last_fix_reason === 'string'
+      ? subtask.metadata.last_fix_reason.trim()
+      : '';
+
+  // REV-01: префилл «Что сделано» в форме ревью — последняя сдача подзадачи.
+  const { data: latestSubmissionData } = useQuery({
+    queryKey: ['task-submission-latest', subtask?.id],
+    queryFn: () => getLatestTaskSubmission(subtask!.id!),
+    enabled: !!(open && mode === 'view' && subtask?.id && subtask.column === 'review'),
+    staleTime: 30_000,
+  });
+
+  const handleReview = async (action: 'approve' | 'fix', reason?: string) => {
+    if (!subtask) return;
+    setReviewLoading(true);
+    setReviewError(null);
+    try {
+      const res = await reviewTask(subtask.id, {
+        action,
+        reason: action === 'fix' ? reason : undefined,
+        expected_version: subtask.version ?? undefined,
+      });
+      if ('error' in res) throw new Error(res.error);
+      onReviewResolved?.();
+    } catch (err) {
+      setReviewError(
+        err instanceof Error ? err.message : 'Не удалось обработать решение',
+      );
+    } finally {
+      setReviewLoading(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -511,6 +588,32 @@ export function SubtaskViewSheet({
                 </p>
               )}
 
+              {fixReason && mode === 'view' && (
+                <>
+                  <SectionHeader title="Возвращено на доработку" />
+                  <Card>
+                    <p className="text-[14px] leading-relaxed text-text-secondary">
+                      {fixReason}
+                    </p>
+                  </Card>
+                </>
+              )}
+
+              {/* REV-01: решение ревьюера. Так же, как в TaskViewEdit: только
+                  на «На проверке» и только в режиме просмотра. */}
+              {mode === 'view' && subtask?.column === 'review' && open && (
+                <ReviewDecisionBlock
+                  task={subtask}
+                  currentUserId={currentUserId ?? undefined}
+                  currentUserRole={currentUserRole}
+                  latestSubmission={latestSubmissionData?.submission ?? null}
+                  loading={reviewLoading}
+                  error={reviewError}
+                  onApprove={() => void handleReview('approve')}
+                  onFix={(reason) => void handleReview('fix', reason)}
+                />
+              )}
+
               {canEdit && (
                 // Заголовка «Действия» нет: две кнопки подряд после блоков
                 // читались как отдельный раздел, которого в шторке задачи нет.
@@ -655,8 +758,8 @@ export function SubtaskViewSheet({
           selectedColumn={moveColumn}
           onSelect={setMoveColumn}
           onConfirm={handleMoveConfirm}
-          disabledColumns={doneColumnBlocked ? ['done'] : []}
-          disabledReason={REVIEW_BYPASS_BLOCKED}
+          disabledColumns={['done']}
+          disabledReason={SUBTASK_DONE_REQUIRES_REVIEW}
         />
       )}
 

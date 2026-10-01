@@ -393,6 +393,20 @@ function FlowBoardPageContent() {
     setOpenSubtaskId(null);
   }, []);
 
+  /**
+   * SUB-01: сдача подзадачи идёт через тот же `resultStep` + `ResultStepSheet`,
+   * что и у задачи. Обработчик один на оба случая — иначе цикл загрузки
+   * файлов и вызов `submitTask` пришлось бы дублировать в двух точках
+   * монтирования шторки (внутри карточки родителя и отдельно из стрима).
+   */
+  const handleSubtaskSubmitRequest = useCallback(
+    (subtaskId: string, targetColumn: 'review' | 'done') => {
+      setSubmitError(null);
+      setResultStep({ taskId: subtaskId, targetColumn });
+    },
+    [],
+  );
+
   // ─── Подзадача, открытая сама по себе из стрима ────────────────────────────
   // Всё это ДО раннего return (~строка 619): хук после него нарушил бы
   // rules-of-hooks — ровно та ошибка, из-за которой taskPermissionFor сделан
@@ -639,6 +653,15 @@ function FlowBoardPageContent() {
           dispatch({ type: 'PATCH_TASK', payload: res.task });
           invalidateBoardCounts();
         }
+        // SUB-01: список подзадач родителя живёт под своим query-ключом, и
+        // PATCH_TASK его не трогает — без инвалидации колонка в списке осталась
+        // бы прежней, и сдача выглядела бы несработавшей.
+        const submitted = state.tasks.items.find((t) => t.id === taskId);
+        if (submitted?.parent_task_id) {
+          void queryClient.invalidateQueries({
+            queryKey: ['task-subtasks', submitted.parent_task_id],
+          });
+        }
         setResultStep(null);
         void refreshMetrics({ force: true });
       } catch (err) {
@@ -650,7 +673,15 @@ function FlowBoardPageContent() {
         setSubmitUploadTotal(0);
       }
     },
-    [resultStep, state.activeWorkspaceId, state.tasks.items, dispatch, refreshMetrics],
+    [
+      resultStep,
+      state.activeWorkspaceId,
+      state.tasks.items,
+      dispatch,
+      refreshMetrics,
+      invalidateBoardCounts,
+      queryClient,
+    ],
   );
 
 
@@ -906,6 +937,7 @@ function FlowBoardPageContent() {
           highlightSubtaskId={highlightedSubtaskId}
           openSubtaskId={openSubtaskId}
           onSubtaskSheetClose={handleSubtaskSheetClose}
+          onSubtaskSubmitRequest={handleSubtaskSubmitRequest}
           onBack={handleTaskSheetBack}
           canGoBack={taskSheetHistory.length > 0}
           onTaskStateChange={handleTaskStateChange}
@@ -981,6 +1013,14 @@ function FlowBoardPageContent() {
           currentUserRole={activeWs?.role}
           onPatch={standaloneMutations.patchSubtask}
           onDelete={standaloneMutations.deleteSubtask}
+          onRequestSubmit={handleSubtaskSubmitRequest}
+          onReviewResolved={() => {
+            if (standaloneParent) {
+              void queryClient.invalidateQueries({
+                queryKey: ['task-subtasks', standaloneParent.id],
+              });
+            }
+          }}
           onOpenParent={
             standaloneSubtask && standaloneParent
               ? () => {

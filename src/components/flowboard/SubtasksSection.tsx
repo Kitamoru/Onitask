@@ -57,8 +57,16 @@ export interface SubtasksSectionProps {
    * Отличается от highlightSubtaskId: тот только подсвечивает строку.
    */
   openSubtaskId?: string | null;
-  /** Сообщает, что шторка подзадачи закрыта — сбрасывает одноразовый запрос. */
+  /** Решение по ревью принято — сбрасываем одноразовый запрос. */
   onSubtaskSheetClose?: () => void;
+  /**
+   * SUB-01: переход подзадачи вперёд в «На проверке» требует сдачи. Форму
+   * держит страница, здесь только перехват и проброс.
+   */
+  onSubtaskSubmitRequest?: (
+    subtaskId: string,
+    targetColumn: 'review' | 'done',
+  ) => void;
 }
 
 export function SubtasksSection({
@@ -72,6 +80,7 @@ export function SubtasksSection({
   highlightSubtaskId = null,
   openSubtaskId = null,
   onSubtaskSheetClose,
+  onSubtaskSubmitRequest,
 }: SubtasksSectionProps) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ['task-subtasks', task.id] as const, [task.id]);
@@ -130,6 +139,11 @@ export function SubtasksSection({
   // страницы (тап по подзадаче в стриме), и правка оттуда обязана инвалидировать
   // тот же ключ ['task-subtasks', taskId] — иначе список не обновился бы.
   const { patchSubtask, deleteSubtask } = useSubtaskMutations(task.id, setActionError);
+
+  /** Решение по ревью принято: колонка подзадачи сменилась — перечитываем. */
+  const deleteSubtaskRefetch = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
 
   const handleCreate = async (input: {
     title: string;
@@ -360,6 +374,8 @@ export function SubtasksSection({
           currentUserRole={currentUserRole}
           onPatch={patchSubtask}
           onDelete={deleteSubtask}
+          onRequestSubmit={onSubtaskSubmitRequest}
+          onReviewResolved={deleteSubtaskRefetch}
         />
       )}
     </section>

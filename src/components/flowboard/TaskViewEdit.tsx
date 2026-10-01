@@ -120,6 +120,11 @@ export interface TaskViewEditProps {
   openSubtaskId?: string | null;
   /** Сообщает, что шторка подзадачи закрыта — сбрасывает одноразовый запрос. */
   onSubtaskSheetClose?: () => void;
+  /** SUB-01: сдача подзадачи — форма живёт на странице, здесь перехват. */
+  onSubtaskSubmitRequest?: (
+    subtaskId: string,
+    targetColumn: 'review' | 'done',
+  ) => void;
   /**
    * Рисовать шторку ПОВЕРХ другой (`BottomSheet` со `stacked`, z-index 9999).
    *
@@ -609,6 +614,7 @@ export function TaskViewEdit({
   highlightSubtaskId = null,
   openSubtaskId = null,
   onSubtaskSheetClose,
+  onSubtaskSubmitRequest,
   stacked = false,
   className = '',
 }: TaskViewEditProps) {
@@ -1254,6 +1260,7 @@ export function TaskViewEdit({
                   highlightSubtaskId={highlightSubtaskId}
                   openSubtaskId={openSubtaskId}
                   onSubtaskSheetClose={onSubtaskSheetClose}
+                  onSubtaskSubmitRequest={onSubtaskSubmitRequest}
                 />
               )}
 
