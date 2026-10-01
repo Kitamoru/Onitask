@@ -26,9 +26,20 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, Download, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { Button, Card, SectionHeader, TextArea } from '@/components/ui/desk-ui';
+import { Button, Card, NotchedPanel, SectionHeader, TextArea } from '@/components/ui/desk-ui';
+import {
+  ExternalLinksCard,
+  type ExternalLink,
+} from '@/components/desk-create/ExternalLinksCard';
+import {
+  getTaskAttachments,
+  signTaskAttachment,
+  type TaskAttachment,
+} from '@/lib/api/flow';
+import { formatBytes } from '@/lib/format';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import { SingleDateField } from '@/components/ui/SingleDateField';
 import ParticipantCard from '@/components/flowboard/ParticipantCard';
@@ -71,6 +82,13 @@ export interface SubtaskViewSheetProps {
 
 type Mode = 'view' | 'edit';
 
+/**
+ * Заглушка для read-only карточек. `ExternalLinksCard` требует обработчики
+ * по типам, но в readOnly-режиме они не вызываются — модульная константа, чтобы
+ * не плодить новую функцию на каждом рендере.
+ */
+const noop = () => {};
+
 interface Draft {
   text: string;
   assignedTo: string | null;
@@ -100,6 +118,8 @@ export function SubtaskViewSheet({
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveColumn, setMoveColumn] = useState(subtask.column);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [filesError, setFilesError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({
     text: '',
     assignedTo: null,
@@ -114,6 +134,85 @@ export function SubtaskViewSheet({
   // обрезанного до 500 символов title, но у старых строк его может не быть.
   const subtaskText = subtask.description?.trim() || subtask.title;
   const parentText = parent.description?.trim() || '';
+
+  // ─── Контекст из материнской задачи ───────────────────────────────────────
+  // Ссылки лежат в metadata.external_links родителя — то же поле, что правит
+  // карточка задачи. Отдельной сущности «ссылки подзадачи» не заводим.
+  const parentLinks = (parent.metadata?.external_links ?? []) as ExternalLink[];
+
+  const parentFilesQuery = useQuery({
+    queryKey: ['task-attachments', parent.id],
+    queryFn: () => getTaskAttachments(parent.id),
+    enabled: mode === 'view' && !!parent.id,
+    staleTime: 30_000,
+  });
+  const parentFiles: TaskAttachment[] = parentFilesQuery.data ?? [];
+  const parentFilesLoading = parentFilesQuery.isPending;
+  const parentFilesError =
+    parentFilesQuery.error instanceof Error
+      ? parentFilesQuery.error.message
+      : null;
+  // Ошибка загрузки и ошибка скачивания показываются в одном месте.
+  const visibleFilesError = filesError ?? parentFilesError;
+
+  const downloadParentFile = async (attachment: TaskAttachment) => {
+    if (downloadingId) return;
+    setDownloadingId(attachment.id);
+    setFilesError(null);
+    try {
+      // Файл принадлежит РОДИТЕЛЮ — подпись и открытие идут по его id.
+      const url = await signTaskAttachment(parent.id, attachment.id);
+      const tg = (
+        window as {
+          Telegram?: {
+            WebApp?: {
+              downloadFile?: (
+                params: { url: string; file_name: string },
+                callback?: (accepted: boolean) => void,
+              ) => void;
+            };
+          };
+        }
+      ).Telegram?.WebApp;
+
+      if (typeof tg?.downloadFile === 'function') {
+        let failed = false;
+        const accepted = await new Promise<boolean>((resolve) => {
+          try {
+            tg.downloadFile!(
+              { url, file_name: attachment.filename },
+              (ok) => resolve(!!ok),
+            );
+          } catch {
+            failed = true;
+            resolve(false);
+          }
+        });
+        // accepted=true — скачано нативно; callback(false) без исключения —
+        // человек нажал «Отмена», повторно качать не надо.
+        if (accepted) return;
+        if (!failed) return;
+      }
+
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Не удалось получить файл');
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objUrl;
+      link.download = attachment.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 10_000);
+    } catch (err) {
+      setFilesError(
+        err instanceof Error ? err.message : 'Не удалось открыть файл',
+      );
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   // REV-02: подзадача наследует reviewer_id родителя, поэтому перенос в
   // «Сделано» блокируется тем же предикатом, что и у задачи. Иначе кнопка
@@ -290,6 +389,79 @@ export function SubtaskViewSheet({
                   avatarUrl={assignee.avatarUrl}
                   role="Исполнитель"
                 />
+              )}
+
+              {/* Контекст из МАТЕРИНСКОЙ задачи (решение владельца): блоки
+                  «Внешние ссылки» и «Файлы» берутся из родителя, без заголовков
+                  секций и только когда они реально есть.
+
+                  Read-only намеренно: подзадача не владеет этими данными, и
+                  редактирование здесь завело бы вторую точку правки одного и
+                  того же поля `metadata.external_links` и того же списка
+                  вложений — с расхождением между двумя шторками. */}
+              {parentLinks.length > 0 && (
+                <ExternalLinksCard
+                  enabled
+                  readOnly
+                  links={parentLinks}
+                  onEnabledChange={noop}
+                  onLinksChange={noop}
+                />
+              )}
+
+              {parentFilesLoading && parentFiles.length === 0 && (
+                <div className="flex items-center gap-2 text-[13px] text-text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Загрузка файлов…
+                </div>
+              )}
+
+              {parentFiles.length > 0 && (
+                <Card>
+                  <div className="flex flex-col gap-2">
+                    {parentFiles.map((a) => (
+                      <NotchedPanel
+                        key={a.id}
+                        corner="field"
+                        fill="var(--color-surface)"
+                        className="h-11"
+                        contentClassName="flex h-full w-full items-center justify-between gap-2 px-4"
+                      >
+                        {downloadingId === a.id ? (
+                          <span className="flex items-center gap-2 text-[13px] text-text-muted">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Скачивание…
+                          </span>
+                        ) : (
+                          <>
+                            <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                              <span className="min-w-0 truncate">{a.filename}</span>
+                              <span className="shrink-0 text-text-faint">
+                                {formatBytes(a.size_bytes)}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void downloadParentFile(a)}
+                              disabled={downloadingId != null}
+                              className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
+                              aria-label={`Скачать ${a.filename}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </NotchedPanel>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {visibleFilesError && (
+                <p className="text-[13px] text-[var(--color-priority-red-text)]">
+                  {visibleFilesError}
+                </p>
               )}
 
               {canEdit && (

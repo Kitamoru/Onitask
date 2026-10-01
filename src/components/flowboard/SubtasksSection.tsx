@@ -16,7 +16,7 @@
  * содержимого только шумит.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import {
@@ -52,6 +52,13 @@ export interface SubtasksSectionProps {
   currentUserRole: string | null | undefined;
   /** Deep link из TG: подзадача, которую раскрыть и подсветить. */
   highlightSubtaskId?: string | null;
+  /**
+   * SUB-01: подзадача, которую надо ОТКРЫТЬ (тап по подзадаче в стриме).
+   * Отличается от highlightSubtaskId: тот только подсвечивает строку.
+   */
+  openSubtaskId?: string | null;
+  /** Сообщает, что шторка подзадачи закрыта — сбрасывает одноразовый запрос. */
+  onSubtaskSheetClose?: () => void;
 }
 
 export function SubtasksSection({
@@ -63,12 +70,32 @@ export function SubtasksSection({
   currentUserId,
   currentUserRole,
   highlightSubtaskId = null,
+  openSubtaskId = null,
+  onSubtaskSheetClose,
 }: SubtasksSectionProps) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ['task-subtasks', task.id] as const, [task.id]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
+  const [sheetSubtaskId, setSheetSubtaskId] = useState<string | null>(null);
+
+  /**
+   * Внешний запрос на открытие (тап по подзадаче в стриме).
+   *
+   * Синхронизируемся ТОЛЬКО при смене значения пропа. Иначе закрытие шторки
+   * обнуляло бы внутреннее состояние, а эффект открывал бы её снова — по
+   * кругу, и подзадача «не закрывалась» бы.
+   */
+  const lastRequestedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openSubtaskId) {
+      lastRequestedId.current = null;
+      return;
+    }
+    if (openSubtaskId === lastRequestedId.current) return;
+    lastRequestedId.current = openSubtaskId;
+    setSheetSubtaskId(openSubtaskId);
+  }, [openSubtaskId]);
 
   const subtasksQuery = useQuery({
     queryKey,
@@ -95,8 +122,8 @@ export function SubtasksSection({
    * проезжает и в шторку.
    */
   const openSubtask = useMemo(
-    () => subtasks.find((s) => s.id === openSubtaskId) ?? null,
-    [subtasks, openSubtaskId],
+    () => subtasks.find((s) => s.id === sheetSubtaskId) ?? null,
+    [subtasks, sheetSubtaskId],
   );
 
   // Подзадача удаляется общим DELETE /api/tasks/[id]: это та же строка tasks,
@@ -243,7 +270,7 @@ export function SubtasksSection({
                   >
                       <button
                         type="button"
-                        onClick={() => setOpenSubtaskId(subtask.id)}
+                        onClick={() => setSheetSubtaskId(subtask.id)}
                         className="flex w-full items-start gap-3 text-left"
                         aria-label={`Открыть подзадачу ${subtask.full_id}`}
                       >
@@ -364,7 +391,13 @@ export function SubtasksSection({
       {openSubtask && (
         <SubtaskViewSheet
           open
-          onClose={() => setOpenSubtaskId(null)}
+          onClose={() => {
+            setSheetSubtaskId(null);
+            // Сбрасываем и родительский запрос, иначе при следующем открытии
+            // этой же задачи шторка распахнулась бы снова сама.
+            lastRequestedId.current = null;
+            onSubtaskSheetClose?.();
+          }}
           subtask={openSubtask}
           parent={task}
           assignee={workers.find((w) => w.id === openSubtask.assigned_to) ?? null}

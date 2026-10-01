@@ -28,6 +28,7 @@ import { getTaskPermission } from '@/lib/taskPermissions';
 import { needsBoardCreation } from '@/lib/onboarding';
 import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
+import { isSubtask } from '@/lib/subtasks';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -98,6 +99,10 @@ function FlowBoardPageContent() {
   const [openTaskTab, setOpenTaskTab] = useState<'general' | 'comments'>('general');
   // SUB-01: подзадача, ради которой открыли карточку родителя (deep link из TG).
   const [highlightedSubtaskId, setHighlightedSubtaskId] = useState<string | null>(null);
+  // SUB-01: подзадача, которую надо не просто подсветить, а открыть. Отличается
+  // от highlightedSubtaskId: deep link из TG подсвечивает строку, а тап по
+  // подзадаче в стриме обязан открыть её шторку.
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
   // SUBMIT-01: сдача исполнителя — шаг «Результат» открывается при переходе
   // в review/done из не-review колонки (backlog/in_progress → сдача).
   // review→done/review→in_progress сюда НЕ попадают (это ревью-решение).
@@ -326,6 +331,26 @@ function FlowBoardPageContent() {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     setTaskSheetHistory([]);
+
+    // SUB-01: тап по подзадаче открывает карточку РОДИТЕЛЯ и сразу шторку
+    // подзадачи — ровно то же, что тап по строке в блоке «Подзадачи».
+    // Открывать карточку самой подзадачи бессмысленно: подзадачи нет на доске,
+    // и её карточка шла бы без блока «Подзадачи», где живут все её соседи.
+    if (isSubtask(task)) {
+      const parent = task.parent_task_id
+        ? tasks.find((t) => t.id === task.parent_task_id)
+        : undefined;
+      if (parent) {
+        setHighlightedSubtaskId(task.id);
+        setOpenSubtaskId(task.id);
+        setSelectedTask(parent);
+        return;
+      }
+      // Родителя нет в сторе (гонка с Realtime или фильтр) — обычное поведение.
+    }
+
+    setOpenSubtaskId(null);
+    setHighlightedSubtaskId(null);
     setSelectedTask(task);
   }, [tasks]);
 
@@ -353,6 +378,13 @@ function FlowBoardPageContent() {
     // Подсветка подзадачи живёт только ради deep link: при ручном закрытии
     // карточки она бы осталась висеть на следующей открытой задаче.
     setHighlightedSubtaskId(null);
+    setOpenSubtaskId(null);
+  }, []);
+
+  const handleSubtaskSheetClose = useCallback(() => {
+    // Запрос на открытие одноразовый: иначе при следующем открытии родителя
+    // шторка подзадачи распахнулась бы снова сама.
+    setOpenSubtaskId(null);
   }, []);
 
   const handleTaskStateChange = useCallback((state: import('@/types/taskRelations').AffectedTaskState) => {
@@ -829,6 +861,8 @@ function FlowBoardPageContent() {
           initialTab={openTaskTab}
           onOpenTask={handleRelatedTaskOpen}
           highlightSubtaskId={highlightedSubtaskId}
+          openSubtaskId={openSubtaskId}
+          onSubtaskSheetClose={handleSubtaskSheetClose}
           onBack={handleTaskSheetBack}
           canGoBack={taskSheetHistory.length > 0}
           onTaskStateChange={handleTaskStateChange}

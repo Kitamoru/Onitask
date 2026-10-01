@@ -45,6 +45,7 @@ import {
   CountBadge,
 } from '@/components/ui/desk-ui';
 import { SingleDateField } from '@/components/ui/SingleDateField';
+import { formatBytes } from '@/lib/format';
 import { SingleDateSheet } from '@/components/ui/SingleDateSheet';
 import {
   COGNITIVE_WEIGHT_VALUES,
@@ -115,6 +116,10 @@ export interface TaskViewEditProps {
   initialTab?: 'general' | 'comments';
   /** SUB-01: подзадача, которую надо раскрыть и подсветить (deep link из TG). */
   highlightSubtaskId?: string | null;
+  /** SUB-01: подзадача, которую надо открыть (тап по подзадаче в стриме). */
+  openSubtaskId?: string | null;
+  /** Сообщает, что шторка подзадачи закрыта — сбрасывает одноразовый запрос. */
+  onSubtaskSheetClose?: () => void;
   /**
    * Рисовать шторку ПОВЕРХ другой (`BottomSheet` со `stacked`, z-index 9999).
    *
@@ -602,6 +607,8 @@ export function TaskViewEdit({
   onTaskStateChange,
   initialTab = 'general',
   highlightSubtaskId = null,
+  openSubtaskId = null,
+  onSubtaskSheetClose,
   stacked = false,
   className = '',
 }: TaskViewEditProps) {
@@ -1231,6 +1238,8 @@ export function TaskViewEdit({
                   currentUserId={currentUserId}
                   currentUserRole={currentUserRole}
                   highlightSubtaskId={highlightSubtaskId}
+                  openSubtaskId={openSubtaskId}
+                  onSubtaskSheetClose={onSubtaskSheetClose}
                 />
               )}
 
@@ -1421,12 +1430,3 @@ export function TaskViewEdit({
   );
 }
 
-/** Форматирование размера файла: 0 B / 512 B / 1.2 KB / 3.4 MB */
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes < 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(0)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(1)} MB`;
-}
