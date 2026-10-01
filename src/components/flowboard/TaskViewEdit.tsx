@@ -918,12 +918,26 @@ export function TaskViewEdit({
           onClose();
         }
       } else if (task?.id) {
+        // SUB-01: снятый срок обязан уйти как `null`, а не `undefined` —
+        // `undefined` выбрасывается ещё на JSON.stringify, и серрок его просто
+        // не видел: «срок можно снять» в UI было ложью. Шлём null только если
+        // срок ДОЛЖЕН БЫЛ быть и его сняли, иначе задача без срока начала бы
+        // лишний раз писать `deadline: null` при каждом сохранении.
+        //
+        // `description` остаётся на `|| undefined`: снятие описания владелец
+        // оставил как есть (2026-10-01).
+        const deadlinePatch = deadline
+          ? deadline.toISOString()
+          : task.deadline
+            ? null
+            : undefined;
+
         const patch: Parameters<typeof patchTask>[1] = {
           title: title.trim(),
           description: description || undefined,
           story_points: evaluation.storyPointsEnabled && storyPoints !== task?.story_points ? storyPoints : undefined,
           cognitive_weight: evaluation.cognitiveWeightEnabled ? cognitiveWeight : undefined,
-          deadline: deadline ? deadline.toISOString() : undefined,
+          deadline: deadlinePatch,
           metadata,
         };
         if (assignedTo !== task.assigned_to) {

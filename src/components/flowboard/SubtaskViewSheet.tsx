@@ -24,7 +24,7 @@
  * Поэтому сохранение пишет оба поля, а показываем `description || title`.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Download, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -54,9 +54,14 @@ import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
 export interface SubtaskViewSheetProps {
   open: boolean;
   onClose: () => void;
-  subtask: TaskEntity;
-  /** Задача-родитель: отдаёт описание для блока «Контекст». */
-  parent: TaskEntity;
+  subtask: TaskEntity | null;
+  /**
+   * Задача-родитель: отдаёт описание для блока «Контекст», ссылки и файлы.
+   *
+   * Nullable вместе с `subtask`: шторка смонтирована постоянно ради анимации
+   * (см. useEffect на `open`), поэтому данные в закрытом виде — null.
+   */
+  parent: TaskEntity | null;
   /** Исполнитель подзадачи для ParticipantCard. */
   assignee: WorkerCardData | null;
   /** Участники доски; в выборе показываются только активные люди. */
@@ -123,7 +128,7 @@ export function SubtaskViewSheet({
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [deadlineOpen, setDeadlineOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const [moveColumn, setMoveColumn] = useState(subtask.column);
+  const [moveColumn, setMoveColumn] = useState(subtask?.column ?? 'backlog');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -133,24 +138,40 @@ export function SubtaskViewSheet({
     deadline: null,
   });
 
+  // Шторка смонтирована постоянно (иначе BottomSheet не успевает проиграть
+  // переход open false→true и подзадача просто возникает). Раз монтирования
+  // больше нет, состояние переживает закрытие — сбрасываем его явно, иначе
+  // подзадача, открытая в режиме правки, таким режимом и откроется в следующий
+  // раз. Размонтирование раньше делало это само.
+  useEffect(() => {
+    if (open) return;
+    setMode('view');
+    setError(null);
+    setConfirmDelete(false);
+    setMoveOpen(false);
+    setAssigneeOpen(false);
+    setDeadlineOpen(false);
+  }, [open]);
+
   // Агент-исполнитель запрещён для подзадач (SUB-01, v1), поэтому в списке
   // выбора его нет: показать и тут же отклонить — лишний шаг до ошибки.
   const humanWorkers = workers.filter((w) => w.type === 'human');
 
   // Текст подзадачи — то, что ввели в «Что нужно сделать». description полнее
   // обрезанного до 500 символов title, но у старых строк его может не быть.
-  const subtaskText = subtask.description?.trim() || subtask.title;
-  const parentText = parent.description?.trim() || '';
+  const subtaskText = subtask?.description?.trim() || subtask?.title || '';
+  const parentText = parent?.description?.trim() || '';
 
   // ─── Контекст из материнской задачи ───────────────────────────────────────
   // Ссылки лежат в metadata.external_links родителя — то же поле, что правит
   // карточка задачи. Отдельной сущности «ссылки подзадачи» не заводим.
-  const parentLinks = (parent.metadata?.external_links ?? []) as ExternalLink[];
+  const parentLinks = (parent?.metadata?.external_links ?? []) as ExternalLink[];
 
   const parentFilesQuery = useQuery({
-    queryKey: ['task-attachments', parent.id],
-    queryFn: () => getTaskAttachments(parent.id),
-    enabled: mode === 'view' && !!parent.id,
+    queryKey: ['task-attachments', parent?.id],
+    queryFn: () => getTaskAttachments(parent!.id),
+    // `open` в условии — пока шторка закрыта, вложения родителя грузить незачем.
+    enabled: open && mode === 'view' && !!parent?.id,
     staleTime: 30_000,
   });
   const parentFiles: TaskAttachment[] = parentFilesQuery.data ?? [];
@@ -168,7 +189,7 @@ export function SubtaskViewSheet({
     setFilesError(null);
     try {
       // Файл принадлежит РОДИТЕЛЮ — подпись и открытие идут по его id.
-      const url = await signTaskAttachment(parent.id, attachment.id);
+      const url = await signTaskAttachment(parent!.id, attachment.id);
       const tg = (
         window as {
           Telegram?: {
@@ -225,7 +246,7 @@ export function SubtaskViewSheet({
   // «Сделано» блокируется тем же предикатом, что и у задачи. Иначе кнопка
   // обещала бы перенос, который Route Handler отвергнет.
   const doneColumnBlocked = isReviewBypassBlocked(
-    { reviewer_id: subtask.reviewer_id ?? null },
+    { reviewer_id: subtask?.reviewer_id ?? null },
     { workerId: currentUserId, role: currentUserRole },
   );
 
@@ -233,13 +254,14 @@ export function SubtaskViewSheet({
     setError(null);
     setDraft({
       text: subtaskText,
-      assignedTo: subtask.assigned_to ?? null,
-      deadline: subtask.deadline ?? null,
+      assignedTo: subtask?.assigned_to ?? null,
+      deadline: subtask?.deadline ?? null,
     });
     setMode('edit');
   };
 
   const runPatch = async (payload: Record<string, unknown>) => {
+    if (!subtask) return;
     setBusy(true);
     setError(null);
     const failure = await onPatch(subtask.id, payload);
@@ -248,6 +270,7 @@ export function SubtaskViewSheet({
   };
 
   const handleSave = async () => {
+    if (!subtask) return;
     const text = draft.text.trim();
     if (!text) {
       setError('Текст подзадачи не может быть пустым');
@@ -276,6 +299,7 @@ export function SubtaskViewSheet({
   };
 
   const handleDelete = async () => {
+    if (!subtask) return;
     setDeleting(true);
     setError(null);
     const failure = await onDelete(subtask.id);
@@ -354,7 +378,7 @@ export function SubtaskViewSheet({
         <div className="flex flex-col gap-4 px-4 pb-6 pt-6">
           <div>
             <h2 className="text-[19px] font-medium text-text">
-              Подзадача {subtask.full_id}
+              Подзадача {subtask?.full_id}
             </h2>
           </div>
 
@@ -369,7 +393,7 @@ export function SubtaskViewSheet({
                 onClick={onOpenParent}
                 disabled={!onOpenParent}
                 className="block w-full appearance-none border-0 bg-transparent p-0 text-left disabled:cursor-default"
-                aria-label={`Открыть задачу ${parent.full_id}`}
+                aria-label={`Открыть задачу ${parent?.full_id ?? ''}`}
               >
                 <Card>
                   <p className="text-[14px] leading-relaxed text-text-secondary">
@@ -377,7 +401,7 @@ export function SubtaskViewSheet({
                   </p>
                   {onOpenParent && (
                     <p className="mt-2 font-mono text-[12px] text-text-muted underline underline-offset-2">
-                      {parent.full_id}
+                      {parent?.full_id}
                     </p>
                   )}
                 </Card>
@@ -399,7 +423,7 @@ export function SubtaskViewSheet({
                   форматирование, без рамки. У задачи в просмотре поле тоже
                   рендерится, просто disabled. */}
               <SingleDateField
-                date={subtask.deadline ? new Date(subtask.deadline) : null}
+                date={subtask?.deadline ? new Date(subtask.deadline) : null}
                 onOpen={() => {}}
                 placeholder="Дата окончания"
                 disabled
@@ -495,7 +519,7 @@ export function SubtaskViewSheet({
                     variant="solid"
                     disabled={busy}
                     onClick={() => {
-                      setMoveColumn(subtask.column);
+                      setMoveColumn(subtask?.column ?? 'backlog');
                       setMoveOpen(true);
                     }}
                     className="w-full"
@@ -626,8 +650,8 @@ export function SubtaskViewSheet({
         <MoveTaskSheet
           open
           onClose={() => setMoveOpen(false)}
-          task={{ full_id: subtask.full_id, title: subtaskText }}
-          currentColumn={subtask.column}
+          task={{ full_id: subtask?.full_id ?? '', title: subtaskText }}
+          currentColumn={subtask?.column ?? 'backlog'}
           selectedColumn={moveColumn}
           onSelect={setMoveColumn}
           onConfirm={handleMoveConfirm}

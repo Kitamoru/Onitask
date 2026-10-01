@@ -70,12 +70,28 @@ export async function PATCH(
       'enrichment_strategy', 'raw_input', 'source',
     ];
 
+    // SUB-01: `null` — это «поле снять», а `undefined` — «поле не передано».
+    // Различать обязательно: в UI есть «Без исполнителя» и снятый срок, но PATCH
+    // отбрасывал оба, и UI отчитывался об успехе, ничего не записав.
+    //
+    // Список построен по фактической nullability `tasks.Row`
+    // (types/supabase.ts:2210), а не на глаз: колонки из RIGHT писать в null
+    // нельзя, PATCH уронил бы их NOT NULL-ошибкой на каждом таком запросе.
+    // `description` сюда НЕ входит намеренно — снятие описания владелец решил
+    // оставить как есть (2026-10-01), даже при явном `null` от клиента.
+    const NULLABLE_PATCH_FIELDS = new Set([
+      'assigned_to', 'deadline', 'reviewer_id', 'handoff_to', 'handoff_notes',
+      'clarity_score', 'complexity', 'enrichment_strategy', 'raw_input', 'source',
+    ]);
+
     const update: Partial<TasksRow> = {};
   for (const field of allowedFields) {
-    // Only include fields that are defined and not null to avoid DB NOT NULL violations
-    if (body[field] != null) { // catches undefined and null
-      update[field as keyof TasksRow] = body[field];
-    }
+    const value = body[field];
+    // Не передан — поле не трогаем.
+    if (value === undefined) continue;
+    // Явный null в NOT NULL-колонке — отбрасываем (прежнее поведение).
+    if (value === null && !NULLABLE_PATCH_FIELDS.has(field)) continue;
+    update[field as keyof TasksRow] = value;
   }
 
     // Auto-set moved_to_column_at when column changes

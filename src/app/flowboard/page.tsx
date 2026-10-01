@@ -953,34 +953,44 @@ function FlowBoardPageContent() {
           }}
         />
 
-                                {/* SUB-01: подзадача из стрима — шторка БЕЗ карточки родителя (один тап — один
-            слой). Объявлена выше WorkerSheet: у BottomSheet общий z-index, и
-            порядок в DOM решает, кто кого перекроет. */}
-        {standaloneSubtask && standaloneParent && standalonePermission && (
-          <SubtaskViewSheet
-            open
-            onClose={() => setStandaloneSubtaskId(null)}
-            subtask={standaloneSubtask}
-            parent={standaloneParent}
-            assignee={
-              assignableWorkers.find(
-                (w) => w.id === standaloneSubtask.assigned_to,
-              ) ?? null
-            }
-            workers={assignableWorkers}
-            canEdit={standalonePermission.canEdit}
-            canDelete={standalonePermission.canDelete}
-            currentUserId={currentUserId}
-            currentUserRole={activeWs?.role}
-            onPatch={standaloneMutations.patchSubtask}
-            onDelete={standaloneMutations.deleteSubtask}
-            onOpenParent={() => {
-              setStandaloneSubtaskId(null);
-              setHighlightedSubtaskId(standaloneSubtask.id);
-              setSelectedTask(standaloneParent);
-            }}
-          />
-        )}
+                                {/* SUB-01: шторка подзадачи из стрима. Монтируется ВСЕГДА, а `open`
+            приходит отдельно: BottomSheet проигрывает переход `--sheet-y`
+            100%→0px только когда open меняется false→true на УЖЕ смонтированном
+            компоненте. Условный рендер монтировал бы её сразу с open=true, и
+            шторка просто возникала бы без анимации — ровно то, что было.
+
+            Порядок в DOM: объявлена выше WorkerSheet, у BottomSheet общий z-index. */}
+        <SubtaskViewSheet
+          open={
+            !!standaloneSubtask &&
+            !!standaloneParent &&
+            !!standalonePermission
+          }
+          onClose={() => setStandaloneSubtaskId(null)}
+          subtask={standaloneSubtask}
+          parent={standaloneParent}
+          assignee={
+            assignableWorkers.find(
+              (w) => w.id === standaloneSubtask?.assigned_to,
+            ) ?? null
+          }
+          workers={assignableWorkers}
+          canEdit={standalonePermission?.canEdit ?? false}
+          canDelete={standalonePermission?.canDelete ?? false}
+          currentUserId={currentUserId}
+          currentUserRole={activeWs?.role}
+          onPatch={standaloneMutations.patchSubtask}
+          onDelete={standaloneMutations.deleteSubtask}
+          onOpenParent={
+            standaloneSubtask && standaloneParent
+              ? () => {
+                  setStandaloneSubtaskId(null);
+                  setHighlightedSubtaskId(standaloneSubtask.id);
+                  setSelectedTask(standaloneParent);
+                }
+              : undefined
+          }
+        />
 
                                 {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
         <WorkerSheet
