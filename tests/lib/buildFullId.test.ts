@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildFullId, parentTaskNumberFor } from '../../src/lib/realtime/tasks';
+import {
+  buildFullId,
+  parentTaskNumberFor,
+  resolveFullId,
+} from '../../src/lib/realtime/tasks';
 
 /**
  * SUB-01: display-id подзадачи собирается на клиенте, потому что у неё
@@ -116,6 +120,101 @@ describe('parentTaskNumberFor (SUB-01)', () => {
       parentTaskNumberFor({ id: 'sub-1', parent_task_id: 'parent-1' }, null),
     ).toBeUndefined();
     expect(parentTaskNumberFor(null, known)).toBeUndefined();
+  });
+});
+
+
+/**
+ * resolveFullId — единое правило, которым пользуются все четыре пути.
+ *
+ * Регрессия, которую он закрывает: `toTaskEntity` перезаписывал `full_id`,
+ * пришедшее от сервера, своим расчётом без номера родителя. Путь первичной
+ * загрузки (`/api/workspaces/my-data` → стор) выбрасывал верный
+ * «ONIT-41-SUB-1» и подставлял «ONIT-SUB-1» — в стриме и в шапке формы сдачи.
+ * Починили Realtime-путь и решили, что закрыли вопрос; сломан был путь загрузки.
+ */
+describe('resolveFullId', () => {
+  // Ключевое: в фикстурах серверное значение и наш расчёт ВЕДУТ себя по-разному.
+  // Иначе тест проходит и на сломанном коде — я это уже проверил мутацией:
+  // с parentTaskNumber: 41 обе ветки давали ONIT-41-SUB-1, и отключение
+  // «доверять серверу» оставалось зелёным. Ставим parentTaskNumber: undefined,
+  // тогда расчёт даёт ONIT-SUB-1, и выбор ветки виден в результате.
+  const subtask = {
+    prefix: 'ONIT',
+    taskNumber: null,
+    taskId: 'sub-1',
+    subtaskIndex: 1,
+    parentTaskNumber: undefined,
+  } as const;
+
+  it('серверное значение ПЕРЕЖИВЕТ без номера родителя — главная регрессия', () => {
+    // Ровно то, что делал toTaskEntity: посчитать без номера родителя и
+    // подставить ONIT-SUB-1 вместо пришедшего от сервера ONIT-41-SUB-1.
+    expect(resolveFullId({ ...subtask, serverFullId: 'ONIT-41-SUB-1' })).toBe(
+      'ONIT-41-SUB-1',
+    );
+  });
+
+  it('сервер побеждает даже когда disagrees с нашим расчётом', () => {
+    expect(
+      resolveFullId({
+        ...subtask,
+        serverFullId: 'ONIT-99-SUB-1',
+        parentTaskNumber: 41,
+      }),
+    ).toBe('ONIT-99-SUB-1');
+  });
+
+  it('пустое/пробельное серверное значение считаем сами', () => {
+    for (const empty of ['', '   ', null, undefined]) {
+      // Без номера родителя расчёт даёт усечённый id — так и должно быть,
+      // когда сервера нет (Realtime-ряд).
+      expect(resolveFullId({ ...subtask, serverFullId: empty })).toBe(
+        'ONIT-SUB-1',
+      );
+      // С номером родителя — полную форму.
+      expect(
+        resolveFullId({
+          ...subtask,
+          serverFullId: empty,
+          parentTaskNumber: 41,
+        }),
+      ).toBe('ONIT-41-SUB-1');
+    }
+  });
+
+  it('без серверного значения и без номера родителя — усечённый id', () => {
+    // Realtime-ряд: full_id нет, и если родителя в сторе нет — ONIT-SUB-1.
+    // Лучше так, чем hex, но не полная форма.
+    expect(
+      resolveFullId({ ...subtask, parentTaskNumber: undefined }),
+    ).toBe('ONIT-SUB-1');
+  });
+
+  it('обычная задача: серверное значение или prefix-N', () => {
+    expect(
+      resolveFullId({
+        serverFullId: 'ONIT-7',
+        prefix: 'ONIT',
+        taskNumber: 7,
+        taskId: 't-1',
+        subtaskIndex: null,
+      }),
+    ).toBe('ONIT-7');
+    expect(
+      resolveFullId({
+        prefix: 'ONIT',
+        taskNumber: 7,
+        taskId: 't-1',
+        subtaskIndex: null,
+      }),
+    ).toBe('ONIT-7');
+  });
+
+  it('ничего не известно — hex от UUID, как раньше', () => {
+    expect(
+      resolveFullId({ prefix: 'ONIT', taskId: 'abcdef12-3456' }),
+    ).toBe('abcdef12');
   });
 });
 

@@ -43,9 +43,13 @@ export interface RealtimeTaskEvent {
  * обогащение задач, а этот модуль подтягивает React-хук. Реэкспорт — чтобы
  * существующие импорты (`@/lib/realtime/tasks`) продолжали работать.
  */
-import { buildFullId, parentTaskNumberFor } from '../../../lib/taskFullId';
+import {
+  buildFullId,
+  parentTaskNumberFor,
+  resolveFullId,
+} from '../../../lib/taskFullId';
 
-export { buildFullId, parentTaskNumberFor };
+export { buildFullId, parentTaskNumberFor, resolveFullId };
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 

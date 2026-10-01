@@ -19,7 +19,7 @@ import type {
   ReviewActionRequest,
   ReviewActionResponse,
 } from '@/types/flowboard';
-import { buildFullId } from '@/lib/realtime/tasks';
+import { resolveFullId } from '@/lib/realtime/tasks';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,17 @@ function mapTaskRow(row: any): TaskEntity {
   // Сборка подзадачи живёт в buildFullId — одна функция на оба пути (load и
   // Realtime), чтобы они не разошлись.
   const prefix = row.workspace_prefix ?? 'TASK';
-  const fullId = row.full_id ?? buildFullId(prefix, row.task_number, row.id, row.subtask_index);
+  const fullId = resolveFullId({
+    serverFullId: row.full_id,
+    prefix,
+    taskNumber: row.task_number ?? undefined,
+    taskId: row.id,
+    subtaskIndex: row.subtask_index ?? undefined,
+    // Номера родителя здесь взять негде: mapTaskRow работает по одной строке.
+    // Все её вызывающие получают уже обогащённые ряды с full_id от сервера, так
+    // что fallback — страховка, а не основной путь.
+    parentTaskNumber: undefined,
+  });
   
   return {
     id: row.id,

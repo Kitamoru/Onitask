@@ -15,7 +15,11 @@ import type { FlowMetricsResponse } from '../types/flowboard';
 import type { TaskEntity } from '@/types/flowboard';
 import { getClient } from '@/lib/supabase/client';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
-import { buildFullId, parentTaskNumberFor } from '@/lib/realtime/tasks';
+import {
+  buildFullId,
+  parentTaskNumberFor,
+  resolveFullId,
+} from '@/lib/realtime/tasks';
 import { BOARD_COUNTS_QUERY_KEY, fetchBoardCounts } from '@/lib/api/boardCounts';
 import { createLatestLoadGuard } from '@/lib/latestLoadGuard';
 
@@ -42,13 +46,14 @@ function ensureFullId(
   }
   if (task.full_id && task.workspace_prefix) return task;
   const prefix = task.workspace_prefix || fallbackPrefix || 'TASK';
-  const fullId = task.full_id || buildFullId(
+  const fullId = resolveFullId({
+    serverFullId: task.full_id,
     prefix,
-    task.task_number,
-    task.id,
-    task.subtask_index,
+    taskNumber: task.task_number,
+    taskId: task.id,
+    subtaskIndex: task.subtask_index,
     parentTaskNumber,
-  );
+  });
   return { ...task, full_id: fullId, workspace_prefix: prefix };
 }
 
@@ -58,13 +63,19 @@ function toTaskEntity(
   prefix: string,
   parentTaskNumber?: number | null,
 ): TaskEntity {
-  const fullId = buildFullId(
+  // SUB-01: `serverFullId` здесь НЕЛЬЗЯ игнорировать. Раньше toTaskEntity
+  // пересчитывал full_id всегда, и путь первичной загрузки выбрасывал
+  // правильное «ONIT-41-SUB-1» от сервера, подставляя «ONIT-SUB-1»: номера
+  // родителя он не знал. Теперь доверяем серверу, а считаем только когда его
+  // значения нет (Realtime-ряд без full_id).
+  const fullId = resolveFullId({
+    serverFullId: raw.full_id as string | undefined,
     prefix,
-    raw.task_number as number | null | undefined,
-    raw.id,
-    raw.subtask_index as number | null | undefined,
+    taskNumber: raw.task_number as number | null | undefined,
+    taskId: raw.id,
+    subtaskIndex: raw.subtask_index as number | null | undefined,
     parentTaskNumber,
-  );
+  });
   return {
     ...raw,
     full_id: fullId,
@@ -350,11 +361,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           (wsData ?? []).map((w: any) => [w.id, w.task_prefix ?? 'TASK']),
         );
 
+        // SUB-01: номера родителей собираем ДО маппинга. Без этого подзадача в
+        // сторе получала «ONIT-SUB-1»: сервер присылал верный «ONIT-41-SUB-1»,
+        // а клиент его перезаписывал своим расчётом без номера родителя.
+        const parentNumberById = new Map<string, number | null>(
+          tasksList
+            .filter((t: any) => t && t.id)
+            .map((t: any) => [t.id, (t.task_number ?? null) as number | null]),
+        );
+
         const taskEntities: TaskEntity[] = tasksList
           .filter((task: any) => task && task.id)
           .map((task: any) => {
             const prefix = wsById.get(task.workspace_id) ?? 'TASK';
-            return toTaskEntity(task, prefix);
+            return toTaskEntity(
+              task,
+              prefix,
+              parentTaskNumberFor(task, parentNumberById),
+            );
           });
 
         // Tenant isolation: full load может вернуть задачи всех workspace —
