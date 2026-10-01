@@ -25,7 +25,7 @@ import {
   SectionHeader,
 } from '@/components/ui/desk-ui';
 import { createSubtask, getSubtasks } from '@/lib/api/subtasks';
-import { deleteTask, patchTask } from '@/lib/api/flow';
+import { useSubtaskMutations } from './useSubtaskMutations';
 import { MAX_SUBTASKS, subtaskState } from '@/lib/subtasks';
 import { taskColumnLabel } from '@/lib/taskColumns';
 import { formatDueShort } from '@/lib/date';
@@ -126,38 +126,10 @@ export function SubtasksSection({
     [subtasks, sheetSubtaskId],
   );
 
-  // Подзадача удаляется общим DELETE /api/tasks/[id]: это та же строка tasks,
-  // отдельный эндпоинт на удаление завёл бы второй путь каскада (вложения,
-  // комментарии, коммит-история) — ровно то, чего SUB-01 избегает.
-  const deleteMutation = useMutation({
-    mutationFn: async (subtaskId: string) => {
-      const { success, error } = await deleteTask(subtaskId);
-      if (!success) throw new Error(error ?? 'Не удалось удалить подзадачу');
-    },
-    onSuccess: () => {
-      setActionError(null);
-      void queryClient.invalidateQueries({ queryKey });
-    },
-    onError: (err) =>
-      setActionError(
-        err instanceof Error ? err.message : 'Не удалось удалить подзадачу',
-      ),
-  });
-
-  /**
-   * PATCH подзадачи идёт общим patchTask: подзадача — строка tasks, отдельного
-   * эндпоинта на редактирование заводить незачем. invalidate нужен, чтобы список
-   * перечитал колонку и срок после смены.
-   */
-  const patchSubtask = useCallback(
-    async (subtaskId: string, payload: Record<string, unknown>) => {
-      const { warning } = await patchTask(subtaskId, payload as never);
-      if (warning) return warning;
-      await queryClient.invalidateQueries({ queryKey });
-      return null;
-    },
-    [queryClient, queryKey],
-  );
+  // Мутации вынесены в хук: шторка подзадачи монтируется ещё и на уровне
+  // страницы (тап по подзадаче в стриме), и правка оттуда обязана инвалидировать
+  // тот же ключ ['task-subtasks', taskId] — иначе список не обновился бы.
+  const { patchSubtask, deleteSubtask } = useSubtaskMutations(task.id, setActionError);
 
   const handleCreate = async (input: {
     title: string;
@@ -175,26 +147,6 @@ export function SubtasksSection({
       return err instanceof Error ? err.message : 'Не удалось создать подзадачу';
     }
   };
-
-  /**
-   * Удаление из шторки подзадачи. Кнопки удаления в строке списка больше нет
-   * (она перекрывала карточку) — удаление живёт только здесь, с модалкой
-   * подтверждения.
-   */
-  const deleteSubtask = useCallback(
-    async (subtaskId: string): Promise<string | null> => {
-      setActionError(null);
-      try {
-        await deleteMutation.mutateAsync(subtaskId);
-        return null;
-      } catch (err) {
-        return err instanceof Error
-          ? err.message
-          : 'Не удалось удалить подзадачу';
-      }
-    },
-    [deleteMutation],
-  );
 
   // Пустой блок в режиме просмотра не показываем: смотреть не на что, а
   // заголовок «Подзадачи» без содержимого только занимает место.

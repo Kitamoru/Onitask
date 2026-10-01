@@ -78,6 +78,12 @@ export interface SubtaskViewSheetProps {
   ) => Promise<string | null>;
   /** Удаление подзадачи; возвращает текст ошибки или null при успехе. */
   onDelete: (subtaskId: string) => Promise<string | null>;
+  /**
+   * Тап по блоку «Контекст» открывает карточку материнской задачи. Шторка может
+   * быть открыта сама по себе (тап по подзадаче в стриме), и без этого перехода
+   * на родителя было бы вовсе недостижимо.
+   */
+  onOpenParent?: () => void;
 }
 
 type Mode = 'view' | 'edit';
@@ -108,6 +114,7 @@ export function SubtaskViewSheet({
   currentUserRole,
   onPatch,
   onDelete,
+  onOpenParent,
 }: SubtaskViewSheetProps) {
   const [mode, setMode] = useState<Mode>('view');
   const [busy, setBusy] = useState(false);
@@ -354,11 +361,27 @@ export function SubtaskViewSheet({
           {parentText && (
             <>
               <SectionHeader title="Контекст" />
-              <Card>
-                <p className="text-[14px] leading-relaxed text-text-secondary">
-                  {parentText}
-                </p>
-              </Card>
+              {/* Клик ведёт в карточку родителя: при открытии шторки из стрима
+                  родитель на экране отсутствует, и иначе добраться до него
+                  было бы неоткуда. */}
+              <button
+                type="button"
+                onClick={onOpenParent}
+                disabled={!onOpenParent}
+                className="block w-full appearance-none border-0 bg-transparent p-0 text-left disabled:cursor-default"
+                aria-label={`Открыть задачу ${parent.full_id}`}
+              >
+                <Card>
+                  <p className="text-[14px] leading-relaxed text-text-secondary">
+                    {parentText}
+                  </p>
+                  {onOpenParent && (
+                    <p className="mt-2 font-mono text-[12px] text-text-muted underline underline-offset-2">
+                      {parent.full_id}
+                    </p>
+                  )}
+                </Card>
+              </button>
             </>
           )}
 

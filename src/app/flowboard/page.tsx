@@ -29,6 +29,8 @@ import { needsBoardCreation } from '@/lib/onboarding';
 import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
 import { isSubtask } from '@/lib/subtasks';
+import { SubtaskViewSheet } from '@/components/flowboard/SubtaskViewSheet';
+import { useSubtaskMutations } from '@/components/flowboard/useSubtaskMutations';
 
 // Сброс скролла при переходе на страницу
 function useScrollReset() {
@@ -103,6 +105,9 @@ function FlowBoardPageContent() {
   // от highlightedSubtaskId: deep link из TG подсвечивает строку, а тап по
   // подзадаче в стриме обязан открыть её шторку.
   const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
+  // SUB-01: подзадача, открытая САМА ПО СЕБЕ из стрима — без карточки родителя
+  // (решение владельца: один тап — один слой, закрыл — вернулся в стрим).
+  const [standaloneSubtaskId, setStandaloneSubtaskId] = useState<string | null>(null);
   // SUBMIT-01: сдача исполнителя — шаг «Результат» открывается при переходе
   // в review/done из не-review колонки (backlog/in_progress → сдача).
   // review→done/review→in_progress сюда НЕ попадают (это ревью-решение).
@@ -332,23 +337,23 @@ function FlowBoardPageContent() {
     if (!task) return;
     setTaskSheetHistory([]);
 
-    // SUB-01: тап по подзадаче открывает карточку РОДИТЕЛЯ и сразу шторку
-    // подзадачи — ровно то же, что тап по строке в блоке «Подзадачи».
-    // Открывать карточку самой подзадачи бессмысленно: подзадачи нет на доске,
-    // и её карточка шла бы без блока «Подзадачи», где живут все её соседи.
+    // SUB-01: тап по подзадаче открывает СРАЗУ шторку подзадачи, без карточки
+    // родителя (решение владельца). Один тап — один слой: закрыл шторку, вернулся
+    // в стрим, а не закрывал ещё и родителя. Перехода на родителя не теряем — он
+    // есть по тапу на блок «Контекст» внутри шторки.
     if (isSubtask(task)) {
       const parent = task.parent_task_id
         ? tasks.find((t) => t.id === task.parent_task_id)
         : undefined;
       if (parent) {
-        setHighlightedSubtaskId(task.id);
-        setOpenSubtaskId(task.id);
-        setSelectedTask(parent);
+        setStandaloneSubtaskId(task.id);
         return;
       }
-      // Родителя нет в сторе (гонка с Realtime или фильтр) — обычное поведение.
+      // Родителя нет в сторе (гонка с Realtime или фильтр) — падаем на прежнее
+      // поведение: карточка самой подзадачи. Мёртвый тап хуже.
     }
 
+    setStandaloneSubtaskId(null);
     setOpenSubtaskId(null);
     setHighlightedSubtaskId(null);
     setSelectedTask(task);
@@ -379,6 +384,7 @@ function FlowBoardPageContent() {
     // карточки она бы осталась висеть на следующей открытой задаче.
     setHighlightedSubtaskId(null);
     setOpenSubtaskId(null);
+    setStandaloneSubtaskId(null);
   }, []);
 
   const handleSubtaskSheetClose = useCallback(() => {
@@ -386,6 +392,46 @@ function FlowBoardPageContent() {
     // шторка подзадачи распахнулась бы снова сама.
     setOpenSubtaskId(null);
   }, []);
+
+  // ─── Подзадача, открытая сама по себе из стрима ────────────────────────────
+  // Всё это ДО раннего return (~строка 619): хук после него нарушил бы
+  // rules-of-hooks — ровно та ошибка, из-за которой taskPermissionFor сделан
+  // обычной функцией.
+  // Роль в активном воркспейсе. Объявлена здесь, а не рядом с canRevoke:
+  // права для standalone-шторки нужны в хуке до раннего return. Константа
+  // чистая (ни хука, ни побочного эффекта), поэтому перенос безопасен — и поиск
+  // остаётся в одном месте вместо копии внутри useMemo.
+  const activeWs = authData?.workspaces?.find(
+    (w) => w.id === state.activeWorkspaceId,
+  );
+
+  const standaloneSubtask = useMemo(
+    () =>
+      standaloneSubtaskId
+        ? tasks.find((t) => t.id === standaloneSubtaskId) ?? null
+        : null,
+    [tasks, standaloneSubtaskId],
+  );
+  const standaloneParent = useMemo(
+    () =>
+      standaloneSubtask?.parent_task_id
+        ? tasks.find((t) => t.id === standaloneSubtask.parent_task_id) ?? null
+        : null,
+    [tasks, standaloneSubtask],
+  );
+  // Права считаем по РОДИТЕЛЮ — тот же контракт, что у блока «Подзадачи»
+  // (подзадача наследует владение от родителя, см. subtaskOwnerRow).
+  const standalonePermission = useMemo(
+    () =>
+      standaloneParent
+        ? getTaskPermission(standaloneParent, {
+            workerId: currentUserId,
+            role: activeWs?.role,
+          })
+        : null,
+    [standaloneParent, currentUserId, activeWs?.role],
+  );
+  const standaloneMutations = useSubtaskMutations(standaloneParent?.id);
 
   const handleTaskStateChange = useCallback((state: import('@/types/taskRelations').AffectedTaskState) => {
     const affected = tasks.find((task) => task.id === state.id);
@@ -682,9 +728,6 @@ function FlowBoardPageContent() {
   const needsOnboarding = !authLoading && !authError && needsBoardCreation(authData);
 
   // Вычисляем роль текущего пользователя в активном воркспейсе
-  const activeWs = authData?.workspaces?.find(
-    (w) => w.id === state.activeWorkspaceId,
-  );
   const canRevoke = activeWs?.role === 'owner' || activeWs?.role === 'admin';
   const workspaceName = activeWs?.name ?? '';
 
@@ -909,6 +952,35 @@ function FlowBoardPageContent() {
             setResultStep(null);
           }}
         />
+
+                                {/* SUB-01: подзадача из стрима — шторка БЕЗ карточки родителя (один тап — один
+            слой). Объявлена выше WorkerSheet: у BottomSheet общий z-index, и
+            порядок в DOM решает, кто кого перекроет. */}
+        {standaloneSubtask && standaloneParent && standalonePermission && (
+          <SubtaskViewSheet
+            open
+            onClose={() => setStandaloneSubtaskId(null)}
+            subtask={standaloneSubtask}
+            parent={standaloneParent}
+            assignee={
+              assignableWorkers.find(
+                (w) => w.id === standaloneSubtask.assigned_to,
+              ) ?? null
+            }
+            workers={assignableWorkers}
+            canEdit={standalonePermission.canEdit}
+            canDelete={standalonePermission.canDelete}
+            currentUserId={currentUserId}
+            currentUserRole={activeWs?.role}
+            onPatch={standaloneMutations.patchSubtask}
+            onDelete={standaloneMutations.deleteSubtask}
+            onOpenParent={() => {
+              setStandaloneSubtaskId(null);
+              setHighlightedSubtaskId(standaloneSubtask.id);
+              setSelectedTask(standaloneParent);
+            }}
+          />
+        )}
 
                                 {/* Worker bottom sheet (Figma 622:29869 / 622:30273) */}
         <WorkerSheet
