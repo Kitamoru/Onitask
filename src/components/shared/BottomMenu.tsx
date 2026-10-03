@@ -162,6 +162,11 @@ export function BottomMenu({ onCenterClick }: { onCenterClick?: () => void }) {
       className="
         fixed inset-x-0 bottom-0 z-50 mx-auto w-full
       "
+      // Same 390px cap as the content column (globals.css --app-max-width).
+      // `fixed` is positioned against the viewport, so the content wrapper in
+      // layout.tsx does not constrain it — without this the menu stretches to
+      // the full monitor width on Telegram Desktop while the board stays 390px.
+      style={{ maxWidth: 'var(--app-max-width)' }}
       aria-label="Основная навигация"
       role="navigation"
     >

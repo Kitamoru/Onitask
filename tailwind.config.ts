@@ -128,6 +128,10 @@ const config: Config = {
         mobile: "480px",
         "mobile-sm": "390px",
         form: "22.375rem",
+        // Desktop/ wide-window cap: the design frame is 390px (Figma), and
+        // Telegram Desktop opens the mini app in a window the user controls.
+        // Without this the board stretches across the whole monitor.
+        app: "var(--app-max-width)",
       },
       zIndex: {
         modal: "100",

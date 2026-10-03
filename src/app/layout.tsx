@@ -81,7 +81,17 @@ export default function RootLayout({
             <TelegramThemeProvider>
               <DataProvider>
                 <AuthLoader>
-                  {children}
+                  {/* Desktop cap: Telegram Desktop opens the mini app in a
+                      window sized by the user, so the mobile-first layout would
+                      otherwise stretch across the whole monitor. The design
+                      frame is 390px (Figma) — content centers inside it.
+                      Only `children` is wrapped: AiTaskCreator stays outside so
+                      the fixed BottomMenu / sheet backdrops keep positioning
+                      against the viewport (a wrapper here would become their
+                      containing block only if it gained a transform). */}
+                  <div className="mx-auto w-full max-w-app">
+                    {children}
+                  </div>
                 </AuthLoader>
 
                 <AiTaskCreator />
