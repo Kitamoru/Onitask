@@ -13,9 +13,6 @@ interface TelegramWebAppExtended extends Window {
       ready: () => void;
       expand: () => void;
       close: () => void;
-      /** Платформа клиента: 'android' | 'ios' | 'tdesktop' | 'weba' | ...
-       *  Нужна, чтобы не уводить нативное окно десктопа в полный экран. */
-      platform: string;
       isExpanded: boolean;
       viewportHeight: number;
       viewportStableHeight: number;
@@ -363,19 +360,8 @@ export function useTelegramAuth(): UseTelegramAuthReturn {
     // 2. Expand to full available height
     tg.expand();
 
-    // 3. Fullscreen — ТОЛЬКО на мобильных клиентах.
-    //
-    //    На Telegram Desktop это нативное окно ОС. Полноэкранный режим
-    //    убирает заголовок, за который окно перетаскивают мышью: при двух
-    //    мониторах окно «залипает» на границе экранов и его нельзя сдвинуть.
-    //    Управлять размером/позицией окна WebApp API не умеет, поэтому
-    //    на десктопе этот вызов только вредит. (Ограничение ширины
-    //    контента в CSS тут не помогает — оно не меняет размер окна.)
-    //
-    //    Раньше вызов шёл на всех платформах, и выйти из полного экрана
-    //    было нечем: exitFullscreen() нигде в приложении не вызывается.
-    const isMobilePlatform = tg.platform === 'android' || tg.platform === 'ios';
-    if (isMobilePlatform && typeof tg.requestFullscreen === 'function') {
+    // 3. Request fullscreen mode (graceful degradation if not supported)
+    if (typeof tg.requestFullscreen === 'function') {
       try {
         tg.requestFullscreen();
       } catch {
