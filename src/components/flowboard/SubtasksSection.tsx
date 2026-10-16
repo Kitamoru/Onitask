@@ -27,6 +27,7 @@ import {
 import { createSubtask, getSubtasks } from '@/lib/api/subtasks';
 import { useSubtaskMutations } from './useSubtaskMutations';
 import { MAX_SUBTASKS, subtaskState } from '@/lib/subtasks';
+import { getSubtaskPermission } from '@/lib/taskPermissions';
 import { taskColumnLabel } from '@/lib/taskColumns';
 import { formatDueShort } from '@/lib/date';
 import type { TaskEntity, WorkerCardData } from '@/types/flowboard';
@@ -37,14 +38,17 @@ export interface SubtasksSectionProps {
   task: TaskEntity;
   /** Участники доски — для выбора исполнителя новой подзадачи. */
   workers: WorkerCardData[];
-  /** Права на родителе: без canEdit секция read-only. */
-  canEdit: boolean;
   /**
-   * Право удалять подзадачу. Отдельно от canEdit: по правилам сервера удаляет
-   * автор родителя или админ, а править может ещё и исполнитель. Смешивать их
-   * нельзя — иначе кнопка предлагала бы действие, которое сервер отвергнет 403.
+   * Права на родителе — только для кнопки «Добавить подзадачу».
+   *
+   * Права самой шторки («Переместить»/«Редактировать»/«Удалить подзадачу»)
+   * НЕ наследуются из этого пропа: они считаются по открытой подзадаче через
+   * getSubtaskPermission (владение от родителя + собственный исполнитель
+   * подзадачи). Иначе исполнитель подзадачи — member без прав на родителя —
+   * не видел кнопку «Переместить» и не мог сдать работу (баг «нет кнопки
+   * переместить»).
    */
-  canDeleteSubtask: boolean;
+  canEdit: boolean;
   /** Режим просмотра: в нём пустой блок подзадач не показывается. */
   isView: boolean;
   /** Текущий пользователь — правило ревью при переносе подзадачи в «Сделано». */
@@ -73,7 +77,6 @@ export function SubtasksSection({
   task,
   workers,
   canEdit,
-  canDeleteSubtask,
   isView,
   currentUserId,
   currentUserRole,
@@ -133,6 +136,35 @@ export function SubtasksSection({
   const openSubtask = useMemo(
     () => subtasks.find((s) => s.id === sheetSubtaskId) ?? null,
     [subtasks, sheetSubtaskId],
+  );
+
+  // Права шторки считаются по ОТКРЫТОЙ ПОДЗАДАЧЕ, а не по родителю: владение
+  // наследуется от родителя, плюс собственный исполнитель подзадачи может её
+  // править/двигать (сдавать). Тот же чистый модуль, что у Route Handler
+  // (getSubtaskPermission), — кнопки не обещают действий с сервером 403.
+  const sheetPermission = useMemo(
+    () =>
+      openSubtask
+        ? getSubtaskPermission(
+            {
+              created_by: openSubtask.created_by ?? null,
+              assigned_to: openSubtask.assigned_to ?? null,
+              column: openSubtask.column ?? 'backlog',
+            },
+            {
+              created_by: task.created_by ?? null,
+              assigned_to: task.assigned_to ?? null,
+            },
+            { workerId: currentUserId, role: currentUserRole },
+          )
+        : null,
+    [
+      openSubtask,
+      task.created_by,
+      task.assigned_to,
+      currentUserId,
+      currentUserRole,
+    ],
   );
 
   // Мутации вынесены в хук: шторка подзадачи монтируется ещё и на уровне
@@ -368,8 +400,8 @@ export function SubtasksSection({
           parent={task}
           assignee={workers.find((w) => w.id === openSubtask.assigned_to) ?? null}
           workers={workers}
-          canEdit={canEdit}
-          canDelete={canDeleteSubtask}
+          canEdit={sheetPermission?.canEdit ?? false}
+          canDelete={sheetPermission?.canDelete ?? false}
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
           onPatch={patchSubtask}

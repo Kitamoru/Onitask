@@ -16,6 +16,10 @@
  * Семантика совпадает с уже принятой моделью review-решения
  * (`reviewDecision.ts` / миграции 049, 083), чтобы две фичи не расходились.
  *
+ * SUB-01: для подзадач действует `getSubtaskPermission` (см. ниже) — владение
+ * наследуется от родителя, а собственный исполнитель подзадачи может её
+ * править/двигать (сдавать).
+ *
  * Важно: «переместить» и «отредактировать» — это один и тот же PATCH
  * `/api/tasks/[id]`, различается только набор полей. Поэтому отдельного
  * флага canMove нет: запрет canEdit автоматически закрывает и перемещение.
@@ -84,6 +88,63 @@ export function getTaskPermission(
       !canEdit &&
       task.assigned_to === null &&
       task.column === CLAIMABLE_COLUMN,
+  };
+}
+
+/**
+ * SUB-01: права на запись в ПОДЗАДАЧУ.
+ *
+ * Подзадача — строка tasks с parent_task_id, но её владение наследуется от
+ * РОДИТЕЛЯ (created_by/assigned_to родителя, колонка — собственная, от неё
+ * зависит self-claim; тот же контракт, что subtaskOwnerRow в subtasks.ts).
+ *
+ * Дополнение (фикс бага «исполнитель подзадачи не может её сдать»): собственный
+ * исполнитель подзадачи (assigned_to САМОЙ подзадачи) может её править и
+ * двигать — иначе участник, которому подзадача назначена, не видел кнопку
+ * «Переместить» в шторке и получал 403 на PATCH. Удалять он по-прежнему не
+ * может: удаление — только автор родителя или админ (ADR SUB-01, canDelete
+ * берётся из базовых родительских прав без подмешивания исполнительства).
+ *
+ * `parent == null` — самостоятельная задача (или гонка с ON DELETE CASCADE,
+ * родитель исчез): права считаются по самой строке, как раньше.
+ *
+ * self-claim решается по САМОЙ подзадаче (её assigned_to и колонка), как и
+ * записано в route.ts: «взять подзадачу в работу должно решаться по подзадаче,
+ * не по родителю».
+ */
+export function getSubtaskPermission(
+  subtask: TaskPermissionSubject | null | undefined,
+  parent: Pick<TaskPermissionSubject, 'created_by' | 'assigned_to'> | null | undefined,
+  ctx: TaskPermissionContext,
+): TaskPermission {
+  if (!subtask || !ctx.workerId) {
+    return getTaskPermission(null, ctx);
+  }
+  // Самостоятельная задача / родитель не найден — правило по самой строке.
+  if (!parent) {
+    return getTaskPermission(subtask, ctx);
+  }
+
+  // Владение наследуем от родителя, колонка остаётся собственной подзадачи.
+  const base = getTaskPermission(
+    {
+      created_by: parent.created_by,
+      assigned_to: parent.assigned_to,
+      column: subtask.column,
+    },
+    ctx,
+  );
+  const isOwnAssignee = !!subtask.assigned_to && subtask.assigned_to === ctx.workerId;
+  const canEdit = base.canEdit || isOwnAssignee;
+
+  return {
+    ...base,
+    isAssignee: base.isAssignee || isOwnAssignee,
+    canEdit,
+    canClaim:
+      !canEdit &&
+      subtask.assigned_to === null &&
+      subtask.column === CLAIMABLE_COLUMN,
   };
 }
 

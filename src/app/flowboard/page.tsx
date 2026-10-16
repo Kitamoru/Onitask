@@ -24,7 +24,7 @@ import { setPreferredView } from '@/lib/viewPreference';
 import { filterTasksForUser } from '@/lib/streamFilter';
 import { findActiveWorkspaceWorkerId } from '@/lib/activeWorkspaceWorker';
 import { formatWorkerRole } from '@/lib/roles';
-import { getTaskPermission } from '@/lib/taskPermissions';
+import { getTaskPermission, getSubtaskPermission } from '@/lib/taskPermissions';
 import { needsBoardCreation } from '@/lib/onboarding';
 import { isReviewBypassBlocked, REVIEW_BYPASS_BLOCKED } from '@/lib/reviewDecision';
 import { TASK_COLUMN_META, TASK_COLUMN_ORDER } from '@/lib/taskColumns';
@@ -433,17 +433,27 @@ function FlowBoardPageContent() {
         : null,
     [tasks, standaloneSubtask],
   );
-  // Права считаем по РОДИТЕЛЮ — тот же контракт, что у блока «Подзадачи»
-  // (подзадача наследует владение от родителя, см. subtaskOwnerRow).
+  // Права считаем по подзадаче с наследованием от родителя — тот же
+  // контракт, что у блока «Подзадачи» (getSubtaskPermission, тот же модуль,
+  // что у Route Handler): владение наследуется от родителя, плюс собственный
+  // исполнитель подзадачи может её править/двигать (сдавать).
   const standalonePermission = useMemo(
     () =>
-      standaloneParent
-        ? getTaskPermission(standaloneParent, {
-            workerId: currentUserId,
-            role: activeWs?.role,
-          })
+      standaloneSubtask && standaloneParent
+        ? getSubtaskPermission(
+            {
+              created_by: standaloneSubtask.created_by ?? null,
+              assigned_to: standaloneSubtask.assigned_to ?? null,
+              column: standaloneSubtask.column ?? 'backlog',
+            },
+            {
+              created_by: standaloneParent.created_by ?? null,
+              assigned_to: standaloneParent.assigned_to ?? null,
+            },
+            { workerId: currentUserId, role: activeWs?.role },
+          )
         : null,
-    [standaloneParent, currentUserId, activeWs?.role],
+    [standaloneSubtask, standaloneParent, currentUserId, activeWs?.role],
   );
   const standaloneMutations = useSubtaskMutations(standaloneParent?.id);
 

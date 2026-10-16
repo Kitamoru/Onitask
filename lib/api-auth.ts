@@ -13,7 +13,7 @@
 
 import { validateTelegramInitData } from '../src/lib/telegram/validate';
 import { createServerClient } from './supabase';
-import { getTaskPermission } from '../src/lib/taskPermissions';
+import { getTaskPermission, getSubtaskPermission } from '../src/lib/taskPermissions';
 import type { TelegramUser } from '../src/lib/telegram/validate';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -176,15 +176,21 @@ export async function getActiveWorkerInWorkspace(
 /**
  * TASK-PERM: права текущего пользователя на запись в конкретную задачу.
  *
- * Серверная обёртка над чистым правилом `getTaskPermission`
- * (src/lib/taskPermissions.ts — тот же модуль использует клиент, поэтому
- * UI и Route Handler не могут разойтись). Единственный источник worker-строки —
- * уже существующий getActiveWorkerInWorkspace, т.е. лишнего запроса в БД нет.
+ * Серверная обёртка над чистым правилом `getTaskPermission` /
+ * `getSubtaskPermission` (src/lib/taskPermissions.ts — тот же модуль использует
+ * клиент, поэтому UI и Route Handler не могут разойтись). Единственный источник
+ * worker-строки — уже существующий getActiveWorkerInWorkspace, т.е. лишнего
+ * запроса в БД нет.
  *
  * Правило: owner/admin — всё; автор (created_by) — правит и удаляет;
  * исполнитель (assigned_to) — правит, но не удаляет; остальные — ничего.
  * Плюс self-claim: непривилегированный участник может взять задачу из backlog
  * без исполнителя (canClaim), после чего получает права исполнителя.
+ *
+ * SUB-01: для подзадачи передайте `parent` (её родителя) — владение
+ * наследуется от родителя, а собственный исполнитель подзадачи дополнительно
+ * может её править/двигать (сдавать). Без `parent` правило применяется к самой
+ * строке, как раньше.
  *
  * Возвращает null, если профиль не состоит в workspace задачи — вызывающий
  * код уже отвечает 404/403 сам, чтобы не раскрывать существование задачи.
@@ -196,17 +202,20 @@ export async function getTaskWritePermission(
     created_by: string | null;
     assigned_to: string | null;
     column: string;
+    /** SUB-01: родитель подзадачи (null/undefined — самостоятельная задача). */
+    parent?: { created_by: string | null; assigned_to: string | null } | null;
   },
 ): Promise<ReturnType<typeof getTaskPermission> | null> {
   const actor = await getActiveWorkerInWorkspace(profileId, task.workspace_id);
   if (!actor) return null;
 
-  return getTaskPermission(
+  return getSubtaskPermission(
     {
       created_by: task.created_by,
       assigned_to: task.assigned_to,
       column: task.column,
     },
+    task.parent ?? null,
     { workerId: actor.id, role: actor.role },
   );
 }

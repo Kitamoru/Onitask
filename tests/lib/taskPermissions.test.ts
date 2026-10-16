@@ -9,7 +9,7 @@
  * streamFilter, на которые этот модуль опирается по стилю.
  */
 import { describe, it, expect } from 'vitest';
-import { getTaskPermission, CLAIMABLE_COLUMN } from '@/lib/taskPermissions';
+import { getTaskPermission, getSubtaskPermission, CLAIMABLE_COLUMN } from '@/lib/taskPermissions';
 
 const ME = 'worker-me';
 const OTHER = 'worker-other';
@@ -135,5 +135,112 @@ describe('getTaskPermission', () => {
     const p = getTaskPermission(task({ created_by: OTHER }), ctx('member'));
     expect(p.isCreator).toBe(false);
     expect(p.canEdit).toBe(false);
+  });
+});
+
+describe('getSubtaskPermission (SUB-01) — права на подзадачу', () => {
+  const parent = (
+    over: Partial<{ created_by: string | null; assigned_to: string | null }> = {},
+  ) => ({
+    created_by: OTHER as string | null,
+    assigned_to: null as string | null,
+    ...over,
+  });
+  const subtask = (
+    over: Partial<{ created_by: string | null; assigned_to: string | null; column: string }> = {},
+  ) => ({
+    created_by: 'admin-who-added' as string | null,
+    assigned_to: null as string | null,
+    column: CLAIMABLE_COLUMN as string,
+    ...over,
+  });
+
+  it('исполнитель подзадачи (member) может править и двигать, но НЕ удалять — баг «нет кнопки переместить»', () => {
+    // Регрессия: до фикса права считались ТОЛЬКО по родителю, и исполнитель
+    // подзадачи — участник без прав на родителя — не видел «Переместить».
+    const p = getSubtaskPermission(
+      subtask({ assigned_to: ME }),
+      parent(),
+      ctx('member'),
+    );
+    expect(p.isAssignee).toBe(true);
+    expect(p.canEdit).toBe(true);
+    expect(p.canDelete).toBe(false);
+  });
+
+  it('автор родителя сохраняет полные права, даже если подзадачу добавил админ', () => {
+    const p = getSubtaskPermission(subtask(), parent({ created_by: ME }), ctx('member'));
+    expect(p.isCreator).toBe(true);
+    expect(p.canEdit).toBe(true);
+    expect(p.canDelete).toBe(true);
+  });
+
+  it('исполнитель родителя может править подзадачу, но не удалять', () => {
+    const p = getSubtaskPermission(subtask(), parent({ assigned_to: ME }), ctx('member'));
+    expect(p.canEdit).toBe(true);
+    expect(p.canDelete).toBe(false);
+  });
+
+  it('посторонний member без родительских прав — ничего, кроме self-claim пустой подзадачи в backlog', () => {
+    const p = getSubtaskPermission(subtask(), parent(), ctx('member'));
+    expect(p.canEdit).toBe(false);
+    expect(p.canDelete).toBe(false);
+    // Пустая подзадача в backlog без исполнителя берётся в работу так же,
+    // как обычная задача: self-claim решается по подзадаче, не по родителю.
+    expect(p.canClaim).toBe(true);
+    // А вне backlog claim недоступен.
+    expect(
+      getSubtaskPermission(subtask({ column: 'in_progress' }), parent(), ctx('member')).canClaim,
+    ).toBe(false);
+  });
+
+  it('admin может всё (форс-мейдж)', () => {
+    const p = getSubtaskPermission(subtask(), parent(), ctx('admin'));
+    expect(p.canEdit).toBe(true);
+    expect(p.canDelete).toBe(true);
+  });
+
+  it('parent = null (самостоятельная задача / гонка с CASCADE) — правило по самой строке', () => {
+    const own = getSubtaskPermission(subtask({ assigned_to: ME }), null, ctx('member'));
+    expect(own.canEdit).toBe(true);
+    expect(own.canDelete).toBe(false);
+
+    const stranger = getSubtaskPermission(subtask(), null, ctx('member'));
+    expect(stranger.canEdit).toBe(false);
+    expect(stranger.canDelete).toBe(false);
+  });
+
+  it('self-claim решается по подзадаче: сирота в backlog при родителе с исполнителем — можно взять', () => {
+    const p = getSubtaskPermission(
+      subtask({ assigned_to: null }),
+      parent({ assigned_to: OTHER }),
+      ctx('member'),
+    );
+    expect(p.canClaim).toBe(true);
+  });
+
+  it('назначенная подзадача не подлежит self-claim — исполнитель просто правит её', () => {
+    const p = getSubtaskPermission(
+      subtask({ assigned_to: ME }),
+      parent({ assigned_to: OTHER }),
+      ctx('member'),
+    );
+    expect(p.canClaim).toBe(false);
+    expect(p.canEdit).toBe(true);
+  });
+
+  it('подзадача вне backlog не подлежит self-claim', () => {
+    const p = getSubtaskPermission(
+      subtask({ column: 'in_progress' }),
+      parent(),
+      ctx('member'),
+    );
+    expect(p.canClaim).toBe(false);
+  });
+
+  it('без workerId (не загружен пользователь) — никаких прав', () => {
+    const p = getSubtaskPermission(subtask({ assigned_to: ME }), parent(), ctx('member', null));
+    expect(p.canEdit).toBe(false);
+    expect(p.canClaim).toBe(false);
   });
 });

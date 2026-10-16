@@ -31,7 +31,7 @@ import {
   getTaskWritePermission,
 } from '@core/api-auth';
 import { createServerClient } from '@core/supabase';
-import { getTaskPermission } from '@/lib/taskPermissions';
+import { getTaskPermission, getSubtaskPermission } from '@/lib/taskPermissions';
 
 const PARENT = {
   id: 'parent-1',
@@ -120,11 +120,21 @@ function setupActor(workerId: string, role: string | null) {
     type: 'human',
     role,
   } as never);
+  // PATCH передаёт parent (SUB-01: владение от родителя + собственный
+  // исполнитель подзадачи может её двигать), DELETE — нет (родительские поля
+  // уже наследованы через subtaskOwnerRow). Мок воспроизводит оба вызова
+  // РЕАЛЬНЫМ чистым правилом — тесты проверяют связку route + правило.
   vi.mocked(getTaskWritePermission).mockImplementation(async (_p, task) =>
-    getTaskPermission(
-      { created_by: task.created_by, assigned_to: task.assigned_to, column: task.column },
-      { workerId, role },
-    ),
+    task.parent
+      ? getSubtaskPermission(
+          { created_by: task.created_by, assigned_to: task.assigned_to, column: task.column },
+          task.parent,
+          { workerId, role },
+        )
+      : getTaskPermission(
+          { created_by: task.created_by, assigned_to: task.assigned_to, column: task.column },
+          { workerId, role },
+        ),
   );
 }
 
@@ -239,6 +249,64 @@ describe('PATCH подзадачи — агент-исполнитель зап�
     );
     const res = await PATCH(mockRequest({ assigned_to: 'agent-1' }), params);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('PATCH подзадачи — исполнитель подзадачи может её двигать (баг «нет кнопки переместить»)', () => {
+  const params = { params: Promise.resolve({ id: 'subtask-1' }) };
+
+  it('200: member-исполнитель подзадачи двигает её, хотя родитель ему чужой', async () => {
+    // Регрессия: права считались ТОЛЬКО по родителю, собственный исполнитель
+    // подзадачи получал 403 на PATCH column и не мог сдать работу.
+    setupActor('subtask-assignee', 'member');
+    vi.mocked(createServerClient).mockReturnValue(
+      buildSupabase({
+        'subtask-1': { ...SUBTASK, assigned_to: 'subtask-assignee' },
+        'parent-1': PARENT, // created_by/assigned_to — чужие люди
+      }),
+    );
+    const res = await PATCH(mockRequest({ column: 'in_progress' }), params);
+    expect(res.status).toBe(200);
+  });
+
+  it('PATCH передаёт в правило СВОИ поля подзадачи и родителя отдельным аргументом', async () => {
+    // Проверяем не только код ответа, но и ЧТО роут отдал правилу: иначе тест
+    // прошёл бы и при случайно верном исходе (паттерн DELETE-теста выше).
+    setupActor('subtask-assignee', 'member');
+    vi.mocked(createServerClient).mockReturnValue(
+      buildSupabase({
+        'subtask-1': { ...SUBTASK, assigned_to: 'subtask-assignee' },
+        'parent-1': PARENT,
+      }),
+    );
+    await PATCH(mockRequest({ column: 'in_progress' }), params);
+    expect(vi.mocked(getTaskWritePermission).mock.calls[0]?.[1]).toMatchObject({
+      created_by: 'admin-who-added', // своё поле подзадачи, а не родителя
+      assigned_to: 'subtask-assignee',
+      parent: { created_by: 'task-author' },
+    });
+  });
+
+  it('403: посторонний member без родительских прав не двигает чужую подзадачу', async () => {
+    // Фикс не должен был расширить права сверх исполнительства.
+    setupActor('stranger', 'member');
+    vi.mocked(createServerClient).mockReturnValue(
+      buildSupabase({ 'subtask-1': SUBTASK, 'parent-1': PARENT }),
+    );
+    const res = await PATCH(mockRequest({ column: 'in_progress' }), params);
+    expect(res.status).toBe(403);
+  });
+
+  it('403: исполнитель подзадачи НЕ может её удалить — удаление осталось у родителя', async () => {
+    setupActor('subtask-assignee', 'member');
+    vi.mocked(createServerClient).mockReturnValue(
+      buildSupabase({
+        'subtask-1': { ...SUBTASK, assigned_to: 'subtask-assignee' },
+        'parent-1': PARENT,
+      }),
+    );
+    const res = await DELETE(mockRequest(), params);
+    expect(res.status).toBe(403);
   });
 });
 

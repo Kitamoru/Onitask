@@ -122,15 +122,16 @@ export async function PATCH(
 
     // SUB-01: права на ПОДЗАДАЧУ считаются по её РОДИТЕЛЮ (created_by/assigned_to
     // родителя), а колонка остаётся собственной — от неё зависит self-claim,
-    // и «взять подзадачу в работу» должно решаться по подзадаче, не по родителю.
+    // и «взять подзадачу в работу» решается по подзадаче, не по родителю.
     //
-    // Без этого автор задачи не мог бы отредактировать подзадачу, добавленную
-    // админом, хотя UI (SubtaskViewSheet по правам на родителе) предлагал кнопки.
-    const patchOwner = (await subtaskOwnerRow(
-      taskRow as unknown as Parameters<typeof subtaskOwnerRow>[0],
-      await loadSubtaskParent(supabase, (taskRow as any).parent_task_id as string | null),
-    )) ?? (taskRow as any);
-
+    // Плюс (фикс бага «исполнитель подзадачи не может её сдать»): собственный
+    // исполнитель подзадачи (её assigned_to) может её править и двигать —
+    // правило getSubtaskPermission; UI считает права той же функцией
+    // (SubtasksSection и standalone-шторка на странице flowboard).
+    // parent === null для самостоятельной задачи и при гонке с ON DELETE
+    // CASCADE — тогда права считаются по самой строке, как раньше
+    // (тот же запасной путь, что был у subtaskOwnerRow).
+    //
     // TASK-PERM: перемещение (column) и редактирование полей — это ОДИН и тот же
     // PATCH, поэтому единая проверка canEdit закрывает оба случая.
     // Правило: owner/admin — всё; автор (created_by) — правит; исполнитель
@@ -139,9 +140,13 @@ export async function PATCH(
     // исполнителя себе (тогда меняется только assigned_to → его worker.id).
     const permission = await getTaskWritePermission(auth.profileId!, {
       workspace_id: taskRow.workspace_id as string,
-      created_by: (patchOwner.created_by as string | null) ?? null,
-      assigned_to: (patchOwner.assigned_to as string | null) ?? null,
+      created_by: (taskRow.created_by as string | null) ?? null,
+      assigned_to: (taskRow.assigned_to as string | null) ?? null,
       column: taskRow.column as string,
+      parent: await loadSubtaskParent(
+        supabase,
+        (taskRow as any).parent_task_id as string | null,
+      ),
     });
 
     if (!permission) {
