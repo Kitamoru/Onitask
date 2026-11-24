@@ -275,7 +275,7 @@ function extractRawInput(msg: TelegramMessage): { text: string; sourceAuthor?: T
 | alert_type | Триггер | Получатель | Сообщение |
 |---|---|---|---|
 | `task_assignment` | `trg_task_assignment_notify` (AFTER UPDATE OF `assigned_to` ON `tasks`) | Новый исполнитель задачи (`workers.id`) | 📋 `ALPHA-12` — задача назначена на тебя + название, статус, приоритет, кнопка «Открыть задачу →» (Mini App deep link) |
-| `member_added` | `trg_worker_added_notify` (AFTER INSERT ON `workers` WHERE `type='human'`) | Новый участник workspace | 👋 «Тебя добавили в рабочее пространство onitask» + роль + кнопка «Открыть доску →» |
+| `member_added` | `trg_worker_added_notify` (AFTER INSERT ON `workers` WHERE `type='human'`) | Новый участник workspace | 👋 «Тебя добавили в рабочее пространство <название доски>» + роль + кнопка «Открыть доску →» |
 
 **Механика доставки** (`supabase/functions/bot-notify/index.ts`, v0.7.0):
 

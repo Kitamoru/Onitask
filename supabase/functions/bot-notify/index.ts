@@ -215,10 +215,10 @@ async function processPersonalNotification(
   } else {
     const { data: workspace } = await supabase
       .from('workspaces')
-      .select('slug')
+      .select('name, slug')
       .eq('id', job.workspace_id)
       .maybeSingle();
-    const html = buildMemberAddedHTML(job.payload);
+    const html = buildMemberAddedHTML(job.payload, workspace?.name);
     await sendTelegramMessage(profile.telegram_id, html, {
       inline_keyboard: [
         [{
@@ -786,7 +786,7 @@ async function resolveTaskRecipients(
 // Member added
 // ============================================================================
 
-function buildMemberAddedHTML(payload: Record<string, unknown>): string {
+function buildMemberAddedHTML(payload: Record<string, unknown>, workspaceName?: string): string {
   const displayName = (payload.display_name as string) || '';
   const role = (payload.role as string) || 'member';
   const roleLabels: Record<string, string> = {
@@ -795,9 +795,10 @@ function buildMemberAddedHTML(payload: Record<string, unknown>): string {
     member: 'участник',
     viewer: 'наблюдатель',
   };
+  const ws = escapeHtml(workspaceName || 'onitask');
   const lines: string[] = [];
   lines.push(
-    `👋 <b>${escapeHtml(displayName)}</b>, тебя добавили в рабочее пространство onitask!`
+    `👋 <b>${escapeHtml(displayName)}</b>, тебя добавили в рабочее пространство ${ws}!`
   );
   lines.push('');
   lines.push(`Роль: ${roleLabels[role] ?? role}`);
