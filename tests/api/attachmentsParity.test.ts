@@ -26,6 +26,14 @@ const ZIP = asciiB64('PK\x03\x04rest');
 const TEXT = asciiB64('привет, мир');
 const OGG = asciiB64('OggS\x00\x02....');
 const MP3 = asciiB64('ID3\x04\x00\x00....');
+const HEIC = bytesB64([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63,
+  0x00, 0x00, 0x00, 0x00,
+]);
+const HEIF = bytesB64([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x69, 0x66, 0x31,
+  0x00, 0x00, 0x00, 0x00,
+]);
 
 /** PNG-магия кратно 3 байтам — base64 без padding (нужно для склейки строк). */
 const PNG_ALIGNED = bytesB64([
@@ -50,6 +58,8 @@ const SAMPLE_BY_MIME: Record<string, string> = {
   'text/markdown': TEXT,
   'audio/ogg': OGG,
   'audio/mpeg': MP3,
+  'image/heic': HEIC,
+  'image/heif': HEIF,
 };
 
 /** Переименованный шелл-скрипт: расширение png, магия не сходится. */
@@ -107,8 +117,8 @@ describe('attachments: паритет констант и чистых хелп�
       [...lib.ALLOWED_ATTACHMENT_EXTENSIONS].sort(),
     );
     expect(rt.EXTENSION_MIME).toEqual(lib.EXTENSION_MIME);
-    // 18 расширений (решение владельца, раздел 3) — страховка от «тихого» сужения
-    expect(Object.keys(rt.EXTENSION_MIME)).toHaveLength(18);
+    // 20 расширений (решение владельца, раздел 3) — страховка от «тихого» сужения
+    expect(Object.keys(rt.EXTENSION_MIME)).toHaveLength(20);
   });
 
   it('extensionOf / sanitizeFilename одинаковы на грязных именах', () => {
@@ -235,6 +245,18 @@ describe('attachments: паритет решений на одинаковых �
 
   it('невалидный base64 для бинарного типа отклоняют оба', () => {
     expectDecisionParity([{ filename: 'chart.png', content_base64: '!!!' }]);
+  });
+
+  it('HEIC/HEIF фото проходят валидацию в обеих реализациях', () => {
+    const heic = { filename: 'photo.heic', content_base64: HEIC };
+    const heif = { filename: 'photo.heif', content_base64: HEIF };
+    expect(lib.validateAttachments([heic]).map((a) => a.filename)).toEqual([
+      'photo.heic',
+    ]);
+    expect(lib.validateAttachments([heif]).map((a) => a.filename)).toEqual([
+      'photo.heif',
+    ]);
+    expectDecisionParity([heic, heif]);
   });
 });
 

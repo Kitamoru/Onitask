@@ -4080,3 +4080,14 @@ NEW.version := OLD.version + 1;   -- ни одного условия
 так что прогоны теряются молча.
 
 
+
+### HEIC/HEIF вложения (2026-07-24) ✅
+
+Добавлена поддержка HEIC/HEIF изображений (iPhone фото) в три копии whitelist вложений + parity-тест:
+
+- `lib/shared/attachments.ts` — `'heic', 'heif'` в `ALLOWED_ATTACHMENT_EXTENSIONS`; `heic: 'image/heic'`, `heif: 'image/heif'` в `EXTENSION_MIME`; ISOBMFF ftyp-бокс cases (`heic`, `heix`, `hevx`, `mif1`, `msf1`) в `sniffMatches`.
+- `supabase/functions/agent-runtime/attachments.ts` — зеркальные три правки.
+- `supabase/functions/bot-notify/index.ts` — `heic`/`heif` в `EXTENSION_MIME`; `PHOTO_EXTENSIONS` regex включает `heic|heif`.
+- `tests/api/attachmentsParity.test.ts` — константы `HEIC`/`HEIF` (ftyp-боксы), добавлены в `SAMPLE_BY_MIME`, счётчик расширений 18→20, тест `HEIC/HEIF фото проходят валидацию в обеих реализациях`.
+
+Валидация: `npm run type-check` ✅, `npm run lint` ✅ (0 ошибок), `npm run test attachmentsParity` ✅ (14/14, включая новый тест).

@@ -844,6 +844,8 @@ const EXTENSION_MIME: Record<string, string> = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
   gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
   pdf: 'application/pdf',
   doc: 'application/msword',
   docx:
@@ -861,7 +863,7 @@ const EXTENSION_MIME: Record<string, string> = {
   mp3: 'audio/mpeg',
 };
 
-const PHOTO_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
+const PHOTO_EXTENSIONS = /\.(png|jpe?g|webp|gif|heic|heif)$/i;
 
 function decodeBase64(b64: string): Uint8Array {
   const bin = atob(b64);

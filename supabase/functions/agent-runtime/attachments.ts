@@ -49,6 +49,7 @@ export const MAX_SOURCE_PATH_LENGTH = 512;
 
 export const ALLOWED_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'webp', 'gif',
+  'heic', 'heif',
   'pdf',
   'doc', 'docx',
   'xls', 'xlsx',
@@ -64,6 +65,8 @@ export const EXTENSION_MIME: Record<string, string> = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
   gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
   pdf: 'application/pdf',
   doc: 'application/msword',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -130,6 +133,14 @@ export function sniffMatches(mime: string, bytes: Uint8Array): boolean {
       return asciiAt(0, 'GIF87a') || asciiAt(0, 'GIF89a');
     case 'image/webp':
       return asciiAt(0, 'RIFF') && asciiAt(8, 'WEBP');
+    case 'image/heic':
+    case 'image/heif':
+      // ISOBMFF ftyp-бокс с HEIC/HEIF брендом (формат фото iPhone по умолчанию)
+      return (
+        asciiAt(4, 'ftyp') &&
+        (asciiAt(8, 'heic') || asciiAt(8, 'heix') || asciiAt(8, 'hevx') ||
+          asciiAt(8, 'mif1') || asciiAt(8, 'msf1'))
+      );
     case 'application/pdf':
       return asciiAt(0, '%PDF-');
     case 'application/msword':
