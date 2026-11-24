@@ -53,6 +53,11 @@ export async function POST(req: NextRequest) {
           counts: {},
           members: {},
           riskData: { people: 0, processes: 0, escalations: 0 },
+          riskBreakdown: {
+            people: [],
+            processes: { reviewBacklog: [], stuck: [], orphanBlockers: [] },
+            escalations: [],
+          },
           cognitiveWeightEnabledByWorkspace: {},
           sprintsByWorkspace: {},
         },
@@ -66,7 +71,7 @@ export async function POST(req: NextRequest) {
         .in('workspace_id', workspaceIds),
       supabase
         .from('workers')
-        .select('id, workspace_id, type')
+        .select('id, workspace_id, type, display_name')
         .in('workspace_id', workspaceIds)
         .eq('is_active', true),
       supabase
@@ -110,6 +115,33 @@ export async function POST(req: NextRequest) {
     for (const wsId of workspaceIds) counts[wsId] = zeroStats();
 
     const peopleByWorkspace = new Map<string, Set<string>>();
+    const peopleBreakdownByWorkspace = new Map<string, Array<{
+      worker_id: string;
+      workspace_id: string;
+      display_name: string;
+      cognitive_load: number;
+      attention_risk_score: number;
+      risk_level: 'ok' | 'warning' | 'critical';
+    }>>();
+    const reviewBacklogByWorkspace = new Map<string, Array<{
+      workspace_id: string;
+      reviewer_id: string;
+      reviewer_name: string | null;
+      review_count: number;
+    }>>();
+    const stuckByWorkspace = new Map<string, Array<{
+      workspace_id: string;
+      id: string;
+      title: string;
+      assigned_to: string | null;
+      hours_stuck: number | null;
+    }>>();
+    const orphanBlockersByWorkspace = new Map<string, Array<{
+      workspace_id: string;
+      id: string;
+      title: string;
+      hours_blocked: number | null;
+    }>>();
     const processByWorkspace = new Map<string, number>();
     const reviewReviewersByWorkspace = new Map<string, Set<string>>();
     const escalationByWorkspace = new Map<string, number>();
@@ -164,20 +196,79 @@ export async function POST(req: NextRequest) {
     for (const worker of humanWorkers) {
       if (worker.type !== 'human' || !worker.workspace_id || !worker.id) continue;
       if (cognitiveBudgetEnabled.get(worker.workspace_id) === false) continue;
-      if ((cognitiveLoadByWorker.get(worker.id) ?? 0) >= 3) {
+      const cognitiveLoad = cognitiveLoadByWorker.get(worker.id) ?? 0;
+      if (cognitiveLoad >= 3) {
         const set = peopleByWorkspace.get(worker.workspace_id) ?? new Set<string>();
         set.add(worker.id);
         peopleByWorkspace.set(worker.workspace_id, set);
+        const breakdown = peopleBreakdownByWorkspace.get(worker.workspace_id) ?? [];
+        breakdown.push({
+          worker_id: worker.id,
+          workspace_id: worker.workspace_id,
+          display_name: worker.id,
+          cognitive_load: cognitiveLoad,
+          attention_risk_score: 0,
+          risk_level: 'ok',
+        });
+        peopleBreakdownByWorkspace.set(worker.workspace_id, breakdown);
       }
     }
 
     const riskPeople = new Set<string>();
     let riskProcesses = 0;
     let riskEscalations = 0;
+    const allPeopleBreakdown: Array<{
+      worker_id: string;
+      workspace_id: string;
+      display_name: string;
+      cognitive_load: number;
+      attention_risk_score: number;
+      risk_level: 'ok' | 'warning' | 'critical';
+    }> = [];
+    const allReviewBacklog: Array<{
+      workspace_id: string;
+      reviewer_id: string;
+      reviewer_name: string | null;
+      review_count: number;
+    }> = [];
+    const allStuck: Array<{
+      workspace_id: string;
+      id: string;
+      title: string;
+      assigned_to: string | null;
+      hours_stuck: number | null;
+    }> = [];
+    const allOrphanBlockers: Array<{
+      workspace_id: string;
+      id: string;
+      title: string;
+      hours_blocked: number | null;
+    }> = [];
+    const allEscalations: Array<{
+      workspace_id: string;
+      id: string;
+      title: string;
+      escalation_reason: string | null;
+      assigned_to: string | null;
+    }> = [];
     for (const workspaceId of workspaceIds) {
       for (const workerId of peopleByWorkspace.get(workspaceId) ?? []) riskPeople.add(`${workspaceId}:${workerId}`);
       riskProcesses += processByWorkspace.get(workspaceId) ?? 0;
       riskEscalations += escalationByWorkspace.get(workspaceId) ?? 0;
+      for (const p of peopleBreakdownByWorkspace.get(workspaceId) ?? []) allPeopleBreakdown.push(p);
+      for (const r of reviewBacklogByWorkspace.get(workspaceId) ?? []) allReviewBacklog.push(r);
+      for (const s of stuckByWorkspace.get(workspaceId) ?? []) allStuck.push(s);
+      for (const o of orphanBlockersByWorkspace.get(workspaceId) ?? []) allOrphanBlockers.push(o);
+      const escalationRows = escalationResult.data || [];
+    for (const row of escalationRows) {
+      allEscalations.push({
+        workspace_id: row.workspace_id,
+        id: row.id,
+        title: row.title,
+        escalation_reason: row.escalation_reason,
+        assigned_to: row.assigned_to,
+      });
+    }
     }
     const members: Record<string, { humans: number; agents: number }> = {};
     for (const wsId of workspaceIds) members[wsId] = { humans: 0, agents: 0 };
@@ -193,6 +284,15 @@ export async function POST(req: NextRequest) {
         counts,
         members,
         riskData: { people: riskPeople.size, processes: riskProcesses, escalations: riskEscalations },
+        riskBreakdown: {
+          people: allPeopleBreakdown,
+          processes: {
+            reviewBacklog: allReviewBacklog,
+            stuck: allStuck,
+            orphanBlockers: allOrphanBlockers,
+          },
+          escalations: allEscalations,
+        },
         cognitiveWeightEnabledByWorkspace: Object.fromEntries(
           workspaceIds.map((workspaceId) => [workspaceId, cognitiveBudgetEnabled.get(workspaceId) !== false]),
         ),

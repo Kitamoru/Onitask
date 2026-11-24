@@ -157,6 +157,15 @@ describe('POST /api/workspaces/board-counts — BOARD-AGG (route)', () => {
     });
     // People: F-01 overloaded humans. Processes: review backlog + stuck + orphan.
     expect(json.data.riskData).toEqual({ people: 0, processes: 3, escalations: 1 });
+    expect(json.data.riskBreakdown).toEqual({
+      people: [],
+      processes: {
+        reviewBacklog: [],
+        stuck: [],
+        orphanBlockers: [],
+      },
+      escalations: [],
+    });
     expect(json.data.cognitiveWeightEnabledByWorkspace).toEqual({ 'ws-1': false, 'ws-2': false });
     expect(json.data.members).toEqual({
       'ws-1': { humans: 2, agents: 1 },

@@ -55,7 +55,7 @@ export function RiskPulse({ data, loading, onSignalClick, hidePeople = false }: 
       {/* Summary cards grid — 3-col, gap=8px */}
       <div className="grid w-full gap-2" style={{ gridTemplateColumns: `repeat(${pulseCards.length}, minmax(0, 1fr))` }}>
         {visiblePulseCards.map(({ label, key }) => {
-          const clickable = key === 'escalations' && Boolean(onSignalClick);
+          const clickable = Boolean(onSignalClick);
           return (
             <button
               key={key}

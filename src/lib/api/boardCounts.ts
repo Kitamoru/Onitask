@@ -24,6 +24,65 @@ export interface BoardRiskData {
   escalations: number;
 }
 
+export interface BoardRiskBreakdownPerson {
+  worker_id: string;
+  workspace_id: string;
+  display_name: string;
+  cognitive_load: number;
+  attention_risk_score: number;
+  risk_level: 'ok' | 'warning' | 'critical';
+}
+
+export interface BoardRiskBreakdownProcessRow {
+  id: string;
+  title: string;
+  workspace_id: string;
+  taskId?: string;
+}
+
+export interface BoardRiskBreakdownProcessReviewRow extends BoardRiskBreakdownProcessRow {
+  reviewer_id: string;
+  reviewer_name: string | null;
+  review_count: number;
+}
+
+export interface BoardRiskBreakdownProcessStuckRow extends BoardRiskBreakdownProcessRow {
+  assigned_to: string | null;
+  hours_stuck: number | null;
+}
+
+export interface BoardRiskBreakdownProcessOrphanRow extends BoardRiskBreakdownProcessRow {
+  hours_blocked: number | null;
+}
+
+export interface BoardRiskBreakdownEscalationRow {
+  id: string;
+  title: string;
+  workspace_id: string;
+  escalation_reason: string | null;
+  assigned_to: string | null;
+}
+
+export interface BoardRiskBreakdown {
+  people: BoardRiskBreakdownPerson[];
+  processes: {
+    reviewBacklog: BoardRiskBreakdownProcessReviewRow[];
+    stuck: BoardRiskBreakdownProcessStuckRow[];
+    orphanBlockers: BoardRiskBreakdownProcessOrphanRow[];
+  };
+  escalations: BoardRiskBreakdownEscalationRow[];
+}
+
+export interface BoardCountsData {
+  counts: Record<string, BoardCountStats>;
+  members: Record<string, BoardMemberCounts>;
+  riskData: BoardRiskData;
+  riskBreakdown: BoardRiskBreakdown;
+  /** Whether F-01 is enabled per workspace; all false lets UI hide People. */
+  cognitiveWeightEnabledByWorkspace: Record<string, boolean>;
+  sprintsByWorkspace: Record<string, BoardSprintSummaryLite>;
+}
+
 export interface BoardSprintSummaryLite {
   name: string;
   topic: string;

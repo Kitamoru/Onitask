@@ -7,11 +7,12 @@ import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useData } from "@/contexts/DataContext";
 import { useBoardCounts } from "@/hooks/useBoardCounts";
 import { BOARD_COUNTS_QUERY_KEY } from "@/lib/api/boardCounts";
-import { OperatorQueueSheet } from "@/components/flowboard";
+import { OperatorQueueSheet, RiskPulseSheet, type RiskPulseSignal } from "@/components/flowboard";
 import { useTaskNavigator } from "@/hooks/useTaskNavigator";
 import { RiskPulse, BoardCard } from "@/components/board";
 import { Button } from "@/components/ui/desk-ui/Button";
 import type { RiskPulseData, BoardCardData } from "@/components/board";
+import type { BoardCountsData } from "@/lib/api/boardCounts";
 import { OrbitLoader } from "@/components/shared/OrbitLoader";
 
 /** Сброс скролла при переходе на страницу */
@@ -81,9 +82,15 @@ export default function BoardsPage() {
   }));
 
   const [showEscalationQueue, setShowEscalationQueue] = useState(false);
+  const [riskPulseSignal, setRiskPulseSignal] = useState<RiskPulseSignal | null>(null);
 
   const riskData: RiskPulseData =
     counts?.riskData ?? { people: 0, processes: 0, escalations: 0 };
+  const riskBreakdown = (counts as BoardCountsData | undefined)?.riskBreakdown ?? {
+    people: [],
+    processes: { reviewBacklog: [], stuck: [], orphanBlockers: [] },
+    escalations: [],
+  };
 
   // ── Auth loading ────────────────────────────────────────────────────────
   const bgStyle = { background: 'var(--color-bg-primary-dark, #0A0A0A)' };
@@ -203,6 +210,7 @@ export default function BoardsPage() {
             hidePeople={Object.values(counts?.cognitiveWeightEnabledByWorkspace ?? {}).length > 0 && Object.values(counts?.cognitiveWeightEnabledByWorkspace ?? {}).every((enabled) => !enabled)}
              onSignalClick={(signal) => {
               if (signal === 'escalations') setShowEscalationQueue(true);
+              if (signal === 'people' || signal === 'processes') setRiskPulseSignal(signal);
             }}
           />
 
@@ -270,6 +278,36 @@ export default function BoardsPage() {
         }}
         onRetried={() => {
           void queryClient.invalidateQueries({ queryKey: BOARD_COUNTS_QUERY_KEY });
+        }}
+      />
+
+      <RiskPulseSheet
+        open={riskPulseSignal !== null}
+        onClose={() => setRiskPulseSignal(null)}
+        signal={riskPulseSignal}
+        metrics={{
+          risk: riskData,
+          riskBreakdown,
+          evaluation: {
+            storyPointsEnabled: false,
+            cognitiveWeightEnabled: false,
+            storyPointValues: [1, 2, 3, 5, 8],
+            hoursPerSp: {},
+          },
+          workers: [],
+          alerts: [],
+          columnHealth: [],
+          sprints: [],
+          velocity: undefined,
+          cached_at: new Date().toISOString(),
+          cache_ttl: { columns: 0, workers: 0, alerts: 0 },
+        } as any}
+        onOpenWorker={(workerId) => {
+          setRiskPulseSignal(null);
+        }}
+        onOpenTask={(taskId) => {
+          setRiskPulseSignal(null);
+          void openTask({ taskId, workspaceId: state.activeWorkspaceId ?? 'all', source: 'risk_pulse' });
         }}
       />
     </main>
